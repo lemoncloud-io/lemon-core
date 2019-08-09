@@ -56,7 +56,8 @@ describe(`test the 'core/engine.ts'`, () => {
                 done();
             })
             .catch((e: any) => {
-                throw e;
+                expect(e).toEqual(null);
+                done();
             });
     });
 });
