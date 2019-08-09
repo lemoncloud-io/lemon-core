@@ -1,4 +1,6 @@
 /**
+ * `builder/SNS.ts`
+ *
  * Common SQS Handler in order to dispatch the target handler via SQS common.
  * - `lemon-protocol-api` 에서 각 서비스의 대표 `SQS` 에 메세지를 전달함.
  * - 그러면, 대표 SQS에 대해서는 이 SQS 핸들러가 데이터를 전달 받고, 이후 해당 API로 전달해줌.
@@ -40,7 +42,7 @@
 //! import core engine.
 import { $U, _log, _inf, _err } from '../core/engine';
 import { $engine } from '../core/engine';
-import { $protocol, $api, do_parrallel, doReportError, AsyncIterable } from '../core/engine';
+import { $protocol, $api, do_parrallel, AsyncIterable, doReportError } from '../core/engine';
 import { CoreHandler, WebResult, BrokerBuilder } from '../common/types';
 
 //! Node definition.

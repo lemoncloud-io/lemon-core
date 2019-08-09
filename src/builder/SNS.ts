@@ -1,5 +1,5 @@
 /**
- * `core/SNS.ts`
+ * `builder/SNS.ts`
  *
  * # Core SNS Handler
  * - `lemon-protocol-api` 에서 각 서비스의 대표 `SNS` 에 메세지를 전달함.
@@ -21,7 +21,7 @@
 //! import core engine.
 import { $U, _log, _inf, _err } from '../core/engine';
 import { $engine } from '../core/engine';
-import { $protocol, $api, do_parrallel, doReportError, AsyncIterable } from '../core/engine';
+import { $protocol, $api, do_parrallel, AsyncIterable, doReportError } from '../core/engine';
 import { CoreHandler, WebResult, BrokerBuilder } from '../common/types';
 
 //! Node definition.
