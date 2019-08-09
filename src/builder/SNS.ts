@@ -1,5 +1,5 @@
 /**
- * `core/SNS.ts`
+ * `builder/SNS.ts`
  *
  * # Core SNS Handler
  * - `lemon-protocol-api` 에서 각 서비스의 대표 `SNS` 에 메세지를 전달함.
