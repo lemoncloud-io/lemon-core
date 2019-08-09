@@ -17,7 +17,6 @@
     "!test": "------- run self-test with jest -----",
     "test": "LS=1 jest --config=jest.config.json",
     "test:dev": "LS=1 jest --config=jest.config.json --watchAll",
-    "test.lemon": "ENV=lemon STAGE=local npm test",
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",
     "!prepublishOnly": "npm test && npm run lint && npm run format",
@@ -36,6 +35,7 @@
     ]
   },
   "files": [
+    "env/**",
     "dist/**/*"
   ],
   "engines": {

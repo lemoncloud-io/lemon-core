@@ -7,9 +7,9 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-//! override environment with yml
-import environ from '../src/environ';
-process.env = environ(process);
+// //! override environment with yml
+// import environ from '../src/environ';
+// process.env = environ(process);
 
 //! load $engine, and prepare dummy handler
 import { $engine, $WEB } from '../src/';
