@@ -26,4 +26,4 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
-| 2.2.3     | initial version w/ `lemon-engine#2.2.3`.
+| 1.0.0     | initial version with `lemon-engine#2.2.3`.

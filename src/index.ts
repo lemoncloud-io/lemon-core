@@ -22,5 +22,4 @@ import $SNS from './builder/SNS';
 import $SQS from './builder/SQS';
 
 //! export functions.
-export { $WEB, $SNS, $SQS }
-
+export { $WEB, $SNS, $SQS };
