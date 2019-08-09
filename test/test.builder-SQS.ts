@@ -31,7 +31,7 @@ const event = {
         {
             messageAttributes: {
                 callback: {
-                    stringValue: 'lemon://messages/chat/public/slack',
+                    stringValue: 1 ? '' : 'lemon://messages/chat/public/slack',
                     stringListValues: null as any,
                     binaryListValues: null as any,
                     dataType: 'String',
@@ -42,7 +42,7 @@ const event = {
         {
             messageAttributes: {
                 callback: {
-                    stringValue: 'lemon://messages/chat/public/slack',
+                    stringValue: 1 ? '' : 'lemon://messages/chat/public/slack',
                     stringListValues: null as any,
                     binaryListValues: null as any,
                     dataType: 'String',
