@@ -1,9 +1,13 @@
 {
     "compilerOptions": {
+        "allowJs": false,
+        "experimentalDecorators": true,
         "module": "commonjs",
         "resolveJsonModule": true,
         "esModuleInterop": true,
-        "target": "es5",
+        "removeComments": true,
+        "emitDecoratorMetadata": true,
+        "target": "es6",
         "noImplicitAny": true,
         "moduleResolution": "node",
         "sourceMap": true,
@@ -15,6 +19,7 @@
                 "src/types/*"
             ]
         },
+        "incremental": false,
         "declaration": true
     },
     "include": [
