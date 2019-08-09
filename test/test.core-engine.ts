@@ -7,13 +7,17 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-// //! override environment with yml
-// import environ from '../src/environ';
-// process.env = environ(process);
-
 import { AsyncIterable, do_parrallel } from '../src/core/engine';
 import { conv_date, conv_date2time, conv_date2ts } from '../src/core/engine';
 import { doReportError } from '../src/';
+
+//! build context.
+const $context = (source = 'express', account = '085403634746') => {
+    return {
+        source: `${source || ''}`,
+        invokedFunctionArn: `arn:aws:lambda:ap-northeast-2:${account || ''}:function:lemon-hello-api`,
+    };
+};
 
 describe(`test the 'core/engine.ts'`, () => {
     test('check do_parallel()', (done: any) => {
@@ -41,42 +45,24 @@ describe(`test the 'core/engine.ts'`, () => {
     //! doReportError()
     test('test doReportError() - ignore', (done: any) => {
         const data = 'test-error-data';
-        doReportError(
-            new Error('via doReportError() in `lemon-core`'),
-            {
-                source: 'express',
-                invokedFunctionArn: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api',
-            },
-            data,
-        ).then((_: any) => {
+        const err = new Error('via doReportError() in `lemon-core`');
+        doReportError(err, $context(), data).then((_: any) => {
             expect(_).toEqual('!ignore');
             done();
         });
     });
     test('test doReportError() - valid mid', (done: any) => {
         const data = 'test-error-data';
-        doReportError(
-            new Error('via doReportError() in `lemon-core`'),
-            {
-                source: '',
-                invokedFunctionArn: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api',
-            },
-            data,
-        ).then((_: string) => {
+        const err = new Error('via doReportError() in `lemon-core`');
+        doReportError(err, $context(''), data).then((_: string) => {
             expect(/^[a-z0-9\-]{10,}$/.test(_) || _.indexOf('Missing credentials') > 0 ? 'ok' : _).toEqual('ok');
             done();
         });
     });
     test('test doReportError() - account id', (done: any) => {
         const data = 'test-error-data';
-        doReportError(
-            new Error('via doReportError() in `lemon-core`'),
-            {
-                source: '',
-                invokedFunctionArn: 'arn:aws:lambda:ap-northeast-2::function:lemon-hello-api',
-            },
-            data,
-        ).then((_: string) => {
+        const err = new Error('via doReportError() in `lemon-core`');
+        doReportError(err, $context('', ''), data).then((_: string) => {
             expect(_).toEqual('!err - .accountId is missing');
             done();
         });
