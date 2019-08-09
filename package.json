@@ -45,7 +45,7 @@
   "license": "MIT",
   "dependencies": {
     "lemon-engine": "^2.2.3",
-    "lemon-hello-api": "^1.2.3",
+    "lemon-hello-api": "^1.2.4",
     "source-map-support": "^0.5.12"
   },
   "devDependencies": {
@@ -85,7 +85,7 @@
     "supertest": "^4.0.2",
     "ts-jest": "^24.0.2",
     "ts-node": "^8.1.0",
-    "typedoc": "^0.14.2",
+    "typedoc": "^0.15.0",
     "typescript": "^3.4.5"
   },
   "private": false,

@@ -7,9 +7,9 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-//! override environment with yml
-import environ from '../src/environ';
-process.env = environ(process);
+// //! override environment with yml
+// import environ from '../src/environ';
+// process.env = environ(process);
 
 import { AsyncIterable, do_parrallel } from '../src/core/engine';
 import { conv_date, conv_date2time, conv_date2ts } from '../src/core/engine';
@@ -50,9 +50,13 @@ describe(`test the 'core/engine.ts'`, () => {
                 invokedFunctionArn: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api',
             },
             data,
-        ).then((_: any) => {
-            expect(_).toEqual(data);
-            done();
-        });
+        )
+            .then((_: any) => {
+                expect(_).toEqual(data);
+                done();
+            })
+            .catch((e: any) => {
+                throw e;
+            });
     });
 });
