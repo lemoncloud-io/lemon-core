@@ -13,7 +13,7 @@
 
 import { AsyncIterable, do_parrallel } from '../src/core/engine';
 import { conv_date, conv_date2time, conv_date2ts } from '../src/core/engine';
-import { doReportError } from '../src/core/engine';
+import { doReportError } from '../src/';
 
 describe(`test the 'core/engine.ts'`, () => {
     test('check do_parallel()', (done: any) => {
@@ -39,25 +39,46 @@ describe(`test the 'core/engine.ts'`, () => {
     });
 
     //! doReportError()
-    test('test doReportError()', (done: any) => {
+    test('test doReportError() - ignore', (done: any) => {
         const data = 'test-error-data';
         doReportError(
-            new Error('via doReportError() in `imweb-forms-api`'),
+            new Error('via doReportError() in `lemon-core`'),
             {
-                source: 0 ? '' : 'express', // '' should sed error.
-                invokeid: '3152065e-c734-4c9c-a081-54a64860ba7c',
-                awsRequestId: '3152065e-c734-4c9c-a081-54a64860ba7c',
+                source: 'express',
                 invokedFunctionArn: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api',
             },
             data,
-        )
-            .then((_: any) => {
-                expect(_).toEqual(data);
-                done();
-            })
-            .catch((e: any) => {
-                expect(e).toEqual(null);
-                done();
-            });
+        ).then((_: any) => {
+            expect(_).toEqual('!ignore');
+            done();
+        });
+    });
+    test('test doReportError() - valid mid', (done: any) => {
+        const data = 'test-error-data';
+        doReportError(
+            new Error('via doReportError() in `lemon-core`'),
+            {
+                source: '',
+                invokedFunctionArn: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api',
+            },
+            data,
+        ).then((_: string) => {
+            expect(/^[a-z0-9\-]{10,}$/.test(_) ? 'ok' : _).toEqual('ok');
+            done();
+        });
+    });
+    test('test doReportError() - account id', (done: any) => {
+        const data = 'test-error-data';
+        doReportError(
+            new Error('via doReportError() in `lemon-core`'),
+            {
+                source: '',
+                invokedFunctionArn: 'arn:aws:lambda:ap-northeast-2::function:lemon-hello-api',
+            },
+            data,
+        ).then((_: string) => {
+            expect(_).toEqual('!err - .accountId is missing');
+            done();
+        });
     });
 });

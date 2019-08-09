@@ -36,7 +36,7 @@ export const $_ = $engine._;
 if (!$U) throw new Error('$U(utilities) is required!');
 if (!$_) throw new Error('$_(lodash) is required!');
 
-//! load common(log) functions
+//! export common(log) functions
 export const _log = $engine.log;
 export const _inf = $engine.inf;
 export const _err = $engine.err;
@@ -70,42 +70,42 @@ export const $api = (type: string): WebHandler => {
 };
 
 //! report error via `lemon-hello-sns`.
-export const doReportError = async (e: Error, ctx: any, data: any) => {
+export const doReportError = async (e: Error, ctx: any, data: any): Promise<string> => {
     //! ignore only if local express-run.
-    if (ctx && ctx.source === 'express') return data;
+    if (ctx && ctx.source === 'express') return '!ignore';
     const NS = $U.NS('RPTE');
     _log(NS, `doReportError(${(e && e.message) || e})...`);
+
+    //! find ARN('lemon-hello-sns') via context information.
+    const TARGET = 'lemon-hello-sns';
+    const helloArn = () => {
+        const invokedFunctionArn = (ctx && ctx.invokedFunctionArn) || ''; // if called via lambda call.
+        const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (ctx && ctx.accountId) || '';
+        const REGION = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
+        _inf(NS, '! accountId =', accountId);
+        if (!accountId) {
+            _err(NS, 'WARN! account-id is empty.');
+            _inf(NS, '! current ctx =', ctx);
+            throw new Error('.accountId is missing');
+        }
+        return `arn:aws:sns:${REGION}:${accountId}:${TARGET}`;
+    };
+
     //! dispatch invoke conditins.
     try {
-        const TARGET = 'lemon-hello-sns';
         const stage = (ctx && ctx.stage) || '';
         const apiId = (ctx && ctx.apiId) || '';
         const domainPrefix = (ctx && ctx.domainPrefix) || '';
         const resourcePath = (ctx && ctx.resourcePath) || '';
         const identity = (ctx && ctx.identity) || {};
 
-        //! create $lemon with silent log message (LS='1')
-        const isLog = false;
+        //! load `sns-service` with log-silence.
+        process.env['LS'] = '1';
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const hello = require('lemon-hello-api');
-        const $lemon = (hello.lemon ? hello.lemon : hello.default.lemon)({ LS: isLog ? '0' : '1' });
-        const _log = $lemon.log || (() => {});
-        const _inf = $lemon.inf || (() => {});
-        const _err = $lemon.err || (() => {});
-
-        //! find ARN('lemon-hello-sns') via context information.
-        const helloArn = () => {
-            const invokedFunctionArn = (ctx && ctx.invokedFunctionArn) || ''; // if called via lambda call.
-            const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (ctx && ctx.accountId) || '';
-            const REGION = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
-            _inf(NS, '! accountId =', accountId);
-            if (!accountId) {
-                _err(NS, 'WARN! account-id is empty.');
-                _inf(NS, '! current ctx =', ctx);
-                throw new Error('.accountId is missing');
-            }
-            return `arn:aws:sns:${REGION}:${accountId}:${TARGET}`;
-        };
+        const $engine = require('lemon-hello-api').engine(); // require `lemon-hello-api:>1.3.1'
+        const $sns = $engine.$sns;
+        _log(NS, '! $sns =', $sns);
+        if (!$sns) throw new Error(`.$sns(sns-service) is required! - need 'lemon-hello-api:>1.3.1'`);
 
         //! prepare payload to publish.
         const payload = {
@@ -114,19 +114,18 @@ export const doReportError = async (e: Error, ctx: any, data: any) => {
         };
 
         //! update arn, and call.
-        const $sns = $lemon('sns');
         const arn = helloArn();
         _log(NS, `> sns[${TARGET}].arn =`, arn);
         return $sns.arn(arn).then(() => {
             return $sns.reportError(e, payload).then((mid: string) => {
                 _inf(NS, '> sns.message-id =', mid);
-                return 0 ? mid : data; // keep origin data.
+                return `${mid}`;
             });
         });
     } catch (e2) {
         _err(NS, '! err-ignored =', e2);
+        return `!err - ${e2.message || e2}`;
     }
-    return data;
 };
 
 /** ****************************************************************************************************************

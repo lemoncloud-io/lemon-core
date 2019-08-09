@@ -42,7 +42,7 @@
 //! import core engine.
 import { $U, _log, _inf, _err } from '../core/engine';
 import { $engine } from '../core/engine';
-import { $protocol, $api, do_parrallel, doReportError, AsyncIterable } from '../core/engine';
+import { $protocol, $api, do_parrallel, AsyncIterable, doReportError } from '../core/engine';
 import { CoreHandler, WebResult, BrokerBuilder } from '../common/types';
 
 //! Node definition.
