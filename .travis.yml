@@ -1,0 +1,30 @@
+language: node_js
+sudo: false
+node_js:
+- 8
+branches:
+  only:
+  - master
+  - develop
+install:
+- npm install
+cache:
+  bundler: true
+  directories:
+  - node_modules
+script:
+- npm run test
+env:
+- CODECOV_TOKEN="e78e510c-06c6-4f8b-a9dd-5a487a9a86ec"
+after_success:
+- "./node_modules/.bin/codecov"
+- npm run build
+deploy:
+  provider: npm
+  skip_cleanup: true
+  email: steve@lemoncloud.io
+  api_key:
+    #! use `$ travis encrypt <Npm Access Tokens> --add deploy.api_key`
+    secure:
+  on:
+    branch: master
