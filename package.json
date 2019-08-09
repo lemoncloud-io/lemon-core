@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "1.0.0a",
+  "version": "1.0.0",
   "description": "Lemon Core Bootloader with lemon-engine",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

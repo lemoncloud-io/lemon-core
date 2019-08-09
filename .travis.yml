@@ -24,7 +24,6 @@ deploy:
   skip_cleanup: true
   email: steve@lemoncloud.io
   api_key:
-    #! use `$ travis encrypt <Npm Access Tokens> --add deploy.api_key`
-    secure:
+    secure: SkktvEMDs1jnQru4cctGYQ/rdeDl14seNgbT38tUX+G/KYqPReUvPGZP1sE1kUg2LyVnSRC5GetcL4iXgos5Nx8Am31TcW+ta0+AEMdMYZ2+iUwD74fUywUHqsN0xWwndRzlOG8GsUfB5Efx6EL+YsEAwbWqJvNfsbZF2b6Zp7DoJ3aW34Z6ZuyZ7eoSS5iN3LGvUW9x8JCsBvXEasvLm0SvfJVTg3hbzMBpSS6fWlF7X/xOKnCa3RPFzGzUrPgL9qxm9gMGa3fOwHmIhVc5iv9y3LX9G9SPxzSYME6cnTGuvO1ikCaQsNlsNHtW73suvn7Odnxram7dKCIwC+WYnMBpxv2pPZcFDbgqUUCtuwpppCaLpH6gMJr/Icn1vwUc3rWerv1T34RN3J/GhcKlgY8hMXWTIqiUDPtOM1MjAa/tnO7FPon2rYpy7PL7BLc4e1eRMmn7pRfESv66xSW0mCfb+iNoRiW1NuZARDMhlsEVCYz6RVhMqQUoDFq0UxLe3Ooa5Xp/z7nF+QPtGH4yG198d4O9od4zFl9Jnqbt2lwj6nnxw8uD5pWOZl8BCwPzgh3rRda39Nmv+2rVojEqQrN9cN/snry3zu1pYi1gu6Q+YeWpZDizOV/cSHDxnD1ECgMboKq0uyaZ3GTlzxHtkBMS/xAADn0BBKOEBYpgCZ8=
   on:
     branch: master
