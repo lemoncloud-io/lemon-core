@@ -13,7 +13,7 @@ cache:
   directories:
   - node_modules
 script:
-- npm run test.lemon
+- npm test
 env:
 - CODECOV_TOKEN="be9fc36c-7f5b-453b-9f4d-3c86e034a141"
 after_success:
