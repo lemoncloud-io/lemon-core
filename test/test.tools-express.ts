@@ -96,6 +96,7 @@ describe('Test Hello API', () => {
             .then((res: any) => {
                 expect(res.statusCode).toBe(200);
                 expect(res.body.mode).toBe('GET');
+                server.close();
                 done();
             });
     });
