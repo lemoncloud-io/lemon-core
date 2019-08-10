@@ -310,6 +310,7 @@ export const do_parrallel = async <T extends AsyncIterable>(
     const list2 = list.slice(pos, pos + size);
     const actions = list2.map((node, i) => {
         return Promise.resolve(node).then(node => {
+            if (!node) return node;
             //! update this._index.
             node._index = pos + i;
             try {

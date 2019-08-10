@@ -21,16 +21,24 @@ const $context = (source = 'express', account = '085403634746') => {
 
 describe(`test the 'core/engine.ts'`, () => {
     test('check do_parallel()', (done: any) => {
-        const list = [1, 2].map(i => {
-            return { i };
+        const list = [1, 2, 3, 4, 5].map(n => {
+            return n == 5 ? null : { n };
         });
         do_parrallel(list, (node, i) => {
-            if (!(i % 2)) throw new Error(`2x${i}`);
-            return node.i;
+            const n = (node && node.n) || 0;
+            const msg = `N${n}:${i}`;
+            if (i === 0) return msg;
+            else if (i === 1) return Promise.resolve(Object.assign(node, { msg }));
+            else if (i === 2) return Promise.reject(msg);
+            else if (i === 3) throw new Error(msg);
+            return msg;
         }).then(_ => {
-            expect((_[0] as AsyncIterable)._error.message).toEqual('2x0');
-            expect((_[0] as AsyncIterable)._index).toEqual(0);
-            expect(_[1]).toEqual(2);
+            expect(_[0] as any).toEqual('N1:0');
+            expect((_[1] as AsyncIterable)._index).toEqual(1);
+            expect((_[1] as AsyncIterable).msg).toEqual('N2:1');
+            expect((_[2] as AsyncIterable)._error).toEqual('N3:2');
+            expect((_[3] as AsyncIterable)._error.message).toEqual('N4:3');
+            expect(_[4] as any).toEqual(null);
             done();
         });
     });
