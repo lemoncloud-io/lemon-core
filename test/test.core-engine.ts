@@ -21,7 +21,7 @@ const $context = (source = 'express', account = '085403634746') => {
 
 describe(`test the 'core/engine.ts'`, () => {
     test('check do_parallel()', (done: any) => {
-        const list = [1, 2, 3, 4, 5].map(n => {
+        const list = [1, 2, 3, 4, 5, 6].map(n => {
             return n == 5 ? null : { n };
         });
         do_parrallel(list, (node, i) => {
@@ -38,7 +38,7 @@ describe(`test the 'core/engine.ts'`, () => {
             expect((_[1] as AsyncIterable).msg).toEqual('N2:1');
             expect((_[2] as AsyncIterable)._error).toEqual('N3:2');
             expect((_[3] as AsyncIterable)._error.message).toEqual('N4:3');
-            expect(_[4] as any).toEqual(null);
+            expect((_[4] as AsyncIterable)._error.message).toEqual(`Cannot set property '_index' of null`);
             done();
         });
     });

@@ -44,7 +44,6 @@ export const loadEnviron = (process: any, options?: Options) => {
     ENV = ENV || $env['ENV'] || 'none.yml'; // Environment file.
     STAGE = STAGE || $env['STAGE'] || $env['NODE_ENV'] || 'local'; // Global STAGE/NODE_ENV For selecting.
     const _log = QUIET ? (...args: any[]) => {} : console.log;
-    const _err = QUIET ? (...args: any[]) => {} : console.error;
     _log(`! ENV =${ENV} STAGE=${STAGE}`);
 
     //! initialize environment via 'env.yml'
@@ -52,34 +51,28 @@ export const loadEnviron = (process: any, options?: Options) => {
         const file = ENV;
         const path = `./${ENV_PATH || 'env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
         if (!fs.existsSync(path)) throw new Error('FILE NOT FOUND:' + path);
-        try {
-            _log(`! loading file: "${path}"`);
-            const $doc = yaml.safeLoad(fs.readFileSync(path, 'utf8'));
-            const $src = ($doc && $doc[STAGE]) || {};
-            const $new = Object.keys($src).reduce(($O: any, key: string) => {
-                const val = $src[key];
-                // _log('!',key,':=', typeof val, val);
-                if (typeof val == 'string' && val.startsWith('!')) {
-                    //! force to update environ.
-                    $O[key] = val.substring(1);
-                } else if (typeof val == 'object' && Array.isArray(val)) {
-                    //! 배열 데이터인경우, 호환성을 위해서 ', ' 으로 붙여준다.
-                    $O[key] = val.join(', ');
-                } else if ($det[key] === undefined) {
-                    //! override if undefined.
-                    $O[key] = val;
-                } else {
-                    //TODO - unknown exception.
-                }
-                return $O;
-            }, {});
-            $new.STAGE = $new.STAGE || STAGE; //! confirm STAGE.
-            // _log('! env.new :=', JSON.stringify($new));
-            Object.assign($det, $new);
-        } catch (e) {
-            _err('ERROR FOR ENV: ', e);
-        }
-        return $det;
+        _log(`! loading yml-file: "${path}"`);
+        const $doc = yaml.safeLoad(fs.readFileSync(path, 'utf8'));
+        const $src = ($doc && $doc[STAGE]) || {};
+        const $new = Object.keys($src).reduce(($O: any, key: string) => {
+            const val = $src[key];
+            if (typeof val == 'string' && val.startsWith('!')) {
+                //! force to update environ.
+                $O[key] = val.substring(1);
+            } else if (typeof val == 'object' && Array.isArray(val)) {
+                //! join array with ', '.
+                $O[key] = val.join(', ');
+            } else if ($det[key] === undefined) {
+                //! override only if undefined.
+                $O[key] = `${val}`; // as string.
+            } else {
+                //! ignore!.
+            }
+            return $O;
+        }, {});
+        //! make sure STAGE.
+        $new.STAGE = $new.STAGE || STAGE;
+        return Object.assign($det, $new);
     })($env);
 };
 

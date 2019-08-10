@@ -309,35 +309,31 @@ export const do_parrallel = async <T extends AsyncIterable>(
     // _log(NS, `! parrallel(${pos}/${size})`)
     const list2 = list.slice(pos, pos + size);
     const actions = list2.map((node, i) => {
-        return Promise.resolve(node).then(node => {
-            if (!node) return node;
+        const index = pos + i;
+        try {
             //! update this._index.
-            node._index = pos + i;
-            try {
-                const R = (() => {
-                    try {
-                        return callback(node, node._index);
-                    } catch (e) {
-                        return Promise.reject(e);
-                    }
-                })();
-                if (R instanceof Promise) {
-                    return R.catch(e => {
-                        const message = (e && e.message) || JSON.stringify(e);
-                        _err(`!ERR@1 node[${node._index}] =`, message || e);
-                        node._error = e; // save origin error as _error.
-                        return node;
-                    });
+            node._index = index;
+            const R = (() => {
+                try {
+                    return callback(node, index);
+                } catch (e) {
+                    return Promise.reject(e);
                 }
-                return R;
-            } catch (e) {
-                const message = (e && e.message) || JSON.stringify(e);
-                _err(`!ERR@2 node[${node._index}] =`, message || e);
-                if (!node || typeof node !== 'object') return message;
-                node._error = e; // save origin error as _error.
-                return node;
+            })();
+            if (R instanceof Promise) {
+                return R.catch(e => {
+                    _err(`!ERR@1 node[${index}] =`, e);
+                    node._error = e; // save origin error as _error.
+                    return node;
+                });
             }
-        });
+            return R;
+        } catch (e) {
+            _err(`!ERR@2 node[${index}] =`, e);
+            if (!node || typeof node !== 'object') return { _error: e };
+            node._error = e; // save origin error as _error.
+            return node;
+        }
     });
     return Promise.all(actions).then(_ => {
         result = result.concat(_);
