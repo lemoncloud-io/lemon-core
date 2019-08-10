@@ -107,23 +107,23 @@ const wait_sometime = (that: any, time: number) => {
  */
 //! batch-run
 const ENDPOINT = `http://localhost:${PORT}`;
-const METHOD = getRunParam('m', 'GET');
+const METHOD = getRunParam('m', 'GET') as string;
 const EP = getRunParam('ep', '');
 const ID = getRunParam('id', '0');
-const IPP = getRunParam('ipp', 0);
-const WAIT = getRunParam('wait', 1000);
+const IPP = getRunParam('ipp', 0) as number;
+const WAIT = getRunParam('wait', 1000) as number;
 const SID = getRunParam('sid', '');
 const CMD = getRunParam('cmd', '');
 const OPT = getRunParam('opt', '');
 const [PAGE, MAX] = (() => {
     let page = getRunParam('page', '');
     let max = getRunParam('max', 1);
-    if (page.indexOf('~') > 0) {
-        const pages = page.split('~').map((_: string) => _.trim());
+    if (`${page}`.indexOf('~') > 0) {
+        const pages = `${page}`.split('~').map((_: string) => _.trim());
         page = parseInt(pages[0]) || 0;
         max = parseInt(pages[1]) || 0;
     } else {
-        page = parseInt(page) || 0;
+        page = Number(page);
     }
     return [page, max];
 })();

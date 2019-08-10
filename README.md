@@ -6,7 +6,7 @@
 
 # lemon-core
 
-Lemon Core Bootloader with [lemon-engine](/lemoncloud-io/lemon-engine)
+Lemon Core Bootloader with [lemon-engine](https://github.com/lemoncloud-io/lemon-engine)
 
 
 
@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.1.2     | refactoring tools with unit-test.
 | 1.1.1     | optimized with `lemon-hello-api#1.3.1`
 | 1.0.1     | optimize `dependencies`
 | 1.0.0     | initial version with `lemon-engine#2.2.3`.
