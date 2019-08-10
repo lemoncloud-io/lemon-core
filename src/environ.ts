@@ -49,7 +49,7 @@ export const loadEnviron = (process: any, options?: Options) => {
     //! initialize environment via 'env.yml'
     return ($det => {
         const file = ENV;
-        const path = `./${ENV_PATH || 'env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
+        const path = `${ENV_PATH || './env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
         if (!fs.existsSync(path)) throw new Error('FILE NOT FOUND:' + path);
         _log(`! loading yml-file: "${path}"`);
         const $doc = yaml.safeLoad(fs.readFileSync(path, 'utf8'));

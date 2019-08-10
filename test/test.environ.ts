@@ -27,7 +27,8 @@ const $environ = (env: any): any => {
             }, {})) ||
         env;
     const proc = { env };
-    return safe(() => loadEnviron(proc));
+    const opt = { ENV_PATH: 0 ? '' : __dirname + '/../env' };
+    return safe(() => loadEnviron(proc, opt));
 };
 
 describe(`test the 'environ.ts'`, () => {
@@ -40,7 +41,7 @@ describe(`test the 'environ.ts'`, () => {
 
     test('check file error', () => {
         const $conf = $environ({ LS: 1, ENV: 'anony' });
-        expect($conf.message).toEqual('FILE NOT FOUND:./env/anony.yml');
+        expect($conf.message.split(':')[0]).toEqual('FILE NOT FOUND');
     });
 
     test('check default envion', () => {
