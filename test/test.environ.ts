@@ -27,7 +27,7 @@ const $environ = (env: any): any => {
             }, {})) ||
         env;
     const proc = { env };
-    const opt = { ENV_PATH: 0 ? '' : __dirname + '/../env' };
+    const opt = { ENV_PATH: 1 ? './data' : __dirname + '/../data' };
     return safe(() => loadEnviron(proc, opt));
 };
 
