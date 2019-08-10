@@ -6,7 +6,7 @@
 
 # lemon-core
 
-Lemon Core Bootloader with [lemon-engine](/lemoncloud-io/lemon-engine)
+Lemon Core Bootloader with [lemon-engine](https://github.com/lemoncloud-io/lemon-engine)
 
 
 
