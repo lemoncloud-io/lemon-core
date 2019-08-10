@@ -22,11 +22,12 @@ export const loadJsonSync = (name: string) => {
     return JSON.parse(rawdata.toString());
 };
 
-export interface AdaptiveParam<T> {
+interface AdaptiveParam<T> {
     (name: string, defval: T, argv?: string[]): T;
 }
 // get running parameter like -h api.
 export const getRunParam: AdaptiveParam<boolean | number | string | object> = (o, defval, argv?) => {
+    // export function getRunParam<U extends boolean | number | string | object>(o: string, defval: U, argv?: string[]): U {
     // eslint-disable-next-line no-param-reassign
     argv = argv || process.argv || []; // use scope.
     const nm = `-${o}`;
