@@ -19,10 +19,13 @@ const safe = (f: () => {}) => {
 
 const $environ = (env: any): any => {
     //! convert all string.
-    env = Object.keys(env).reduce((O: any, k) => {
-        O[k] = `${env[k]}`;
-        return O;
-    }, {});
+    env =
+        (env &&
+            Object.keys(env).reduce((O: any, k) => {
+                O[k] = `${env[k]}`;
+                return O;
+            }, {})) ||
+        env;
     const proc = { env };
     return safe(() => loadEnviron(proc));
 };
@@ -40,8 +43,18 @@ describe(`test the 'environ.ts'`, () => {
         expect($conf.message).toEqual('FILE NOT FOUND:./env/anony.yml');
     });
 
+    test('check default envion', () => {
+        const $conf = $environ(null);
+        expect($conf).toEqual({ LC: '1', LS: '0', NAME: 'none', STAGE: 'local', TS: '1' });
+    });
+
+    test('check unknown envion.stage', () => {
+        const $conf = $environ({ LS: 1, ENV: 'lemon', STAGE: 'proxy' });
+        expect($conf.STAGE).toEqual('proxy');
+    });
+
     test('check override', () => {
-        const $conf = $environ({ LS: 1, ENV: 'lemon', NAME: 'hello', STAGE: 'prod' });
+        const $conf = $environ({ LS: 0, ENV: 'lemon', NAME: 'hello', STAGE: 'prod' });
         expect($conf.NAME).toEqual('hello');
         expect($conf.STAGE).toEqual('prod');
     });
