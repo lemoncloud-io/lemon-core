@@ -42,11 +42,11 @@
 //! import core engine.
 import { $U, _log, _inf, _err } from '../core/engine';
 import { $engine } from '../core/engine';
-import { $protocol, $api, do_parrallel, AsyncIterable, doReportError } from '../core/engine';
+import { $protocol, $api, do_parrallel, doReportError } from '../core/engine';
 import { CoreHandler, WebResult, BrokerBuilder } from '../common/types';
 
 //! Node definition.
-export interface SQSNode extends AsyncIterable {
+export interface SQSNode {
     record: any;
     context: any;
 }
