@@ -129,6 +129,9 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
         const RESERVES = 'id,log,inf,err,extend,ts,dt,environ'.split(',');
         const isValidName = (name: string) => /^[a-z][a-z0-9\-_]+$/.test(name) && RESERVES.indexOf(name) < 0;
         const keys = Object.keys($engine);
+        //TODO - optimize to config.
+        const $conf: any = $engine;
+        const ROUTE_PREFIX = `${$conf.ROUTE_PREFIX || ''}`;
         // _inf(NS, '! express.keys =', keys);
         const API = (type: string) => {
             return $engine(type) || ((x: any) => x[type])($engine);
@@ -145,15 +148,15 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
                 const handle_express = (req: any, res: any) => main(req.$event, req.$context, req.$callback);
 
                 //! route pattern with `/<service>/<id>/<cmd>`
-                app.get(`/${type}`, middle, handle_express);
-                app.get(`/${type}/:id`, middle, handle_express);
-                app.get(`/${type}/:id/:cmd`, middle, handle_express);
-                app.put(`/${type}/:id`, middle, handle_express);
-                app.post(`/${type}/:id`, middle, handle_express);
-                app.post(`/${type}/:id/:cmd`, middle, handle_express);
-                app.delete(`/${type}/:id`, middle, handle_express);
+                app.get(`/${ROUTE_PREFIX}${type}`, middle, handle_express);
+                app.get(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
+                app.get(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express);
+                app.put(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
+                app.post(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
+                app.post(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express);
+                app.delete(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
 
-                _inf(NS, `! api[${$U.NS(name, 'yellow')}] is routed as ${$U.NS('/' + type, 'cyan')}`);
+                _inf(NS, `! api[${$U.NS(name, 'yellow')}] is routed as ${$U.NS(`/${ROUTE_PREFIX}${type}`, 'cyan')}`);
                 return { name, type, main };
             })
             .reduce((M: any, N) => {

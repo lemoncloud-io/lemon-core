@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.1.3     | use `ROUTE_PREFIX` to config express route.
 | 1.1.2     | refactoring tools with unit-test.
 | 1.1.1     | optimized with `lemon-hello-api#1.3.1`
 | 1.0.1     | optimize `dependencies`
