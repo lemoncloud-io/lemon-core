@@ -291,28 +291,23 @@ export const $client = (NAME: string, PROXY_ENDPOINT: string, headers?: { [key: 
  *  Common functions.
  ** ****************************************************************************************************************/
 //! parrallel actions in list (in batch-size = 10)
-export interface AsyncIterable {
-    _index?: number;
-    _error?: Error;
-    [key: string]: any;
-}
-export const do_parrallel = async <T extends AsyncIterable>(
+//TODO - improve return types by refering callback.
+export const do_parrallel = <T, U>(
     list: T[],
-    callback: (node: T, index: number) => any,
+    callback: (node: T, index: number) => U,
     size = 10,
     pos = 0,
-    result: T[] = [],
-): Promise<T[]> => {
+    result: (U | Error)[] = [],
+): Promise<(U | Error)[]> => {
     size = size === undefined ? 10 : size;
     pos = pos === undefined ? 0 : pos;
     result = result === undefined ? [] : result;
     // _log(NS, `! parrallel(${pos}/${size})`)
     const list2 = list.slice(pos, pos + size);
-    const actions = list2.map((node, i) => {
+    const actions = list2.map((node, i): any => {
         const index = pos + i;
         try {
             //! update this._index.
-            node._index = index;
             const R = (() => {
                 try {
                     return callback(node, index);
@@ -323,18 +318,18 @@ export const do_parrallel = async <T extends AsyncIterable>(
             if (R instanceof Promise) {
                 return R.catch(e => {
                     _err(`!ERR@1 node[${index}] =`, e);
-                    node._error = e; // save origin error as _error.
-                    return node;
+                    //! make sure error instance.
+                    return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
                 });
             }
             return R;
         } catch (e) {
             _err(`!ERR@2 node[${index}] =`, e);
-            if (!node || typeof node !== 'object') return { _error: e };
-            node._error = e; // save origin error as _error.
-            return node;
+            //! make sure error instance.
+            return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
         }
     });
+    //! do parrallel.
     return Promise.all(actions).then(_ => {
         result = result.concat(_);
         if (!_.length) return Promise.resolve(result);
