@@ -5,7 +5,7 @@ node_js:
 branches:
   only:
   - master
-  - develop
+  # - develop
 install:
 - npm install
 cache:
@@ -19,6 +19,10 @@ env:
 after_success:
 - "./node_modules/.bin/codecov"
 - npm run build
+#! todo - make auto release if commit to master.
+#! need to push git via travis: https://gist.github.com/willprice/e07efd73fb7f13f917ea
+#- npm run release.minor
+#- git push --follow-tags origin master
 deploy:
   provider: npm
   skip_cleanup: true
