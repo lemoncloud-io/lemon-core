@@ -3,60 +3,66 @@
  * - Proxy request to internal API handler.
  *
  *
- * @author Steve Jung <steve@lemoncloud.io>
- * @origin See `lemon-clusters-api/WSS.js`
+ * @author  Steve Jung <steve@lemoncloud.io>
+ * @date    2019-08-14 refactoring version via latest `WSC.js`
  *
- * Copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
+ * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-module.exports = $engine => {
-    'use strict';
-    if (!$engine) throw new Error('$engine(lemon-engine) is required!');
+import { $U, _log, _inf, _err } from '../core/engine';
+import { $engine } from '../core/engine';
+import { WebResult, BrokerBuilder, CoreHandler } from '../common/types';
+import { executeServiceApi, $api, $agw } from '../core/engine';
 
-    //! load core services (_$ defined in global)
-    const $U = $engine.U; // re-use global instance (utils).
-    if (!$U) throw new Error('$U(utilities) is required!');
+//! custom definitions.
+import AWS from 'aws-sdk';
 
-    //! load common functions
-    const _log = $engine.log;
-    const _inf = $engine.inf;
-    const _err = $engine.err;
+export const success = (body?: any) => {
+    return buildResponse(200, body);
+};
 
-    const NS = $U.NS('WSS', 'yellow'); // NAMESPACE TO BE PRINTED.
-    const DEFAULT_TYPE = $engine.environ('DEFAULT_TYPE', 'clusters'); // default type of api-handler.
+export const notfound = (body?: any) => {
+    return buildResponse(404, body);
+};
 
-    const $api = function() {
-        if (!$engine[DEFAULT_TYPE]) throw new Error('$' + DEFAULT_TYPE + ' is required!');
-        return $engine[DEFAULT_TYPE];
+export const failure = (body?: any) => {
+    return buildResponse(503, body);
+};
+
+export const buildResponse = (statusCode: number, body?: any): WebResult => {
+    return {
+        statusCode: statusCode,
+        body: body === undefined ? undefined : typeof body == 'string' ? body : JSON.stringify(body),
     };
+};
+
+export interface WebServerHandler extends CoreHandler<any> {
+    sendMessageToClient?: any;
+    postMessageToClient?: any;
+}
+
+/**
+ * build WSC() handler.
+ *
+ * @param {*} defType  default type of $api()
+ * @param {*} NS       namespace to print
+ * @param {*} params   namespace to print
+ */
+const builder: BrokerBuilder<any> = (defType, NS, params) => {
+    defType = defType || 'hello';
+    NS = NS || $U.NS(`WSC`, 'yellow'); // NAMESPACE TO BE PRINTED.
+    params = params || {};
+
+    //! load default-handler type.
+    const DEFAULT_TYPE = $engine.environ('DEFAULT_TYPE', defType) as string;
 
     //! waits map.
     //TODO - maybe in serverless. it would not persist memory. so need to improve. @190510
     //WARN - IT SEEMS NOT WORK IN LAMBDA DUE TO ROUTE CONFIG: clusters vs WSS. (different handler instance) @190510
-    const $waits = { next: 0 };
+    const $waits: any = { next: 0 };
 
     const WSC_REQID_KEY = '$wsc-request-id'; // Client Request ID
     const WSS_REQID_KEY = '$wss-request-id'; // Server Request ID
     const MAX_TIMEOUT = 15 * 1000; // Max Wait Timeout (ms)
-
-    //! internal functions.
-    function success(body) {
-        return buildResponse(200, body);
-    }
-
-    function notfound(body) {
-        return buildResponse(404, body);
-    }
-
-    function failure(body) {
-        return buildResponse(503, body);
-    }
-
-    function buildResponse(statusCode, body) {
-        return {
-            statusCode: statusCode,
-            body: body === undefined ? undefined : typeof body == 'string' ? body : JSON.stringify(body),
-        };
-    }
 
     /**
      * Send JSON message to client.
@@ -65,14 +71,13 @@ module.exports = $engine => {
      * @param {*} connectionId      Unique connection-id per connection
      * @param {*} payload           Data to send
      */
-    const sendMessageToClientAws = (url, connectionId, payload) =>
+    const sendMessageToClientAws = (url: string, connectionId: string, payload: any) =>
         new Promise((resolve, reject) => {
             _log(NS, `sendMessageToClientAws(${url}, ${connectionId})...`);
             _log(NS, '> payload=', payload);
 
             //TODO - it would NOT work in VPC lambda. so move to backbone service.
-            const $aws = $engine.aws || require('aws-sdk');
-            const apigatewaymanagementapi = new $aws.ApiGatewayManagementApi({ apiVersion: '2029', endpoint: url });
+            const apigatewaymanagementapi = new AWS.ApiGatewayManagementApi({ apiVersion: '2029', endpoint: url });
             apigatewaymanagementapi.postToConnection(
                 {
                     ConnectionId: connectionId, // connectionId of the receiving ws-client
@@ -97,7 +102,7 @@ module.exports = $engine => {
      * @param {*} connectionId
      * @param {*} payload
      */
-    const sendMessageToClient = (url, connectionId, payload) =>
+    const sendMessageToClient = (url: string, connectionId: string, payload: any) =>
         new Promise((resolve, reject) => {
             _log(NS, `sendMessageToClient(${url}, ${connectionId})...`);
             // _log(NS, '> payload['+connectionId+']=', payload);
@@ -121,12 +126,12 @@ module.exports = $engine => {
             };
 
             //! Select proper function to send.
-            const $AG = $engine.AG;
+            const $AG = $agw(true);
             // if (!$AG) return Promise.reject(new Error('$AG(agw-proxy) is required!'));
             return (() => {
                 if (!$AG) return sendMessageToClientAws(url, connectionId, payload);
                 return $AG.postToConnection(url, connectionId, payload);
-            })().catch(e => {
+            })().catch((e: Error) => {
                 _err(NS, '> error to send. =', e);
                 delete $waits[reqId];
                 reject(e);
@@ -141,86 +146,17 @@ module.exports = $engine => {
      * @param {*} connectionId
      * @param {*} payload
      */
-    const postMessageToClient = async (url, connectionId, payload) => {
+    const postMessageToClient = async (url: string, connectionId: string, payload: any) => {
         _log(NS, `postMessageToClient(${url}, ${connectionId})...`);
         // _log(NS, '> payload['+connectionId+']=', payload);
         if (!payload || typeof payload != 'object') throw new Error('payload object is required!');
 
         //! Select proper function to send.
-        const $AG = $engine.AG;
+        const $AG = $agw(true);
         // if (!$AG) return Promise.reject(new Error('$AG(agw-proxy) is required!'));
         if (!$AG) return sendMessageToClientAws(url, connectionId, payload);
         return $AG.postToConnection(url, connectionId, payload);
     };
-
-    /**
-     * Proxy to API Handler.
-     *
-     * @param {*} method        event method
-     * @param {*} type          type of api
-     * @param {*} id            pathParamter.id
-     * @param {*} cmd           pathParamter.cmd
-     * @param {*} param         query
-     * @param {*} body          body
-     * @param {*} context       context
-     * @param {*} headers       (optional) client headers
-     */
-    const executeServiceApi = (
-        method,
-        type = DEFAULT_TYPE,
-        id = '',
-        cmd = '',
-        param = null,
-        body = null,
-        context = null,
-        headers = null,
-    ) =>
-        new Promise((resolve, reject) => {
-            _log(NS, `executeServiceApi(${method})...`);
-            // if (!method) return reject(new Error('method is required!'));
-            if (!method) throw new Error('method is required!');
-            if (method && typeof method === 'object') {
-                const data = method;
-                type = '' + (type || DEFAULT_TYPE); //MUST BE STRING!
-                method = '' + (data.method || 'get'); //MUST BE STRING!
-                id = '' + (data.id || id); //MUST BE STRING!
-                cmd = '' + (data.cmd || cmd); //MUST BE STRING!
-                param = data.param;
-                body = data.body;
-                context = data.context;
-                headers = data.headers;
-            }
-            method = `${method}`.toUpperCase();
-            _log(NS, `> ${method} ${type}/${id}/${cmd} param=`, param);
-
-            //! lookup target-api by name.
-            const API = $engine(type);
-            if (!API) new Error('404 NOT FOUND - API.type:' + type);
-
-            //! transform to APIGatewayEvent;
-            const event = {
-                httpMethod: method,
-                path: cmd ? `/${id}/${cmd}` : id !== undefined ? `/${id}` : `/`,
-                headers: headers || {},
-                pathParameters: {},
-                queryStringParameters: {},
-                body: '',
-                isBase64Encoded: false,
-                stageVariables: null,
-                requestContext: context || {},
-                resource: '',
-            };
-            if (id !== undefined) event.pathParameters.id = id;
-            if (cmd !== undefined) event.pathParameters.cmd = cmd;
-            if (param) event.queryStringParameters = param;
-            if (body) event.body = body;
-
-            //! basic handler type. (see bootload.main)
-            API(event, {}, (err, res) => {
-                err && reject(err);
-                !err && resolve(res);
-            });
-        });
 
     /**
      * Common WSS Handler for AWS API Gateway
@@ -236,15 +172,10 @@ module.exports = $engine => {
      * @param {*} event
      * @param {*} context
      */
-    const WSS = async (event, context) => {
+    const WSS: WebServerHandler = async (event, context) => {
         //! forward to http handler for executing remote client in same context.
         if (context && event.pathParameters) {
-            return new Promise((resolve, reject) => {
-                $api()(event, context, (err, data) => {
-                    if (err) reject(err);
-                    else resolve(data);
-                });
-            });
+            return $api(DEFAULT_TYPE).do(event, context);
         }
 
         //! handle for web-socket as default.
@@ -273,9 +204,14 @@ module.exports = $engine => {
 
             //! decode event-type.
             if (EVENT_TYPE === 'CONNECT') {
-                res = await executeServiceApi({ method: 'CONNECT', context: $ctx, headers: event.headers });
+                res = await executeServiceApi({
+                    method: 'CONNECT',
+                    type: DEFAULT_TYPE,
+                    context: $ctx,
+                    headers: event.headers,
+                });
             } else if (EVENT_TYPE === 'DISCONNECT') {
-                res = await executeServiceApi({ method: 'DISCONNECT', context: $ctx });
+                res = await executeServiceApi({ method: 'DISCONNECT', type: DEFAULT_TYPE, context: $ctx });
             } else if (EVENT_TYPE === 'MESSAGE' && ROUTE_KEY === 'echo') {
                 // handler for 'echo' action. see route config.
                 await sendMessageToClient(callbackUrlForAWS, connectionId, event);
@@ -292,8 +228,9 @@ module.exports = $engine => {
                 clientReqId && _inf(NS, `> data[${WSC_REQID_KEY}]=`, clientReqId);
 
                 //NOTE - in connected state, send result via web-socket with success
-                const message = await (async () => {
+                const message: any = await (async () => {
                     if (data && typeof data === 'object') {
+                        data.type = data.type || DEFAULT_TYPE;
                         data.context = $ctx; //NOTE - Never use context from client.
                         if (serverReqId) {
                             const waits = $waits[serverReqId];
@@ -345,3 +282,6 @@ module.exports = $engine => {
     //! returns main SNS handler.
     return WSS;
 };
+
+//! export default.
+export default builder;
