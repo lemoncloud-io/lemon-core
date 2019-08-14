@@ -22,8 +22,9 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { LemonEngine } from 'lemon-engine';
+import { LemonEngine, EnginePluggable } from 'lemon-engine';
 import { loadJsonSync, getRunParam } from './shared';
+import $WSC from '../builder/WSC';
 
 import express from 'express';
 import bodyParser from 'body-parser';
@@ -50,11 +51,14 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
 
     const NS = $U.NS('EXPR', 'cyan');
     const $pack = loadJsonSync('package.json');
+    const argv = options.argv || process.argv || [];
 
     const NAME = $pack.name || 'LEMON API';
     const VERS = $pack.version || '0.0.0';
-    const PORT = getRunParam('-port', $U.N($pack.port, 8081), options.argv); // default server port.
+    const PORT = getRunParam('-port', $U.N($pack.port, 8081), argv); // default server port.
+    const IS_WSC = getRunParam('-wsc', false, argv); // default server port.
     _inf(NS, `###### express[${NAME}@${$U.NS(VERS, 'cyan')}] ######`);
+    IS_WSC && _inf(NS, `! IS_WSC=`, IS_WSC);
 
     /** ****************************************************************************************************************
      *  Initialize Express
@@ -123,6 +127,11 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
         res.status(200).send(NAME);
     });
 
+    //! get target handler.
+    const API = (type: string) => {
+        return $engine(type) || ((x: any) => x[type])($engine);
+    };
+
     //! handler map.
     const handlers = (() => {
         //! register automatically endpont.
@@ -133,9 +142,6 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
         const $conf: any = $engine;
         const ROUTE_PREFIX = `${$conf.ROUTE_PREFIX || ''}`;
         // _inf(NS, '! express.keys =', keys);
-        const API = (type: string) => {
-            return $engine(type) || ((x: any) => x[type])($engine);
-        };
         return keys
             .filter(isValidName)
             .filter(_ => typeof API(_) === 'function')
@@ -175,6 +181,9 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
                 const addr: any = server.address();
                 _inf(NS, 'Server Listen on Port =', addr && addr.port);
             })
+            .on('listening', () => {
+                if (IS_WSC) startWSClient();
+            })
             .on('error', (e: any) => {
                 _inf(NS, '!ERR - listen.err = ', e);
             });
@@ -182,6 +191,29 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
         return server;
     };
 
+    //! WSC: start WS Client on server ready.
+    const startWSClient = (defType?: string, NS?: string) => {
+        _inf(NS, 'startWSClient()...');
+        //! start WebSocket Client.
+        const WSC: any = $WSC(defType, NS, {
+            name: $pack.name,
+            version: $pack.version,
+            start: 1, // auto start client.
+            headers: {
+                'X-Lemon-Agent': `WSC/${$pack.name}/${$pack.version}`, //TODO - header.name should be in env.
+            },
+        });
+        const wsc = new (class implements EnginePluggable {
+            public client = WSC.client;
+            public name(): string {
+                return 'WSC';
+            }
+        })();
+        //! register this.
+        $engine('WSC', wsc);
+        return WSC;
+    };
+
     //! export
-    return { express, app, createServer };
+    return { express, app, createServer, startWSClient };
 };

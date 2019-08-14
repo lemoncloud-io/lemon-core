@@ -12,123 +12,85 @@
  * ```
  *
  *
- * @author Steve Jung <steve@lemoncloud.io>
- * @origin See `lemon-clusters-api/WSC.js`
+ * @author  Steve Jung <steve@lemoncloud.io>
+ * @date    2019-08-14 refactoring version via latest `WSC.js`
  *
- * Copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
+ * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { $U, _log, _inf, _err } from '../core/engine';
+import { $engine } from '../core/engine';
+import { WebResult, BrokerBuilder, CoreHandler } from '../common/types';
+import { executeServiceApi } from '../core/engine';
+
 //! custom definitions.
 // const WebSocket = require('ws');
-import * as WebSocket from 'ws';
+import WebSocket from 'ws';
+import generator from 'nanoid/generate';
 
-//! main exports
-module.exports = ($engine, params) => {
-    'use strict';
-    if (!$engine) throw new Error('$engine(lemon-engine) is required!');
+export const success = (body: any) => {
+    return buildResponse(200, body);
+};
 
-    //! load core services (_$ defined in global)
-    const $U = $engine.U; // re-use global instance (utils).
-    if (!$U) throw new Error('$U(utilities) is required!');
+export const notfound = (body: any) => {
+    return buildResponse(404, body);
+};
 
-    //! load common functions
-    const _log = $engine.log;
-    const _inf = $engine.inf;
-    const _err = $engine.err;
+export const failure = (body: any) => {
+    return buildResponse(503, body);
+};
 
-    //! local constant
-    const NS = $U.NS('WSC', 'yellow'); // NAMESPACE TO BE PRINTED.
-    const DEFAULT_TYPE = $engine.environ('DEFAULT_TYPE', 'clusters');
-    const WSS_ENDPOINT = $engine.environ('WSS_ENDPOINT', params.url || '');
+export const buildResponse = (statusCode: number, body: any): WebResult => {
+    return {
+        statusCode: statusCode,
+        body: body === undefined ? undefined : typeof body == 'string' ? body : JSON.stringify(body),
+    };
+};
+
+export interface WebClientHandler extends CoreHandler<any> {
+    client: any;
+}
+
+/**
+ * build WSC() handler.
+ *
+ * @param {*} defType  default type of $api()
+ * @param {*} NS       namespace to print
+ * @param {*} params   namespace to print
+ */
+const builder: BrokerBuilder<any> = (defType, NS, params) => {
+    defType = defType || 'hello';
+    NS = NS || $U.NS(`WSC`, 'yellow'); // NAMESPACE TO BE PRINTED.
+    params = params || {};
+
+    //! load default-handler type.
+    const DEFAULT_TYPE = $engine.environ('DEFAULT_TYPE', defType) as string;
+    const WSS_ENDPOINT = $engine.environ('WSS_ENDPOINT', params.url || '') as string;
     if (!WSS_ENDPOINT) throw new Error('env:WSS_ENDPOINT is required!');
     _inf(NS, `! WSS_ENDPOINT[${DEFAULT_TYPE}] =`, WSS_ENDPOINT);
-
-    function success(body) {
-        return buildResponse(200, body);
-    }
-
-    function notfound(body) {
-        return buildResponse(404, body);
-    }
-
-    function failure(body) {
-        return buildResponse(503, body);
-    }
-
-    function buildResponse(statusCode, body) {
-        return {
-            statusCode: statusCode,
-            body: body === undefined ? undefined : typeof body == 'string' ? body : JSON.stringify(body),
-        };
-    }
-
-    //! chain for HTTP type.
-    const executeServiceApi = (
-        method,
-        type = DEFAULT_TYPE,
-        id = '',
-        cmd = '',
-        param = null,
-        body = null,
-        context = null,
-    ) =>
-        new Promise((resolve, reject) => {
-            if (!method) throw new Error('method is required!');
-            if (method && typeof method === 'object') {
-                const data = method;
-                type = '' + (type || DEFAULT_TYPE); //MUST BE STRING!
-                method = '' + (data.method || 'get'); //MUST BE STRING!
-                id = '' + (data.id || id); //MUST BE STRING!
-                cmd = '' + (data.cmd || cmd); //MUST BE STRING!
-                param = data.param;
-                body = data.body;
-                context = data.context;
-            }
-            method = `${method}`.toUpperCase();
-            _log(NS, `executeServiceApi(${method}, ${type}, ${id}, ${cmd})...`);
-            // _log(NS, `> ${method} ${type}/${id}/${cmd} param=`, param);
-
-            //! lookup target-api by name.
-            const API = $engine(type);
-            if (!API) new Error('404 NOT FOUND - API.type:' + type);
-
-            //! transform to APIGatewayEvent;
-            const event = {
-                httpMethod: method,
-                path: cmd ? `/${id}/${cmd}` : id !== undefined ? `/${id}` : `/`,
-                headers: {},
-                pathParameters: {},
-                queryStringParameters: {},
-                body: '',
-                isBase64Encoded: false,
-                stageVariables: null,
-                requestContext: context || {},
-                resource: '',
-            };
-            if (id !== undefined) event.pathParameters.id = id;
-            if (cmd !== undefined) event.pathParameters.cmd = cmd;
-            if (param) event.queryStringParameters = param;
-            if (body) event.body = body;
-
-            //! basic handler type. (see bootload.main)
-            API(event, {}, (err, res) => {
-                err && reject(err);
-                !err && resolve(res);
-            });
-        });
+    const headers = params.headers || {};
+    const isStart = $U.N(params.start, params.start === '' ? 1 : 0);
 
     /**
      * create websocket client.
      */
-    const client = (url => {
+    const client = ((url: string) => {
+        _log(NS, `client(${url})...`);
         const AUTO_RECONNECT_INTERVAL = 2.5 * 1000; // Reconnect Retry (ms)
         const MAX_TIMEOUT = 30 * 1000; // Max Wait Timeout (ms)
         const WSC_REQID_KEY = '$wsc-request-id'; // Client Request ID
         const WSS_REQID_KEY = '$wss-request-id'; // Server Request ID
 
         //! prepare thiz internal.
+        const op = () => {};
         const thiz = {
-            _instance: null,
-            _waits: {},
+            _instance: null as any,
+            _waits: {} as any,
+            start: op,
+            stop: op,
+            post: op,
+            send: op,
+            reconnect: op,
+            next_id: op,
         };
 
         //! open socket with server.
@@ -136,7 +98,7 @@ module.exports = ($engine, params) => {
             _log(NS, '> open()...');
             if (thiz._instance) throw new Error('already connected!');
             const instance = new WebSocket(url, {
-                headers: params.headers || {},
+                headers,
                 // agent: params.agent||`wsc/${DEFAULT_TYPE}`,
                 perMessageDeflate: false, // see: https://github.com/websockets/ws#websocket-compression
             });
@@ -159,14 +121,13 @@ module.exports = ($engine, params) => {
 
         //! generate next-id.
         const next_id = () => {
-            const generator = require('nanoid/generate');
             const ID_CHARS = '1234567890abcdefghjkmnpqrstuvwxyz';
             const id = generator(ID_CHARS, 12);
             return `WSC${id}`;
         };
 
         //! post message without wait
-        const post = (data, options) => {
+        const post = (data: any, options?: any) => {
             _log(NS, '! post()...');
             if (!thiz._instance) throw new Error('404 NOT CONNECTED');
             const payload = data && typeof data == 'object' ? JSON.stringify(data) : `${data}`;
@@ -175,7 +136,7 @@ module.exports = ($engine, params) => {
         };
 
         //! send message and get response
-        const send = (data, options) =>
+        const send = (data: any, options?: any) =>
             new Promise((resolve, reject) => {
                 _log(NS, '! send()...');
                 if (!thiz._instance) throw new Error('404 NOT CONNECTED');
@@ -197,11 +158,18 @@ module.exports = ($engine, params) => {
                 };
                 _log(NS, '> sent =', data);
                 //! send with data as text.
-                thiz._instance.send(data && typeof data == 'object' ? JSON.stringify(data) : `${data}`, options);
+                thiz._instance.send(
+                    data && typeof data == 'object' ? JSON.stringify(data) : `${data}`,
+                    options,
+                    (err: Error) => {
+                        err && _err(NS, '! err.send =', err);
+                        err && reject(err);
+                    },
+                );
             });
 
         //! handle message via server.
-        const on_message = async (body, flags) => {
+        const on_message = async (body: any, flags: any) => {
             _log(NS, '! on.message()...');
             _log(NS, '> body =', typeof body, body);
             _log(NS, '> flags =', typeof flags, flags);
@@ -216,8 +184,9 @@ module.exports = ($engine, params) => {
                 clientReqId && _inf(NS, `> data[${WSC_REQID_KEY}]=`, clientReqId);
 
                 //NOTE - in connected state, send result via web-socket with success
-                const message = await (async () => {
+                const message: any = await (async () => {
                     if (data && typeof data === 'object') {
+                        data.type = data.type || DEFAULT_TYPE;
                         data.context = null; //TODO - Set proper context.
                         if (clientReqId) {
                             const waits = thiz._waits[clientReqId];
@@ -252,7 +221,7 @@ module.exports = ($engine, params) => {
         };
 
         //! reconnect in some interval.
-        const reconnect = e => {
+        const reconnect = (e: any) => {
             _log(NS, '> reconnect()... e=', e);
             close();
             setTimeout(() => {
@@ -262,12 +231,12 @@ module.exports = ($engine, params) => {
 
         const on_open = () => {
             _log(NS, '! on.open()...');
-            executeServiceApi({ method: 'CONNECT', context: null, headers: params.headers });
+            executeServiceApi({ method: 'CONNECT', type: DEFAULT_TYPE, context: null, headers: params.headers });
         };
 
-        const on_close = e => {
+        const on_close = (e: any) => {
             _log(NS, '! on.close()... e=', e);
-            executeServiceApi({ method: 'DISCONNECT', context: null });
+            executeServiceApi({ method: 'DISCONNECT', type: DEFAULT_TYPE, context: null });
             switch (e) {
                 case 1000: // CLOSE_NORMAL
                     _log(NS, '! closed');
@@ -279,7 +248,7 @@ module.exports = ($engine, params) => {
             }
         };
 
-        const on_error = e => {
+        const on_error = (e: any) => {
             _err(NS, '! on.error =', e);
             switch (e.code) {
                 case 'ECONNREFUSED':
@@ -291,7 +260,7 @@ module.exports = ($engine, params) => {
         };
 
         //! attach
-        Object.assign(thiz, { start: open, stop: close, post, send, reconnect });
+        Object.assign(thiz, { start: open, stop: close, post, send, reconnect, next_id });
 
         //! retruns instance.
         return thiz;
@@ -311,7 +280,8 @@ module.exports = ($engine, params) => {
      * @param {*} event
      * @param {*} context
      */
-    const WSC = async (event, context) => {
+    //! Common SNS Handler for lemon-protocol integration.
+    const WSC: WebClientHandler = (event, context, callback) => {
         // context.callbackWaitsForEmptyEventLoop = false;
         // _log(NS, '! event =', event);
         // _log(NS, '! context=', context);
@@ -320,7 +290,11 @@ module.exports = ($engine, params) => {
 
     //! send message.
     WSC.client = client;
+    if (isStart) client.start();
 
     //! returns main SNS handler.
     return WSC;
 };
+
+//! export default.
+export default builder;
