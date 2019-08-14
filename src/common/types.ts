@@ -37,7 +37,9 @@ export interface NextCallback<T> {
  * ```
  */
 export interface CoreHandler<T> {
+    // basic lambda handler.
     (event: any, context: any, callback: NextCallback<T>): void;
+    // helper method without callback.
     do?: (event: any, context: any) => Promise<T>;
 }
 
@@ -53,7 +55,7 @@ export interface MainBuilder<T> {
  * - Transfer to `WebHandler` from origin event source.
  */
 export interface BrokerBuilder<T> {
-    (defaultType?: string, NS?: string): CoreHandler<T>;
+    (defaultType?: string, NS?: string, params?: any): CoreHandler<T>;
 }
 
 /**

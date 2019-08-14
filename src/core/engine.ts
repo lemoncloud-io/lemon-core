@@ -128,6 +128,71 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
     }
 };
 
+//! chain for HTTP type.
+export interface ApiParam {
+    method: string;
+    type?: string;
+    id?: string;
+    NS?: string;
+    cmd?: string;
+    headers?: { [key: string]: string };
+    param?: { [key: string]: any };
+    body?: { [key: string]: any };
+    context?: any;
+    callback?: string;
+}
+//! execute target API registered in $engine.
+export const executeServiceApi = (args: ApiParam): Promise<WebResult> => {
+    const NS = args.NS || $U.NS('API', 'yellow');
+    const method = args.method || '';
+    const type = args.type || '';
+    const id = args.id || '';
+    const cmd = args.cmd || '';
+    const param = args.param;
+    const body = args.body;
+    const headers = args.headers;
+    const context = args.context;
+    const callback = args.callback || '';
+    _log(NS, `executeServiceApi(${method}, ${type}, ${id}, ${cmd})...`);
+
+    //! extract parameters....
+    const TYPE = `${type}`;
+    const METHOD = `${method || 'get'}`.toUpperCase();
+
+    //! transform to APIGatewayEvent;
+    const event = {
+        httpMethod: METHOD,
+        path: cmd ? `/${id}/${cmd}` : id !== undefined ? `/${id}` : `/`,
+        headers: headers || {},
+        pathParameters: { id, cmd },
+        queryStringParameters: param,
+        body: body,
+        isBase64Encoded: false,
+        stageVariables: null as any,
+        requestContext: {},
+        resource: '',
+    };
+
+    //! execute web-handler. then call callback if required.
+    return $api(TYPE)
+        .do(event, context)
+        .then((body: WebResult) => {
+            if (!callback) return body; // ignore
+            //! filtering via remote web-hook!.
+            return $protocol()
+                .do_post_execute(callback, body)
+                .then((_: any) => {
+                    _log(NS, `! CALLBACK[${callback}] =`, typeof _, $U.json(_));
+                    return _;
+                })
+                .catch((e: any) => {
+                    _err(NS, `! ERR@CALLBACK[${callback}] =`, e);
+                    //NOTE! - report error in here.
+                    return doReportError(e, context, { callback, body }).then(() => Promise.reject(e));
+                });
+        });
+};
+
 /** ****************************************************************************************************************
  *  Shared Core Services via `lemon-engine` + `backbone`
  ** ****************************************************************************************************************/
@@ -195,8 +260,8 @@ export const $cron = (): CronProxy => {
     return $engine('CR');
 };
 
-export const $agw = (): AGWProxy => {
-    if (!$engine('AG')) throw new Error('$AG(api-gateway-service) is required!');
+export const $agw = (isNullable?: boolean): AGWProxy => {
+    if (!isNullable && !$engine('AG')) throw new Error('$AG(api-gateway-service) is required!');
     return $engine('AG');
 };
 

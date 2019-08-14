@@ -20,6 +20,8 @@ export * from './tools/';
 import $WEB from './builder/WEB';
 import $SNS from './builder/SNS';
 import $SQS from './builder/SQS';
+import $WSC from './builder/WSC';
+import $WSS from './builder/WSS';
 
 //! export functions.
-export { $WEB, $SNS, $SQS };
+export { $WEB, $SNS, $SQS, $WSC, $WSS };
