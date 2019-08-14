@@ -106,7 +106,7 @@ export const builder: MainBuilder<WebResult> = (NS, decode_next_handler) => {
         if (event === undefined) return main;
 
         //! WARN! allows for using callbacks as finish/error-handlers
-        context.callbackWaitsForEmptyEventLoop = false;
+        if (context) context.callbackWaitsForEmptyEventLoop = false;
 
         //! API parameters.
         const $param = event.queryStringParameters || {};
