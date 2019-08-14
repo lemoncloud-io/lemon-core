@@ -58,7 +58,7 @@ export const $api = (type: string): WebHandler => {
             });
         }).then((res: WebResult) => {
             const statusCode = res.statusCode || 200;
-            if (statusCode !== 200) throw new Error(`ERR:${statusCode} - ${res.body}`);
+            if (statusCode !== 200) return Promise.reject(new Error(`${statusCode} - ${res.body}`));
             const body =
                 typeof res.body === 'string' && (res.body.startsWith('{') && res.body.endsWith('}'))
                     ? JSON.parse(res.body)
@@ -139,10 +139,11 @@ export interface ApiParam {
     param?: { [key: string]: any };
     body?: { [key: string]: any };
     context?: any;
+    requestContext?: any;
     callback?: string;
 }
 //! execute target API registered in $engine.
-export const executeServiceApi = (args: ApiParam): Promise<WebResult> => {
+export const executeServiceApi = (args: ApiParam): Promise<any> => {
     const NS = args.NS || $U.NS('API', 'yellow');
     const method = args.method || '';
     const type = args.type || '';
@@ -152,12 +153,13 @@ export const executeServiceApi = (args: ApiParam): Promise<WebResult> => {
     const body = args.body;
     const headers = args.headers;
     const context = args.context;
+    const requestContext = args.requestContext;
     const callback = args.callback || '';
-    _log(NS, `executeServiceApi(${method}, ${type}, ${id}, ${cmd})...`);
 
     //! extract parameters....
     const TYPE = `${type}`;
     const METHOD = `${method || 'get'}`.toUpperCase();
+    _log(NS, `executeServiceApi(${METHOD}, ${TYPE}, ${id}, ${cmd})...`);
 
     //! transform to APIGatewayEvent;
     const event = {
@@ -169,7 +171,7 @@ export const executeServiceApi = (args: ApiParam): Promise<WebResult> => {
         body: body,
         isBase64Encoded: false,
         stageVariables: null as any,
-        requestContext: {},
+        requestContext: requestContext,
         resource: '',
     };
 

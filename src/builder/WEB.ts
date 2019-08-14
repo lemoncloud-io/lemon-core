@@ -38,10 +38,12 @@ interface ModeMap {
 }
 //! constants config
 const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
-const METHOD_MODE_MAP: ModeMap = 'LIST,GET,PUT,POST,DELETE,CONNECT,DISCONNECT'.split(',').reduce((N: ModeMap, K) => {
-    N[K] = K;
-    return N;
-}, {});
+const METHOD_MODE_MAP: ModeMap = 'LIST,GET,PUT,POST,DELETE,CONNECT,DISCONNECT,MESSAGE'
+    .split(',')
+    .reduce((N: ModeMap, K) => {
+        N[K] = K;
+        return N;
+    }, {});
 
 /** ********************************************************************************************************************
  *  COMMON Functions.
@@ -151,6 +153,7 @@ export const builder: MainBuilder<WebResult> = (NS, decode_next_handler) => {
             _body: $body,
             _event: event,
             _ctx: context,
+            _context: context, // save origin context out of _ctx.
             _next: null as NextHanlder,
         };
         that._ctx = (event && event.requestContext) || that._ctx || {}; // 180622 Override Context with event.requestContext.
@@ -185,6 +188,7 @@ export const builder: MainBuilder<WebResult> = (NS, decode_next_handler) => {
         const $param = that._param;
         const $body = that._body;
         const $ctx = that._ctx;
+        const context = that._context; // original context.
         const $event = that._event; // original event.
         const next = that._next;
         // if (!next) return Promise.reject(new Error(`404 NOT FOUND - mode:${MODE}${CMD ? `, cmd:${CMD}` : ''}`));
@@ -202,7 +206,7 @@ export const builder: MainBuilder<WebResult> = (NS, decode_next_handler) => {
             .then(_ => {
                 //! '!' means internal event handler not of http
                 if (MODE.startsWith('!')) {
-                    return (($ctx && $ctx.done) || callback)(null, _);
+                    return ((context && context.done) || callback)(null, _);
                 }
                 if (_ && typeof _ === 'object') _ = $U.cleanup(_);
                 callback(null, success(_));
@@ -212,8 +216,8 @@ export const builder: MainBuilder<WebResult> = (NS, decode_next_handler) => {
                 //! '!' means internal event handler not of http
                 if (MODE.startsWith('!')) {
                     _err(NS, '!!! callback err=', e);
-                    return doReportError(e, $ctx, $event).then(() => {
-                        return (($ctx && $ctx.done) || callback)(e, $event);
+                    return doReportError(e, context, $event).then(() => {
+                        return ((context && context.done) || callback)(e, $event);
                     });
                 }
                 const message = `${e.message || e.reason || e}`;
@@ -223,7 +227,7 @@ export const builder: MainBuilder<WebResult> = (NS, decode_next_handler) => {
                     _err(NS, '!!! callback err=', e);
                     //! report error via `lemon-hello-sns`.
                     // _inf(NS, '! context =', $U.json($ctx));
-                    return doReportError(e, $ctx, $event).then(() => {
+                    return doReportError(e, context, $event).then(() => {
                         callback(null, failure(e.message || e));
                         return false;
                     });

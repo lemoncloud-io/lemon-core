@@ -203,7 +203,13 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
                             return null; //NO RESPONSE.
                         }
                         //! proxy the request
-                        return await executeServiceApi(data);
+                        const body = await executeServiceApi(data).catch(e => e);
+                        if (body instanceof Error) {
+                            const e: Error = body;
+                            const message = `${e.message}`;
+                            return { statusCode: message.indexOf('404 NOT FOUND') >= 0 ? 404 : 503, body: message };
+                        }
+                        return { statusCode: 200, body };
                     }
                     return failure('body should be JSON object. but type:' + typeof data);
                 })();
@@ -285,7 +291,7 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
         // context.callbackWaitsForEmptyEventLoop = false;
         // _log(NS, '! event =', event);
         // _log(NS, '! context=', context);
-        _log(NS, '! event.headers =', event.headers);
+        _log(NS, '! event.headers =', $U.json(event.headers));
     };
 
     //! send message.

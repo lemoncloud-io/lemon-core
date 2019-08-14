@@ -49,7 +49,7 @@ export interface WebServerHandler extends CoreHandler<any> {
  */
 const builder: BrokerBuilder<any> = (defType, NS, params) => {
     defType = defType || 'hello';
-    NS = NS || $U.NS(`WSC`, 'yellow'); // NAMESPACE TO BE PRINTED.
+    NS = NS || $U.NS(`WSS`, 'yellow'); // NAMESPACE TO BE PRINTED.
     params = params || {};
 
     //! load default-handler type.
@@ -181,15 +181,16 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
         //! handle for web-socket as default.
         // _log(NS, '! event =', event);
         // _log(NS, '! context=', context);
-        _log(NS, '! event.headers =', event.headers);
+        _log(NS, '! event.headers =', $U.json(event.headers));
 
-        const $ctx = event.requestContext || {};
-        const EVENT_TYPE = $ctx.eventType || '';
-        const ROUTE_KEY = $ctx.routeKey || '';
+        const $req = event.requestContext || {};
+        const $ctx = Object.assign({}, context || {}); // copy origin context.
+        const EVENT_TYPE = $req.eventType || '';
+        const ROUTE_KEY = $req.routeKey || '';
 
         const X_FORWARD_FOR = (event.headers && event.headers['X-Forwarded-For']) || ''; // source ip address.
         const X_LEMON_AGENT = (event.headers && event.headers['X-Lemon-Agent']) || ''; // custom header.
-        _log(NS, `> ${ROUTE_KEY}/${EVENT_TYPE} .... `, X_LEMON_AGENT, X_FORWARD_FOR);
+        _log(NS, `> route(${ROUTE_KEY}/${EVENT_TYPE}) =`, X_LEMON_AGENT, X_FORWARD_FOR);
         if (X_LEMON_AGENT && $ctx) $ctx.xLemonAgent = X_LEMON_AGENT; //TODO - improve! save lemon-agent for later use.
         if (X_FORWARD_FOR && $ctx) $ctx.xForwardFor = X_FORWARD_FOR; //TODO - improve! save lemon-agent for later use.
         // _log(NS, `> ${ROUTE_KEY}/${EVENT_TYPE} context=`, $ctx);
@@ -197,21 +198,41 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
         try {
             let res = null;
 
-            const stage = $ctx.stage;
-            const domain = $ctx.domainName;
-            const connectionId = $ctx.connectionId;
+            const stage = $req.stage;
+            const domain = $req.domainName;
+            const connectionId = $req.connectionId;
             const callbackUrlForAWS = `https://${domain}/${stage}`;
+
+            //! execute-api.
+            const call = (method: string, data?: any): Promise<{ statusCode: number; body: any }> => {
+                _log(NS, `call(${method})...`);
+                const param = Object.assign(data || {}, {
+                    method: method,
+                    type: (data && data.type) || DEFAULT_TYPE,
+                    context: $ctx,
+                    requestContext: $req,
+                    headers: event.headers,
+                });
+                return executeServiceApi(param)
+                    .then(body => {
+                        _log(NS, '> execute-api.body =', body);
+                        return { statusCode: 200, body };
+                    })
+                    .catch((e: Error) => {
+                        _err(NS, '> execute-api.error =', e);
+                        const message = `${e.message || e}`;
+                        const isNotFound = message.indexOf('404 NOT FOUND') >= 0;
+                        return { statusCode: isNotFound ? 404 : 503, body: message };
+                    });
+            };
 
             //! decode event-type.
             if (EVENT_TYPE === 'CONNECT') {
-                res = await executeServiceApi({
-                    method: 'CONNECT',
-                    type: DEFAULT_TYPE,
-                    context: $ctx,
-                    headers: event.headers,
-                });
+                res = await call('CONNECT');
+                res = res.statusCode == 200 ? success() : res;
             } else if (EVENT_TYPE === 'DISCONNECT') {
-                res = await executeServiceApi({ method: 'DISCONNECT', type: DEFAULT_TYPE, context: $ctx });
+                res = await call('DISCONNECT');
+                res = res.statusCode == 200 ? success() : res;
             } else if (EVENT_TYPE === 'MESSAGE' && ROUTE_KEY === 'echo') {
                 // handler for 'echo' action. see route config.
                 await sendMessageToClient(callbackUrlForAWS, connectionId, event);
@@ -222,8 +243,8 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
                     typeof body === 'string' && body.startsWith('{') && body.endsWith('}') ? JSON.parse(body) : body;
                 _log(NS, '> data =', data);
                 //! handle by request-id.
-                const serverReqId = data[WSS_REQID_KEY];
-                const clientReqId = data[WSC_REQID_KEY];
+                const serverReqId = (data && data[WSS_REQID_KEY]) || '';
+                const clientReqId = (data && data[WSC_REQID_KEY]) || '';
                 serverReqId && _inf(NS, `> data[${WSS_REQID_KEY}]=`, serverReqId);
                 clientReqId && _inf(NS, `> data[${WSC_REQID_KEY}]=`, clientReqId);
 
@@ -232,6 +253,7 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
                     if (data && typeof data === 'object') {
                         data.type = data.type || DEFAULT_TYPE;
                         data.context = $ctx; //NOTE - Never use context from client.
+                        data.requestContext = $req;
                         if (serverReqId) {
                             const waits = $waits[serverReqId];
                             const statusCode = data.statusCode || 500;
@@ -248,7 +270,8 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
                             return null; //NO RESPONSE.
                         }
                         //! proxy the request
-                        return await executeServiceApi(data);
+                        const { statusCode, body } = await call('MESSAGE', data);
+                        return { statusCode, body };
                     }
                     return failure('body should be JSON object. but type:' + typeof data);
                 })();
