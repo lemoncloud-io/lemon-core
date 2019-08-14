@@ -38,8 +38,8 @@ export interface SNSNode {
 /**
  * build SNS() handler.
  *
- * @param NS        namespace to print
- * @param defType   default type of $api()
+ * @param {*} defType  default type of $api()
+ * @param {*} NS       namespace to print
  */
 const builder: BrokerBuilder<any> = (defType, NS) => {
     defType = defType || 'hello';
