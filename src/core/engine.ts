@@ -69,6 +69,16 @@ export const $api = (type: string): WebHandler => {
     return API;
 };
 
+// const $call = async (mod: string, api: string, id: string, param: any, body: any, $ctx: any) => {
+//     // eslint-disable-next-line @typescript-eslint/no-var-requires
+//     const $package = require(mod);
+//     _log('> $package =', $package);
+//     if (typeof $package.engine !== 'function') throw new Error(`engine() is required! package: ${mod}`);
+//     const $engine = $package.engine();
+//     const web = $engine[api];
+//     if (!web) throw new Error(`404 NOT FOUND - package:${mod}/${api}`);
+// };
+
 //! report error via `lemon-hello-sns`.
 export const doReportError = async (e: Error, ctx: any, data: any): Promise<string> => {
     //! ignore only if local express-run.
