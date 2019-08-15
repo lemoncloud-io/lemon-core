@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.1.5     | support web-socket with `WSS`, `WSC`.
 | 1.1.4     | improve `do_parrallel()`
 | 1.1.3     | use `ROUTE_PREFIX` to config express route.
 | 1.1.2     | refactoring tools with unit-test.

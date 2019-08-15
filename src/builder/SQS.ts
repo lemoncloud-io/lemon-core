@@ -54,8 +54,8 @@ export interface SQSNode {
 /**
  * build SQS() handler.
  *
- * @param $engine   base engine instance.
- * @param defType   default type of $api()
+ * @param {*} defType  default type of $api()
+ * @param {*} NS       namespace to print
  */
 const builder: BrokerBuilder<any> = (defType, NS) => {
     defType = defType || 'hello';
