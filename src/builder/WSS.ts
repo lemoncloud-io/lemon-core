@@ -215,7 +215,7 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
                 });
                 return executeServiceApi(param)
                     .then(body => {
-                        _log(NS, '> execute-api.body =', body);
+                        _log(NS, '> execute-api.body =', $U.json(body));
                         return { statusCode: 200, body };
                     })
                     .catch((e: Error) => {
@@ -241,7 +241,7 @@ const builder: BrokerBuilder<any> = (defType, NS, params) => {
                 const body = event.body;
                 const data =
                     typeof body === 'string' && body.startsWith('{') && body.endsWith('}') ? JSON.parse(body) : body;
-                _log(NS, '> data =', data);
+                _log(NS, '> data =', $U.json(data));
                 //! handle by request-id.
                 const serverReqId = (data && data[WSS_REQID_KEY]) || '';
                 const clientReqId = (data && data[WSC_REQID_KEY]) || '';
