@@ -88,7 +88,7 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
 
     //! find ARN('lemon-hello-sns') via context information.
     const TARGET = 'lemon-hello-sns';
-    const helloArn = () => {
+    const helloArn = async () => {
         const invokedFunctionArn = (ctx && ctx.invokedFunctionArn) || ''; // if called via lambda call.
         const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (ctx && ctx.accountId) || '';
         const REGION = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
@@ -109,13 +109,10 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
         const resourcePath = (ctx && ctx.resourcePath) || '';
         const identity = (ctx && ctx.identity) || {};
 
-        //! load `sns-service` with log-silence.
-        process.env['LS'] = '1';
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const $engine = require('lemon-hello-api').engine(); // require `lemon-hello-api:>1.3.1'
-        const $sns = $engine.$sns;
+        const $sns = require('../service/sns-service').SNS;
         _log(NS, '! $sns =', $sns);
-        if (!$sns) throw new Error(`.$sns(sns-service) is required! - need 'lemon-hello-api:>1.3.1'`);
+        if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
 
         //! prepare payload to publish.
         const payload = {
@@ -124,13 +121,11 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
         };
 
         //! update arn, and call.
-        const arn = helloArn();
+        const arn = await helloArn().catch(e => '');
         _log(NS, `> sns[${TARGET}].arn =`, arn);
-        return $sns.arn(arn).then(() => {
-            return $sns.reportError(e, payload).then((mid: string) => {
-                _inf(NS, '> sns.message-id =', mid);
-                return `${mid}`;
-            });
+        return $sns.reportError(e, payload, arn).then((mid: string) => {
+            _inf(NS, '> err.message-id =', mid);
+            return `${mid}`;
         });
     } catch (e2) {
         _err(NS, '! err-ignored =', e2);
