@@ -12,8 +12,9 @@
  *  Common Headers
  ** ****************************************************************************************************************/
 //! import core engine.
-import { $engine, $U, _log, _inf, _err } from '../core/engine';
+import { $U, _log, _inf, _err } from '../core/engine';
 import { EnginePluggable } from 'lemon-engine';
+import { environ, region } from './';
 import AWS from 'aws-sdk';
 import { v4 } from 'uuid';
 
@@ -21,7 +22,7 @@ import { v4 } from 'uuid';
 const name = 'S3';
 const NS = $U.NS(name, 'blue');
 
-export interface TagSet {
+interface TagSet {
     [key: string]: string;
 }
 
@@ -35,18 +36,18 @@ export interface CoreS3Service extends EnginePluggable {
 /** ****************************************************************************************************************
  *  Public Instance Exported.
  ** ****************************************************************************************************************/
-//TODO - load via environ.
-const REGION = 'ap-northeast-2';
-
 //! get aws client for S3
-const instance = () => {
-    const config = { region: REGION };
+const instance = async () => {
+    const _region = await region();
+    const config = { region: _region };
     return new AWS.S3(config); // SQS Instance. shared one???
 };
 
 //! main service instance.
 export const S3 = new (class implements CoreS3Service {
-    public ENV_NAME = 'REPORT_ERROR_ARN';
+    public ENV_NAME = 'CORE_S3_BUCKET';
+    public DEF_BUCKET = 'lemon-hello-www';
+
     /**
      * get name of this
      */
@@ -61,10 +62,8 @@ export const S3 = new (class implements CoreS3Service {
      * get target endpoint by name.
      */
     public bucket = async (target?: string) => {
-        target = target || 'lemon-hello-www';
-        if (!target) throw new Error('@target is required!');
-        const env = $engine.environ(target, '') as string;
-        return `${env || target}`;
+        // if (!target) throw new Error('@target is required!');
+        return environ(target, this.ENV_NAME, this.DEF_BUCKET);
     };
 
     /**
@@ -110,12 +109,15 @@ export const S3 = new (class implements CoreS3Service {
         }
         //! call s3.upload.
         return instance()
-            .upload(params, options)
-            .promise()
+            .then(_ => _.upload(params, options).promise())
             .then(data => {
                 const key = (data && data.Key) || fileName;
                 _log(NS, '> data.key =', key);
                 return key;
+            })
+            .catch(e => {
+                _err(NS, '! err=', e);
+                throw e;
             });
     };
 
@@ -134,8 +136,15 @@ export const S3 = new (class implements CoreS3Service {
         //! call s3.getObject.
         // _log(NS, '> params =', params);
         return instance()
-            .getObject(params)
-            .promise();
+            .then(_ => _.getObject(params).promise())
+            .then(data => {
+                _log(NS, '> data.type =', typeof data);
+                return data;
+            })
+            .catch(e => {
+                _err(NS, '! err=', e);
+                throw e;
+            });
     };
 
     /**

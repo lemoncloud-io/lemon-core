@@ -12,8 +12,9 @@
  *  Common Headers
  ** ****************************************************************************************************************/
 //! import core engine.
-import { $engine, $U, _log, _inf, _err } from '../core/engine';
+import { $U, _log, _inf, _err } from '../core/engine';
 import { EnginePluggable } from 'lemon-engine';
+import { environ, region } from './';
 import AWS from 'aws-sdk';
 
 //! module name & namepsace
@@ -29,22 +30,22 @@ export interface CoreKmsService extends EnginePluggable {
 /** ****************************************************************************************************************
  *  Public Instance Exported.
  ** ****************************************************************************************************************/
-//TODO - load via environ.
-const REGION = 'ap-northeast-2';
-
 //! check if base64 string.
 const isBase64 = (text: string) =>
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/.test(text);
 
 //! get aws client for KMS
-const instance = () => {
-    const config = { region: REGION };
+const instance = async () => {
+    const _region = await region();
+    const config = { region: _region };
     return new AWS.KMS(config);
 };
 
 //! main service instance.
 export const KMS = new (class implements CoreKmsService {
     public ENV_NAME = 'CORE_KMS_KEY';
+    public DEF_TARGET = 'alias/lemon-hello-api';
+
     /**
      * get name of this
      */
@@ -58,10 +59,9 @@ export const KMS = new (class implements CoreKmsService {
     /**
      * get key-id to encrypt.
      */
-    public keyId = (target?: string) => {
+    public keyId = async (target?: string) => {
         // if (!target) throw new Error('@target is required!');
-        const env = $engine.environ(this.ENV_NAME, 'alias/lemon-hello-api') as string;
-        return `${env || target}`;
+        return environ(target, this.ENV_NAME, this.DEF_TARGET);
     };
 
     /**
@@ -70,16 +70,15 @@ export const KMS = new (class implements CoreKmsService {
      * @param {*} message
      * @param {*} keyId
      */
-    public encrypt = (message: string, keyId?: string): Promise<string> => {
+    public encrypt = async (message: string, keyId?: string): Promise<string> => {
         _inf(NS, `encrypt(${keyId})..`);
-        const KeyId = this.keyId(keyId);
+        const KeyId = await this.keyId(keyId);
         const params = {
             KeyId,
             Plaintext: message,
         };
         return instance()
-            .encrypt(params)
-            .promise()
+            .then(_ => _.encrypt(params).promise())
             .then(result => {
                 _log(NS, '> result =', result);
                 const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
@@ -97,7 +96,7 @@ export const KMS = new (class implements CoreKmsService {
      *
      * @param {*} encryptedSecret
      */
-    public decrypt = (encryptedSecret: string): Promise<string> => {
+    public decrypt = async (encryptedSecret: string): Promise<string> => {
         _inf(NS, `decrypt()..`);
         const CiphertextBlob =
             typeof encryptedSecret == 'string'
@@ -108,11 +107,10 @@ export const KMS = new (class implements CoreKmsService {
         //! api param.
         const params = { CiphertextBlob };
         return instance()
-            .decrypt(params)
-            .promise()
-            .then(result => {
-                // _log(NS, '> result =', result);
-                return result.Plaintext ? result.Plaintext.toString() : '';
+            .then(_ => _.decrypt(params).promise())
+            .then(data => {
+                _log(NS, '> data.type =', typeof data);
+                return data.Plaintext ? data.Plaintext.toString() : '';
             })
             .catch(e => {
                 _err(NS, '! err=', e);

@@ -14,6 +14,7 @@
 //! import core engine.
 import { $engine, $U, _log, _inf, _err } from '../core/engine';
 import { EnginePluggable } from 'lemon-engine';
+import { environ, region } from './';
 import AWS from 'aws-sdk';
 
 //! module name & namepsace
@@ -29,14 +30,13 @@ export interface CoreSnsService extends EnginePluggable {
 }
 
 /** ****************************************************************************************************************
- *  Public Common Interface Exported.
+ *  Public Instance Exported.
  ** ****************************************************************************************************************/
-//TODO - load via environ.
-const REGION = 'ap-northeast-2';
-
 //! main service instance.
 export const SNS = new (class implements CoreSnsService {
-    public ENV_NAME = 'REPORT_ERROR_ARN';
+    public ENV_NAME = 'CORE_SNS_ARN';
+    public DEF_SNS = 'lemon-hello-sns';
+
     /**
      * get name of this
      */
@@ -49,20 +49,15 @@ export const SNS = new (class implements CoreSnsService {
 
     /**
      * get target endpoint by name.
-     *
-     * **LOOKUP SEQUENCE**
-     * 1. check if name is valid 'arn'
-     * 1. check if $.environ(name)
-     * 1. build arn via account-id.
      */
-    public endpoint = async (name: string) => {
-        if (!name) throw new Error('@name is required!');
-        if (name.startsWith('arn:aws:sns:')) return name;
-        const env = $engine.environ(name, '') as string;
-        if (env && env.startsWith('arn:aws:sns:')) return env;
+    public endpoint = async (target: string) => {
+        // if (!target) throw new Error('@target is required!');
+        target = await environ(target, this.ENV_NAME, this.DEF_SNS);
+        if (target.startsWith('arn:aws:sns:')) return target;
+        const REGION = await region();
         return this.accountID().then(_ => {
             _log(NS, '> account-id =', _);
-            const arn = ['arn', 'aws', 'sns', REGION, _, name].join(':');
+            const arn = ['arn', 'aws', 'sns', REGION, _, target].join(':');
             return arn;
         });
     };
@@ -83,7 +78,7 @@ export const SNS = new (class implements CoreSnsService {
                     //! if non-User case. call STS().
                     if (msg == 'Must specify userName when calling with non-User credentials') {
                         const sts = new AWS.STS();
-                        sts.getCallerIdentity({}, function(err, data) {
+                        sts.getCallerIdentity({}, (err, data) => {
                             if (err) {
                                 reject(err);
                             } else {
@@ -133,17 +128,21 @@ export const SNS = new (class implements CoreSnsService {
                 .then(result => {
                     _log(NS, `> result[${arn}] =`, result);
                     return (result && result.MessageId) || '';
+                })
+                .catch(e => {
+                    _err(NS, '! err=', e);
+                    throw e;
                 });
         });
     };
 
     /**
      * report error via SNS with subject 'error'
-     * - default to `lemon-hello-sns` or using `env[REPORT_ERROR_SNS]`
+     * - default to `lemon-hello-sns` or using `env[REPORT_ERROR_ARN]`
      *
      * @param e             Error instance
      * @param message       simple text message or object to override.
-     * @param target        (default) `lemon-hello-sns`
+     * @param target        (optional)
      */
     public reportError = async (e: Error, message: string, target?: string): Promise<string> => {
         if (!e) return 'N/A';
@@ -151,8 +150,7 @@ export const SNS = new (class implements CoreSnsService {
         _err(NS, '> error =', e);
 
         //! find out endpoint.
-        const env = $engine.environ(this.ENV_NAME, '') as string;
-        target = target || env || 'lemon-hello-sns';
+        target = await environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
 
         //! prepare payload
         const e2: any = e;
