@@ -90,7 +90,11 @@ describe(`test the 'core/engine.ts'`, () => {
         const data = 'test-error-data';
         const err = new Error('via doReportError() in `lemon-core`');
         doReportError(err, $context('', ''), data).then((_: string) => {
-            expect(/^[a-z0-9\-]{10,}$/.test(_) || _.indexOf('Missing credentials') > 0 ? 'ok' : _).toEqual('ok');
+            expect(
+                /^[a-z0-9\-]{10,}$/.test(_) || _.indexOf('Missing credentials') > 0 || _.startsWith('ERROR - ')
+                    ? 'ok'
+                    : _,
+            ).toEqual('ok');
             done();
         });
     });

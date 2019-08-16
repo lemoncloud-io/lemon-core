@@ -108,6 +108,7 @@ export const SNS = new (class implements CoreSnsService {
     public publish = async (target: string, subject: string, payload: any): Promise<string> => {
         _inf(NS, `publish(${target}, ${subject})...`);
         return this.endpoint(target).then(arn => {
+            if (!arn) throw new Error('.arn is required! target:' + target);
             _log(NS, `> payload[${arn}] =`, $U.json(payload));
             const params = {
                 TopicArn: arn,
