@@ -23,8 +23,8 @@
     "prepublishOnly": "npm test && npm run lint",
     "!release": "---- release with standard -----",
     "release": "standard-version",
-    "release.first": "standard-version --first-release",
-    "release.minor": "standard-version -- --release-as minor",
+    "release.first": "npm run release --first-release",
+    "release.minor": "npm run release --release-as minor",
     "-": "------------------------------------------------------------"
   },
   "husky": {
