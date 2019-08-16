@@ -23,8 +23,8 @@
     "prepublishOnly": "npm test && npm run lint",
     "!release": "---- release with standard -----",
     "release": "standard-version",
-    "release.first": "standard-version --first-release",
-    "release.minor": "standard-version -- --release-as minor",
+    "release.first": "npm run release --first-release",
+    "release.minor": "npm run release --release-as minor",
     "-": "------------------------------------------------------------"
   },
   "husky": {
@@ -77,7 +77,6 @@
     "@types/ws": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^1.7.0",
     "@typescript-eslint/parser": "^1.7.0",
-    "aws-sdk": "^2.363.0",
     "codecov": "^3.4.0",
     "concurrently": "^4.1.0",
     "dotenv": "^8.0.0",
