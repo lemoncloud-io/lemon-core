@@ -27,7 +27,7 @@ export const region = async () => {
 
 //! get common config via environ.
 export const environ = async (target: string, defEnvName: string, defEnvValue: string) => {
-    const isUpperStr = target && /^[A-Z0-9_]+$/.test(target);
+    const isUpperStr = target && /^[A-Z][A-Z0-9_]+$/.test(target);
     defEnvName = isUpperStr ? target : defEnvName;
     const val = defEnvName ? ($engine.environ(defEnvName, defEnvValue) as string) : defEnvValue;
     target = isUpperStr ? '' : target;
