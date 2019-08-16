@@ -26,6 +26,7 @@ import { LemonEngine, EnginePluggable } from 'lemon-engine';
 import { loadJsonSync, getRunParam } from './shared';
 import $WSC from '../builder/WSC';
 
+import AWS from 'aws-sdk';
 import express from 'express';
 import bodyParser from 'body-parser';
 import multer from 'multer';
@@ -59,6 +60,14 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
     const IS_WSC = getRunParam('-wsc', false, argv); // default server port.
     _inf(NS, `###### express[${NAME}@${$U.NS(VERS, 'cyan')}] ######`);
     IS_WSC && _inf(NS, `! IS_WSC=`, IS_WSC);
+
+    //! dynamic loading credentials by profile. (search PROFILE -> NAME)
+    (() => {
+        const NAME = $engine.environ('NAME', '') as string;
+        const profile = $engine.environ('PROFILE', NAME) as string;
+        const credentials = new AWS.SharedIniFileCredentials({ profile });
+        AWS.config.credentials = credentials;
+    })();
 
     /** ****************************************************************************************************************
      *  Initialize Express
