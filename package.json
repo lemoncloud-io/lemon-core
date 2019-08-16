@@ -57,6 +57,7 @@
     "nanoid": "^2.0.3",
     "request": "^2.88.0",
     "source-map-support": "^0.5.12",
+    "uuid": "^3.3.2",
     "ws": "^7.1.2"
   },
   "devDependencies": {
@@ -71,6 +72,7 @@
     "@types/nanoid": "^2.0.0",
     "@types/request": "^2.48.1",
     "@types/supertest": "^2.0.7",
+    "@types/uuid": "^3.4.5",
     "@types/winston": "^2.4.4",
     "@types/ws": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^1.7.0",
