@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/lemoncloud-io/lemon-core/compare/v1.1.2...v1.2.0) (2019-08-16)
+
+
+### Bug Fixes
+
+* context null ([5435b9b](https://github.com/lemoncloud-io/lemon-core/commit/5435b9b))
+* improve `do_parrallel()` ([1cf5821](https://github.com/lemoncloud-io/lemon-core/commit/1cf5821))
+* improve isUpperStr ([ee4a09d](https://github.com/lemoncloud-io/lemon-core/commit/ee4a09d))
+
+
+### Features
+
+* executeServiceApi() ([113c84a](https://github.com/lemoncloud-io/lemon-core/commit/113c84a))
+* kms-service ([0c18c83](https://github.com/lemoncloud-io/lemon-core/commit/0c18c83))
+* mod uuid ([bf3deff](https://github.com/lemoncloud-io/lemon-core/commit/bf3deff))
+* s3 service ([ef91deb](https://github.com/lemoncloud-io/lemon-core/commit/ef91deb))
+* sns-service ([981374a](https://github.com/lemoncloud-io/lemon-core/commit/981374a))
+* WSC for web-socket client ([3fd3a15](https://github.com/lemoncloud-io/lemon-core/commit/3fd3a15))
+* WSS for web-socket server ([0fc2bad](https://github.com/lemoncloud-io/lemon-core/commit/0fc2bad))
+
+
+### Tests
+
+* close server ([779d740](https://github.com/lemoncloud-io/lemon-core/commit/779d740))
+* optimize test ([891b2e2](https://github.com/lemoncloud-io/lemon-core/commit/891b2e2))
+
+
+
 ### [1.1.2](https://github.com/lemoncloud-io/lemon-core/compare/v1.1.1...v1.1.2) (2019-08-10)
 
 
