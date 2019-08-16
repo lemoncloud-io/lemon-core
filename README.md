@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.2.0     | migrate service, and cleanup `lemon-hello-api`
 | 1.1.6     | update engine `lemon-engine#2.2.4`.
 | 1.1.5     | support web-socket with `WSS`, `WSC`.
 | 1.1.4     | improve `do_parrallel()`
