@@ -16,6 +16,9 @@ export * from './core/engine';
 export * from './tools/';
 // console.log('! core: init index');
 
+//! additional core-services.
+import * as $SVC from './service/';
+
 //! loading additional builders.
 import $WEB from './builder/WEB';
 import $SNS from './builder/SNS';
@@ -24,4 +27,4 @@ import $WSC from './builder/WSC';
 import $WSS from './builder/WSS';
 
 //! export functions.
-export { $WEB, $SNS, $SQS, $WSC, $WSS };
+export { $SVC, $WEB, $SNS, $SQS, $WSC, $WSS };
