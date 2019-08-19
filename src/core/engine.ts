@@ -111,7 +111,7 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const $sns = require('../service/sns-service').SNS;
-        _log(NS, '! $sns =', $sns);
+        // _log(NS, '! $sns =', $sns);
         if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
 
         //! prepare payload to publish.

@@ -15,7 +15,7 @@
  * - [x] 190801 change router underscore char like `loopers_front` -> `loopers-front`
  *
  *
- * @author  Steve <steve@lemoncloud.io)
+ * @author  Steve Jung <steve@lemoncloud.io>
  * @date    2019-07-31 support ECMA 2016.
  * @date    2019-08-01a auto register api with pattern. `/^[a-z][a-z0-9\-_]+$/`
  * @date    2019-08-07 ignore `engine.dt` function.
