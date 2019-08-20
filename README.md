@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.2.3     | improve `cors` in express.
 | 1.2.2     | updated with `lemon-engine#2.2.5`
 | 1.2.1     | improve aws credentials in express().
 | 1.2.0     | migrate service, and cleanup `lemon-hello-api`
