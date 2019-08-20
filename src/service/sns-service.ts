@@ -145,24 +145,36 @@ export const SNS = new (class implements CoreSnsService {
      * @param message       simple text message or object to override.
      * @param target        (optional)
      */
-    public reportError = async (e: Error, message: string, target?: string): Promise<string> => {
+    public reportError = async (e: Error, data: string | object, target?: string): Promise<string> => {
         if (!e) return 'N/A';
-        _inf(NS, `reportError(${message}, target=${target || ''})...`);
+        _inf(NS, `reportError(${data}, target=${target || ''})...`);
         _err(NS, '> error =', e);
 
         //! find out endpoint.
         target = await environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
+        const payload = this.asPayload(e, data);
 
+        // _log(NS, '> payload =', $U.json(payload));
+        return this.publish(target, 'error', payload).catch(e => {
+            return `ERROR - ${(e && e.message) || e}`;
+        });
+    };
+
+    /**
+     * convert Error to payload.
+     */
+    public asPayload = (e: any, data: string | object) => {
         //! prepare payload
         const e2: any = e;
-        const stack = e.stack;
-        const errors = (e2.body && e2.body.errors) || undefined;
-        const error = message && typeof message == 'string' ? message : `${e.message || e2.statusMessage || e}`;
-        const base = message && typeof message == 'object' ? message : {};
-        const payload = Object.assign(base, {
+        const base = data && typeof data == 'object' ? data : {};
+        const message = data && typeof data == 'string' ? data : `${e.message || e.statusMessage || ''}`;
+        const stack = e instanceof Error ? e.stack : undefined;
+        const error = typeof e == 'string' ? e : e instanceof Error ? `${e.message}` : JSON.stringify(e);
+        const errors = e2.errors || (e2.body && e2.body.errors) || undefined;
+        const payload: { 'stack-trace'?: any; message: string; error: string; errorss?: any[] } = Object.assign(base, {
             'stack-trace': stack,
-            message: undefined as string,
-            error: error,
+            message,
+            error,
             errors,
         });
 
@@ -170,11 +182,10 @@ export const SNS = new (class implements CoreSnsService {
         const error0 = (errors && errors[0]) || undefined;
         if (error0) {
             payload.message = payload.error;
-            payload.error = error0;
+            payload.error = error0 instanceof Error ? `${e.message}` : JSON.stringify(error0);
         }
-        // _log(NS, '> payload =', $U.json(payload));
-        return this.publish(target, 'error', payload).catch(e => {
-            return `ERROR - ${(e && e.message) || e}`;
-        });
+
+        //! returns payload for sns error
+        return payload;
     };
 })();
