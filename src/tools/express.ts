@@ -28,6 +28,7 @@ import $WSC from '../builder/WSC';
 
 import AWS from 'aws-sdk';
 import express from 'express';
+import cors from 'cors';
 import bodyParser from 'body-parser';
 import multer from 'multer';
 import http from 'http';
@@ -75,6 +76,8 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
     //! create express app.
     const app = express();
     const uploader = multer({ dest: '../tmp/' });
+
+    app.use(cors());
     app.use(bodyParser.json({ limit: '10mb' })); //default limit 100kb
 
     //! middle ware
