@@ -35,4 +35,23 @@ describe(`test service/sns-service.js`, () => {
         const a1 = await SNS.endpoint('arn:aws:sns:....');
         expect(a1).toEqual('arn:aws:sns:....');
     });
+
+    test('check asPayload() function', async () => {
+        const e = new Error('test-error');
+        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
+        const e2 = { statusMessage: 'test-status' };
+        const e3 = 'test-message';
+        expect(SNS.asPayload(e, { type: 'error' }).error).toEqual('test-error');
+        expect(SNS.asPayload(e2, { type: 'error' })).toEqual({
+            error: '{"statusMessage":"test-status"}',
+            message: 'test-status',
+            type: 'error',
+        });
+        expect(SNS.asPayload(e2, 'error')['stack-trace']).toEqual(undefined);
+        expect(SNS.asPayload(e2, 'error')).toEqual({
+            error: '{"statusMessage":"test-status"}',
+            message: 'error',
+        });
+        expect(SNS.asPayload(e3, 'error')).toEqual({ error: e3, message: 'error' });
+    });
 });
