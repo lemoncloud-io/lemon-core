@@ -16,10 +16,15 @@
 import fs from 'fs';
 
 //! load json in sync.
-export const loadJsonSync = (name: string) => {
+export const loadJsonSync = (name: string, def: any = {}) => {
     name = !name.startsWith('./') ? `./${name}` : name;
-    const rawdata = fs.readFileSync(name);
-    return JSON.parse(rawdata.toString());
+    try {
+        const rawdata = fs.readFileSync(name);
+        return JSON.parse(rawdata.toString());
+    } catch (e) {
+        if (def) def.error = `${e.message || e}`;
+        return def;
+    }
 };
 
 interface AdaptiveParam<T> {
