@@ -98,7 +98,6 @@ export const S3 = new (class implements CoreS3Service {
         const options = {
             tags: undefined as any,
         };
-
         if (contentType) params.ContentType = contentType;
         if (tags && typeof tags == 'object') {
             options.tags = Object.keys(tags).reduce((L, key) => {
@@ -112,11 +111,11 @@ export const S3 = new (class implements CoreS3Service {
             .then(_ => _.upload(params, options).promise())
             .then(data => {
                 const key = (data && data.Key) || fileName;
-                _log(NS, '> data.key =', key);
+                _log(NS, `> data[${Bucket}].key =`, key);
                 return key;
             })
             .catch(e => {
-                _err(NS, '! err=', e);
+                _err(NS, `! err[${Bucket}]=`, e);
                 throw e;
             });
     };

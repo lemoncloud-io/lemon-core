@@ -87,18 +87,22 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
     _log(NS, `doReportError(${(e && e.message) || e})...`);
 
     //! find ARN('lemon-hello-sns') via context information.
-    const TARGET = 'lemon-hello-sns';
-    const helloArn = async () => {
+    const helloArn = async (ctx: any) => {
+        const target = 'lemon-hello-sns';
+        //! pre-defined env.
+        const arn = $engine.environ('REPORT_ERROR_ARN', '') as string;
+        if (arn.startsWith('arn:aws:sns:')) return arn;
+        //! build arn via context information.
         const invokedFunctionArn = (ctx && ctx.invokedFunctionArn) || ''; // if called via lambda call.
         const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (ctx && ctx.accountId) || '';
-        const REGION = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
+        const region = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
         _inf(NS, '! accountId =', accountId);
         if (!accountId) {
             _err(NS, 'WARN! account-id is empty.');
-            _inf(NS, '! current ctx =', ctx);
+            _inf(NS, '! current ctx =', $U.json(ctx));
             throw new Error('.accountId is missing');
         }
-        return `arn:aws:sns:${REGION}:${accountId}:${TARGET}`;
+        return `arn:aws:sns:${region}:${accountId}:${target}`;
     };
 
     //! dispatch invoke conditins.
@@ -120,9 +124,9 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
             context: { stage, apiId, resourcePath, identity, domainPrefix, event: data },
         };
 
-        //! update arn, and call.
-        const arn = await helloArn().catch(e => '');
-        _log(NS, `> sns[${TARGET}].arn =`, arn);
+        //! find target arn.
+        const arn = await helloArn(ctx).catch(e => '');
+        _log(NS, `> report-error.arn =`, arn);
         return $sns.reportError(e, payload, arn).then((mid: string) => {
             _inf(NS, '> err.message-id =', mid);
             return `${mid}`;
