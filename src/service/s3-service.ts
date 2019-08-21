@@ -29,7 +29,12 @@ interface TagSet {
 export interface CoreS3Service extends EnginePluggable {
     hello: () => { hello: string };
     bucket: (target?: string) => Promise<string>;
-    putObject: (body: string, fileName?: string, contentType?: string, tags?: TagSet) => Promise<string>;
+    putObject: (
+        body: string,
+        fileName?: string,
+        contentType?: string,
+        tags?: TagSet,
+    ) => Promise<{ Bucket: string; Key: string; Location: string }>;
     getObject: (fileName: string) => Promise<any>;
 }
 
@@ -110,9 +115,10 @@ export const S3 = new (class implements CoreS3Service {
         return instance()
             .then(_ => _.upload(params, options).promise())
             .then(data => {
-                const key = (data && data.Key) || fileName;
-                _log(NS, `> data[${Bucket}].key =`, key);
-                return key;
+                const Key = (data && data.Key) || fileName;
+                const Location = (data && data.Location) || '';
+                _log(NS, `> data[${Bucket}].Key =`, Key);
+                return { Bucket, Key, Location };
             })
             .catch(e => {
                 _err(NS, `! err[${Bucket}]=`, e);
