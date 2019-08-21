@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.2.6     | improve `doReportError` with `service` like `api://lemon-core#1.2.6`.
 | 1.2.5     | improve `doReportError` in engine.
 | 1.2.4     | improve `reportError` in sns service.
 | 1.2.3     | improve `cors` in express.

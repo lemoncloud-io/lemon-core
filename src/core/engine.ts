@@ -107,6 +107,9 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
 
     //! dispatch invoke conditins.
     try {
+        const loadJsonSync = require('../tools/shared').loadJsonSync;
+        const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
+        const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
         const stage = (ctx && ctx.stage) || '';
         const apiId = (ctx && ctx.apiId) || '';
         const domainPrefix = (ctx && ctx.domainPrefix) || '';
@@ -120,6 +123,7 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
 
         //! prepare payload to publish.
         const payload = {
+            service,
             message: `${e.message}`,
             context: { stage, apiId, resourcePath, identity, domainPrefix, event: data },
         };
