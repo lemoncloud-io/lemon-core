@@ -22,7 +22,7 @@ import { v4 } from 'uuid';
 const name = 'S3';
 const NS = $U.NS(name, 'blue');
 
-interface TagSet {
+export interface TagSet {
     [key: string]: string;
 }
 
@@ -132,7 +132,7 @@ export const S3 = new (class implements CoreS3Service {
      * @param {string} bucketId
      * @param {string} fileName
      */
-    public getObject = async (fileName: string) => {
+    public getObject = async (fileName: string): Promise<any> => {
         if (!fileName) throw new Error('@fileName is required!');
 
         const Bucket = await this.bucket();
@@ -144,7 +144,7 @@ export const S3 = new (class implements CoreS3Service {
             .then(_ => _.getObject(params).promise())
             .then(data => {
                 _log(NS, '> data.type =', typeof data);
-                return data;
+                return data as any;
             })
             .catch(e => {
                 _err(NS, '! err=', e);
