@@ -88,8 +88,15 @@ export const getHelloArn = async (context: any, NS: string) => {
     return `arn:aws:sns:${region}:${accountId}:${target}`;
 };
 
-//! report error via `lemon-hello-sns`.
-export const doReportError = async (e: Error, context: any, data: any): Promise<string> => {
+/**
+ * report error via `lemon-hello-sns`.
+ *
+ * @param e             Error
+ * @param context       Lambda Context
+ * @param event         Event Information
+ * @param data          Optinal Data(body).
+ */
+export const doReportError = async (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
     //! ignore only if local express-run.
     if (context && context.source === 'express') return '!ignore';
     const NS = $U.NS('RPTE');
@@ -115,7 +122,8 @@ export const doReportError = async (e: Error, context: any, data: any): Promise<
         const payload = {
             service,
             message: `${e.message}`,
-            context: { stage, apiId, resourcePath, identity, domainPrefix, event: data },
+            context: { stage, apiId, resourcePath, identity, domainPrefix, event },
+            data,
         };
 
         //! find target arn.
@@ -235,7 +243,7 @@ export const executeServiceApi = (args: ApiParam): Promise<any> => {
                 .catch((e: any) => {
                     _err(NS, `! ERR@CALLBACK[${callback}] =`, e);
                     //NOTE! - report error in here.
-                    return doReportError(e, context, { callback, body }).then(() => Promise.reject(e));
+                    return doReportError(e, context, event, { callback, body }).then(() => Promise.reject(e));
                 });
         });
 };
@@ -402,11 +410,36 @@ export const $client = (NAME: string, PROXY_ENDPOINT: string, headers?: { [key: 
 /** ****************************************************************************************************************
  *  Common functions.
  ** ****************************************************************************************************************/
-//! parrallel actions in list (in batch-size = 10)
-//TODO - improve return types by refering callback.
+export interface ParrallelParam<T> {
+    list: T[];
+    //! call context.
+    context?: any;
+    //! optional event
+    event?: any;
+    //! optional message.
+    message?: string;
+    //! flag to report error
+    reportError?: boolean;
+    //! flag to replace error to origin.
+    ignoreError?: boolean;
+}
+export interface ParrallelCallback<T, U> {
+    (node: T, index: number): U;
+}
+/**
+ * parrallel actions in list (in batch-size = 10)
+ *
+ * **TODO** - improve return types by refering callback.
+ *
+ * @param list          any list
+ * @param callback      (item)=>any | Promise<any>
+ * @param size          (optional) size
+ * @param pos           (optional) current pos
+ * @param result        (optional) result set.
+ */
 export const do_parrallel = <T, U>(
-    list: T[],
-    callback: (node: T, index: number) => U,
+    param: T[] | ParrallelParam<T>,
+    callback: ParrallelCallback<T, U>,
     size = 10,
     pos = 0,
     result: (U | Error)[] = [],
@@ -415,6 +448,7 @@ export const do_parrallel = <T, U>(
     pos = pos === undefined ? 0 : pos;
     result = result === undefined ? [] : result;
     // _log(NS, `! parrallel(${pos}/${size})`)
+    const list = Array.isArray(param) ? param : param.list;
     const list2 = list.slice(pos, pos + size);
     const actions = list2.map((node, i): any => {
         const index = pos + i;
@@ -442,11 +476,29 @@ export const do_parrallel = <T, U>(
         }
     });
     //! do parrallel.
-    return Promise.all(actions).then(_ => {
-        result = result.concat(_);
-        if (!_.length) return Promise.resolve(result);
-        return do_parrallel(list, callback, size, pos + size, result);
-    });
+    return Promise.all(actions)
+        .then(res => {
+            if (Array.isArray(param)) return res;
+            const { ignoreError, reportError, event, context, message } = param;
+            const errors = res.filter(i => i instanceof Error);
+            if (!errors.length) return res;
+            const data: any = { message, pos, size };
+            data.errors = res.map((_, i) => {
+                if (!(_ instanceof Error)) return '';
+                return { error: (_ as Error).message, node: list2[i] };
+            });
+            return (reportError ? doReportError(errors[0], context, event, data) : Promise.resolve('')).then(() => {
+                if (ignoreError) {
+                    res = res.map((_, i) => (_ instanceof Error ? list2[i] : _));
+                }
+                return res;
+            });
+        })
+        .then(_ => {
+            result = result.concat(_);
+            if (!_.length) return Promise.resolve(result);
+            return do_parrallel(param, callback, size, pos + size, result);
+        });
 };
 
 //! default time-zone for this api. (Asia/Seoul - 9 hours)
