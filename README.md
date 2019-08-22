@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.2.8     | fix `export TagSet` for ts.
 | 1.2.7     | fix `s3.putObject()` return type.
 | 1.2.6     | improve `doReportError` with `service` like `api://lemon-core#1.2.6`.
 | 1.2.5     | improve `doReportError` in engine.
