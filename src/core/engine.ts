@@ -23,7 +23,7 @@
  */
 //! import core engine.
 import engine, { LemonEngine } from 'lemon-engine';
-import { WebHandler, WebResult } from '../common/types';
+import { WebHandler, WebResult, SlackPostBody } from '../common/types';
 
 //! create engine in global scope.
 console.log(`###### load engine. STAGE=${process.env.NAME || ''}#${process.env.STAGE || ''}`);
@@ -69,52 +69,42 @@ export const $api = (type: string): WebHandler => {
     return API;
 };
 
-// const $call = async (mod: string, api: string, id: string, param: any, body: any, $ctx: any) => {
-//     // eslint-disable-next-line @typescript-eslint/no-var-requires
-//     const $package = require(mod);
-//     _log('> $package =', $package);
-//     if (typeof $package.engine !== 'function') throw new Error(`engine() is required! package: ${mod}`);
-//     const $engine = $package.engine();
-//     const web = $engine[api];
-//     if (!web) throw new Error(`404 NOT FOUND - package:${mod}/${api}`);
-// };
+//! find ARN('lemon-hello-sns') via context information or environment.
+export const getHelloArn = async (context: any, NS: string) => {
+    const target = 'lemon-hello-sns';
+    //! use pre-defined env via `serverless.yml`
+    const arn = $engine.environ('REPORT_ERROR_ARN', '') as string;
+    if (arn.startsWith('arn:aws:sns:')) return arn;
+    //! build arn via context information.
+    const invokedFunctionArn = (context && context.invokedFunctionArn) || ''; // if called via lambda call.
+    const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (context && context.accountId) || '';
+    const region = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
+    _inf(NS, '! accountId =', accountId);
+    if (!accountId) {
+        _err(NS, 'WARN! account-id is empty.');
+        _inf(NS, '! current ctx =', $U.json(context));
+        throw new Error('.accountId is missing');
+    }
+    return `arn:aws:sns:${region}:${accountId}:${target}`;
+};
 
 //! report error via `lemon-hello-sns`.
-export const doReportError = async (e: Error, ctx: any, data: any): Promise<string> => {
+export const doReportError = async (e: Error, context: any, data: any): Promise<string> => {
     //! ignore only if local express-run.
-    if (ctx && ctx.source === 'express') return '!ignore';
+    if (context && context.source === 'express') return '!ignore';
     const NS = $U.NS('RPTE');
     _log(NS, `doReportError(${(e && e.message) || e})...`);
-
-    //! find ARN('lemon-hello-sns') via context information.
-    const helloArn = async (ctx: any) => {
-        const target = 'lemon-hello-sns';
-        //! pre-defined env.
-        const arn = $engine.environ('REPORT_ERROR_ARN', '') as string;
-        if (arn.startsWith('arn:aws:sns:')) return arn;
-        //! build arn via context information.
-        const invokedFunctionArn = (ctx && ctx.invokedFunctionArn) || ''; // if called via lambda call.
-        const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (ctx && ctx.accountId) || '';
-        const region = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
-        _inf(NS, '! accountId =', accountId);
-        if (!accountId) {
-            _err(NS, 'WARN! account-id is empty.');
-            _inf(NS, '! current ctx =', $U.json(ctx));
-            throw new Error('.accountId is missing');
-        }
-        return `arn:aws:sns:${region}:${accountId}:${target}`;
-    };
 
     //! dispatch invoke conditins.
     try {
         const loadJsonSync = require('../tools/shared').loadJsonSync;
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
-        const stage = (ctx && ctx.stage) || '';
-        const apiId = (ctx && ctx.apiId) || '';
-        const domainPrefix = (ctx && ctx.domainPrefix) || '';
-        const resourcePath = (ctx && ctx.resourcePath) || '';
-        const identity = (ctx && ctx.identity) || {};
+        const stage = (context && context.stage) || '';
+        const apiId = (context && context.apiId) || '';
+        const domainPrefix = (context && context.domainPrefix) || '';
+        const resourcePath = (context && context.resourcePath) || '';
+        const identity = (context && context.identity) || {};
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const $sns = require('../service/sns-service').SNS;
@@ -129,9 +119,51 @@ export const doReportError = async (e: Error, ctx: any, data: any): Promise<stri
         };
 
         //! find target arn.
-        const arn = await helloArn(ctx).catch(e => '');
+        const arn = await getHelloArn(context, NS).catch(() => '');
         _log(NS, `> report-error.arn =`, arn);
         return $sns.reportError(e, payload, arn).then((mid: string) => {
+            _inf(NS, '> err.message-id =', mid);
+            return `${mid}`;
+        });
+    } catch (e2) {
+        _err(NS, '! err-ignored =', e2);
+        return `!err - ${e2.message || e2}`;
+    }
+};
+
+//! report slack body via `lemon-hello-sns`.
+export const doReportSlack = async (channel: string, body: SlackPostBody, context?: any): Promise<string> => {
+    const NS = $U.NS('RPTS');
+    _log(NS, `doReportSlack()...`);
+    //! dispatch invoke conditins.
+    try {
+        const loadJsonSync = require('../tools/shared').loadJsonSync;
+        const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
+        const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
+        const stage = (context && context.stage) || '';
+        const apiId = (context && context.apiId) || '';
+        const domainPrefix = (context && context.domainPrefix) || '';
+        const resourcePath = (context && context.resourcePath) || '';
+        const identity = (context && context.identity) || {};
+
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const $sns = require('../service/sns-service').SNS;
+        if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
+        const param = {};
+
+        //! prepare payload to publish.
+        const payload = {
+            channel,
+            service,
+            param,
+            body,
+            context: { stage, apiId, resourcePath, identity, domainPrefix },
+        };
+
+        //! find target arn.
+        const arn = await getHelloArn(context, NS).catch(() => '');
+        _log(NS, `> report-slack.arn =`, arn);
+        return $sns.publish(arn, 'slack', payload).then((mid: string) => {
             _inf(NS, '> err.message-id =', mid);
             return `${mid}`;
         });

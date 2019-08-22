@@ -73,3 +73,79 @@ export interface WebResult {
  * common Web handler.
  */
 export interface WebHandler extends CoreHandler<WebResult> {}
+
+/**
+ * general message data.
+ */
+export interface GeneralMessage {
+    text?: string;
+    pretext?: string;
+}
+
+/**
+ * Slack Message Format
+ *
+ * ```js
+ * {
+ *   "attachments": [
+ *       {
+ *           "fallback": "Required plain-text summary of the attachment.",
+ *           "color": "#2eb886",
+ *           "pretext": "Optional text that appears above the attachment block",
+ *           "author_name": "Bobby Tables",
+ *           "author_link": "http://flickr.com/bobby/",
+ *           "author_icon": "http://flickr.com/icons/bobby.jpg",
+ *           "title": "Slack API Documentation",
+ *           "title_link": "https://api.slack.com/",
+ *           "text": "Optional text that appears within the attachment",
+ *           "fields": [
+ *               {
+ *                   "title": "Priority",
+ *                   "value": "High",
+ *                   "short": false
+ *               }
+ *           ],
+ *           "image_url": "http://my-website.com/path/to/image.jpg",
+ *           "thumb_url": "http://example.com/path/to/thumb.png",
+ *           "footer": "Slack API",
+ *           "footer_icon": "https://platform.slack-edge.com/img/default_application_icon.png",
+ *           "mrkdwn": true,
+ *           "mrkdwn_in": ['pretext', 'text'],
+ *           "ts": 123456789
+ *       }
+ *   ]
+ * }
+ * ```
+ * see: https://api.slack.com/docs/message-attachments
+ */
+export interface SlackAttachment extends GeneralMessage {
+    fallback?: string;
+    color?: 'good' | 'warning' | 'dange' | string;
+    author_name?: string;
+    author_link?: string;
+    author_icon?: string;
+    title?: string;
+    title_link?: string;
+    image_url?: string;
+    thumb_url?: string;
+    footer?: string;
+    footer_icon?: string;
+    ts?: number;
+    fields?: { title: string; value: string; short?: boolean }[];
+    mrkdwn?: boolean;
+    mrkdwn_in?: string[];
+}
+
+export interface SlackAction {
+    type: 'button';
+    text: string;
+    url?: string;
+    style?: 'primary' | 'danger';
+}
+
+export interface SlackPostBody {
+    text?: string;
+    channel?: string;
+    attachments: SlackAttachment[];
+    actions?: SlackAction[];
+}
