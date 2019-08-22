@@ -109,7 +109,7 @@ const builder: BrokerBuilder<any> = (defType, NS) => {
                     .catch((e: any) => {
                         _err(NS, `! ERR@CALLBACK[${callback}] =`, e);
                         //NOTE! - report error in here.
-                        return doReportError(e, context, { callback, body }).then(() => Promise.reject(e));
+                        return doReportError(e, context, event, { callback, body }).then(() => Promise.reject(e));
                     });
             });
     };

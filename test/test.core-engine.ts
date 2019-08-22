@@ -60,6 +60,52 @@ describe(`test the 'core/engine.ts'`, () => {
         });
     });
 
+    test('check do_parallel() w/ param', (done: any) => {
+        const list = [1, 2, 3, 4, 5, 6].map(n => {
+            return `${n}`;
+        });
+        do_parrallel({ list }, (n, i) => {
+            if (i == 2) throw new Error(`err ${n}`);
+            return `N${n}:${i}`;
+        }).then(_ => {
+            expect(_[0] as any).toEqual('N1:0');
+            expect((_[2] as any).message).toEqual('err 3');
+            done();
+        });
+    });
+
+    test('check do_parallel() w/ param + ignoreError', (done: any) => {
+        const list = [1, 2, 3, 4, 5, 6].map(n => {
+            return `${n}`;
+        });
+        do_parrallel({ list, ignoreError: true }, (n, i) => {
+            if (i == 2) throw new Error(`err ${n}`);
+            return `N${n}:${i}`;
+        }).then(_ => {
+            expect(_[0] as any).toEqual('N1:0');
+            expect(_[2] as any).toEqual('3'); // error ignored. and should get origin 3.
+            done();
+        });
+    });
+
+    test('check do_parallel() w/ param + reportError', (done: any) => {
+        const list = [1, 2, 3, 4, 5, 6].map(n => {
+            return `${n}`;
+        });
+        do_parrallel(
+            { list, ignoreError: true, reportError: false, message: 'test by 6' },
+            (n, i) => {
+                if (i == 2) throw new Error(`err ${n}`);
+                return `N${n}:${i}`;
+            },
+            1,
+        ).then(_ => {
+            expect(_[0] as any).toEqual('N1:0');
+            expect(_[2] as any).toEqual('3'); // error ignored. and should get origin 3.
+            done();
+        });
+    });
+
     //! conv_date()
     test('test conv_date()', () => {
         expect(conv_date2ts(1564711704963)).toEqual('2019-08-02 11:08:24');
