@@ -45,6 +45,11 @@ const do_http = (options: any) => {
     if (!options || !options.uri) return Promise.reject(new Error('invalid options'));
     // const cookies = $cm.prepare(options.uri);
     options.headers = options.headers || {};
+    // _log(NS, '! options =', options);
+    //! preven error `body:null` if json.
+    if (options.json && !options.body) {
+        delete options.body;
+    }
     // options.headers.Cookie = (options.headers.Cookie||'') + (options.headers.Cookie ? '; ':'') + cookies;
     return new Promise((resolve, reject) => {
         _inf(NS, options.method, options.uri);
@@ -54,14 +59,22 @@ const do_http = (options: any) => {
                 return reject(error);
             }
             const ctype = res.headers['content-type'] || '';
+            // _log(NS, '! content-type =', ctype);
             if (
                 ctype.startsWith('application/json') &&
                 typeof body == 'string' &&
                 body.startsWith('{') &&
                 body.endsWith('}')
             ) {
-                resolve(JSON.parse(body));
+                try {
+                    body = JSON.parse(body);
+                    resolve(body);
+                } catch (e) {
+                    _err(NS, '! invalid json body =', body);
+                    reject(e);
+                }
             } else {
+                // _log(NS, '! text body =', body);
                 resolve(body);
             }
         });
