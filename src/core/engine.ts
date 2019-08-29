@@ -23,7 +23,7 @@
  */
 //! import core engine.
 import engine, { LemonEngine } from 'lemon-engine';
-import { WebHandler, WebResult, SlackPostBody } from '../common/types';
+import { WebHandler, WebResult, SlackPostBody, MetricPostBody } from '../common/types';
 
 //! create engine in global scope.
 console.log(`###### load engine. STAGE=${process.env.NAME || ''}#${process.env.STAGE || ''}`);
@@ -129,10 +129,16 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         //! find target arn.
         const arn = await getHelloArn(context, NS).catch(() => '');
         _log(NS, `> report-error.arn =`, arn);
-        return $sns.reportError(e, payload, arn).then((mid: string) => {
-            _inf(NS, '> err.message-id =', mid);
-            return `${mid}`;
-        });
+        return $sns
+            .reportError(e, payload, arn)
+            .then((mid: string) => {
+                _inf(NS, '> err.message-id =', mid);
+                return `${mid}`;
+            })
+            .catch((e: Error) => {
+                _err(NS, '! err.report =', e);
+                return '';
+            });
     } catch (e2) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
@@ -171,10 +177,76 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
         //! find target arn.
         const arn = await getHelloArn(context, NS).catch(() => '');
         _log(NS, `> report-slack.arn =`, arn);
-        return $sns.publish(arn, 'slack', payload).then((mid: string) => {
-            _inf(NS, '> err.message-id =', mid);
-            return `${mid}`;
-        });
+        return $sns
+            .publish(arn, 'slack', payload)
+            .then((mid: string) => {
+                _inf(NS, '> sns.message-id =', mid);
+                return `${mid}`;
+            })
+            .catch((e: Error) => {
+                _err(NS, '! err.slack =', e);
+                return '';
+            });
+    } catch (e2) {
+        _err(NS, '! err-ignored =', e2);
+        return `!err - ${e2.message || e2}`;
+    }
+};
+
+//! report metric body via `lemon-metrics-sns`.
+export const doReportMetric = async (ns: string, id: string, body: MetricPostBody, context?: any): Promise<string> => {
+    const NS = $U.NS('RPTM');
+    //! validate parameters. (see `lemon-metrics-api`)
+    const reNs = /^[a-zA-Z][a-zA-Z0-9]+$/;
+    const reId = /^[a-zA-Z0-9][a-zA-Z0-9_\-]+$/;
+    if (!reNs.test(ns)) throw new Error('Invalid text-format @ns:' + ns);
+    if (!reId.test(id)) throw new Error('Invalid text-format @id:' + id);
+
+    _log(NS, `doReportMetric(${ns},${id})...`);
+    //! dispatch invoke conditins.
+    try {
+        const loadJsonSync = require('../tools/shared').loadJsonSync;
+        const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
+        const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
+        const stage = (context && context.stage) || '';
+        const apiId = (context && context.apiId) || '';
+        const domainPrefix = (context && context.domainPrefix) || '';
+        const resourcePath = (context && context.resourcePath) || '';
+        const identity = (context && context.identity) || {};
+
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const $sns = require('../service/sns-service').SNS;
+        if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
+        const param = { table: ns, id };
+
+        //! prepare payload: `POST /metrics/!/report`
+        const payload = {
+            service,
+            type: 'metrics',
+            method: 'post',
+            id: '!',
+            cmd: 'report',
+            param,
+            body,
+            context: { stage, apiId, resourcePath, identity, domainPrefix },
+        };
+
+        //! find metric-arn via error-arn.
+        const target = 'lemon-metrics-sns';
+        const arn0 = await getHelloArn(context, NS).catch(() => '');
+        // eslint-disable-next-line prettier/prettier
+        const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v,i)=>i==5?target:v).join(':') : arn0;
+        _log(NS, `> report-metric.arn =`, arn);
+        return $sns
+            .publish(arn || target, 'metric', payload)
+            .then((mid: string) => {
+                _inf(NS, '> sns.message-id =', mid);
+                return `${mid}`;
+            })
+            .catch((e: Error) => {
+                _err(NS, '! err.metric =', e);
+                return '';
+            });
     } catch (e2) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
@@ -188,6 +260,7 @@ export interface ApiParam {
     id?: string;
     NS?: string;
     cmd?: string;
+    service?: string;
     headers?: { [key: string]: string };
     param?: { [key: string]: any };
     body?: { [key: string]: any };
@@ -202,6 +275,7 @@ export const executeServiceApi = (args: ApiParam): Promise<any> => {
     const type = args.type || '';
     const id = args.id || '';
     const cmd = args.cmd || '';
+    const service = args.service || '';
     const param = args.param;
     const body = args.body;
     const headers = args.headers;
@@ -225,7 +299,7 @@ export const executeServiceApi = (args: ApiParam): Promise<any> => {
         isBase64Encoded: false,
         stageVariables: null as any,
         requestContext: requestContext,
-        resource: '',
+        resource: { service },
     };
 
     //! execute web-handler. then call callback if required.

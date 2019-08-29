@@ -34,7 +34,11 @@ import multer from 'multer';
 import http from 'http';
 
 //! create Server Instance.
-export const buildExpress = ($engine: LemonEngine, options: any = null) => {
+//NOTE - avoid external reference of type.
+export const buildExpress = (
+    $engine: LemonEngine,
+    options: any = null,
+): { express: () => any; app: any; createServer: () => any; startWSClient: (defType?: string, NS?: string) => any } => {
     if (!$engine) throw new Error('$engine is required!');
     options = options || {};
     /** ****************************************************************************************************************
@@ -74,7 +78,7 @@ export const buildExpress = ($engine: LemonEngine, options: any = null) => {
      *  Initialize Express
      ** ****************************************************************************************************************/
     //! create express app.
-    const app = express();
+    const app: any = express();
     const uploader = multer({ dest: '../tmp/' });
 
     app.use(cors());
