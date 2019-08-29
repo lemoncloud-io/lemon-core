@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.2.12    | support `doReportMetric()` for metrics
 | 1.2.11    | fix cli json body.
 | 1.2.10    | improve `do_parrallel` to report errors.
 | 1.2.9     | feat `doReportSlack` to post slack via `lemon-hello-api`
