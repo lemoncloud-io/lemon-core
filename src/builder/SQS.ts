@@ -91,6 +91,7 @@ const builder: BrokerBuilder<any> = (defType, NS) => {
         const METHOD = `${data.method || 'get'}`.toUpperCase();
         const id = data.id;
         const cmd = data.cmd;
+        const service = data.service;
         const param = data.param || {};
         const body = data.body || '';
 
@@ -104,8 +105,8 @@ const builder: BrokerBuilder<any> = (defType, NS) => {
             body: body,
             isBase64Encoded: false,
             stageVariables: null as any,
-            requestContext: {},
-            resource: '',
+            requestContext: { source: 'SQS' },
+            resource: { service },
         };
 
         //! execute web-handler. then call callback if required.
