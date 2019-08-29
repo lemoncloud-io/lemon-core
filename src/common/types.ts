@@ -149,3 +149,8 @@ export interface SlackPostBody {
     attachments: SlackAttachment[];
     actions?: SlackAction[];
 }
+
+export interface MetricPostBody {
+    meta?: string;
+    [key: string]: string | number | number[];
+}
