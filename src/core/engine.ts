@@ -198,7 +198,7 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
     const NS = $U.NS('RPTM');
     //! validate parameters. (see `lemon-metrics-api`)
     const reNs = /^[a-zA-Z][a-zA-Z0-9]+$/;
-    const reId = /^[a-zA-Z0-9][a-zA-Z0-9_\-]+$/;
+    const reId = /^[a-zA-Z0-9][a-zA-Z0-9_:\-]+$/;
     if (!reNs.test(ns)) throw new Error('Invalid text-format @ns:' + ns);
     if (!reId.test(id)) throw new Error('Invalid text-format @id:' + id);
 
@@ -217,7 +217,7 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const $sns = require('../service/sns-service').SNS;
         if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
-        const param = { table: ns, id };
+        const param = { ns, id };
 
         //! prepare payload: `POST /metrics/!/report`
         const payload = {
