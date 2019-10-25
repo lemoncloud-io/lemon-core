@@ -68,10 +68,14 @@ export const buildExpress = (
 
     //! dynamic loading credentials by profile. (search PROFILE -> NAME)
     (() => {
+        //NOTE! - DO NOT CHANGE CONFIG IN LAMBDA ENV (USE ROLE CONFIG).
+        const ALFN = $engine.environ('AWS_LAMBDA_FUNCTION_NAME', '') as string;
+        if (ALFN) return;
+        //NOTE! - OR, TRY TO LOAD CREDENTIALS BY PROFILE NAME.
         const NAME = $engine.environ('NAME', '') as string;
         const profile = $engine.environ('PROFILE', NAME) as string;
         const credentials = new AWS.SharedIniFileCredentials({ profile });
-        AWS.config.credentials = credentials;
+        if (profile) AWS.config.credentials = credentials;
     })();
 
     /** ****************************************************************************************************************
