@@ -100,10 +100,16 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
     //! ignore only if local express-run.
     if (context && context.source === 'express') return '!ignore';
     const NS = $U.NS('RPTE');
-    _log(NS, `doReportError(${(e && e.message) || e})...`);
+    //TODO - optimize message extractor.
+    const $message = (e: any) => {
+        const m = (e && (e.message || e.statusMessage)) || e;
+        return typeof m == 'object' ? $U.json(m) : `${m}`;
+    };
+    _log(NS, `doReportError(${$message(e)})...`);
 
     //! dispatch invoke conditins.
     try {
+        const message = $message(e);
         const loadJsonSync = require('../tools/shared').loadJsonSync;
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
@@ -121,7 +127,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         //! prepare payload to publish.
         const payload = {
             service,
-            message: `${e.message}`,
+            message,
             context: { stage, apiId, resourcePath, identity, domainPrefix, event },
             data,
         };

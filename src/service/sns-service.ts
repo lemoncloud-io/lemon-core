@@ -164,10 +164,15 @@ export const SNS = new (class implements CoreSnsService {
      * convert Error to payload.
      */
     public asPayload = (e: any, data: string | object) => {
+        //TODO - optimize message extractor.
+        const $message = (e: any) => {
+            const m = (e && (e.message || e.statusMessage)) || e;
+            return typeof m == 'object' ? $U.json(m) : `${m}`;
+        };
         //! prepare payload
         const e2: any = e;
         const base = data && typeof data == 'object' ? data : {};
-        const message = data && typeof data == 'string' ? data : `${e.message || e.statusMessage || ''}`;
+        const message = data && typeof data == 'string' ? data : $message(e);
         const stack = e instanceof Error ? e.stack : undefined;
         const error = typeof e == 'string' ? e : e instanceof Error ? `${e.message}` : JSON.stringify(e);
         const errors = e2.errors || (e2.body && e2.body.errors) || undefined;
@@ -181,7 +186,7 @@ export const SNS = new (class implements CoreSnsService {
         //! root of errors.
         const error0 = (errors && errors[0]) || undefined;
         if (error0) {
-            payload.message = payload.error;
+            payload.message = $message(payload.error);
             payload.error = error0 instanceof Error ? `${e.message}` : JSON.stringify(error0);
         }
 
