@@ -112,12 +112,13 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const message = $message(e);
         const loadJsonSync = require('../tools/shared').loadJsonSync;
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
-        const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
-        const stage = (context && context.stage) || '';
+        const name = (context && context.name) || process.env.NAME || '';
+        const stage = (context && context.stage) || process.env.STAGE || '';
         const apiId = (context && context.apiId) || '';
         const domainPrefix = (context && context.domainPrefix) || '';
         const resourcePath = (context && context.resourcePath) || '';
         const identity = (context && context.identity) || {};
+        const service = `api://${$pack.name || 'lemon-core'}/${name}-${stage}#${$pack.version || '0.0.0'}`;
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const $sns = require('../service/sns-service').SNS;
