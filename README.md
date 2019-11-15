@@ -26,6 +26,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 1.2.16    | improve `doReportError` for service name
 | 1.2.15    | improve `doReportError` with error message
 | 1.2.14    | fix `aws credentials` in lambda.
 | 1.2.13    | fix `doReportMetric()` of param.ns
