@@ -9,8 +9,9 @@
  * $ node . -ep goods -sid marvelfood -cmd sync-list -opt save=0 -page 1
  * ```
  *
- * @author  Steve Jung <steve@lemoncloud.io>
- * @date    2019-08-01 initial optimized via `imweb-forms-api/run.js`
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-01 initial optimized via `imweb-forms-api/run.js`
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */

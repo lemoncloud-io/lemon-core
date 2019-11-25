@@ -2,6 +2,7 @@
  * `engine/types.ts`
  * - Simple Logger with timestamp + color
  *
+ *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2018-05-23 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`

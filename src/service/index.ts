@@ -8,8 +8,9 @@
  * $SVC.S3.putObject(...);
  * ```
  *
- * @author  Steve Jung <steve@lemoncloud.io>
- * @date    2019-08-15 initial export all.
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-15 initial export all.
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */

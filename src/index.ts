@@ -5,8 +5,9 @@
  * **NOTE**
  * - override `process.env` before use(or import) this.
  *
- * @author Steve <steve@lemoncloud.io>
- * @date   2019-08-09 initial commit
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-09 initial commit
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -15,16 +16,3 @@ export * from './common/types';
 export * from './core/engine';
 export * from './tools/';
 // console.log('! core: init index');
-
-//! additional core-services.
-import * as $SVC from './service/';
-
-//! loading additional builders.
-import $WEB from './builder/WEB';
-import $SNS from './builder/SNS';
-import $SQS from './builder/SQS';
-import $WSC from './builder/WSC';
-import $WSS from './builder/WSS';
-
-//! export functions.
-export { $SVC, $WEB, $SNS, $SQS, $WSC, $WSS };

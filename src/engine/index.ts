@@ -1,24 +1,18 @@
-/* eslint-disable prettier/prettier */
-/** ********************************************************************************************************************
- *  boot loading for global instance manager
- ** *******************************************************************************************************************/
 /**
- * main creation function of lemon instance pool (LIP)
+ * `engine/index.tx`
+ * - engine bootloader
  *
  *
- * options : {
- *     name : string    - name of module.
- *     env : object     - environment settings.
- * }
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2018-05-23 initial version
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
- * @param scope         main scope like global, browser, ...
- * @param options       configuration.
+ * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { EngineOption, EngineLogger, EngineConsole, LemonEngine, GeneralFuntion } from './types'
+import { EngineOption, EngineLogger, EngineConsole, LemonEngine, GeneralFuntion } from './types';
 import { Utilities } from './utilities';
-import _ from "lodash";
+import _ from 'lodash';
 export * from './types';
-
 
 /**
  * initialize as EngineInterface
@@ -31,29 +25,32 @@ export * from './types';
  * @param scope         main scope like global, browser, ...
  * @param options       configuration.
  */
-export default function initiate(scope: {_$?: LemonEngine; [key: string]: any } = null, options: EngineOption = {}): LemonEngine {
+export default function initiate(
+    scope: { _$?: LemonEngine; [key: string]: any } = null,
+    options: EngineOption = {},
+): LemonEngine {
     scope = scope || {};
 
     //! load configuration.
     const ROOT_NAME = options.name || 'lemon';
     const STAGE = _environ('STAGE', '');
-    const LS = (_environ('LS', '0') === '1');                                                   // LOG SILENT (NO PRINT LOG)
-    const TS = (_environ('TS', '1') === '1');                                                   // PRINT TIME-STAMP.
-    const LC = (_environ('LC', STAGE === 'local' || STAGE === 'express' ? '1' : '') === '1');   // COLORIZE LOG
+    const LS = _environ('LS', '0') === '1'; // LOG SILENT (NO PRINT LOG)
+    const TS = _environ('TS', '1') === '1'; // PRINT TIME-STAMP.
+    const LC = _environ('LC', STAGE === 'local' || STAGE === 'express' ? '1' : '') === '1'; // COLORIZE LOG
     // console.log('!!!!!!! LS,TS,LC =', LS, TS, LC);
 
     const LEVEL_LOG = '-';
     const LEVEL_INF = 'I';
     const LEVEL_ERR = 'E';
 
-    const RED = "\x1b[31m";
-    const BLUE = "\x1b[32m";
-    const YELLOW = "\x1b[33m";
-    const RESET = "\x1b[0m";
+    const RED = '\x1b[31m';
+    const BLUE = '\x1b[32m';
+    const YELLOW = '\x1b[33m';
+    const RESET = '\x1b[0m';
 
-    function _environ(name: string, defVal: any){
+    function _environ(name: string, defVal: any) {
         // as default, load from proces.env.
-        const env =  options.env || (process && process.env) || {};
+        const env = options.env || (process && process.env) || {};
         const val = env[name];
         // throw Error if value is not set.
         if (defVal && defVal instanceof Error && val === undefined) throw defVal;
@@ -73,31 +70,44 @@ export default function initiate(scope: {_$?: LemonEngine; [key: string]: any } 
         log: LS ? silent : console.log,
         error: LS ? silent : console.error,
         auto_ts: TS,
-        auto_color: LC
+        auto_color: LC,
     };
-    const _log: EngineLogger = function () {
-        let args = !Array.isArray(arguments) && Array.prototype.slice.call(arguments) || arguments;
-        if ($console.auto_color) args.unshift(RESET), $console.auto_ts && args.unshift(_ts(), LEVEL_LOG) || args.unshift(LEVEL_LOG), args.unshift(BLUE);
+    /* eslint-disable @typescript-eslint/indent */
+    const _log: EngineLogger = function() {
+        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        if ($console.auto_color)
+            args.unshift(RESET),
+                ($console.auto_ts && args.unshift(_ts(), LEVEL_LOG)) || args.unshift(LEVEL_LOG),
+                args.unshift(BLUE);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_LOG);
-        return $console.log.apply($console.thiz, args)
-    }
-    const _inf: EngineLogger = function () {
-        let args = !Array.isArray(arguments) && Array.prototype.slice.call(arguments) || arguments;
-        if ($console.auto_color) args.unshift(""), args.push(RESET), $console.auto_ts && args.unshift(_ts(), LEVEL_INF) || args.unshift(LEVEL_INF), args.unshift(YELLOW);
+        return $console.log.apply($console.thiz, args);
+    };
+    const _inf: EngineLogger = function() {
+        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        if ($console.auto_color)
+            args.unshift(''),
+                args.push(RESET),
+                ($console.auto_ts && args.unshift(_ts(), LEVEL_INF)) || args.unshift(LEVEL_INF),
+                args.unshift(YELLOW);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_INF);
-        return $console.log.apply($console.thiz, args)
-    }
-    const _err: EngineLogger = function () {
-        let args = !Array.isArray(arguments) && Array.prototype.slice.call(arguments) || arguments;
-        if ($console.auto_color) args.unshift(""), args.push(RESET), $console.auto_ts && args.unshift(_ts(), LEVEL_ERR) || args.unshift(LEVEL_ERR), args.unshift(RED);
+        return $console.log.apply($console.thiz, args);
+    };
+    const _err: EngineLogger = function() {
+        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        if ($console.auto_color)
+            args.unshift(''),
+                args.push(RESET),
+                ($console.auto_ts && args.unshift(_ts(), LEVEL_ERR)) || args.unshift(LEVEL_ERR),
+                args.unshift(RED);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_ERR);
-        return $console.error.apply($console.thiz, args)
-    }
+        return $console.error.apply($console.thiz, args);
+    };
+    /* eslint-enable @typescript-eslint/indent */
 
     //! create root instance to manage global objects.
-    const createEngine = (): LemonEngine =>{
+    const createEngine = (): LemonEngine => {
         //! avoid type check error.
-        const $engine: LemonEngine = new class implements LemonEngine{
+        const $engine: LemonEngine = new (class implements LemonEngine {
             public readonly STAGE: string = STAGE;
             public readonly id: string = ROOT_NAME;
             public readonly log: GeneralFuntion = _log;
@@ -108,12 +118,15 @@ export default function initiate(scope: {_$?: LemonEngine; [key: string]: any } 
             public readonly $console: EngineConsole = $console;
             public ts: (date?: number | Date, timeZone?: number) => string = _ts;
             public dt: (time?: string | number | Date, timeZone?: number) => Date = Utilities.datetime;
-            public environ: (name: string, defValue?: string | number | boolean) => string | number | boolean = _environ;
+            public environ: (
+                name: string,
+                defValue?: string | number | boolean,
+            ) => string | number | boolean = _environ;
             public toString = () => `${ROOT_NAME}`;
-            public constructor(){
+            public constructor() {
                 this.U = new Utilities(this);
             }
-        };
+        })();
         //! start initialization only if making $engine.
         STAGE && _inf('#STAGE =', STAGE);
 
@@ -122,7 +135,7 @@ export default function initiate(scope: {_$?: LemonEngine; [key: string]: any } 
 
         //! returns.
         return $engine;
-    }
+    };
 
     //! reuse via scope or build new.
     const $engine: LemonEngine = scope._$ || createEngine();

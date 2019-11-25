@@ -3,8 +3,9 @@
  * - common S3 services.
  *
  *
- * @author  Steve <steve@lemoncloud.io>
- * @date    2019-07-19 initial version
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-07-19 initial version
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -13,7 +14,6 @@
  ** ****************************************************************************************************************/
 //! import core engine.
 import { $U, _log, _inf, _err } from '../core/engine';
-import { EnginePluggable } from 'lemon-engine';
 import { environ, region } from './';
 import AWS from 'aws-sdk';
 import { v4 } from 'uuid';
@@ -26,7 +26,7 @@ export interface TagSet {
     [key: string]: string;
 }
 
-export interface CoreS3Service extends EnginePluggable {
+export interface CoreS3Service {
     hello: () => { hello: string };
     bucket: (target?: string) => Promise<string>;
     putObject: (

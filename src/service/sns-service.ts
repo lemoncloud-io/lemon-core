@@ -3,8 +3,9 @@
  * - encrypt/decrypt service api with KMS
  *
  *
- * @author  Steve <steve@lemoncloud.io>
- * @date    2019-07-19 initial version
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-07-19 initial version
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -12,8 +13,7 @@
  *  Common Headers
  ** ****************************************************************************************************************/
 //! import core engine.
-import { $engine, $U, _log, _inf, _err } from '../core/engine';
-import { EnginePluggable } from 'lemon-engine';
+import { $U, _log, _inf, _err } from '../core/engine';
 import { environ, region } from './';
 import AWS from 'aws-sdk';
 
@@ -21,7 +21,7 @@ import AWS from 'aws-sdk';
 const name = 'SNS';
 const NS = $U.NS(name, 'blue');
 
-export interface CoreSnsService extends EnginePluggable {
+export interface CoreSnsService {
     hello: () => { hello: string };
     endpoint: (name: string) => Promise<string>;
     accountID: () => Promise<string>;

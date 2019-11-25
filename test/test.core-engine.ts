@@ -8,7 +8,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { do_parrallel } from '../src/core/engine';
-import { conv_date, conv_date2time, conv_date2ts } from '../src/core/engine';
+import { convDate, conv_date2time, conv_date2ts } from '../src/core/engine';
 import { doReportError } from '../src/';
 
 //! build context.
@@ -110,7 +110,7 @@ describe(`test the 'core/engine.ts'`, () => {
     test('test conv_date()', () => {
         expect(conv_date2ts(1564711704963)).toEqual('2019-08-02 11:08:24');
         expect(conv_date2time('2019-08-02 11:08:24')).toEqual(1564711704000);
-        expect(conv_date('2019-08-02 11:08:24').getTime()).toEqual(1564711704000);
+        expect(convDate('2019-08-02 11:08:24').getTime()).toEqual(1564711704000);
     });
 
     //! doReportError()

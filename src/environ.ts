@@ -9,8 +9,9 @@
  * const $env = environ(process)
  * ```
  *
- * @author       Steve Jung <steve@lemoncloud.io>
- * @date         2019-08-09 initial typescript version.
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-09 initial typescript version.
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
