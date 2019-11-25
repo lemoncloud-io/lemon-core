@@ -8,7 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { EngineCore, GeneralFuntion } from '../common/types';
+import { EngineCore, GeneralFuntion } from './types';
 const NS = 'util';
 
 export class Utilities {
@@ -499,7 +499,7 @@ export class Utilities {
 
     //! start promise chain.
     public promise(param: any) {
-        return new Promise(function(resolve, reject) {
+        return new Promise(function(resolve) {
             resolve(param);
         });
     }

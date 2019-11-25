@@ -14,10 +14,10 @@
  * @param scope         main scope like global, browser, ...
  * @param options       configuration.
  */
-import { EngineOption, EngineLogger, EngineConsole, LemonEngine, GeneralFuntion } from './common/types'
-import { Utilities } from './core/utilities';
-import * as _ from "lodash";
-export * from './common/types';
+import { EngineOption, EngineLogger, EngineConsole, LemonEngine, GeneralFuntion } from './types'
+import { Utilities } from './utilities';
+import _ from "lodash";
+export * from './types';
 
 
 /**
@@ -75,19 +75,19 @@ export default function initiate(scope: {_$?: LemonEngine; [key: string]: any } 
         auto_ts: TS,
         auto_color: LC
     };
-    const _log: EngineLogger = function (...arg: any[]) {
+    const _log: EngineLogger = function () {
         let args = !Array.isArray(arguments) && Array.prototype.slice.call(arguments) || arguments;
         if ($console.auto_color) args.unshift(RESET), $console.auto_ts && args.unshift(_ts(), LEVEL_LOG) || args.unshift(LEVEL_LOG), args.unshift(BLUE);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_LOG);
         return $console.log.apply($console.thiz, args)
     }
-    const _inf: EngineLogger = function (...arg: any[]) {
+    const _inf: EngineLogger = function () {
         let args = !Array.isArray(arguments) && Array.prototype.slice.call(arguments) || arguments;
         if ($console.auto_color) args.unshift(""), args.push(RESET), $console.auto_ts && args.unshift(_ts(), LEVEL_INF) || args.unshift(LEVEL_INF), args.unshift(YELLOW);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_INF);
         return $console.log.apply($console.thiz, args)
     }
-    const _err: EngineLogger = function (...arg: any[]) {
+    const _err: EngineLogger = function () {
         let args = !Array.isArray(arguments) && Array.prototype.slice.call(arguments) || arguments;
         if ($console.auto_color) args.unshift(""), args.push(RESET), $console.auto_ts && args.unshift(_ts(), LEVEL_ERR) || args.unshift(LEVEL_ERR), args.unshift(RED);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_ERR);

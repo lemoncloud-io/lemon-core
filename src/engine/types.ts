@@ -8,15 +8,20 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { Utilities } from '../core/utilities';
+import { Utilities } from './utilities';
 
+/**
+ * class: `GeneralFuntion`
+ * - general function
+ */
 export interface GeneralFuntion {
     (...arg: any[]): any;
 }
-export interface GeneralOptions {
-    [key: string]: any;
-}
 
+/**
+ * class: `EngineCore`
+ * - core part of engine.
+ */
 export interface EngineCore {
     /**
      * print debug log
@@ -44,6 +49,10 @@ export interface EngineCore {
     environ: (name: string, defValue?: string | boolean | number | undefined) => string | boolean | number | undefined;
 }
 
+/**
+ * class: `LemonEngine`
+ * - core part of lemon-engine.
+ */
 export interface LemonEngine extends EngineCore {
     // (name: string, opts: any): any;
     STAGE: string;
@@ -53,15 +62,21 @@ export interface LemonEngine extends EngineCore {
     $console: EngineConsole;
 }
 
+/**
+ * class: `EngineOption`
+ * - creation options
+ */
 export interface EngineOption {
     name?: string;
     env?: { [key: string]: string };
 }
 
-export interface EngineLogger {
-    (...arg: any[]): void;
-}
+export type EngineLogger = GeneralFuntion;
 
+/**
+ * class: `EngineConsole`
+ * - general console.
+ */
 export interface EngineConsole {
     thiz: any;
     log: EngineLogger;

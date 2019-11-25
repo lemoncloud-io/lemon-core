@@ -72,7 +72,7 @@ const RESET = '\x1b[0m';
 const $console = { thiz: console, log: console.log, error: console.error || console.log, auto_ts: TS, auto_color: LC };
 
 //! log normal
-export const _log = function(...arg: any[]) {
+export const _log = function() {
     let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
     if ($console.auto_color) {
         args.unshift(RESET);
@@ -85,7 +85,7 @@ export const _log = function(...arg: any[]) {
 };
 
 //! inf with highlight
-export const _inf = function(...arg: any[]) {
+export const _inf = function() {
     let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
     if ($console.auto_color) {
         args.unshift('');
@@ -99,7 +99,7 @@ export const _inf = function(...arg: any[]) {
 };
 
 //! err in warning.
-export const _err = function(...arg: any[]) {
+export const _err = function() {
     let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
     if ($console.auto_color) {
         args.unshift('');
