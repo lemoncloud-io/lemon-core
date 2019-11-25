@@ -1,9 +1,11 @@
 /**
- * logger.ts
+ * `engine/logger.ts`
  * - Simple Logger with timestamp + color
  *
- * @author steve@lemoncloud.io
- * @date   2019-05-23
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2018-05-23 initial version
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 const options = { env: {} as any };

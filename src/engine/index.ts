@@ -14,33 +14,11 @@
  * @param scope         main scope like global, browser, ...
  * @param options       configuration.
  */
-import { EnginePluggable, EngineOption, EngineLogger, EngineConsole, LemonEngine } from './common/types'
+import { EngineOption, EngineLogger, EngineConsole, LemonEngine, GeneralFuntion } from './common/types'
 import { Utilities } from './core/utilities';
 import * as _ from "lodash";
 export * from './common/types';
 
-//! load common services....
-import buildModel, { LemonEngineModel } from './core/lemon-engine-model';
-
-import httpProxy, { HttpProxy } from './plugins/http-proxy';
-import webProxy, { WebProxy } from './plugins/web-proxy';
-import mysql, { MysqlProxy } from './plugins/mysql-proxy';
-import dynamo, { DynamoProxy } from './plugins/dynamo-proxy';
-import redis, { RedisProxy } from './plugins/redis-proxy';
-import elastic6, { Elastic6Proxy } from './plugins/elastic6-proxy';
-import s3, { S3Proxy } from './plugins/s3-proxy';
-import sqs, { SQSProxy } from './plugins/sqs-proxy';
-import sns, { SNSProxy } from './plugins/sns-proxy';
-import ses, { SESProxy } from './plugins/ses-proxy';
-import cognito, { CognitoProxy } from './plugins/cognito-proxy';
-import lambda, { LambdaProxy } from './plugins/lambda-proxy';
-import protocol, { ProtocolProxy } from './plugins/protocol-proxy';
-import cron, { CronProxy } from './plugins/cron-proxy';
-import agw, { AGWProxy } from './plugins/agw-proxy';
-
-export { LemonEngineModel, MysqlProxy, DynamoProxy, RedisProxy, Elastic6Proxy }
-export { HttpProxy, WebProxy, S3Proxy, SQSProxy, SNSProxy, SESProxy }
-export { CognitoProxy, LambdaProxy, ProtocolProxy, CronProxy, AGWProxy }
 
 /**
  * initialize as EngineInterface
@@ -115,99 +93,31 @@ export default function initiate(scope: {_$?: LemonEngine; [key: string]: any } 
         else $console.auto_ts && args.unshift(_ts(), LEVEL_ERR);
         return $console.error.apply($console.thiz, args)
     }
-    const _extend = (opt: any, opts: any) => {      // simple object extender.
-        for (let k in opts) {
-            let v = opts[k];
-            if (v === undefined) delete opt[k];
-            else opt[k] = v;
-        }
-        return opt;
-    }
 
     //! create root instance to manage global objects.
-    const $engineBuilder = (): LemonEngine =>{
-        //! engine base function.
-        const $engineBase = function(name: string, service: EnginePluggable): EnginePluggable {                                // global identifier.
-            if (!name) return;
-            const thiz: any = $engine;
-            let org = typeof thiz.$plugins[name] !== 'undefined' ? thiz.$plugins[name] : undefined;
-            if (!service) return org;
-            if (org === undefined) {
-                _log(`INFO! service[${name}] registered`);
-                thiz.$plugins[name] = service;
-                return service;
-            } else if (true) {
-                //! ignore if duplicated >2.2.3
-                // _log(`WARN! service[${name}] duplicated!`);
-                return org;
-            } else {
-                //! extends options.
-                _inf(`WARN! service[${name}] extended.`);
-                org = _extend(org, service);
-                thiz.$plugins[name] = org;
-                return org;
+    const createEngine = (): LemonEngine =>{
+        //! avoid type check error.
+        const $engine: LemonEngine = new class implements LemonEngine{
+            public readonly STAGE: string = STAGE;
+            public readonly id: string = ROOT_NAME;
+            public readonly log: GeneralFuntion = _log;
+            public readonly inf: GeneralFuntion = _inf;
+            public readonly err: GeneralFuntion = _err;
+            public readonly U: Utilities;
+            public readonly _: any = _;
+            public readonly $console: EngineConsole = $console;
+            public ts: (date?: number | Date, timeZone?: number) => string = _ts;
+            public dt: (time?: string | number | Date, timeZone?: number) => Date = Utilities.datetime;
+            public environ: (name: string, defValue?: string | number | boolean) => string | number | boolean = _environ;
+            public toString = () => `${ROOT_NAME}`;
+            public constructor(){
+                this.U = new Utilities(this);
             }
         };
-
-        //! avoid type check error.
-        const $engine: LemonEngine = $engineBase as LemonEngine;
-
-        //! register into _$(global instance manager).
-        $engine.STAGE = STAGE;
-        $engine.id = ROOT_NAME;
-        $engine.log = _log;
-        $engine.inf = _inf;
-        $engine.err = _err;
-        $engine.extend = _extend;
-        $engine.ts = _ts;
-        $engine.dt = Utilities.datetime;
-        $engine._ = _;
-        $engine.environ = _environ;
-        $engine.$console = $console; // '$' means object. (change this in order to override log/error message handler)
-        $engine.$plugins = {};
-        $engine.toString = () => `${ROOT_NAME}`;
-
-        const $U = new Utilities($engine);
-        $engine.U = $U;
-
-        //! make http-proxy.
-        $engine.createHttpProxy = (name, options) => {
-            return httpProxy($engine, name, options);
-        };
-
-        //! make web-proxy
-        $engine.createWebProxy = (name: string, options?: {headers: any}) => {
-            return webProxy($engine, name, options);
-        }
-
-        //! model builder.
-        $engine.createModel = (name: string, option: any) => {
-            return buildModel($engine, name, option);
-        }
-
         //! start initialization only if making $engine.
         STAGE && _inf('#STAGE =', STAGE);
 
-        //! use base BACKBONE endpoint.
-        const BACKBONE = $engine.environ('BACKBONE_API', $engine.environ('BACKBONE-API', ''));
-        BACKBONE && _inf('#BACKBONE =', BACKBONE);
-        const ep = (name: string)=> (BACKBONE && `${BACKBONE}/${name}`) || '';
-
         //! load common services....
-        mysql($engine, 'MS', ep('mysql'));           // load service, and register as 'MS'
-        dynamo($engine, 'DS', ep('dynamo'));         // load service, and register as 'DS'
-        redis($engine, 'RS', ep('redis'));           // load service, and register as 'RS'
-        elastic6($engine, 'ES6', ep('elastic6'));    // load service, and register as 'ES6'
-        s3($engine, 'S3', ep('s3'));                 // load service, and register as 'S3'
-        sqs($engine, 'SS', ep('sqs'));               // load service, and register as 'SS'
-        sns($engine, 'SN', ep('sns'));               // load service, and register as 'SN'
-        ses($engine, 'SE', ep('ses'));               // load service, and register as 'SE'
-        webProxy($engine, 'WS', ep('web'));          // load service, and register as 'WS'
-        cognito($engine, 'CS', ep('cognito'));       // load service, and register as 'CS'
-        lambda($engine, 'LS', ep('lambda'));         // load service, and register as 'LS'
-        protocol($engine, 'PR', ep('protocol'));     // load service, and register as 'PR'
-        cron($engine, 'CR', ep('cron'));             // load service, and register as 'CR'
-        agw($engine, 'AG', ep('agw'));               // load service, and register as 'AG'
         _inf(`! engine[${ROOT_NAME}] service ready !`);
 
         //! returns.
@@ -215,7 +125,7 @@ export default function initiate(scope: {_$?: LemonEngine; [key: string]: any } 
     }
 
     //! reuse via scope or build new.
-    const $engine: LemonEngine = scope._$ || $engineBuilder();
+    const $engine: LemonEngine = scope._$ || createEngine();
 
     //! register as global instances.
     scope._log = scope._log || _log;

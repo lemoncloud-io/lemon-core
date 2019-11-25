@@ -1,14 +1,14 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
-/* eslint-disable prettier/prettier */
 /**
- * utilities.ts
- * - common utility
+ * `engine/utilities.ts`
+ * - Simple Logger with timestamp + color
  *
- * @author steve@lemoncloud.io
- * @date   2019-05-23
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2018-05-23 initial version
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { EngineCore, GeneralFuntion } from '../common/types'
+import { EngineCore, GeneralFuntion } from '../common/types';
 const NS = 'util';
 
 export class Utilities {
@@ -17,14 +17,14 @@ export class Utilities {
     private err: GeneralFuntion;
     private name: string;
 
-    public constructor (_$: EngineCore){
+    public constructor(_$: EngineCore) {
         this._$ = _$;
         this.log = _$.log;
         this.err = _$.err;
         this.name = `${NS}-utils`;
     }
 
-    protected lodash(){
+    protected lodash() {
         // use underscore util.
         const $_ = this._$._;
         if (!$_) throw new Error('$_(lodash) is required!');
@@ -59,8 +59,11 @@ export class Utilities {
     public load_data_csv(name: string) {
         if (!name) throw new Error('param:name is required!');
 
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const fs = require('fs');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const parse = require('csv-parse');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const path = require('path');
 
         //! calculate the target data file.
@@ -84,8 +87,11 @@ export class Utilities {
     public load_data_yaml(name: any) {
         if (!name) throw new Error('param:name is required!');
 
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const fs = require('fs');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const path = require('path');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const yaml = require('js-yaml');
 
         //! calculate the target data file.
@@ -108,8 +114,11 @@ export class Utilities {
     public load_sync_yaml(name: string) {
         if (!name) throw new Error('param:name is required!');
 
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const fs = require('fs');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const path = require('path');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const yaml = require('js-yaml');
 
         //! calculate the target data file.
@@ -168,7 +177,7 @@ export class Utilities {
     public static timestamp(date?: undefined | number | Date, timeZone?: number): string {
         const dt = date && typeof date === 'object' ? date : date ? new Date(date) : new Date();
         const now = new Date();
-        const tzo = now.getTimezoneOffset();    // Asia/Seoul => -540
+        const tzo = now.getTimezoneOffset(); // Asia/Seoul => -540
         const diff = timeZone * 60 + tzo;
         if (diff) dt.setSeconds(dt.getSeconds() + 1 * diff * 60);
 
@@ -182,18 +191,7 @@ export class Utilities {
 
         const d2 = (x: number) => `${x < 10 ? '0' : ''}${x}`;
 
-        const ret =
-            d2(y) +
-            '-' +
-            d2(m) +
-            '-' +
-            d2(d) +
-            ' ' +
-            d2(h) +
-            ':' +
-            d2(i) +
-            ':' +
-            d2(s);
+        const ret = d2(y) + '-' + d2(m) + '-' + d2(d) + ' ' + d2(h) + ':' + d2(i) + ':' + d2(s);
         return ret;
     }
 
@@ -233,7 +231,7 @@ export class Utilities {
                     dt.substr(11, 2) +
                     ':00';
             }
-            ret = ((ts: string)=>{
+            ret = ((ts: string) => {
                 if (!ts) return null;
                 const aa = ts.split(' ');
                 const dd = aa[0].split('-');
@@ -245,14 +243,14 @@ export class Utilities {
                 const i = parseInt(hh[1]);
                 const s = parseInt(hh[2]);
                 return new Date(y, m, d, h, i, s, 0);
-            })(tstr)
+            })(tstr);
             if (ret && diff) ret.setSeconds(ret.getSeconds() + -1 * diff * 60);
             return ret;
         } else if (typeof dt == 'number') {
             ret = new Date(dt);
         } else if (typeof dt == 'object' && (dt as any) instanceof Date) {
             ret = dt;
-        } else if (dt === undefined){
+        } else if (dt === undefined) {
             ret = new Date();
         } else {
             throw new Error('Invalid type of dt: ' + typeof dt);
@@ -267,7 +265,7 @@ export class Utilities {
         return Utilities.datetime(dt, timeZone);
     }
 
-    public now(){
+    public now() {
         return this.dt();
     }
 
@@ -517,6 +515,7 @@ export class Utilities {
     }
 
     public md5(data: any, digest: any) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const crypto = require('crypto');
         digest = digest === undefined ? 'hex' : digest;
         return crypto
@@ -526,6 +525,7 @@ export class Utilities {
     }
 
     public hmac(data: any, KEY: any, algorithm: any, encoding: any) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const crypto = require('crypto');
         KEY = KEY || 'XENI';
         encoding = encoding || 'base64';
@@ -537,6 +537,7 @@ export class Utilities {
     }
 
     public qs_parse(query: any) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const QUERY_STRING = require('query-string');
         const param = QUERY_STRING.parse(query);
         Object.keys(param).forEach(key => {
@@ -555,10 +556,11 @@ export class Utilities {
     }
 
     public qs_stringify(query: string) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const QUERY_STRING = require('query-string');
         const param = QUERY_STRING.stringify(query);
         return param;
     }
-};
+}
 
 export default Utilities;
