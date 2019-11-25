@@ -1,11 +1,10 @@
 {
   "name": "lemon-core",
   "version": "1.2.16",
-  "description": "Lemon Core Bootloader with lemon-engine",
+  "description": "Lemon Core Bootloader for Serverless Micro-Service",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "!": "------------------------------------------------------------",
     "build": "npm run build-ts",
     "build-ts": "tsc",
     "watch-ts": "tsc -w",
@@ -24,8 +23,7 @@
     "!release": "---- release with standard -----",
     "release": "standard-version",
     "release.first": "npm run release --first-release",
-    "release.minor": "npm run release --release-as minor",
-    "-": "------------------------------------------------------------"
+    "release.minor": "npm run release --release-as minor"
   },
   "husky": {
     "hooks": {
@@ -44,7 +42,7 @@
   "engines": {
     "node": ">=10.0.0"
   },
-  "author": "Steve Jung (steve@lemoncloud.io)",
+  "author": "Steve Jung <steve@lemoncloud.io>",
   "license": "MIT",
   "dependencies": {
     "aws-sdk": "^2.578.0",
@@ -53,11 +51,9 @@
     "express": "^4.16.4",
     "js-yaml": "^3.13.1",
     "multer": "^1.4.1",
-    "nanoid": "^2.1.7",
     "request": "^2.88.0",
     "source-map-support": "^0.5.16",
-    "uuid": "^3.3.3",
-    "ws": "^7.2.0"
+    "uuid": "^3.3.3"
   },
   "devDependencies": {
     "@types/aws-serverless-express": "^3.3.2",
@@ -67,12 +63,10 @@
     "@types/js-yaml": "^3.12.1",
     "@types/lodash": "^4.14.149",
     "@types/multer": "^1.3.10",
-    "@types/nanoid": "^2.1.0",
     "@types/request": "^2.48.3",
     "@types/supertest": "^2.0.7",
     "@types/uuid": "^3.4.6",
     "@types/winston": "^2.4.4",
-    "@types/ws": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^1.7.0",
     "@typescript-eslint/parser": "^1.7.0",
     "codecov": "^3.6.1",
@@ -103,7 +97,8 @@
   },
   "keywords": [
     "lemoncloud",
-    "lemon-core"
+    "lemon-core",
+    "serverless"
   ],
   "bugs": {
     "url": "https://github.com/lemoncloud-io/lemon-core/issues"

@@ -159,10 +159,9 @@ export const buildExpress = (
         // _inf(NS, '! express.keys =', keys);
         return keys
             .filter(isValidName)
-            .filter(_ => typeof API(_) === 'function')
             .map(name => {
                 // must be valid name && function.
-                const main = API(name);
+                const main = $conf(name);
                 const type = `${name}`.split('_').join('-'); // change '_' to '-'.
                 if (typeof main !== 'function') throw new Error(`.${name} should be function. but:` + typeof main);
                 //! handle request to handler.

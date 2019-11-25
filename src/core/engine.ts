@@ -328,7 +328,7 @@ export const do_parrallel = <T, U>(
 export const DEFAULT_TIME_ZONE = 9;
 
 //! convert to date of input.
-export const conv_date = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT_TIME_ZONE);
+export const convDate = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT_TIME_ZONE);
 
 /**
  * Convert input to time value (in number)
@@ -336,9 +336,9 @@ export const conv_date = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT
  * @param {*} dt    see `conv_date()`
  * @param {*} name  name of property
  */
-export const conv_date2time = (dt: string | number | Date) => {
+export const convDateToTime = (dt: string | number | Date) => {
     if (dt === '' || dt === '0' || dt === 0) return 0; // 0 means null (not-set)
-    const t = conv_date(dt);
+    const t = convDate(dt);
     return t.getTime();
 };
 
@@ -348,7 +348,7 @@ export const conv_date2time = (dt: string | number | Date) => {
  *
  * @param {*} dt
  */
-export const conv_date2ts = (dt: string | number | Date) => {
-    const t = conv_date(dt);
+export const convDateToTS = (dt: string | number | Date) => {
+    const t = convDate(dt);
     return $U.ts(t, DEFAULT_TIME_ZONE);
 };

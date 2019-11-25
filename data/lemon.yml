@@ -7,8 +7,6 @@ default_env: &default_env
   LC: 1                   # line-coloring
   TS: 1                   # time-stamp in line
   NAME: 'lemon'           # profile name.
-  # use common backbone server (local)
-  BACKBONE_API:  'http://localhost:8081'
 
 #-----------------------------------
 # local development configuration.
@@ -25,8 +23,6 @@ local:
 dev:
   <<: *default_env
   STAGE: 'develop'
-  # use common backbone server (dev api)
-  BACKBONE_API:  'http://idev.lemoncloud.io:8081'
 
 #-----------------------------------
 # production with AWS deploy
@@ -34,5 +30,3 @@ prod:
   <<: *default_env
   STAGE: 'production'
   TS: 0
-  # use common backbone server (internal alb)
-  BACKBONE_API:  'http://i.lemoncloud.io:8081'
