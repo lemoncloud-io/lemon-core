@@ -51,8 +51,8 @@ export const notfound = (body: any) => {
     return buildResponse(404, body);
 };
 
-export const failure = (body: any) => {
-    return buildResponse(503, body);
+export const failure = (body: any, status?: number) => {
+    return buildResponse(status === undefined ? 503 : status, body);
 };
 
 /** ********************************************************************************************************************
@@ -115,6 +115,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
      */
     public handle: WEBHandler = async (event, context) => {
         // const _log = console.log;
+        // const _err = console.error;
         //! API parameters.
         _log(NS, `handle()....`);
         // _log(NS, '! event =', $U.json(event));
@@ -164,8 +165,9 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
                 return success(_);
             })
             .catch((e: any) => {
-                _err(NS, `! err[${MODE} /${TYPE}/${ID}/${CMD}] =`, typeof e, e);
+                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].err =`, typeof e, e);
                 const message = `${e.message || e.reason || $U.json(e)}`;
+                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].msg =`, message);
                 if (message.startsWith('404 NOT FOUND')) {
                     return notfound(message);
                 }
@@ -174,6 +176,11 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
                     return doReportError(e, context, event).then(() => {
                         return failure(e instanceof Error ? message : e);
                     });
+                }
+                //! common format of error.
+                if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
+                    const status = $U.N(message.substring(0, 3), 0);
+                    return failure(message, status);
                 }
                 //! send failure.
                 return failure(e instanceof Error ? message : e);

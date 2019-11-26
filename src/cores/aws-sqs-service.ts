@@ -78,7 +78,8 @@ export class AWSSQSService implements SQSService {
         region = region || ($engine.environ(AWSSQSService.SQS_REGION, 'ap-northeast-2') as string) || '';
         endpoint = endpoint || ($engine.environ(AWSSQSService.SQS_ENDPOINT, '') as string) || '';
         const stage = $engine.environ('STAGE', '') as string;
-        if (!endpoint && stage != 'local') throw new Error(`env.${AWSSQSService.SQS_ENDPOINT} is required!`);
+        if (!endpoint && stage != 'local')
+            throw new Error(`env.${AWSSQSService.SQS_ENDPOINT} is required w/ stage:${stage}`);
         _log(NS, `AWSSQSService(${endpoint}, ${region})...`);
         this._region = region;
         this._endpoint = endpoint;

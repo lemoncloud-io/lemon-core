@@ -7,12 +7,14 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { expect2 } from './common/test-helper';
 import loadEnviron from './environ';
 
 const safe = (f: () => {}) => {
     try {
         return f();
     } catch (e) {
+        // console.error('! err =', e);
         return e;
     }
 };
@@ -27,16 +29,16 @@ const $environ = (env: any): any => {
             }, {})) ||
         env;
     const proc = { env };
-    const opt = { ENV_PATH: 1 ? './data' : __dirname + '/../data' };
+    const opt = { ENV_PATH: 1 ? './env' : __dirname + '/../env' };
     return safe(() => loadEnviron(proc, opt));
 };
 
 describe(`test the 'environ.ts'`, () => {
     test('check basic environ()', () => {
         const $conf = $environ({ LS: 1, ENV: 'lemon', NODE_ENV: 'prod' });
-        expect($conf.NAME).toEqual('lemon');
-        expect($conf.STAGE).toEqual('production');
-        expect($conf.TS).toEqual('0');
+        expect2($conf, 'NAME').toEqual({ NAME: 'lemon' });
+        expect2($conf, 'STAGE').toEqual({ STAGE: 'production' });
+        expect2($conf, 'TS').toEqual({ TS: '0' });
     });
 
     test('check file error', () => {

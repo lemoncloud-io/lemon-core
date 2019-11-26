@@ -39,8 +39,9 @@ export const credentials = async (profile: string) => {
 };
 
 //! load yml data via './data/<file>.yml'
-export const loadDataYml = (file: string) => {
-    const path = `${'./data/'}` + file + (file.endsWith('.yml') ? '' : '.yml');
+export const loadDataYml = (file: string, folder?: string) => {
+    folder = folder || 'data';
+    const path = `./${folder}/` + file + (file.endsWith('.yml') ? '' : '.yml');
     if (!fs.existsSync(path)) throw new Error('404 NOT FOUND - data-file:' + path);
     return yaml.safeLoad(fs.readFileSync(path, 'utf8'));
 };

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 /**
  * Express Server Application.
  * - standalone http service with express.
@@ -105,14 +104,18 @@ export const buildExpress = (
         };
         const context = { source: 'express' };
         const callback = (err: any, data: any) => {
+            err && _err(NS, '! err@callback =', err);
             let contentType = null;
             if (data.headers) {
                 Object.keys(data.headers).map(k => {
-                    if (`${k}`.toLowerCase() == 'content-type') contentType = data.headers[k];
-                    res.setHeader(k, data.headers[k]);
+                    if (`${k}`.toLowerCase() == 'content-type') {
+                        contentType = data.headers[k];
+                    } else {
+                        res.setHeader(k, data.headers[k]);
+                    }
                 });
             }
-            const statusCode: number = (data && data.statusCode) || 200;
+            const statusCode: number = (data && data.statusCode) || (err ? 503 : 200);
             res.setHeader('Content-Type', contentType || 'application/json');
             res.status(statusCode).send(data.body);
         };
@@ -198,7 +201,8 @@ export const buildExpress = (
                 app.delete(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
 
                 //! print
-                _inf(NS, `! api[${$U.NS(name, 'yellow')}] is routed as ${$U.NS(`/${ROUTE_PREFIX}${type}`, 'cyan')}`);
+                const _NS = (name: string, color?: any) => $U.NS(name, color, 4, '');
+                _inf(NS, `! api[${_NS(name, 'yellow')}] is routed as ${_NS(`/${ROUTE_PREFIX}${type}`, 'cyan')}`);
                 return { name, type, main };
             })
             .reduce((M: any, N) => {
@@ -207,7 +211,7 @@ export const buildExpress = (
             }, {});
     })();
     // _inf(NS, '! express.handlers =', Object.keys(handlers).join(', '));
-    _inf(NS, '! express.handlers.size =', Object.keys(handlers).length);
+    _inf(NS, '! express.handlers.len =', Object.keys(handlers).length);
 
     //! create server by port.
     const createServer = () => {
@@ -216,16 +220,16 @@ export const buildExpress = (
         const $pack = loadJsonSync('package.json');
         const name = $pack.name || 'LEMON API';
         const version = $pack.version || '0.0.0';
-
         const server = http
             .createServer(app)
             .listen(PORT, () => {
-                const addr: any = server.address();
-                const port = $U.NS(`${addr && addr.port}`, 'yellow').split(':')[0];
-                _log(NS, `Server[${process.env.NAME}:${process.env.STAGE}] Listen on Port =`, port);
                 _inf(NS, `###### express[${name}@${$U.NS(version, 'cyan')}] ######`);
             })
-            .on('listening', () => {})
+            .on('listening', () => {
+                const addr: any = server.address();
+                const port = $U.NS(`${addr && addr.port}`, 'yellow').split(':')[0];
+                _log(NS, `Server[${process.env.NAME}:${process.env.STAGE}] is listening on Port:${port}`);
+            })
             .on('error', (e: any) => {
                 _inf(NS, '!ERR - listen.err = ', e);
             });

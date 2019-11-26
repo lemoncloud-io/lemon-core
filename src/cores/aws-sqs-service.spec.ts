@@ -19,11 +19,11 @@ import { GETERR, GETERR$, expect2, marshal, Filter, _it } from '../common/test-h
 //! main test body.
 describe('AWSSQSService', () => {
     //TODO - load AWS credentials ONLY if to verify dynamo-service()
-    const PROFILE = 0 ? 'ssocio' : '';
+    const PROFILE = 0 ? 'lemon' : '';
     if (PROFILE) credentials(PROFILE);
 
     const ENDPOINTS: { [key: string]: string } = {
-        ssocio: 'https://sqs.ap-northeast-2.amazonaws.com/540298831859/ssocio-test-sqs',
+        lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-test-sqs',
     };
     const ENDPOINT = ENDPOINTS[PROFILE];
 
@@ -36,7 +36,8 @@ describe('AWSSQSService', () => {
 
     //! test basic of service.
     it('should pass basic AWSSQSService()', async done => {
-        expect2(() => new AWSSQSService()).toEqual('env.SQS_ENDPOINT is required!');
+        // expect2(() => new AWSSQSService()).toEqual('env.SQS_ENDPOINT is required!');
+        expect2(() => new AWSSQSService()).toEqual('env.MY_SQS_ENDPOINT is required w/ stage:');
         if (ENDPOINT) {
             /* eslint-disable prettier/prettier */
             const service = new AWSSQSService(ENDPOINT);
@@ -130,8 +131,4 @@ describe('AWSSQSService', () => {
         /* eslint-enable prettier/prettier */
         done();
     });
-
-    //! test with ssocio environ
-    // arn:aws:sqs:ap-northeast-2:540298831859:test-sqs
-    // https://sqs.ap-northeast-2.amazonaws.com/540298831859/test-sqs
 });

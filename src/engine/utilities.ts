@@ -59,11 +59,12 @@ export class Utilities {
         return env === 'production' || env === 'op' ? false : true;
     }
 
-    public load_data_yaml(name: any): Promise<any> {
+    public load_data_yaml(name: any, folder?: string): Promise<any> {
         if (!name) throw new Error('param:name is required!');
+        folder = folder || 'data';
 
         //! calculate the target data file.
-        const fname = path.resolve(__dirname, '../data/' + name + (name.endsWith('.yml') ? '' : '.yml'));
+        const fname = path.resolve(__dirname, `../${folder}/` + name + (name.endsWith('.yml') ? '' : '.yml'));
 
         this.log(NS, 'load file =', fname);
         //! prepare promised.
@@ -79,11 +80,12 @@ export class Utilities {
         return chain;
     }
 
-    public load_sync_yaml(name: string): any {
+    public load_sync_yaml(name: string, folder?: string): any {
         if (!name) throw new Error('param:name is required!');
+        folder = folder || 'data';
 
         //! calculate the target data file.
-        const fname = path.resolve(__dirname, '../data/' + name + (name.endsWith('.yml') ? '' : '.yml'));
+        const fname = path.resolve(__dirname, `../${folder}/` + name + (name.endsWith('.yml') ? '' : '.yml'));
 
         // Get document, or throw exception on error
         try {
@@ -247,13 +249,14 @@ export class Utilities {
     /**
      * NameSpace Maker.
      */
-    public NS(ns: string, color?: 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white', len?: number) {
+    // eslint-disable-next-line prettier/prettier
+    public NS(ns: string, color?: 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white', len?: number, delim?: string) {
         if (!ns) return ns;
         len = len || 4;
         len = len - ns.length;
         len = len < 0 ? 0 : len;
         const SPACE = '           ';
-        ns = SPACE.substr(0, len) + ns + ':';
+        ns = SPACE.substr(0, len) + ns + (delim === undefined ? ':' : `${delim || ''}`);
         if (color) {
             const COLORS: any = {
                 red: '\x1b[31m',
@@ -466,9 +469,12 @@ export class Utilities {
     // example) promise_sequence([1,2,3], item => item+1);
     public promise_sequence(array: any, func: any) {
         let chain = this.promise(array.shift());
-        chain = array.reduce((chain: any, item: any) => {
-            return chain.then(() => func(item));
-        }, chain.then(item => func(item)));
+        chain = array.reduce(
+            (chain: any, item: any) => {
+                return chain.then(() => func(item));
+            },
+            chain.then(item => func(item)),
+        );
         return chain;
     }
 
@@ -512,5 +518,3 @@ export class Utilities {
         return param;
     }
 }
-
-export default Utilities;

@@ -158,7 +158,7 @@ export class MyConfigService implements ConfigService {
         this.$env = $env; // save as default environ.
 
         const isEncrypted = (val: any) => {
-            return val && typeof val == 'string' && /^\*[A-Za-z0-9_\/=\+]+$/.test(val);
+            return val && typeof val == 'string' && /^\*[A-Za-z0-9_\/=\+\n]+$/.test(val);
         };
 
         //! convert to { key, val }

@@ -70,12 +70,12 @@ describe('ConfigService', () => {
     });
 
     //! test aws-kms-service
-    //NOTE - use make `alias/lemon-oauth-api` by readme.
+    //NOTE - use make `alias/lemon-hello-api` by readme.
     _it('should pass aws-kms-service()', async done => {
         if (!PROFILE) return done();
 
         const service = new AWSKMSService();
-        const keyId = 'alias/lemon-oauth-api';
+        const keyId = 'alias/lemon-hello-api';
         const message = `hello lemon!`;
 
         /* eslint-disable prettier/prettier */
@@ -106,17 +106,19 @@ describe('ConfigService', () => {
         };
 
         /* eslint-disable prettier/prettier */
-        const origin = JSON.parse($U.json($config));                                    // deep copy
-        const service = await MyConfigService.factory($config);
+        const origin = JSON.parse($U.json($config));                                        // deep copy
+        const service = await MyConfigService.factory($config);                             // wait until loading completely.
 
-        expect2(await service.hello()).toEqual({ hello: 'config-service' });
-        expect2(await service.get('count')).toEqual('1');                               // must be string.
-        expect2(await service.get('token.issuer')).toEqual($config.token.issuer);       // not encrypted.
-        expect2(await service.get('token.secret')).toEqual(1 ? message : $config.token.secret); // decrypted.
-        // expect2($config).toEqual(origin);                                            // should be `fail`
-        expect2($config.count).toBe(1);                                                 // keep number origin
-        expect2($config.token.issuer).toBe(origin.token.issuer);                        // keep issuer
-        expect2($config.token.secret).toBe(message);                                    // updated with decrypted.
+        //! check result..
+        expect2(service.hello()).toEqual({ hello: 'config-service' });
+        expect2(service.get('count')).toEqual('1');                                         // must be string.
+        expect2(service.get('token.issuer')).toEqual(origin.token.issuer);                  // not encrypted.
+        expect2(service.get('token.secret')).toEqual(message);                              // decrypted successfully.
+
+        // expect2($config).toEqual(origin);                                                // should be `fail`
+        expect2($config.count).toBe(1);                                                     // keep number origin
+        expect2($config.token.issuer).toBe(origin.token.issuer);                            // keep issuer
+        expect2($config.token.secret).toBe(secret);                                         // NOT updated with decrypted.
 
         /* eslint-enable prettier/prettier */
         done();

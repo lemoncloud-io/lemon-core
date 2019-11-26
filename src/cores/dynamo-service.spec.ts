@@ -31,7 +31,7 @@ export const instance = () => {
 //! main test body.
 describe('DynamoService', () => {
     //TODO - load AWS credentials.
-    const PROFILE = 1 ? 'ssocio' : '';
+    const PROFILE = 0 ? 'lemon' : '';
     if (PROFILE) credentials(PROFILE);
 
     //! dummy storage service.
