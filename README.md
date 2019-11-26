@@ -6,8 +6,7 @@
 
 # lemon-core
 
-Lemon Core Bootloader with [lemon-engine](https://github.com/lemoncloud-io/lemon-engine)
-
+Lemon Core Bootloader for Serverless Micro-Service
 
 
 ## Contribution
@@ -26,6 +25,7 @@ Plz, request PR. See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.0.0     | remove `lemon-engine`, and support fully typescript.
 | 1.2.16    | improve `doReportError` for service name
 | 1.2.15    | improve `doReportError` with error message
 | 1.2.14    | fix `aws credentials` in lambda.

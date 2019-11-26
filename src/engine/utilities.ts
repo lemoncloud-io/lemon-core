@@ -11,6 +11,10 @@
 import { EngineCore, GeneralFuntion } from './types';
 const NS = 'util';
 
+/**
+ * class: Utilities
+ * - various functions
+ */
 export class Utilities {
     private _$: EngineCore;
     private log: GeneralFuntion;
