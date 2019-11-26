@@ -92,14 +92,29 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         }
     }
 
-    public addHandler(type: string, decoder: NextDecoder) {
+    /**
+     * add web-handlers by `NextDecoder`.
+     *
+     * @param type      type of WEB(API)
+     * @param decoder   next decorder
+     */
+    public setHandler(type: string, decoder: NextDecoder) {
         this._handlers[type] = decoder;
+    }
+
+    /**
+     * get all decoders.
+     */
+    public getHandlerDecoders(): { [key: string]: NextDecoder } {
+        //! copy
+        return { ...this._handlers };
     }
 
     /**
      * Default SQS Handler.
      */
     public handle: WEBHandler = async (event, context) => {
+        // const _log = console.log;
         //! API parameters.
         _log(NS, `handle()....`);
         // _log(NS, '! event =', $U.json(event));
@@ -120,7 +135,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         //! safe decode body if it has json format. (TODO - support url-encoded post body)
         const $body =
             (event.body &&
-                (typeof event.body === 'string' && (event.body.startsWith('{') || event.body.startsWith('['))
+                (typeof event.body === 'string' && (event.body.startsWith('{') && event.body.endsWith('}'))
                     ? JSON.parse(event.body)
                     : event.body)) ||
             null;
@@ -188,7 +203,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         const identity = (val => {
             try {
                 if (!val) return undefined;
-                return typeof val === 'string' && (val.startsWith('{') || val.endsWith('}')) ? JSON.parse(val) : val;
+                return typeof val === 'string' && (val.startsWith('{') && val.endsWith('}')) ? JSON.parse(val) : val;
             } catch (e) {
                 _err(NS, '!WARN! parse identity. err=', e);
                 return undefined;

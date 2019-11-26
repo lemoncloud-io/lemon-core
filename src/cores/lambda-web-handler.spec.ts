@@ -25,7 +25,7 @@ class LambdaWEBHandlerLocal extends LambdaWEBHandler {
 export const $web = () => {
     const { service: lambda } = $lambda.instance();
     const instance = new LambdaWEBHandlerLocal(lambda);
-    instance.addHandler('hello', decode_next_handler);
+    instance.setHandler('hello', decode_next_handler);
     return { lambda, instance };
 };
 

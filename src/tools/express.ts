@@ -25,6 +25,7 @@
  */
 import { LemonEngine } from '../engine/';
 import { loadJsonSync, getRunParam } from './shared';
+import { LambdaWEBHandler } from '../cores/';
 
 import AWS from 'aws-sdk';
 import express from 'express';
@@ -37,7 +38,8 @@ import http from 'http';
 //NOTE - avoid external reference of type.
 export const buildExpress = (
     $engine: LemonEngine,
-    options: any = null,
+    $web: LambdaWEBHandler,
+    options?: { argv?: string[]; prefix?: string },
 ): { express: () => any; app: any; createServer: () => any } => {
     if (!$engine) throw new Error('$engine is required!');
     options = options || {};
@@ -51,9 +53,10 @@ export const buildExpress = (
     if (!$_) throw new Error('$_(lodash) is required!');
 
     //! load common(log) functions
-    const _log = $engine.log;
-    const _inf = $engine.inf;
-    const _err = $engine.err;
+    const useEngineLog = !!1; //NOTE - turn off to print log in jest test.
+    const _log = useEngineLog ? $engine.log : console.log;
+    const _inf = useEngineLog ? $engine.inf : console.info;
+    const _err = useEngineLog ? $engine.err : console.error;
 
     const NS = $U.NS('EXPR', 'cyan');
     const $pack = loadJsonSync('package.json');
@@ -102,11 +105,16 @@ export const buildExpress = (
         };
         const context = { source: 'express' };
         const callback = (err: any, data: any) => {
+            let contentType = null;
             if (data.headers) {
-                Object.keys(data.headers).map(k => res.setHeader(k, data.headers[k]));
+                Object.keys(data.headers).map(k => {
+                    if (`${k}`.toLowerCase() == 'content-type') contentType = data.headers[k];
+                    res.setHeader(k, data.headers[k]);
+                });
             }
-            res.setHeader('Content-Type', 'application/json');
-            res.status(data.statusCode || 200).send(data.body);
+            const statusCode: number = (data && data.statusCode) || 200;
+            res.setHeader('Content-Type', contentType || 'application/json');
+            res.status(statusCode).send(data.body);
         };
 
         //! attach to req.
@@ -144,7 +152,7 @@ export const buildExpress = (
      ** *******************************************************************************************************************/
     //! default app.
     app.get('', (req: any, res: any) => {
-        res.status(200).send(NAME);
+        res.status(200).send(`${NAME}/${VERS}`);
     });
 
     //! handler map.
@@ -152,30 +160,44 @@ export const buildExpress = (
         //! register automatically endpont.
         const RESERVES = 'id,log,inf,err,extend,ts,dt,environ'.split(',');
         const isValidName = (name: string) => /^[a-z][a-z0-9\-_]+$/.test(name) && RESERVES.indexOf(name) < 0;
-        const keys = Object.keys($engine);
-        //TODO - optimize to config.
-        const $conf: any = $engine;
-        const ROUTE_PREFIX = `${$conf.ROUTE_PREFIX || ''}`;
+        const $map: any = $web.getHandlerDecoders();
+        const keys = Object.keys($map);
+        const ROUTE_PREFIX = `${(options && options.prefix) || ''}`;
         // _inf(NS, '! express.keys =', keys);
         return keys
             .filter(isValidName)
             .map(name => {
-                // must be valid name && function.
-                const main = $conf(name);
+                //! check if valid name && function.
+                const main = $map[name];
                 const type = `${name}`.split('_').join('-'); // change '_' to '-'.
-                if (typeof main !== 'function') throw new Error(`.${name} should be function. but:` + typeof main);
+                if (typeof main !== 'function')
+                    throw new Error(`.${name} should be function handler. but type=` + typeof main);
+
                 //! handle request to handler.
-                const handle_express = (req: any, res: any) => main(req.$event, req.$context, req.$callback);
+                const handle_express = (type: string) => (req: any, res: any) => {
+                    const callback = req.$callback;
+                    req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
+                    $web.handle(req.$event, req.$context)
+                        .then(_ => {
+                            // console.info('! res =', _);
+                            callback && callback(null, _);
+                        })
+                        .catch(e => {
+                            // console.error('! err =', e);
+                            callback && callback(e);
+                        });
+                };
 
-                //! route pattern with `/<service>/<id>/<cmd>`
-                app.get(`/${ROUTE_PREFIX}${type}`, middle, handle_express);
-                app.get(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
-                app.get(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express);
-                app.put(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
-                app.post(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
-                app.post(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express);
-                app.delete(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express);
+                //! route pattern with `/<type>/<id>/<cmd?>`
+                app.get(`/${ROUTE_PREFIX}${type}`, middle, handle_express(type));
+                app.get(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
+                app.get(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express(type));
+                app.put(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
+                app.post(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
+                app.post(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express(type));
+                app.delete(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
 
+                //! print
                 _inf(NS, `! api[${$U.NS(name, 'yellow')}] is routed as ${$U.NS(`/${ROUTE_PREFIX}${type}`, 'cyan')}`);
                 return { name, type, main };
             })
@@ -189,11 +211,19 @@ export const buildExpress = (
 
     //! create server by port.
     const createServer = () => {
+        //! logging options.
+        const NS = $U.NS('main', 'cyan');
+        const $pack = loadJsonSync('package.json');
+        const name = $pack.name || 'LEMON API';
+        const version = $pack.version || '0.0.0';
+
         const server = http
             .createServer(app)
             .listen(PORT, () => {
                 const addr: any = server.address();
-                _inf(NS, 'Server Listen on Port =', addr && addr.port);
+                const port = $U.NS(`${addr && addr.port}`, 'yellow').split(':')[0];
+                _log(NS, `Server[${process.env.NAME}:${process.env.STAGE}] Listen on Port =`, port);
+                _inf(NS, `###### express[${name}@${$U.NS(version, 'cyan')}] ######`);
             })
             .on('listening', () => {})
             .on('error', (e: any) => {
