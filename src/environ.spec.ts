@@ -2,8 +2,8 @@
  * `environ.spec.ts`
  * - test runnder for `environ.ts`
  *
- * @author Steve <steve@lemoncloud.io>
- * @date   2019-08-08 initial unit test.
+ * @author      Steve <steve@lemoncloud.io>
+ * @date        2019-08-08 initial unit test.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */

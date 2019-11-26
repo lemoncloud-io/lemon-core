@@ -2,8 +2,8 @@
  * `service/test.s3-service.ts`
  *
  *
- * @author Steve Jung <steve@lemoncloud.io>
- * @date   2019-08-16 initial unit test.
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-16 initial unit test.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
