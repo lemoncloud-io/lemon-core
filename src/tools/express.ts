@@ -23,7 +23,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { LemonEngine } from '../engine';
+import { LemonEngine } from '../engine/';
 import { loadJsonSync, getRunParam } from './shared';
 
 import AWS from 'aws-sdk';

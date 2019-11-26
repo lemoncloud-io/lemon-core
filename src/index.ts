@@ -13,5 +13,5 @@
  */
 //NOTE! - if loading this index.ts, it will trigger initializing `lemon-engine`
 export * from './common/types';
-export * from './core/engine';
+export * from './engine';
 export * from './tools/';

@@ -14,7 +14,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { $engine } from '../core/engine';
+import { $engine } from '../engine';
 
 //! export all services.
 export * from './sns-service';

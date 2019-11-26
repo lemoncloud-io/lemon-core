@@ -13,7 +13,7 @@
  *  Common Headers
  ** ****************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U, _log, _inf, _err } from '../core/engine';
+import { $U, _log, _inf, _err } from '../engine';
 import { environ, region } from './';
 import AWS from 'aws-sdk';
 const NS = $U.NS('KMS', 'blue');

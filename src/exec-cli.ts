@@ -24,7 +24,7 @@ const $env = { TS: '1', LC: '1' };
 process.env = Object.assign(process.env, $env);
 
 //! - load engine after `process.env`
-import { $U, _log, _inf, _err } from './core/engine';
+import { $U, _log, _inf, _err } from './engine';
 import { loadJsonSync, getRunParam } from './tools/';
 
 //! - initial values.
