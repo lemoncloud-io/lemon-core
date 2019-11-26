@@ -1,0 +1,36 @@
+{
+    "!": "sample data로 자가 테스트용으로 이용함 at 2019-08-29T04:13:53.376Z",
+    "ns": "TestTable",
+    "ts": 1567052040463,
+    "type": "TEST",
+    "list":[
+        {
+            "ts": 0, "id": "abc-123", "name": "abc 1",
+            "count" : 1
+        }
+        ,{
+            "ts": 1, "id": "abc-123", "name": "abc 2",
+            "count" : 5, "tick": 10
+        }
+        ,{
+            "ts": 4, "id": "abc-123", "name": "abc 3",
+            "count" : 10, "meta": {"name": "test"}
+        }
+        ,{
+            "ts": 7, "id": "abc-123", "name": "abc 4",
+            "count" : 12
+        }
+        ,{
+            "ts": 9, "id": "abc-123", "name": "abc 5",
+            "count" : 18
+        }
+        ,{
+            "ts": 10, "id": "abc-123", "name": "abc 6",
+            "count" : 20, "meta": "{\"name\":\"hello\"}"
+        }
+        ,{
+            "ts": 15, "id": "abc-123", "name": "abc 7",
+            "count" : 15, "tick": 11
+        }
+    ]
+}

@@ -1,0 +1,21 @@
+{
+    "!":"Cognito Event Data @191121 w/ comics.dev",
+    "version": "1",
+    "region": "ap-northeast-2",
+    "userPoolId": "ap-northeast-2_iZ2rkgbKM",
+    "userName": "steve2",
+    "callerContext": {
+        "awsSdkVersion": "aws-sdk-unknown-unknown",
+        "clientId": "vdp02l5n24ghffiiv692oucmc"
+    },
+    "triggerSource": "PreSignUp_SignUp",
+    "request": {
+        "userAttributes": {},
+        "validationData": null
+    },
+    "response": {
+        "autoConfirmUser": false,
+        "autoVerifyEmail": false,
+        "autoVerifyPhone": false
+    }
+}

@@ -1,0 +1,6 @@
+{
+    "!":"CRON Event Data @191121 w/ comics.dev",
+    "cron": {
+        "name": "5min"
+    }
+}

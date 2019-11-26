@@ -1,0 +1,34 @@
+{
+    "!":"WSS Event Message Data @191121 w/ comics.dev",
+    "requestContext": {
+        "routeKey": "echo",
+        "messageId": "Djnl0d0uIE0CJXA=",
+        "eventType": "MESSAGE",
+        "extendedRequestId": "Djnl0HDYoE0FhDw=",
+        "requestTime": "22/Nov/2019:10:32:56 +0000",
+        "messageDirection": "IN",
+        "stage": "dev",
+        "connectedAt": 1574418735553,
+        "requestTimeEpoch": 1574418776306,
+        "identity": {
+            "cognitoIdentityPoolId": null,
+            "cognitoIdentityId": null,
+            "principalOrgId": null,
+            "cognitoAuthenticationType": null,
+            "userArn": null,
+            "userAgent": null,
+            "accountId": null,
+            "caller": null,
+            "sourceIp": "221.149.250.13",
+            "accessKey": null,
+            "cognitoAuthenticationProvider": null,
+            "user": null
+        },
+        "requestId": "Djnl0HDYoE0FhDw=",
+        "domainName": "6ye6t5py3i.execute-api.ap-northeast-2.amazonaws.com",
+        "connectionId": "DjnfcdywIE0CJXA=",
+        "apiId": "6ye6t5py3i"
+    },
+    "body": "{\"action\":\"echo\"}",
+    "isBase64Encoded": false
+}

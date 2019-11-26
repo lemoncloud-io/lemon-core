@@ -1,0 +1,21 @@
+{
+    "version": "1",
+    "region": "ap-northeast-2",
+    "userPoolId": "ap-northeast-2_XvxPfWN5u",
+    "userName": "c0c5eb23-b2dc-4c5a-82bb-a0b10d21d481",
+    "callerContext": {
+        "awsSdkVersion": "aws-sdk-js-2.177.0",
+        "clientId": "16938mhl1l5tpbr68nvs2fs2fo"
+    },
+    "triggerSource": "PreAuthentication_Authentication",
+    "request": {
+        "userAttributes": {
+            "sub": "c0c5eb23-b2dc-4c5a-82bb-a0b10d21d481",
+            "email_verified": "true",
+            "cognito:user_status": "CONFIRMED",
+            "email": "steve@lemoncloud.io"
+        },
+        "validationData": {}
+    },
+    "response": {}
+}

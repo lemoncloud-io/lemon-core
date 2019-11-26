@@ -1,0 +1,39 @@
+{
+    "!":"SQS Event Data @191121 w/ comics.dev",
+    "Records": [{
+        "messageId": "3491d081-cfd8-40de-b4fe-fb4762fdfa17",
+        "receiptHandle": "AQEBlMaHEG3hSrzpgMjDpBqChhFxheYkaSzWYHUjy1sna6E+0ZwZ+mU1IX+11AYOlbhVWNvuRNfcaLGn2GDSJmLW4/wnT4KjImhM8LujgOJeS83O83H7O/uQV26QeB1ty1DR6Mt0VSnyfzUw4Ar5BQNHRSmQ3o/iHm7tN4TDCd+pDuCUX03JZGMZgctYFAf1vy9vY3FnGbcdI8kzPqcmBxfziCvg9SJPhMQXTNuasKWwl+H6Vi/TbrdB7szv7ezfQvaSLx9i63ZSUB4YSGUuLUXTdhV5PvhkKghUFO4FzYISoU1rWHbVrugiFpb3WGeS8awJtvYoAWXAzwmFVkzDk+u3LWd6nxi6UVZy9OgmvYn7ewelw51Kobe3s9S4pEsUcrdcSUbhQF/uulw17EfZQkK+efn7vqDxJvv4q3OcycHzGa4=",
+        "body": "{\"hello\":\"lemon\"}",
+        "attributes": {
+            "ApproximateReceiveCount": "1",
+            "SentTimestamp": "1574414482619",
+            "SenderId": "AIDA3TAGSYLBB7HLHWVCY",
+            "ApproximateFirstReceiveTimestamp": "1574414485619"
+        },
+        "messageAttributes": {
+            "cmd": {
+                "stringValue": "hi",
+                "stringListValues": [],
+                "binaryListValues": [],
+                "dataType": "String"
+            },
+            "id": {
+                "stringValue": "0",
+                "stringListValues": [],
+                "binaryListValues": [],
+                "dataType": "String"
+            },
+            "n": {
+                "stringValue": "1",
+                "stringListValues": [],
+                "binaryListValues": [],
+                "dataType": "Number"
+            }
+        },
+        "md5OfBody": "56beb51b210d33ee87cc9d0706260b51",
+        "md5OfMessageAttributes": "6cc45b201358971ed6a5363504245344",
+        "eventSource": "aws:sqs",
+        "eventSourceARN": "arn:aws:sqs:ap-northeast-2:796730245826:lemon-metrics-sqs-dev",
+        "awsRegion": "ap-northeast-2"
+    }]
+}
