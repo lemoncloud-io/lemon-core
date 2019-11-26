@@ -31,6 +31,7 @@ export interface GeneralItem {
 /**
  * class: `NextIdentity`
  * - the context parameter for each next-handler `fx(id, param, body, context)`
+ * - possible to query user's detail via OAuth Resource Server.
  */
 export interface NextIdentity {
     sid: string; // site-id (like domain group)
@@ -45,9 +46,11 @@ export interface NextIdentity {
  *
  * //TODO - define more in order to pass calling flow.
  */
-export interface NextContext {
-    identity?: NextIdentity; // user identity after authentication.
+export interface NextContext<T extends NextIdentity = NextIdentity> {
+    identity?: T; // user identity after authentication.
     source?: string; // origin event source. can be 'express' if `npm run express.local`.
+    clientIp?: string; // ip-address of source client.
+    requestId?: string; // id of request to keep track of timing infor w/ `metrics`
 }
 
 /**
