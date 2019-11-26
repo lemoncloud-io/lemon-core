@@ -11,7 +11,17 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-//NOTE! - if loading this index.ts, it will trigger initializing `lemon-engine`
+//NOTE! - if loading this index.ts, it will trigger `bootloader` in `/engine`.
 export * from './common/types';
-export * from './engine';
+export * from './common/test-helper';
+export * from './engine/';
+export * from './cores/';
 export * from './tools/';
+
+//! import core modules.
+import engine from './engine/';
+import cores from './cores/';
+import * as tools from './tools/';
+
+//! export as default.
+export default { engine, cores, tools };

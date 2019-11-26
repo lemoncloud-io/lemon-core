@@ -28,3 +28,6 @@ export const _err = $engine.err;
 //! export sub-modules
 export * from './types';
 export * from './engine';
+
+//! export default.
+export default $engine;

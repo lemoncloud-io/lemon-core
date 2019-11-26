@@ -138,7 +138,7 @@ export class LambdaHandler {
      *
      * @returns boolean
      */
-    public handle = async (event: any, context: Context, callback?: any): Promise<boolean> => {
+    public handle = (event: any, context: Context, callback?: any): any => {
         if (!event) return callback && callback(event);
         //! prevent null error.
         callback = callback || (() => {});
@@ -192,7 +192,7 @@ export class LambdaHandler {
             });
 
         //! call main.. (it will return result or promised)
-        return promise(main, event, context)
+        promise(main, event, context)
             .then(_ => {
                 if (_ !== undefined) _log(NS, '! res =', $U.json(_));
                 ((context && context.done) || callback)(null, _);
@@ -210,6 +210,9 @@ export class LambdaHandler {
                     return false;
                 });
             });
+
+        //! return void.
+        return;
     };
 
     /**

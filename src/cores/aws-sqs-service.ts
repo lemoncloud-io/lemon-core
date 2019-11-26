@@ -84,10 +84,10 @@ export class AWSSQSService implements SQSService {
         this._region = region;
         this._endpoint = endpoint;
     }
-    public get region() {
+    public region(): string {
         return this._region;
     }
-    public get endpoint() {
+    public endpoint(): string {
         return this._endpoint;
     }
     /**
@@ -118,11 +118,11 @@ export class AWSSQSService implements SQSService {
             // DelaySeconds: 10, //NOTE - use SQS's configuration.
             MessageAttributes: asAttr(attr),
             MessageBody: $U.json(data && typeof data == 'object' ? data : { data }),
-            QueueUrl: this.endpoint,
+            QueueUrl: this.endpoint(),
         };
-        _log(NS, `> params[${this.endpoint}] =`, $U.json(params));
+        _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        const sqs = new AWS.SQS({ region: this.region });
+        const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.sendMessage(params).promise();
         _log(NS, '> result =', result);
         return (result && result.MessageId) || '';
@@ -143,14 +143,14 @@ export class AWSSQSService implements SQSService {
             AttributeNames: ['SentTimestamp'],
             MaxNumberOfMessages: size,
             MessageAttributeNames: ['All'],
-            QueueUrl: this.endpoint,
+            QueueUrl: this.endpoint(),
             // VisibilityTimeout: 0,				//WARN! DUPLICATE MESSAGES CAN BE SEEN.
             WaitTimeSeconds: 0, //WARN! WAIT FOR EMPTY QUEUE.
         };
-        _log(NS, `> params[${this.endpoint}] =`, $U.json(params));
+        _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //! call api
-        const sqs = new AWS.SQS({ region: this.region });
+        const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.receiveMessage(params).promise();
         _log(NS, '> result =', $U.json(result));
 
@@ -185,13 +185,13 @@ export class AWSSQSService implements SQSService {
 
         //! prepare param
         const params = {
-            QueueUrl: this.endpoint,
+            QueueUrl: this.endpoint(),
             ReceiptHandle: handle,
         };
-        _log(NS, `> params[${this.endpoint}] =`, $U.json(params));
+        _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //! call delete.
-        const sqs = new AWS.SQS({ region: this.region });
+        const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.deleteMessage(params).promise();
         _log(NS, '> result =', $U.json(result));
         return;
@@ -204,13 +204,13 @@ export class AWSSQSService implements SQSService {
      */
     public async statistics(): Promise<SqsStatistics> {
         const params = {
-            QueueUrl: this.endpoint,
+            QueueUrl: this.endpoint(),
             AttributeNames: ['All'],
         };
-        _log(NS, `> params[${this.endpoint}] =`, $U.json(params));
+        _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //! call delete.
-        const sqs = new AWS.SQS({ region: this.region });
+        const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.getQueueAttributes(params).promise();
         _log(NS, '> result =', $U.json(result));
         const attr = result.Attributes || {};
