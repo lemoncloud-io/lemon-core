@@ -19,7 +19,7 @@ import { marshal, Filter, MyConfigService } from './config-service';
 
 describe('ConfigService', () => {
     //TODO - load AWS credentials.
-    const PROFILE = 1 ? 'lemon' : '';
+    const PROFILE = 0 ? 'lemon' : '';
     if (PROFILE) credentials(PROFILE);
 
     //! dummy storage service.
