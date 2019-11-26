@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "1.2.16",
+  "version": "2.0.0",
   "description": "Lemon Core Bootloader for Serverless Micro-Service",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
