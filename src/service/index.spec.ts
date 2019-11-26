@@ -1,5 +1,5 @@
 /**
- * `service/test.index.ts`
+ * `service/index.spec.ts`
  *
  *
  * @author Steve Jung <steve@lemoncloud.io>
@@ -15,7 +15,7 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
-import { region, environ } from '../../src/service/';
+import { region, environ } from './';
 
 describe(`test service/index.js`, () => {
     test('check region() function', async () => {

@@ -21,13 +21,8 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-//! import core engine.
-import engine, { LemonEngine } from '../engine';
-import { SlackPostBody, MetricPostBody } from '../common/types';
-import { loadJsonSync } from '../tools/shared';
-import { SNS } from '../service/sns-service';
-
-//! create engine in global scope.
+//! create engine in global scope (WARN! should run top level)
+import engine, { LemonEngine } from '../engine/index';
 export const $engine: LemonEngine = engine(global, { env: process.env });
 
 //! re-use core modules.
@@ -40,6 +35,11 @@ if (!$_) throw new Error('$_(lodash) is required!');
 export const _log = $engine.log;
 export const _inf = $engine.inf;
 export const _err = $engine.err;
+
+//! import sub-modules.
+import { SlackPostBody, MetricPostBody } from '../common/types';
+import { loadJsonSync } from '../tools/shared';
+import { SNS } from '../service/sns-service';
 
 //! find ARN('lemon-hello-sns') via context information or environment.
 export const getHelloArn = async (context: any, NS: string) => {

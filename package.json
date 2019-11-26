@@ -16,6 +16,7 @@
     "!test": "------- run self-test with jest -----",
     "test": "LS=1 jest --config=jest.config.json",
     "test:dev": "LS=1 jest --config=jest.config.json --watchAll",
+    "test:watch": "LS=0 jest --config=jest.config.json --watchAll",
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",
     "!prepublishOnly": "npm test && npm run lint && npm run format",
@@ -40,7 +41,7 @@
     "dist/**/*"
   ],
   "engines": {
-    "node": ">=10.0.0"
+    "node": ">=10.2.0"
   },
   "author": "Steve Jung <steve@lemoncloud.io>",
   "license": "MIT",

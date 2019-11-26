@@ -1,5 +1,5 @@
 /**
- * `test.environ.ts`
+ * `environ.spec.ts`
  * - test runnder for `environ.ts`
  *
  * @author Steve <steve@lemoncloud.io>
@@ -7,7 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import loadEnviron from '../src/environ';
+import loadEnviron from './environ';
 
 const safe = (f: () => {}) => {
     try {

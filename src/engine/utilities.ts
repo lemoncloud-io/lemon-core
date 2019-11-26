@@ -246,10 +246,8 @@ export class Utilities {
 
     /**
      * NameSpace Maker.
-     *
-     * @returns {string}
      */
-    public NS(ns: string, color?: string, len?: number) {
+    public NS(ns: string, color?: 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white', len?: number) {
         if (!ns) return ns;
         len = len || 4;
         len = len - ns.length;

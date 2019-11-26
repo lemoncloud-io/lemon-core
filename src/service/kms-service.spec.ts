@@ -1,5 +1,5 @@
 /**
- * `service/test.kms-service.ts`
+ * `service/kms-service.spec.ts`
  *
  *
  * @author Steve Jung <steve@lemoncloud.io>
@@ -16,7 +16,7 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
-import { KMS } from '../../src/service/';
+import { KMS } from './kms-service';
 
 describe(`test service/kms-service.js`, () => {
     test('check name() function', async () => {

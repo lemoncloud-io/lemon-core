@@ -1,5 +1,5 @@
 /**
- * `test.hello-api.ts`
+ * `tools/shared.spec.ts`
  * - test runnder of hello-api
  *
  *
@@ -8,7 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { loadJsonSync, getRunParam } from '../src/tools/';
+import { loadJsonSync, getRunParam } from './';
 
 // Test Shared
 describe('Test tools/shared', () => {

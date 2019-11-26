@@ -7,6 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+// require('source-map-support').install();
 const ENV_NAME = 'CORE_S3_BUCKET';
 const DEF_BUCKET = 'lemon-hello-www';
 
@@ -16,7 +17,7 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
-import { S3 } from '../../src/service/';
+import { S3 } from './s3-service';
 
 describe(`test service/s3-service.js`, () => {
     test('check name() function', async () => {

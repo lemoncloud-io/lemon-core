@@ -138,7 +138,7 @@ export default function initiate(
     };
 
     //! reuse via scope or build new.
-    const $engine: LemonEngine = scope._$ || createEngine();
+    const $engine: LemonEngine = scope._$ || createEngine(); //NOTE - reuse instance.
 
     //! register as global instances.
     scope._log = scope._log || _log;
