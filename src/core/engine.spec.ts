@@ -8,9 +8,8 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { do_parrallel } from './engine';
+import { do_parrallel, doReportError } from './engine';
 import { convDate, convDateToTime, convDateToTS } from './engine';
-import { doReportError } from '../';
 
 //! build context.
 const $context = (source = 'express', account = '085403634746' /* profile: lemon */) => {
