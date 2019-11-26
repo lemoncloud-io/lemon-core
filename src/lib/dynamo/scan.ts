@@ -1,5 +1,3 @@
-/* eslint-disable prettier/prettier */
-'use strict';
 // origin from: https://github.com/baseprime/dynamodb @20191106
 // Copyright (c) 2016 Ryan Fitzgerald
 /**

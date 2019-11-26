@@ -1,5 +1,3 @@
-/* eslint-disable prettier/prettier */
-'use strict';
 // origin from: https://github.com/baseprime/dynamodb @20191106
 // Copyright (c) 2016 Ryan Fitzgerald
 /**
@@ -15,128 +13,135 @@
 
 import _ from 'lodash';
 import $async from 'async';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const AWSUtil = require('aws-sdk/lib/util');
 
 export const omitNulls = (data: any) => {
-  return _.omitBy(data, function(value) {
-    return _.isNull(value) ||
-      _.isUndefined(value) ||
-      (_.isArray(value) && _.isEmpty(value)) ||
-      (_.isString(value) && _.isEmpty(value));
-  });
+    return _.omitBy(data, function(value) {
+        return (
+            _.isNull(value) ||
+            _.isUndefined(value) ||
+            (_.isArray(value) && _.isEmpty(value)) ||
+            (_.isString(value) && _.isEmpty(value))
+        );
+    });
 };
 
 export const mergeResults = (responses: any, tableName: string) => {
-  const result = {
-    Items : [] as any[],
-    ConsumedCapacity : {
-      CapacityUnits : 0,
-      TableName : tableName
-    },
-    Count : 0,
-    ScannedCount : 0
-  };
+    const result = {
+        Items: [] as any[],
+        ConsumedCapacity: {
+            CapacityUnits: 0,
+            TableName: tableName,
+        },
+        Count: 0,
+        ScannedCount: 0,
+    };
 
-  const merged = _.reduce(responses, (memo: any, resp: any) => {
-    if(!resp) {
-      return memo;
+    const merged = _.reduce(
+        responses,
+        (memo: any, resp: any) => {
+            if (!resp) {
+                return memo;
+            }
+
+            memo.Count += resp.Count || 0;
+            memo.ScannedCount += resp.ScannedCount || 0;
+
+            if (resp.ConsumedCapacity) {
+                memo.ConsumedCapacity.CapacityUnits += resp.ConsumedCapacity.CapacityUnits || 0;
+            }
+
+            if (resp.Items) {
+                memo.Items = memo.Items.concat(resp.Items);
+            }
+
+            if (resp.LastEvaluatedKey) {
+                memo.LastEvaluatedKey = resp.LastEvaluatedKey;
+            }
+
+            return memo;
+        },
+        result,
+    );
+
+    if (merged.ConsumedCapacity.CapacityUnits === 0) {
+        delete merged.ConsumedCapacity;
     }
 
-    memo.Count += resp.Count || 0;
-    memo.ScannedCount += resp.ScannedCount || 0;
-
-    if(resp.ConsumedCapacity) {
-      memo.ConsumedCapacity.CapacityUnits += resp.ConsumedCapacity.CapacityUnits || 0;
+    if (merged.ScannedCount === 0) {
+        delete merged.ScannedCount;
     }
 
-    if(resp.Items) {
-      memo.Items = memo.Items.concat(resp.Items);
-    }
-
-    if(resp.LastEvaluatedKey) {
-      memo.LastEvaluatedKey = resp.LastEvaluatedKey;
-    }
-
-    return memo;
-  }, result);
-
-  if(merged.ConsumedCapacity.CapacityUnits === 0) {
-    delete merged.ConsumedCapacity;
-  }
-
-  if(merged.ScannedCount === 0) {
-    delete merged.ScannedCount;
-  }
-
-  return merged;
+    return merged;
 };
 
 export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) => {
-  // if callback isn't passed switch to stream
-  if(!callback) {
-    throw new Error('@callback is required');
-  }
-
-  let lastEvaluatedKey = null as any;
-  let responses = [] as any[];
-  let retry = false;
-
-  var doFunc = function (callback: any) {
-    if(lastEvaluatedKey) {
-      self.startKey(lastEvaluatedKey);
+    // if callback isn't passed switch to stream
+    if (!callback) {
+        throw new Error('@callback is required');
     }
 
-    runRequestFunc(self.buildRequest(), function (err: any, resp: any) {
-      if(err && err.retryable) {
-        retry = true;
-        return setImmediate(callback);
-      } else if(err) {
-        retry = false;
-        return setImmediate(callback, err);
-      }
+    let lastEvaluatedKey = null as any;
+    let responses = [] as any[];
+    let retry = false;
 
-      retry = false;
-      lastEvaluatedKey = resp.LastEvaluatedKey;
+    var doFunc = function(callback: any) {
+        if (lastEvaluatedKey) {
+            self.startKey(lastEvaluatedKey);
+        }
 
-      responses.push(resp);
+        runRequestFunc(self.buildRequest(), function(err: any, resp: any) {
+            if (err && err.retryable) {
+                retry = true;
+                return setImmediate(callback);
+            } else if (err) {
+                retry = false;
+                return setImmediate(callback, err);
+            }
 
-      return setImmediate(callback);
-    });
-  };
+            retry = false;
+            lastEvaluatedKey = resp.LastEvaluatedKey;
 
-  var testFunc = function () {
-    return (self.options.loadAll && lastEvaluatedKey) || retry;
-  };
+            responses.push(resp);
 
-  var resulsFunc = function (err: any) {
-    if(err) {
-      return callback(err);
-    }
+            return setImmediate(callback);
+        });
+    };
 
-    return callback(null, mergeResults(responses, self.table.tableName()));
-  };
+    var testFunc = function() {
+        return (self.options.loadAll && lastEvaluatedKey) || retry;
+    };
 
-  $async.doWhilst(doFunc, testFunc, resulsFunc);
+    var resulsFunc = function(err: any) {
+        if (err) {
+            return callback(err);
+        }
+
+        return callback(null, mergeResults(responses, self.table.tableName()));
+    };
+
+    $async.doWhilst(doFunc, testFunc, resulsFunc);
 };
 
-export const omitPrimaryKeys = function (schema: any, params: any) {
-  return _.omit(params, schema.hashKey, schema.rangeKey);
+export const omitPrimaryKeys = function(schema: any, params: any) {
+    return _.omit(params, schema.hashKey, schema.rangeKey);
 };
 
-export const strToBin = function (value: any) {
-  if (typeof(value) !== 'string') {
-    var StrConversionError = 'Need to pass in string primitive to be converted to binary.';
-    throw new Error(StrConversionError);
-  }
-
-  if (AWSUtil.isBrowser()) {
-    var len = value.length;
-    var bin = new Uint8Array(new ArrayBuffer(len));
-    for (var i = 0; i < len; i++) {
-      bin[i] = value.charCodeAt(i);
+export const strToBin = function(value: any) {
+    if (typeof value !== 'string') {
+        var StrConversionError = 'Need to pass in string primitive to be converted to binary.';
+        throw new Error(StrConversionError);
     }
-    return bin;
-  } else {
-    return AWSUtil.Buffer(value);
-  }
+
+    if (AWSUtil.isBrowser()) {
+        var len = value.length;
+        var bin = new Uint8Array(new ArrayBuffer(len));
+        for (var i = 0; i < len; i++) {
+            bin[i] = value.charCodeAt(i);
+        }
+        return bin;
+    } else {
+        return AWSUtil.Buffer(value);
+    }
 };
