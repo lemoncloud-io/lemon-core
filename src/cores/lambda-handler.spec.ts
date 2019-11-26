@@ -8,10 +8,9 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, GETERR } from '../common/test-helper';
+import { expect2, GETERR, GETERR$ } from '../common/test-helper';
 
-import { LambdaHandler, WEBHandler } from './lambda-handler';
-import { NextHandler } from './core-types';
+import { LambdaHandler } from './lambda-handler';
 import { Handler } from 'aws-lambda';
 class LambdaHandlerLocal extends LambdaHandler {
     public constructor() {
@@ -35,17 +34,11 @@ describe('LambdaHandler', () => {
         })
         const event: any = { requestContext:{}, pathParameters: null };
         const context: any = {};
-        const response: any = {};
 
         //! call handler.
-        const res = await service.handle(event, context, (error: any, data: any)=>{
-            response.error = error;
-            response.result = data;
-        }).catch(GETERR);
-        expect2(res).toEqual(true);
-        expect2(response.error).toEqual(null);
-        expect2(response.result, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(response.result, 'body').toEqual({ body: 'ok' });
+        const response = await service.handle(event, context).catch(GETERR$);
+        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(response, 'body').toEqual({ body: 'ok' });
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -59,17 +52,11 @@ describe('LambdaHandler', () => {
         })
         const event: any = { requestContext:{}, pathParameters: null };
         const context: any = {};
-        const response: any = {};
 
         //! call handler.
-        const res = await service.handle(event, context, (error: any, data: any)=>{
-            response.error = error;
-            response.result = data;
-        }).catch(GETERR);
-        expect2(res).toEqual(true);
-        expect2(response.error).toEqual(null);
-        expect2(response.result, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(response.result, 'body').toEqual({ body: 'ok' });
+        const response = await service.handle(event, context).catch(GETERR$);
+        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(response, 'body').toEqual({ body: 'ok' });
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -83,16 +70,10 @@ describe('LambdaHandler', () => {
         })
         const event: any = { requestContext:{}, pathParameters: null };
         const context: any = {};
-        const response: any = {};
 
         //! call handler.
-        const res = await service.handle(event, context, (error: any, data: any)=>{
-            response.error = error;
-            response.result = data;
-        }).catch(GETERR);
-        expect2(res).toEqual(false);
-        expect2(response.error).toEqual(new Error('404 NOT FOUND'));
-        expect2(response.result).toEqual(null);
+        const response = await service.handle(event, context).catch(GETERR$);
+        expect2(response).toEqual({ error:'404 NOT FOUND' });
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -106,16 +87,10 @@ describe('LambdaHandler', () => {
         })
         const event: any = { requestContext:{}, pathParameters: null };
         const context: any = {};
-        const response: any = {};
 
         //! call handler.
-        const res = await service.handle(event, context, (error: any, data: any)=>{
-            response.error = error;
-            response.result = data;
-        }).catch(GETERR);
-        expect2(res).toEqual(false);
-        expect2(response.error).toEqual(new Error('404 NOT FOUND'));
-        expect2(response.result).toEqual(null);
+        const response = await service.handle(event, context).catch(GETERR$);
+        expect2(response).toEqual({ error:'404 NOT FOUND' });
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -138,16 +113,10 @@ describe('LambdaHandler', () => {
         service.setHandler('web', $a.hello); // set class's method.
         const event: any = { requestContext:{}, pathParameters: { id:'!' } };
         const context: any = {};
-        const response: any = {};
 
         //! call handler.
-        const res = await service.handle(event, context, (error: any, data: any)=>{
-            response.error = error;
-            response.result = data;
-        }).catch(GETERR);
-        expect2(res).toEqual(true);
-        expect2(response.error).toEqual(null);
-        expect2(response.result).toEqual({  statusCode: 200, body: "hi - !/inner-a"});
+        const response = await service.handle(event, context).catch(GETERR$);
+        expect2(response).toEqual({  statusCode: 200, body: "hi - !/inner-a"});
         /* eslint-enable prettier/prettier */
         done();
     });
