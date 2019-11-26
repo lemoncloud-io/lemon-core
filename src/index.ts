@@ -15,4 +15,3 @@
 export * from './common/types';
 export * from './core/engine';
 export * from './tools/';
-// console.log('! core: init index');

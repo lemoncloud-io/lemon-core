@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 /**
  * `exec-cli.ts`
- * - local execute runner
+ * - command line runner w/ local http request.
  *
  *
  * ## run in command line.
  * ```bash
- * $ node . -ep goods -sid marvelfood -cmd sync-list -opt save=0 -page 1
+ * $ node . -ep goods -sid lemon -cmd sync-list -opt save=0 -page 1
  * ```
  *
  * @author      Steve Jung <steve@lemoncloud.io>

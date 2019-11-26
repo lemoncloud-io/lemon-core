@@ -11,6 +11,12 @@
 import { EngineCore, GeneralFuntion } from './types';
 const NS = 'util';
 
+import fs from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+import crypto from 'crypto';
+import QUERY_STRING from 'query-string';
+
 /**
  * class: Utilities
  * - various functions
@@ -53,50 +59,8 @@ export class Utilities {
         return env === 'production' || env === 'op' ? false : true;
     }
 
-    /**
-     * Load CSV File in data folder.
-     *
-     * @param name
-     * @returns {Promise}
-     * @private
-     */
-    public load_data_csv(name: string) {
+    public load_data_yaml(name: any): Promise<any> {
         if (!name) throw new Error('param:name is required!');
-
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const fs = require('fs');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const parse = require('csv-parse');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const path = require('path');
-
-        //! calculate the target data file.
-        var fname = path.resolve(__dirname, '../data/' + name + (name.endsWith('.csv') ? '' : '.csv'));
-
-        //! prepare promised.
-        var chain = new Promise(function(resolve, reject) {
-            //! read file-stream.
-            fs.readFile(fname, 'UTF-8', (err: any, data: any) => {
-                if (err) return reject(err);
-                //! call parse.
-                parse(data, { columns: true, trim: true }, (err: any, rows: any) => {
-                    if (err) return reject(err);
-                    return resolve(rows);
-                });
-            });
-        });
-        return chain;
-    }
-
-    public load_data_yaml(name: any) {
-        if (!name) throw new Error('param:name is required!');
-
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const fs = require('fs');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const path = require('path');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const yaml = require('js-yaml');
 
         //! calculate the target data file.
         const fname = path.resolve(__dirname, '../data/' + name + (name.endsWith('.yml') ? '' : '.yml'));
@@ -115,15 +79,8 @@ export class Utilities {
         return chain;
     }
 
-    public load_sync_yaml(name: string) {
+    public load_sync_yaml(name: string): any {
         if (!name) throw new Error('param:name is required!');
-
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const fs = require('fs');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const path = require('path');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const yaml = require('js-yaml');
 
         //! calculate the target data file.
         const fname = path.resolve(__dirname, '../data/' + name + (name.endsWith('.yml') ? '' : '.yml'));
@@ -282,7 +239,6 @@ export class Utilities {
     public current_time_ms() {
         //TODO:XENI - 서버와 시간 동기화를 위해서, 디비서버에등에서 일체화된 시간 동기값을 환산하여 준다.
         var time_shift = 0;
-
         var ret = new Date().getTime();
         ret += time_shift;
         return ret;
@@ -519,8 +475,6 @@ export class Utilities {
     }
 
     public md5(data: any, digest: any) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const crypto = require('crypto');
         digest = digest === undefined ? 'hex' : digest;
         return crypto
             .createHash('md5')
@@ -529,8 +483,6 @@ export class Utilities {
     }
 
     public hmac(data: any, KEY: any, algorithm: any, encoding: any) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const crypto = require('crypto');
         KEY = KEY || 'XENI';
         encoding = encoding || 'base64';
         algorithm = algorithm || 'sha256';
@@ -540,10 +492,8 @@ export class Utilities {
             .digest(encoding);
     }
 
-    public qs_parse(query: any) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const QUERY_STRING = require('query-string');
-        const param = QUERY_STRING.parse(query);
+    public qs_parse(query: string) {
+        const param: any = QUERY_STRING.parse(query);
         Object.keys(param).forEach(key => {
             if (false) {
             }
@@ -559,9 +509,7 @@ export class Utilities {
         return param;
     }
 
-    public qs_stringify(query: string) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const QUERY_STRING = require('query-string');
+    public qs_stringify(query: { [key: string]: any }) {
         const param = QUERY_STRING.stringify(query);
         return param;
     }

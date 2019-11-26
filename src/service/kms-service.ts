@@ -12,14 +12,11 @@
 /** ****************************************************************************************************************
  *  Common Headers
  ** ****************************************************************************************************************/
-//! import core engine.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err } from '../core/engine';
 import { environ, region } from './';
 import AWS from 'aws-sdk';
-
-//! module name & namepsace
-const name = 'KMS';
-const NS = $U.NS(name, 'blue');
+const NS = $U.NS('KMS', 'blue');
 
 export interface CoreKmsService {
     hello: () => { hello: string };
@@ -49,7 +46,7 @@ export const KMS = new (class implements CoreKmsService {
     /**
      * get name of this
      */
-    public name = () => `${name}`;
+    public name = () => `KMS`;
 
     /**
      * hello

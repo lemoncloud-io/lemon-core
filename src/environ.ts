@@ -3,10 +3,17 @@
  * - override environ with `env/<profile>.yml`
  * - **NOTE** seperated file from index due to initialization sequence.
  *
- * ex:
- * ```ts
+ * usage (javascript):
+ * ```js
  * const environ = require('lemon-core/dist/environ').default;
- * const $env = environ(process)
+ * process.env = environ(process)
+ * ```
+ *
+ * usage (typescript):
+ * ```ts
+ * import environ from 'lemon-core/dist/environ';
+ * const $env = environ(process);
+ * process.env = $env;
  * ```
  *
  * @author      Steve Jung <steve@lemoncloud.io>

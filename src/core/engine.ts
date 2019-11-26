@@ -24,6 +24,8 @@
 //! import core engine.
 import engine, { LemonEngine } from '../engine';
 import { SlackPostBody, MetricPostBody } from '../common/types';
+import { loadJsonSync } from '../tools/shared';
+import { SNS } from '../service/sns-service';
 
 //! create engine in global scope.
 export const $engine: LemonEngine = engine(global, { env: process.env });
@@ -80,7 +82,6 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
     //! dispatch invoke conditins.
     try {
         const message = $message(e);
-        const loadJsonSync = require('../tools/shared').loadJsonSync;
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const name = (context && context.name) || process.env.NAME || '';
         const stage = (context && context.stage) || process.env.STAGE || '';
@@ -89,11 +90,6 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const resourcePath = (context && context.resourcePath) || '';
         const identity = (context && context.identity) || {};
         const service = `api://${$pack.name || 'lemon-core'}/${name}-${stage}#${$pack.version || '0.0.0'}`;
-
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const $sns = require('../service/sns-service').SNS;
-        // _log(NS, '! $sns =', $sns);
-        if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
 
         //! prepare payload to publish.
         const payload = {
@@ -106,8 +102,8 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         //! find target arn.
         const arn = await getHelloArn(context, NS).catch(() => '');
         _log(NS, `> report-error.arn =`, arn);
-        return $sns
-            .reportError(e, payload, arn)
+        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
+        return SNS.reportError(e, payload, arn)
             .then((mid: string) => {
                 _inf(NS, '> err.message-id =', mid);
                 return `${mid}`;
@@ -128,7 +124,6 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
     _log(NS, `doReportSlack()...`);
     //! dispatch invoke conditins.
     try {
-        const loadJsonSync = require('../tools/shared').loadJsonSync;
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
         const stage = (context && context.stage) || '';
@@ -136,10 +131,6 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
         const domainPrefix = (context && context.domainPrefix) || '';
         const resourcePath = (context && context.resourcePath) || '';
         const identity = (context && context.identity) || {};
-
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const $sns = require('../service/sns-service').SNS;
-        if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
         const param = {};
 
         //! prepare payload to publish.
@@ -154,8 +145,8 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
         //! find target arn.
         const arn = await getHelloArn(context, NS).catch(() => '');
         _log(NS, `> report-slack.arn =`, arn);
-        return $sns
-            .publish(arn, 'slack', payload)
+        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
+        return SNS.publish(arn, 'slack', payload)
             .then((mid: string) => {
                 _inf(NS, '> sns.message-id =', mid);
                 return `${mid}`;
@@ -182,7 +173,6 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
     _log(NS, `doReportMetric(${ns},${id})...`);
     //! dispatch invoke conditins.
     try {
-        const loadJsonSync = require('../tools/shared').loadJsonSync;
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
         const stage = (context && context.stage) || '';
@@ -190,10 +180,6 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
         const domainPrefix = (context && context.domainPrefix) || '';
         const resourcePath = (context && context.resourcePath) || '';
         const identity = (context && context.identity) || {};
-
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const $sns = require('../service/sns-service').SNS;
-        if (!$sns) throw new Error(`.$sns(sns-service) is required!`);
         const param = { ns, id };
 
         //! prepare payload: `POST /metrics/!/report`
@@ -214,8 +200,8 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
         // eslint-disable-next-line prettier/prettier
         const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v,i)=>i==5?target:v).join(':') : arn0;
         _log(NS, `> report-metric.arn =`, arn);
-        return $sns
-            .publish(arn || target, 'metric', payload)
+        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
+        return SNS.publish(arn || target, 'metric', payload)
             .then((mid: string) => {
                 _inf(NS, '> sns.message-id =', mid);
                 return `${mid}`;

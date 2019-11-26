@@ -12,14 +12,11 @@
 /** ****************************************************************************************************************
  *  Common Headers
  ** ****************************************************************************************************************/
-//! import core engine.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err } from '../core/engine';
 import { environ, region } from './';
 import AWS from 'aws-sdk';
-
-//! module name & namepsace
-const name = 'SNS';
-const NS = $U.NS(name, 'blue');
+const NS = $U.NS('SNS', 'blue');
 
 export interface CoreSnsService {
     hello: () => { hello: string };
@@ -40,7 +37,7 @@ export const SNS = new (class implements CoreSnsService {
     /**
      * get name of this
      */
-    public name = () => `${name}`;
+    public name = () => `SNS`;
 
     /**
      * hello

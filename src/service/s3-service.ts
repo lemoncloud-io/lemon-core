@@ -12,15 +12,12 @@
 /** ****************************************************************************************************************
  *  Common Headers
  ** ****************************************************************************************************************/
-//! import core engine.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err } from '../core/engine';
 import { environ, region } from './';
 import AWS from 'aws-sdk';
 import { v4 } from 'uuid';
-
-//! module name & namepsace
-const name = 'S3';
-const NS = $U.NS(name, 'blue');
+const NS = $U.NS('S3', 'blue');
 
 export interface TagSet {
     [key: string]: string;
@@ -56,7 +53,7 @@ export const S3 = new (class implements CoreS3Service {
     /**
      * get name of this
      */
-    public name = () => `${name}`;
+    public name = () => `S3`;
 
     /**
      * hello
