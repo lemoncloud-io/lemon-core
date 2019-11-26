@@ -77,6 +77,10 @@ export interface SlackPostBody {
     actions?: SlackAction[];
 }
 
+/**
+ * class: `MetricPostBody`
+ * - metrics for recording graph.
+ */
 export interface MetricPostBody {
     meta?: string;
     [key: string]: string | number | number[];

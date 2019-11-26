@@ -19,8 +19,8 @@
                 "src/types/*"
             ]
         },
-        "incremental": false,
-        "declaration": true
+        "declaration": true,
+        "incremental": false
     },
     "include": [
         "src/**/*"
