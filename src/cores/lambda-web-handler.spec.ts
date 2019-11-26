@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2 } from '../common/test-helper';
+import { expect2, GETERR$ } from '../common/test-helper';
 import { $U } from '../engine/';
 import { loadJsonSync } from '../tools/';
 
@@ -75,14 +75,9 @@ describe('LambdaWEBHandler', () => {
         const event: any = loadJsonSync('data/sample.event.web.json');
         const id = '';
         event.pathParameters['id'] = id;
-        const response = { error: null as any, result: null as any };
-        const res = await lambda.handle(event, null, (error: any, result: any) => {
-            response.error = error;
-            response.result = result;
-        });
-        expect2(res).toEqual(true);
-        expect2(response.result, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(response.result, 'body').toEqual({ body:$U.json({ hello: 'LIST'}) });
+        const response = await lambda.handle(event, null).catch(GETERR$);
+        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(response, 'body').toEqual({ body:$U.json({ hello: 'LIST'}) });
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -139,14 +134,9 @@ describe('LambdaWEBHandler', () => {
         event.headers['x-lemon-identity'] = $U.json({ sid:'', uid:'guest' });
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
-        const response = { error: null as any, result: null as any };
-        const res = await lambda.handle(event, null, (error: any, result: any) => {
-            response.error = error;
-            response.result = result;
-        });
-        expect2(res).toEqual(true);
-        expect2(response.result, 'statusCode').toEqual({ statusCode: 200 });
-        const body = JSON.parse(response.result.body);
+        const response = await lambda.handle(event, null).catch(GETERR$);
+        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+        const body = JSON.parse(response.body);
         expect2(body.id, '').toEqual('!');
         expect2(body.param, '').toEqual({ ts:'1574150700000' });
         expect2(body.body, '').toEqual(null);

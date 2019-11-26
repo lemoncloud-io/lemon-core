@@ -135,13 +135,12 @@ export class LambdaHandler {
 
     /**
      * decode event to proper handler.
+     * - NOTE! - returns promised results with `async`
      *
      * @returns boolean
      */
-    public handle = (event: any, context: Context, callback?: any): any => {
-        if (!event) return callback && callback(event);
-        //! prevent null error.
-        callback = callback || (() => {});
+    public handle = async (event: any, context: Context): Promise<any> => {
+        if (!event) throw new Error('@event is required!');
 
         //! WARN! allows for using callbacks as finish/error-handlers
         if (context) context.callbackWaitsForEmptyEventLoop = false;
@@ -172,7 +171,7 @@ export class LambdaHandler {
         };
 
         //! call promised.
-        const promise = (main: Handler, event: any, context: Context) =>
+        const promise = (main: Handler, event: any, context: Context): Promise<any> =>
             new Promise((resolve, reject) => {
                 try {
                     let resolved = false;
@@ -192,27 +191,29 @@ export class LambdaHandler {
             });
 
         //! call main.. (it will return result or promised)
-        promise(main, event, context)
+        return promise(main, event, context)
             .then(_ => {
                 if (_ !== undefined) _log(NS, '! res =', $U.json(_));
-                ((context && context.done) || callback)(null, _);
-                return true;
+                // ((context && context.done) || callback)(null, _);
+                // return true;
+                return _;
             })
             .catch(e => {
-                _log(NS, '! err =', e);
+                _err(NS, '! err =', e);
                 if (!LambdaHandler.REPORT_ERROR) {
-                    ((context && context.done) || callback)(e, null);
-                    return false;
+                    // ((context && context.done) || callback)(e, null);
+                    // return false;
+                    throw e;
                 }
-                // !report this.
-                return doReportError(e, context, event).then(() => {
-                    ((context && context.done) || callback)(e, null);
-                    return false;
-                });
+                //! report this error.
+                return doReportError(e, context, event)
+                    .catch(_ => _) // safe call w/o error.
+                    .then(() => {
+                        // ((context && context.done) || callback)(e, null);
+                        // return false;
+                        throw e;
+                    });
             });
-
-        //! return void.
-        return;
     };
 
     /**
