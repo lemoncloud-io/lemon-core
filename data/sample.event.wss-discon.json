@@ -1,0 +1,45 @@
+{
+    "!":"WSS Event Data of disconnection @191121 w/ comics.dev",
+    "headers": {
+        "Host": "6ye6t5py3i.execute-api.ap-northeast-2.amazonaws.com",
+        "x-api-key": "",
+        "X-Forwarded-For": "",
+        "x-restapi": ""
+    },
+    "multiValueHeaders": {
+        "Host": ["6ye6t5py3i.execute-api.ap-northeast-2.amazonaws.com"],
+        "x-api-key": [""],
+        "X-Forwarded-For": [""],
+        "x-restapi": [""]
+    },
+    "requestContext": {
+        "routeKey": "$disconnect",
+        "messageId": null,
+        "eventType": "DISCONNECT",
+        "extendedRequestId": "DjnxAFSuIE0FpLw=",
+        "requestTime": "22/Nov/2019:10:34:07 +0000",
+        "messageDirection": "IN",
+        "stage": "dev",
+        "connectedAt": 1574418735553,
+        "requestTimeEpoch": 1574418847964,
+        "identity": {
+            "cognitoIdentityPoolId": null,
+            "cognitoIdentityId": null,
+            "principalOrgId": null,
+            "cognitoAuthenticationType": null,
+            "userArn": null,
+            "userAgent": null,
+            "accountId": null,
+            "caller": null,
+            "sourceIp": "221.149.250.13",
+            "accessKey": null,
+            "cognitoAuthenticationProvider": null,
+            "user": null
+        },
+        "requestId": "DjnxAFSuIE0FpLw=",
+        "domainName": "6ye6t5py3i.execute-api.ap-northeast-2.amazonaws.com",
+        "connectionId": "DjnfcdywIE0CJXA=",
+        "apiId": "6ye6t5py3i"
+    },
+    "isBase64Encoded": false
+}

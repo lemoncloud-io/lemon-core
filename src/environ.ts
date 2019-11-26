@@ -3,14 +3,22 @@
  * - override environ with `env/<profile>.yml`
  * - **NOTE** seperated file from index due to initialization sequence.
  *
- * ex:
- * ```ts
+ * usage (javascript):
+ * ```js
  * const environ = require('lemon-core/dist/environ').default;
- * const $env = environ(process)
+ * process.env = environ(process)
  * ```
  *
- * @author       Steve Jung <steve@lemoncloud.io>
- * @date         2019-08-09 initial typescript version.
+ * usage (typescript):
+ * ```ts
+ * import environ from 'lemon-core/dist/environ';
+ * const $env = environ(process);
+ * process.env = $env;
+ * ```
+ *
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-09 initial typescript version.
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -40,10 +48,10 @@ export const loadEnviron = (process: any, options?: Options) => {
     options = options || {};
     let { ENV, STAGE, ENV_PATH } = options;
     const $env = (process && process.env) || {};
-    const QUIET = $env['LS'] === '1'; // LOG SILENT - PRINT NO LOG MESSAGE
+    const QUIET = 0 ? 0 : $env['LS'] === '1'; // LOG SILENT - PRINT NO LOG MESSAGE
     ENV = ENV || $env['ENV'] || 'none.yml'; // Environment file.
     STAGE = STAGE || $env['STAGE'] || $env['NODE_ENV'] || 'local'; // Global STAGE/NODE_ENV For selecting.
-    const _log = QUIET ? (...args: any[]) => {} : console.log;
+    const _log = QUIET ? (...a: any) => {} : console.log;
     _log(`! ENV =${ENV} STAGE=${STAGE}`);
 
     //! initialize environment via 'env.yml'

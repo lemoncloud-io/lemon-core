@@ -1,0 +1,34 @@
+{
+    "!":"SNS Event Data @191121 w/ comics.dev",
+    "Records": [{
+        "EventSource": "aws:sns",
+        "EventVersion": "1.0",
+        "EventSubscriptionArn": "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev:9c04228e-7cb3-4f38-b452-0d68a28cf87a",
+        "Sns": {
+            "Type": "Notification",
+            "MessageId": "1d7270d1-3b4c-5f97-b2f7-26808b20a3bd",
+            "TopicArn": "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev",
+            "Subject": "test",
+            "Message": "{\"hello\":\"lemon\"}",
+            "Timestamp": "2019-11-22T09:45:16.344Z",
+            "SignatureVersion": "1",
+            "Signature": "Vmo97v9VQeDU2CrDqlyk5Ajr+Jm5GHm/ajoicbfsUwLIUCyy9XVu6tpT/01fzbblOt3iOXtoXCzS36tFun/1Jx5p/8udIEnVtUGtdVKDhi/px67mTe4v9APMgm/mVxmV/im36flNoVt+KDFHD336S037K4vHvkV0u5OGyRl3EAEmpQCASHE8td6AOO0eaM+QYSLilybEfHvIAVjSoET7desPqhQyOLqIRaazEuVeq11jTy6t7TVX6/oK21HK/dMZoe5/SmzNUxDCtiSGWo2w7gd9tpigae52vAplTbDPeaCIe5FGJqYEPVzmKoMPGID/3JlMXfjKLvU1yY4XZCr08w==",
+            "SigningCertUrl": "https://sns.ap-northeast-2.amazonaws.com/SimpleNotificationService-6aad65c2f9911b05cd53efda11f913f9.pem",
+            "UnsubscribeUrl": "https://sns.ap-northeast-2.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev:9c04228e-7cb3-4f38-b452-0d68a28cf87a",
+            "MessageAttributes": {
+                "id": {
+                    "Type": "String",
+                    "Value": "0"
+                },
+                "cmd": {
+                    "Type": "String",
+                    "Value": "[\"hi\"]"
+                },
+                "n": {
+                    "Type": "String",
+                    "Value": "1"
+                }
+            }
+        }
+    }]
+}

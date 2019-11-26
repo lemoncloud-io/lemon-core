@@ -1,0 +1,35 @@
+{
+    "!":"WSS Event Message Data of `routeKey` @191121 w/ comics.dev",
+    "#":"send message: {\"echo\": \"hello\"}",
+    "requestContext": {
+        "routeKey": "$default",
+        "messageId": "DjoAZddJIE0AcgQ=",
+        "eventType": "MESSAGE",
+        "extendedRequestId": "DjoAZGAOoE0FVew=",
+        "requestTime": "22/Nov/2019:10:35:46 +0000",
+        "messageDirection": "IN",
+        "stage": "dev",
+        "connectedAt": 1574418936297,
+        "requestTimeEpoch": 1574418946436,
+        "identity": {
+            "cognitoIdentityPoolId": null,
+            "cognitoIdentityId": null,
+            "principalOrgId": null,
+            "cognitoAuthenticationType": null,
+            "userArn": null,
+            "userAgent": null,
+            "accountId": null,
+            "caller": null,
+            "sourceIp": "221.149.250.13",
+            "accessKey": null,
+            "cognitoAuthenticationProvider": null,
+            "user": null
+        },
+        "requestId": "DjoAZGAOoE0FVew=",
+        "domainName": "6ye6t5py3i.execute-api.ap-northeast-2.amazonaws.com",
+        "connectionId": "Djn-zdcroE0AcgQ=",
+        "apiId": "6ye6t5py3i"
+    },
+    "body": "{\"echo\":\"hello\"}",
+    "isBase64Encoded": false
+}

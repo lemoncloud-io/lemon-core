@@ -1,0 +1,84 @@
+{
+    "!":"API Gateway Event Data @191121 w/ comics.dev",
+    "resource": "/hello/{id}",
+    "path": "/hello/a_123_test",
+    "httpMethod": "GET",
+    "headers": {
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate",
+        "CloudFront-Forwarded-Proto": "https",
+        "CloudFront-Is-Desktop-Viewer": "true",
+        "CloudFront-Is-Mobile-Viewer": "false",
+        "CloudFront-Is-SmartTV-Viewer": "false",
+        "CloudFront-Is-Tablet-Viewer": "false",
+        "CloudFront-Viewer-Country": "KR",
+        "Host": "na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com",
+        "User-Agent": "HTTPie/1.0.2",
+        "Via": "1.1 0bfcbc7afd4267da2d9699285b757c04.cloudfront.net (CloudFront)",
+        "X-Amz-Cf-Id": "cD2syb0t6Am8ifoMdWzF77eG0Mq0kBdJZtmDppVbYOCIAAIkIVbH0Q==",
+        "X-Amzn-Trace-Id": "Root=1-5dd78f40-51a9a4c0cd7274d057a2d560",
+        "X-Forwarded-For": "221.149.250.13, 52.46.53.80",
+        "X-Forwarded-Port": "443",
+        "X-Forwarded-Proto": "https"
+    },
+    "multiValueHeaders": {
+        "Accept": ["*/*"],
+        "Accept-Encoding": ["gzip, deflate"],
+        "CloudFront-Forwarded-Proto": ["https"],
+        "CloudFront-Is-Desktop-Viewer": ["true"],
+        "CloudFront-Is-Mobile-Viewer": ["false"],
+        "CloudFront-Is-SmartTV-Viewer": ["false"],
+        "CloudFront-Is-Tablet-Viewer": ["false"],
+        "CloudFront-Viewer-Country": ["KR"],
+        "Host": ["na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com"],
+        "User-Agent": ["HTTPie/1.0.2"],
+        "Via": ["1.1 0bfcbc7afd4267da2d9699285b757c04.cloudfront.net (CloudFront)"],
+        "X-Amz-Cf-Id": ["cD2syb0t6Am8ifoMdWzF77eG0Mq0kBdJZtmDppVbYOCIAAIkIVbH0Q=="],
+        "X-Amzn-Trace-Id": ["Root=1-5dd78f40-51a9a4c0cd7274d057a2d560"],
+        "X-Forwarded-For": ["221.149.250.13, 52.46.53.80"],
+        "X-Forwarded-Port": ["443"],
+        "X-Forwarded-Proto": ["https"]
+    },
+    "queryStringParameters": {
+        "ts": "1574150700000"
+    },
+    "multiValueQueryStringParameters": {
+        "ts": ["1574150700000"]
+    },
+    "pathParameters": {
+        "id": "a_123_test"
+    },
+    "stageVariables": null,
+    "requestContext": {
+        "resourceId": "0e9zzv",
+        "resourcePath": "/hello/{id}",
+        "httpMethod": "GET",
+        "extendedRequestId": "DjNSJEFkIE0FpLw=",
+        "requestTime": "22/Nov/2019:07:33:20 +0000",
+        "path": "/dev/hello/a_123_test",
+        "accountId": "796730245826",
+        "protocol": "HTTP/1.1",
+        "stage": "dev",
+        "domainPrefix": "na12ibnzu4",
+        "requestTimeEpoch": 1574408000840,
+        "requestId": "d8485d00-5624-4094-9a93-ce09c351ee5b",
+        "identity": {
+            "cognitoIdentityPoolId": null,
+            "accountId": null,
+            "cognitoIdentityId": null,
+            "caller": null,
+            "sourceIp": "221.149.250.13",
+            "principalOrgId": null,
+            "accessKey": null,
+            "cognitoAuthenticationType": null,
+            "cognitoAuthenticationProvider": null,
+            "userArn": null,
+            "userAgent": "HTTPie/1.0.2",
+            "user": null
+        },
+        "domainName": "na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com",
+        "apiId": "na12ibnzu4"
+    },
+    "body": null,
+    "isBase64Encoded": false
+}

@@ -1,0 +1,50 @@
+{
+    "!":"DynamoDB Stream Event Data @191121 w/ comics.dev",
+    "Records": [{
+        "eventID": "e6c9208b46a3f10c87cd42555e2a0709",
+        "eventName": "MODIFY",
+        "eventVersion": "1.1",
+        "eventSource": "aws:dynamodb",
+        "awsRegion": "ap-northeast-2",
+        "dynamodb": {
+            "ApproximateCreationDateTime": 1574416291,
+            "Keys": {
+                "@id": {
+                    "S": "a_123_test"
+                },
+                "@ts": {
+                    "N": "1574150700000"
+                }
+            },
+            "NewImage": {
+                "count": {
+                    "N": "6"
+                },
+                "@id": {
+                    "S": "a_123_test"
+                },
+                "hello": {
+                    "S": "lemon"
+                },
+                "@ts": {
+                    "N": "1574150700000"
+                }
+            },
+            "OldImage": {
+                "count": {
+                    "N": "4"
+                },
+                "@id": {
+                    "S": "a_123_test"
+                },
+                "@ts": {
+                    "N": "1574150700000"
+                }
+            },
+            "SequenceNumber": "17752700000000004311803538",
+            "SizeBytes": 90,
+            "StreamViewType": "NEW_AND_OLD_IMAGES"
+        },
+        "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:796730245826:table/MetricsTest/stream/2019-11-18T14:16:45.421"
+    }]
+}

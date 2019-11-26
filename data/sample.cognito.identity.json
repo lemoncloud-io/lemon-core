@@ -1,0 +1,16 @@
+{
+    "!": "sample of identity data with `authorizer: aws_iam`",
+    "cognitoIdentityPoolId": "ap-northeast-2:74aef6a0-fb09-4889-9b79-234533dbb672",
+    "accountId": "085403634746",
+    "cognitoIdentityId": "ap-northeast-2:9b0672d7-cbcc-4a88-bea6-5a3365663ba7",
+    "caller": "AROAJDQHXNEYMJGW6BS5G:CognitoIdentityCredentials",
+    "sourceIp": "221.149.250.13",
+    "accessKey": "ASIARHYTUBQ5EQCFQP42",
+    "cognitoAuthenticationType": "authenticated",
+    "cognitoAuthenticationProvider":
+        "cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_NzWiVSqAX,cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_NzWiVSqAX:CognitoSignIn:add52f72-b4eb-4e83-be58-a5b130531310",
+    "userArn":
+        "arn:aws:sts::085403634746:assumed-role/Cognito_carrotidentitypoolAuth_Role/CognitoIdentityCredentials",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) Gecko/20100101 Firefox/61.0",
+    "user": "AROAJDQHXNEYMJGW6BS5G:CognitoIdentityCredentials"
+}

@@ -1,0 +1,16 @@
+{
+    "!":"cognio 이벤트 발생시 함께 전달된 context 객체",
+    "callbackWaitsForEmptyEventLoop": "[Getter/Setter]",
+    "done": "[Function: done]",
+    "succeed": "[Function: succeed]",
+    "fail": "[Function: fail]",
+    "logGroupName": "/aws/lambda/lemon-messages-api-prod-user",
+    "logStreamName": "2019/07/31/[$LATEST]030366add78d45e1be14eed4191d12d0",
+    "functionName": "lemon-messages-api-prod-user",
+    "memoryLimitInMB": "256",
+    "functionVersion": "$LATEST",
+    "getRemainingTimeInMillis": "[Function: getRemainingTimeInMillis]",
+    "invokeid": "6d2e4397-bd48-484f-90d4-ed70838beded",
+    "awsRequestId": "6d2e4397-bd48-484f-90d4-ed70838beded",
+    "invokedFunctionArn": "arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-messages-api-prod-user"
+}

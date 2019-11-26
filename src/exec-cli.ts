@@ -1,16 +1,16 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 /**
  * `exec-cli.ts`
- * - local execute runner
+ * - command line runner w/ local http request.
  *
  *
  * ## run in command line.
  * ```bash
- * $ node . -ep goods -sid marvelfood -cmd sync-list -opt save=0 -page 1
+ * $ node . -ep goods -sid lemon -cmd sync-list -opt save=0 -page 1
  * ```
  *
- * @author  Steve Jung <steve@lemoncloud.io>
- * @date    2019-08-01 initial optimized via `imweb-forms-api/run.js`
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-01 initial optimized via `imweb-forms-api/run.js`
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -24,7 +24,7 @@ const $env = { TS: '1', LC: '1' };
 process.env = Object.assign(process.env, $env);
 
 //! - load engine after `process.env`
-import { $U, _log, _inf, _err } from './core/engine';
+import { $U, _log, _inf, _err } from './engine';
 import { loadJsonSync, getRunParam } from './tools/';
 
 //! - initial values.

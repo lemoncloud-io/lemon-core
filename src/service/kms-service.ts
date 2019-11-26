@@ -3,25 +3,22 @@
  * - encrypt/decrypt service api with KMS
  *
  *
- * @author  Steve <steve@lemoncloud.io>
- * @date    2019-07-19 initial version
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-07-19 initial version
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 /** ****************************************************************************************************************
  *  Common Headers
  ** ****************************************************************************************************************/
-//! import core engine.
-import { $U, _log, _inf, _err } from '../core/engine';
-import { EnginePluggable } from 'lemon-engine';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { $U, _log, _inf, _err } from '../engine';
 import { environ, region } from './';
 import AWS from 'aws-sdk';
+const NS = $U.NS('KMS', 'blue');
 
-//! module name & namepsace
-const name = 'KMS';
-const NS = $U.NS(name, 'blue');
-
-export interface CoreKmsService extends EnginePluggable {
+export interface CoreKmsService {
     hello: () => { hello: string };
     encrypt: (message: string, keyId?: string) => Promise<string>;
     decrypt: (encryptedSecret: string) => Promise<string>;
@@ -49,7 +46,7 @@ export const KMS = new (class implements CoreKmsService {
     /**
      * get name of this
      */
-    public name = () => `${name}`;
+    public name = () => `KMS`;
 
     /**
      * hello

@@ -8,12 +8,16 @@
  * const $env = environ(process)
  * ```
  *
- * @author       Steve Jung <steve@lemoncloud.io>
- * @date         2019-08-09 initial typescript version.
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2019-08-09 initial typescript version.
+ * @date        2018-05-23 initial version
+ * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import fs from 'fs';
+import yaml from 'js-yaml';
+import AWS from 'aws-sdk';
 
 //! load json in sync.
 export const loadJsonSync = (name: string, def: any = {}) => {
@@ -25,6 +29,21 @@ export const loadJsonSync = (name: string, def: any = {}) => {
         if (def) def.error = `${e.message || e}`;
         return def;
     }
+};
+
+//! dynamic loading credentials by profile. (search PROFILE -> NAME)
+export const credentials = async (profile: string) => {
+    const credentials = new AWS.SharedIniFileCredentials({ profile });
+    AWS.config.credentials = credentials;
+    return credentials;
+};
+
+//! load yml data via './data/<file>.yml'
+export const loadDataYml = (file: string, folder?: string) => {
+    folder = folder || 'data';
+    const path = `./${folder}/` + file + (file.endsWith('.yml') ? '' : '.yml');
+    if (!fs.existsSync(path)) throw new Error('404 NOT FOUND - data-file:' + path);
+    return yaml.safeLoad(fs.readFileSync(path, 'utf8'));
 };
 
 interface AdaptiveParam<T> {
