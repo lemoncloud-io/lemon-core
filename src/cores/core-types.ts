@@ -29,6 +29,12 @@ export interface GeneralItem {
  *  COMMON Interfaces
  ** ********************************************************************************************************************/
 /**
+ * type: `NextMode`
+ * - compartible with REST API Method.
+ */
+export type NextMode = 'LIST' | 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+
+/**
  * class: `NextIdentity`
  * - the context parameter for each next-handler `fx(id, param, body, context)`
  * - possible to query user's detail via OAuth Resource Server.
@@ -68,4 +74,62 @@ export type NextHandler<TParam = any, TResult = any, TBody = any> = (
 /**
  * Decode `NextHandler` by mode + id + cmd.
  */
-export type NextDecoder<TMode = string, TId = string> = (mode: TMode, id?: TId, cmd?: string) => NextHandler;
+export type NextDecoder<TMode = NextMode> = (mode: TMode, id?: string, cmd?: string) => NextHandler;
+
+/** ********************************************************************************************************************
+ *  Protocol Services
+ ** ********************************************************************************************************************/
+/**
+ * class: `ProtocolParam`
+ * - common protocol parameters.
+ */
+export interface ProtocolParam<TParam = { [key: string]: any }, TBody = { [key: string]: any }> {
+    service?: string; // target service name like `lemon-hello-api` (default package.name)
+    stage?: '' | 'dev' | 'prod'; // target stage (default env.STAGE)
+    type: string; // handler type in `lambda-web-handler`
+    mode?: NextMode; // method of event (default `GET`)
+    id?: string; // id of resource
+    cmd?: string; // command.
+    param?: TParam; // command paramter
+    body?: TBody; // body of json
+    context: NextContext; // the current context
+}
+
+/**
+ * class: `ProtocolTransformer`
+ * - transform param to event, or vise versa.
+ */
+export interface ProtocolTransformer<TEvent = any, TLambdaEvent = TEvent> {
+    /**
+     * transform param to event
+     * @param param     the calling param.
+     */
+    transformToEvent(param: ProtocolParam): TEvent;
+
+    /**
+     * transform event data to param
+     * @param event     the lambda compartible event data.
+     */
+    transformToParam(event: TLambdaEvent): ProtocolParam;
+}
+
+/**
+ * class: `ProtocolService`
+ * - support inter communication (sync or async) between micro-services.
+ */
+export interface ProtocolService {
+    /**
+     * synchronized call to target function.
+     *
+     * @param param     the calling param
+     */
+    execute<T>(param: ProtocolParam): Promise<T>;
+
+    /**
+     * Asynchronized call to target function.
+     *
+     * @param param     the calling param
+     * @param callback  the return target
+     */
+    notify(param: ProtocolParam, callback?: ProtocolParam): Promise<string>;
+}

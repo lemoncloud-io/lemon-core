@@ -18,7 +18,7 @@ import { _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 import { doReportError } from '../engine/';
 
-import { NextDecoder, NextHandler, NextContext } from './core-types';
+import { NextDecoder, NextHandler, NextContext, NextMode } from './core-types';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext } from 'aws-lambda';
 import $lambda, { LambdaHandler, WEBHandler, LambdaHandlerService, Context } from './lambda-handler';
 
@@ -59,14 +59,17 @@ export const failure = (body: any, status?: number) => {
  *  COMMON Constants
  ** ********************************************************************************************************************/
 interface ModeMap {
-    [key: string]: string;
+    [key: string]: NextMode;
 }
 //! constants config
 const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
-const METHOD_MODE_MAP: ModeMap = 'LIST,GET,PUT,POST,DELETE'.split(',').reduce((N: ModeMap, K) => {
-    N[K] = K;
-    return N;
-}, {});
+const METHOD_MODE_MAP: ModeMap = {
+    LIST: 'LIST',
+    GET: 'GET',
+    PUT: 'PUT',
+    POST: 'POST',
+    DELETE: 'DELETE',
+};
 
 /** ********************************************************************************************************************
  *  Main Class
@@ -131,7 +134,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         const ID = decodeURIComponent($path.id || ''); // {id} in path paramter.
         const METHOD = (!ID && event.httpMethod === 'GET' && 'LIST') || event.httpMethod || ''; // determine method.
         const CMD = decodeURIComponent($path.cmd || ''); // {cmd} in path paramter.
-        const MODE = (METHOD && METHOD_MODE_MAP[METHOD]) || '';
+        const MODE = METHOD ? METHOD_MODE_MAP[METHOD] : 'GET';
 
         //! safe decode body if it has json format. (TODO - support url-encoded post body)
         const $body =
