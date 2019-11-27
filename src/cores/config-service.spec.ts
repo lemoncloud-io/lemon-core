@@ -69,11 +69,11 @@ describe('ConfigService', () => {
         done();
     });
 
-    //! test aws-kms-service
-    //NOTE - use make `alias/lemon-hello-api` by readme.
+    //! test w/ aws-kms-service
     _it('should pass aws-kms-service()', async done => {
         if (!PROFILE) return done();
 
+        //NOTE - use `alias/lemon-hello-api` by default
         const service = new AWSKMSService();
         const keyId = 'alias/lemon-hello-api';
         const message = `hello lemon!`;
@@ -90,6 +90,7 @@ describe('ConfigService', () => {
     it('should pass config-service()', async done => {
         if (!PROFILE) return done();
 
+        //NOTE - use `alias/lemon-hello-api` by default
         const $kms = new AWSKMSService();
         const message = 'hello-lemon';
         const encrypted = await $kms.encrypt(message);

@@ -20,9 +20,8 @@
 import { $engine, _log, _inf, _err, $U } from '../engine/';
 const NS = $U.NS('CFGS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
+import { STAGE } from './core-types';
 import { AWSKMSService } from './aws-kms-service';
-
-type STAGE = 'local' | 'dev' | 'prod';
 
 /**
  * filter function()
@@ -92,9 +91,9 @@ export class MyConfigService implements ConfigService {
     /**
      * DO NOT craete directly. (use async `ConfigService.factory()`)
      */
-    private constructor() {
+    protected constructor(kms?: AWSKMSService) {
         _log(NS, `ConfigService()...`);
-        this.kms = new AWSKMSService();
+        this.kms = kms;
     }
 
     /**
@@ -102,9 +101,8 @@ export class MyConfigService implements ConfigService {
      */
     public static async factory(base: object = null): Promise<ConfigService> {
         // _log(NS, 'factory()...');
-        const inst = new MyConfigService();
-        await inst.load(base);
-        return inst;
+        const inst = new MyConfigService(new AWSKMSService());
+        return inst.load(base);
     }
 
     /**
@@ -142,8 +140,8 @@ export class MyConfigService implements ConfigService {
      */
     public getStage(): STAGE {
         const stage = `${this.get('STAGE') || this.get('stage') || ''}`.toLowerCase();
-        if (stage == 'develop' || stage == 'dev') return 'dev';
-        if (stage == 'production' || stage == 'prod') return 'prod';
+        if (stage == 'develop' || stage == 'development' || stage == 'dev') return 'dev';
+        if (stage == 'production' || stage == 'product' || stage == 'prod') return 'prod';
         return 'local';
     }
 
@@ -151,14 +149,15 @@ export class MyConfigService implements ConfigService {
      * load & decrypt the environ.
      * - only if string starts with '*'
      */
-    protected async load(base: object = null) {
+    protected async load(base: object = null): Promise<ConfigService> {
         // const _log = console.log;
         _log(NS, `load()...`);
         const $env: any = base || process.env || {};
         this.$env = $env; // save as default environ.
 
+        //! check if encrypted like `*XX+XyXxX==` (must start with '*')
         const isEncrypted = (val: any) => {
-            return val && typeof val == 'string' && /^\*[A-Za-z0-9_\/=\+\n]+$/.test(val);
+            return val && typeof val == 'string' && /^\*[A-Za-z0-9_\/=\+]+$/.test(val);
         };
 
         //! convert to { key, val }
@@ -170,7 +169,7 @@ export class MyConfigService implements ConfigService {
         //! decrypts if is encrypted.
         const list2 = await Promise.all(
             list.map(async ({ key, val }) => {
-                if (isEncrypted(val)) {
+                if (isEncrypted(val) && this.kms) {
                     const encrypted = `${val}`.substring(1);
                     const val2 = await this.kms.decrypt(encrypted).catch((e: Error) => {
                         _log(NS, `ERR@${key} =`, e);
@@ -190,22 +189,11 @@ export class MyConfigService implements ConfigService {
             if (key) M[key] = `${val}`; // convert all to string.
             return M;
         }, {});
-
-        //! replace origin config object..
-        if (0) {
-            //TODO:HIGH - CAN NOT OVERWITE BACK TO CONFIG OBJECT!!!!
-            const writer: Filter<any> = (key, val, thiz, attr) => {
-                if (isEncrypted(val)) {
-                    const val2 = this.envConfig[key];
-                    thiz[attr] = val2 !== undefined ? val2 : thiz[attr];
-                }
-                return;
-            };
-            marshal($env, writer);
-        }
-
         // _log(NS, '>> envConfig=', this.envConfig);
         // _log(NS, '>> envOrigin=', this.$env);
         _inf(NS, '>> loaded... config.len=', list2.length);
+
+        //! returns this.
+        return this;
     }
 }

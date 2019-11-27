@@ -57,6 +57,7 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
     source?: string; // origin event source. can be 'express' if `npm run express.local`.
     clientIp?: string; // ip-address of source client.
     requestId?: string; // id of request to keep track of timing infor w/ `metrics`
+    accountId?: string; // id of account of initial request. (ex: `085403634746` for lemon profile)
 }
 
 /**
@@ -79,13 +80,15 @@ export type NextDecoder<TMode = NextMode> = (mode: TMode, id?: string, cmd?: str
 /** ********************************************************************************************************************
  *  Protocol Services
  ** ********************************************************************************************************************/
+export type STAGE = 'local' | 'dev' | 'prod';
+
 /**
  * class: `ProtocolParam`
  * - common protocol parameters.
  */
 export interface ProtocolParam<TParam = { [key: string]: any }, TBody = { [key: string]: any }> {
-    service?: string; // target service name like `lemon-hello-api` (default package.name)
-    stage?: '' | 'dev' | 'prod'; // target stage (default env.STAGE)
+    service?: 'self' | string; // target service name like `lemon-hello-api` (default package.name)
+    stage?: STAGE; // target stage (default env.STAGE)
     type: string; // handler type in `lambda-web-handler`
     mode?: NextMode; // method of event (default `GET`)
     id?: string; // id of resource
@@ -99,12 +102,12 @@ export interface ProtocolParam<TParam = { [key: string]: any }, TBody = { [key: 
  * class: `ProtocolTransformer`
  * - transform param to event, or vise versa.
  */
-export interface ProtocolTransformer<TEvent = any, TLambdaEvent = TEvent> {
+export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventParam> {
     /**
      * transform param to event
      * @param param     the calling param.
      */
-    transformToEvent(param: ProtocolParam): TEvent;
+    transformToEvent(param: ProtocolParam): TEventParam;
 
     /**
      * transform event data to param
