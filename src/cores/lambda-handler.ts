@@ -44,15 +44,18 @@ export type Context = $lambda.Context;
 export interface CronEvent {
     cron: { name: string; action: string };
 }
+export type WEBEvent = APIGatewayProxyEvent;
+export type WEBResult = APIGatewayProxyResult;
 export type WSSEvent = APIGatewayProxyEvent;
+export type WSSResult = any;
 
 //! define and export all types.
 export type MyHandler<TEvent = any, TResult = any> = (event: TEvent, context: NextContext) => Promise<TResult>;
 
-export type WEBHandler = MyHandler<APIGatewayProxyEvent, APIGatewayProxyResult>;
+export type WEBHandler = MyHandler<WEBEvent, WEBResult>;
+export type WSSHandler = MyHandler<WSSEvent, WSSResult>;
 export type SNSHandler = MyHandler<SNSEvent, void>;
 export type SQSHandler = MyHandler<SQSEvent, void>;
-export type WSSHandler = MyHandler<APIGatewayProxyEvent, any>;
 export type CronHandler = MyHandler<CronEvent, void>;
 export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
 export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;

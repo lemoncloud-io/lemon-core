@@ -30,11 +30,13 @@ export { LambdaWSSHandler } from './lambda-wss-handler';
 //! import default with named.
 import lambda from './lambda-handler';
 import web from './lambda-web-handler';
+import wss from './lambda-wss-handler';
 import sns from './lambda-sns-handler';
 import sqs from './lambda-sqs-handler';
 import cron from './lambda-cron-handler';
 import cognito from './lambda-cognito-handler';
 import dynamos from './lambda-dynamo-stream-handler';
+import protocol from './protocol-service';
 
 //! export default.
-export default { lambda, web, sns, sqs, cron, cognito, dynamos };
+export default { lambda, web, wss, sns, sqs, cron, cognito, dynamos, protocol };
