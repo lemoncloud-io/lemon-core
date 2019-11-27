@@ -16,8 +16,7 @@ import { ConfigService, MyConfigService } from './config-service';
 import AWS, { Lambda, SQS } from 'aws-sdk';
 import { LambdaHandler } from './lambda-handler';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
-
-// type LType = Lambda.Types.InvocationRequest;
+import URL, { Url } from 'url';
 
 /**
  * class: `MyConfigService`
@@ -128,9 +127,10 @@ export class MyProtocolService implements ProtocolService {
      * @param uri
      * @param param
      */
-    public transformEvent(uri: string | URL, param: ProtocolParam) {
+    public transformEvent(uri: string | Url, param: ProtocolParam) {
         // const url = URL.parse(uri);
-        const url = typeof uri == 'string' ? new URL(uri) : uri;
+        // const url = typeof uri == 'string' ? new URL(uri) : uri;
+        const url = typeof uri == 'string' ? URL.parse(uri) : uri;
         const protocol = url.protocol;
         switch (protocol) {
             case 'web:':
@@ -162,11 +162,12 @@ export class MyProtocolService implements ProtocolService {
      * @param param     the calling param
      */
     public async execute<T>(param: ProtocolParam, config?: ConfigService): Promise<T> {
-        // const _log = console.info;
+        const _log = console.info;
         config = config ? config : await this.$config;
         _log(NS, `execute(${param.service || ''})..`);
         const uri = this.asProtocolURI('web', param, config);
-        const url = new URL(uri);
+        // const url = new URL(uri);
+        const url = URL.parse(uri);
         _log(NS, `> url =`, $U.json(url));
         const payload = this.transformEvent(url, param);
         // _log(NS, `> payload =`, $U.json(payload));
