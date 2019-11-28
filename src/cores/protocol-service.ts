@@ -9,11 +9,11 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, doReportError } from '../engine/';
+import { $engine, _log, _inf, _err, $U, doReportError, getHelloArn } from '../engine/';
 import { ProtocolService, ProtocolParam, ProtocolTransformer, STAGE, NextMode, NextContext } from './core-types';
-import { APIGatewayProxyEvent, SNSEvent, SQSEvent, APIGatewayEventRequestContext } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService, MyConfigService } from './config-service';
-import AWS, { Lambda, SQS } from 'aws-sdk';
+import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
 import { LambdaHandler } from './lambda-handler';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 import URL, { Url } from 'url';
@@ -51,6 +51,11 @@ export class MyProtocolService implements ProtocolService {
         this.selfType = type || '';
     }
 
+    /**
+     * say hello() of this service
+     */
+    public hello = (): string => `protocol-service`;
+
     //! determine path part
     public asPath = (type: string, id?: string, cmd?: string): string => {
         const buf = [''];
@@ -84,25 +89,28 @@ export class MyProtocolService implements ProtocolService {
      * @param param     protocol param.
      * @param config    config-service to use.
      */
-    public asProtocolURI(protocol: 'web' | 'sns' | 'sqs', param: ProtocolParam, config: ConfigService): string {
-        const service = !param.service || param.service == 'self' ? this.selfService : param.service;
+    public asProtocolURI(protocol: 'web' | 'sns' | 'sqs', param: ProtocolParam, config?: ConfigService): string {
+        const currService = (config && config.getService()) || '';
+        const currVersion = (config && config.getVersion()) || '';
+        const service = !param.service || param.service == 'self' ? this.selfService || currService : param.service;
         const type = param.type ? param.type : this.selfType;
-        const stage: STAGE = param.stage || config.getStage();
+        const stage: STAGE = param.stage || (config && config.getStage()) || 'local';
+        // if (!service) throw new Error('.service is required!');
 
         //! determin host name by service
         const _enc = (s: string): string => encodeURIComponent(s);
-        const _host = (service: string): string => {
-            const isStandard = service.endsWith('-api');
-            const name = isStandard ? service.substring(0, service.length - '-api'.length) : service;
+        const _host = (svc: string): string => {
+            const isStandard = svc.endsWith('-api');
+            const name = isStandard ? svc.substring(0, svc.length - '-api'.length) : svc;
             const type = protocol == 'web' ? 'api' : protocol;
             switch (stage) {
-                case 'local':
-                case 'dev':
-                    return isStandard ? `${name}-${type}-dev` : `${name}-dev`;
                 case 'prod':
                     return isStandard ? `${name}-${type}` : `${name}`;
+                case 'local':
+                case 'dev':
+                default:
+                    return isStandard ? `${name}-${type}-dev` : `${name}-dev`;
             }
-            return service;
         };
         //NOTE - functionName should be like `lemon-hello-api-prod-hello`, `lemon-metrics-api-dev-lambda`
         const _postfix = (func?: string): string => {
@@ -127,18 +135,16 @@ export class MyProtocolService implements ProtocolService {
      * @param uri
      * @param param
      */
-    public transformEvent(uri: string | Url, param: ProtocolParam) {
-        // const url = URL.parse(uri);
-        // const url = typeof uri == 'string' ? new URL(uri) : uri;
-        const url = typeof uri == 'string' ? URL.parse(uri) : uri;
+    public transformEvent(uri: string, param: ProtocolParam) {
+        const url = URL.parse(uri);
         const protocol = url.protocol;
         switch (protocol) {
             case 'web:':
-                return this.web.transformToEvent(param);
+                return this.web.transformToEvent(uri, param);
             case 'sns:':
-                return this.sns.transformToEvent(param);
+                return this.sns.transformToEvent(uri, param);
             case 'sqs:':
-                return this.sqs.transformToEvent(param);
+                return this.sqs.transformToEvent(uri, param);
         }
         throw new Error(`400 INVALID PROTOCOL - protocol:${protocol}`);
     }
@@ -166,11 +172,11 @@ export class MyProtocolService implements ProtocolService {
         config = config ? config : await this.$config;
         _log(NS, `execute(${param.service || ''})..`);
         const uri = this.asProtocolURI('web', param, config);
+        _inf(NS, `> uri =`, uri);
+
         // const url = new URL(uri);
         const url = URL.parse(uri);
-        _log(NS, `> url =`, $U.json(url));
-        const payload = this.transformEvent(url, param);
-        // _log(NS, `> payload =`, $U.json(payload));
+        const payload = this.transformEvent(uri, param);
 
         //! prepare lambda payload.
         const params: Lambda.Types.InvocationRequest = {
@@ -222,8 +228,29 @@ export class MyProtocolService implements ProtocolService {
      * @param param     the calling param
      * @param callback  the return target
      */
-    public async notify(param: ProtocolParam, callback?: ProtocolParam): Promise<string> {
-        const res: string = null;
+    public async notify(param: ProtocolParam, callback?: ProtocolParam, config?: ConfigService): Promise<string> {
+        // const _log = console.info;
+        config = config ? config : await this.$config;
+        const service = param.service || config.getService() || '';
+        _log(NS, `notify(${service})..`);
+        const uri = this.asProtocolURI('sns', param, config);
+        _inf(NS, `> uri[${service}] =`, uri);
+
+        const params: SNS.Types.PublishInput = this.sns.transformToEvent(uri, param);
+        const arn = params.TopicArn; // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
+        _inf(NS, `> arn[${service}] =`, arn);
+
+        //! call sns
+        const region = arn.split(':')[3] || 'ap-northeast-2';
+        const sns = new AWS.SNS({ region });
+        const res = await sns
+            .publish(params)
+            .promise()
+            .catch((e: Error) => this.doReportError(e, param.context, null, { protocol: uri, param }))
+            .then((data: SNS.Types.PublishResponse) => {
+                _log(NS, `> res[${service}] =`, $U.json(data));
+                return data.MessageId;
+            });
         return res;
     }
 
@@ -233,8 +260,30 @@ export class MyProtocolService implements ProtocolService {
      * @param param     the calling param
      * @param callback  the return target
      */
-    public async enqueue(param: ProtocolParam, callback?: ProtocolParam): Promise<string> {
-        const res: string = null;
+    public async enqueue(param: ProtocolParam, callback?: ProtocolParam, config?: ConfigService): Promise<string> {
+        // const _log = console.info;
+        config = config ? config : await this.$config;
+        const service = param.service || config.getService() || '';
+        _log(NS, `enqueue(${service})..`);
+        const uri = this.asProtocolURI('sqs', param, config);
+        _inf(NS, `> uri[${service}] =`, uri);
+
+        const params: SQS.Types.SendMessageRequest = this.sqs.transformToEvent(uri, param);
+        params.DelaySeconds = 10;
+        const endpoint = params.QueueUrl; // https://sqs.${arr[3]}.amazonaws.com
+        _inf(NS, `> endpoint[${service}] =`, uri);
+
+        //! call sns
+        const region = endpoint.split('.')[1] || 'ap-northeast-2';
+        const sns = new AWS.SQS({ region });
+        const res = await sns
+            .sendMessage(params)
+            .promise()
+            .catch((e: Error) => this.doReportError(e, param.context, null, { protocol: uri, param }))
+            .then((data: SQS.Types.SendMessageResult) => {
+                _log(NS, `> res[${endpoint}] =`, $U.json(data));
+                return data.MessageId;
+            });
         return res;
     }
 }
@@ -252,7 +301,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
      * transform param to event
      * @param param     the calling param.
      */
-    public transformToEvent(param: ProtocolParam): APIGatewayProxyEvent {
+    public transformToEvent(uri: string, param: ProtocolParam): APIGatewayProxyEvent {
         const mode: NextMode = `${param.mode || ''}` as NextMode;
         const httpMethod = mode == 'LIST' ? 'GET' : mode || 'GET';
         const id = mode == 'LIST' ? null : `${param.id || ''}`;
@@ -339,11 +388,13 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
     }
 }
 
+type SNSEventParam = AWS.SNS.Types.PublishInput;
+
 /**
  * class: `SNSProtocolTransformer`
  * - transformer for `SNS` Handler
  */
-export class SNSProtocolTransformer implements ProtocolTransformer<SNSEvent, SNSEvent> {
+export class SNSProtocolTransformer implements ProtocolTransformer<SNSEventParam, SNSMessage> {
     private service: MyProtocolService;
     public constructor(service: MyProtocolService) {
         this.service = service;
@@ -352,8 +403,30 @@ export class SNSProtocolTransformer implements ProtocolTransformer<SNSEvent, SNS
      * transform param to event
      * @param param     the calling param.
      */
-    public transformToEvent(param: ProtocolParam): SNSEvent {
-        const res: SNSEvent = null;
+    public transformToEvent(uri: string, param: ProtocolParam): SNSEventParam {
+        // const uri = this.service.asProtocolURI('sns', param);
+        const context = param.context || {};
+        const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
+        //! build TopicArn via url.
+        const url = URL.parse(uri);
+        const end = url.host || url.hostname;
+        const arr = arn.split(':');
+        arr[5] = end;
+        const TopicArn: string = arr.join(':');
+        const accountId: string = context.accountId || '';
+        const requestId: string = context.requestId || '';
+        _log(NS, `> TopicArn =`, TopicArn);
+        const res: SNSEventParam = {
+            TopicArn,
+            Subject: `x-protocol-service`,
+            Message: JSON.stringify({ default: $U.json(param) }),
+            // Message: JSON.stringify({ default: param }),
+            MessageAttributes: {
+                accountId: { DataType: 'String', StringValue: accountId },
+                requestId: { DataType: 'String', StringValue: requestId },
+            },
+            MessageStructure: 'json',
+        };
         return res;
     }
 
@@ -361,17 +434,34 @@ export class SNSProtocolTransformer implements ProtocolTransformer<SNSEvent, SNS
      * transform event data to param
      * @param event     the lambda compartible event data.
      */
-    public transformToParam(event: SNSEvent): ProtocolParam {
-        const res: ProtocolParam = null;
+    public transformToParam(event: SNSMessage): ProtocolParam {
+        const { Subject, Message, MessageAttributes } = event;
+
+        //! extract message.
+        const param: ProtocolParam = JSON.parse(Message);
+        const context = (param && param.context) || {};
+
+        //! validate message
+        if (Subject != 'x-protocol-service') throw new Error(`.Subject[${Subject}] is not valid protocol.`);
+        const accountId: string = MessageAttributes['accountId'] && MessageAttributes['accountId'].Value;
+        const requestId: string = MessageAttributes['requestId'] && MessageAttributes['requestId'].Value;
+
+        //! validate values.
+        if (accountId != context.accountId) throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
+        if (requestId != context.requestId) throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+
+        //! returns.
+        const res: ProtocolParam = param;
         return res;
     }
 }
 
+type SQSEventParam = AWS.SQS.Types.SendMessageRequest;
 /**
  * class: `SQSProtocolTransformer`
  * - transformer for `SQS` Handler
  */
-export class SQSProtocolTransformer implements ProtocolTransformer<SQSEvent, SQSEvent> {
+export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam, SQSRecord> {
     private service: MyProtocolService;
     public constructor(service: MyProtocolService) {
         this.service = service;
@@ -380,8 +470,26 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEvent, SQS
      * transform param to event
      * @param param     the calling param.
      */
-    public transformToEvent(param: ProtocolParam): SQSEvent {
-        const res: SQSEvent = null;
+    public transformToEvent(uri: string, param: ProtocolParam): SQSEventParam {
+        // const uri = this.service.asProtocolURI('sns', param);
+        const context = param.context || {};
+        const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
+        //! build TopicArn via url.
+        const url = URL.parse(uri);
+        const arr = arn.split(':');
+        const QueueUrl = `https://sqs.${arr[3]}.amazonaws.com/${arr[4]}/${url.hostname}`;
+        const accountId: string = context.accountId || '';
+        const requestId: string = context.requestId || '';
+        const res: SQSEventParam = {
+            // DelaySeconds: 10, //NOTE - use SQS's configuration.
+            QueueUrl,
+            MessageBody: $U.json(param),
+            MessageAttributes: {
+                Subject: { DataType: 'String', StringValue: 'x-protocol-service' }, //NOTE! - should use 'Subject' in here.
+                accountId: { DataType: 'String', StringValue: accountId },
+                requestId: { DataType: 'String', StringValue: requestId },
+            },
+        };
         return res;
     }
 
@@ -389,8 +497,25 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEvent, SQS
      * transform event data to param
      * @param event     the lambda compartible event data.
      */
-    public transformToParam(event: SQSEvent): ProtocolParam {
-        const res: ProtocolParam = null;
+    public transformToParam(event: SQSRecord): ProtocolParam {
+        const { body, messageAttributes } = event;
+        const $body = JSON.parse(body);
+
+        //! extract message.
+        const { subject, param } = $body;
+        const context = (param && param.context) || {};
+
+        //! validate message
+        if (subject != 'x-protocol-service') throw new Error(`.subject[${subject}] is not valid protocol.`);
+        const accountId: string = messageAttributes['accountId'] && messageAttributes['accountId'].stringValue;
+        const requestId: string = messageAttributes['requestId'] && messageAttributes['requestId'].stringValue;
+
+        //! validate values.
+        if (accountId != context.accountId) throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
+        if (requestId != context.requestId) throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+
+        //! returns.
+        const res: ProtocolParam = param;
         return res;
     }
 }

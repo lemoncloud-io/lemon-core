@@ -1,0 +1,39 @@
+{
+    "!": "protocol.enqueue() 실행시, 수신쪽에서 받는 데이터!  @191128",
+    "Records": [{
+        "messageId": "3649c307-b056-406c-b42a-d68493b8055e",
+        "receiptHandle": "AQEB90HRjMmqGCtXmBUXp6+3sWXY0sc3S4hta/2wMv6Kw8wjVAM4q6zs0p8mtSBLXycn/5GarCibRv+4AvFEgp+vLbXGKqelzszyE/j/ZReHlFo3WQxEZvil4QwYotxrbj0QZZqJ9Fw6NTOLFqKOjgY+XXRPbDK/QweEgrZYf/aistpkLnr01jYZSch24U96RrI4RpZ8KI1ml6GaD/zZlHiGFzXYgJNVf/kGSX2wxOce/tzaEfySCxIMdtODi+sUPWDQh3wM4IBGLAGj5FliuOPtQwPg5h1dF0G5hgn9ndcKKZV7R17Y83F4AzJ7qshQEAvPcFqmzZJJ5mnSUy4BOjtbQAnAfYuSyVE61+ZaB64Vv6CngcPeXkIOAdrVhxRIWTmBFtH3bYSV/uDh69aCzOfKrxKBt02DZijyCptTMnClfMY=",
+        "body": "{\"service\":\"self\",\"type\":\"metrics\",\"id\":\"hello\",\"cmd\":\"test-protocol\",\"param\":{\"hello\":\"protocol\"},\"context\":{\"identity\":{\"cognitoId\":null,\"accountId\":null,\"cognitoPoolId\":null},\"source\":\"api://796730245826@lemon-metrics-api-dev/metrics/enqueue/test-protocol#1.0.2\",\"clientIp\":\"222.237.200.191\",\"requestId\":\"79030d0e-7832-4f14-ac69-b72c8f526ca8\",\"accountId\":\"796730245826\"}}",
+        "attributes": {
+            "ApproximateReceiveCount": "1",
+            "SentTimestamp": "1574961888152",
+            "SenderId": "AROA3TAGSYLBDMXFM6GHB:lemon-metrics-api-dev-lambda",
+            "ApproximateFirstReceiveTimestamp": "1574961898152"
+        },
+        "messageAttributes": {
+            "accountId": {
+                "stringValue": "796730245826",
+                "stringListValues": [],
+                "binaryListValues": [],
+                "dataType": "String"
+            },
+            "requestId": {
+                "stringValue": "79030d0e-7832-4f14-ac69-b72c8f526ca8",
+                "stringListValues": [],
+                "binaryListValues": [],
+                "dataType": "String"
+            },
+            "Subject": {
+                "stringValue": "x-protocol-service",
+                "stringListValues": [],
+                "binaryListValues": [],
+                "dataType": "String"
+            }
+        },
+        "md5OfBody": "597ce05b94ca185160b54f5274ec44a9",
+        "md5OfMessageAttributes": "dac0ea0cd1ae134bfedaa4eceef136ff",
+        "eventSource": "aws:sqs",
+        "eventSourceARN": "arn:aws:sqs:ap-northeast-2:796730245826:lemon-metrics-sqs-dev",
+        "awsRegion": "ap-northeast-2"
+    }]
+}

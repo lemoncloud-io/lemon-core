@@ -23,7 +23,7 @@ class MyProtocolServiceTest extends MyProtocolService {
     public constructor(service: string = DEF_SERVICE, type: string = DEF_TYPE) {
         super(service, type);
     }
-    public hello = () => ({ hello: `protocol-service-test:${this.selfService}/${this.selfType}` });
+    public hello = () => `protocol-service-test:${this.selfService}/${this.selfType}`;
 }
 class MyConfigServiceTest extends MyConfigService {
     private env: { [key: string]: string };
@@ -62,7 +62,7 @@ describe('ProtocolService', () => {
         const { service, config } = instance();
         /* eslint-disable prettier/prettier */
         expect2(()=>{ throw new Error('HI Error') }).toBe('HI Error');
-        expect2(service.hello()).toEqual({ hello:'protocol-service-test:lemon-hello-api/lemon' });
+        expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api/lemon');
         expect2(config.hello()).toEqual({ hello:'config-service-test:local' });
         /* eslint-enable prettier/prettier */
         done();

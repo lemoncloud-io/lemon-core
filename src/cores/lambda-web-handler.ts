@@ -18,10 +18,11 @@ import { _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 import { doReportError } from '../engine/';
 
-import { NextDecoder, NextHandler, NextContext, NextMode } from './core-types';
-import { APIGatewayProxyResult, APIGatewayEventRequestContext } from 'aws-lambda';
+import { NextDecoder, NextHandler, NextContext, NextMode, NextIdentity, NextIdentityCognito } from './core-types';
+import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import $lambda, { LambdaHandler, WEBHandler, LambdaHandlerService, Context } from './lambda-handler';
 import $protocol from './protocol-service';
+import { MyConfigService, ConfigService } from './config-service';
 
 /** ********************************************************************************************************************
  *  COMMON Functions.
@@ -197,51 +198,63 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
      * @param event
      * @param context
      */
-    public async packContext(event: any, context: Context): Promise<NextContext> {
+    public async packContext(event: APIGatewayProxyEvent, context: Context): Promise<NextContext> {
         //! prepare chain object.
         const $ctx: APIGatewayEventRequestContext = event && event.requestContext;
         if (!event) return null;
         _log(NS, `packContext()..`);
 
-        const headers = event.headers || {};
-
+        //! prepare the next-context.
         const res: NextContext = { identity: null };
-        //TODO - support cognito authentication.
-        //TODO - support internal JWT Token authentication.
 
         // STEP.1 support lambda call JWT Token authentication.
         //! if it is protocol request via lambda, then returns valid context.
+        const headers = event.headers || {};
         if (headers['x-protocol-context']) {
             const $param = $protocol.web.transformToParam(event);
             return $param.context;
         }
+
+        //TODO - support internal JWT Token authentication.
 
         // STEP.3 use internal identity json data via python lambda call.
         //! `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
         //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
         //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
         // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
-        const identity = (val => {
-            try {
-                if (!val) return undefined;
-                return typeof val === 'string' && val.startsWith('{') && val.endsWith('}') ? JSON.parse(val) : val;
-            } catch (e) {
-                _err(NS, '!WARN! parse identity. err=', e);
-                return undefined;
-            }
-        })(headers[HEADER_LEMON_IDENTITY] || ($ctx && $ctx.identity) || '');
-        if (identity && !identity.cognitoIdentityPoolId) _inf(NS, '! identity :=', JSON.stringify(identity));
+        const identity: NextIdentityCognito = await (async val => {
+            if (!val) return {};
+            return typeof val === 'string' && val.startsWith('{') && val.endsWith('}')
+                ? JSON.parse(val)
+                : { name: val };
+        })(headers[HEADER_LEMON_IDENTITY] || '').catch(e => {
+            _err(NS, '!WARN! parse.err =', e);
+            return {};
+        });
 
-        //TODO - build initial source information like protocol-url of self.
-        const service = 'lemon-core';
-        const version = '0.0.0';
-        const stage = $ctx.stage || '';
-        const source = `web://${$ctx.accountId}@${service}-${stage}/${event.path}#${version}`;
+        //TODO - translate cognito authentication to NextIdentity
+        if ($ctx.identity && !$ctx.identity.cognitoIdentityPoolId) {
+            const $id = $ctx.identity;
+            _inf(NS, '! identity.cognito :=', JSON.stringify(identity));
+            identity.cognitoId = $id.cognitoIdentityId;
+            identity.accountId = $id.accountId;
+            identity.cognitoPoolId = $id.cognitoIdentityPoolId;
+        }
+
+        //! - build initial `source` like protocol-url of self out of initial request context.
+        const config: ConfigService = await MyConfigService.instance();
+        const service = (config && config.getService()) || 'lemon-core';
+        const version = (config && config.getVersion()) || '0.0.0';
+        const stage = $ctx.stage || (config && config.getStage()) || '';
+        const source = `api://${$ctx.accountId}@${service}-${stage}${event.path}#${version}`; // the origin request protocol uri (must use 'api')
+
+        //! - extract original request infor.
+        const clientIp = $ctx.identity && $ctx.identity.sourceIp;
         const requestId = $ctx.requestId;
         const accountId = $ctx.accountId;
 
         //! retruns
-        return { ...res, identity, source, requestId, accountId };
+        return { ...res, identity, source, clientIp, requestId, accountId };
     }
 }
 

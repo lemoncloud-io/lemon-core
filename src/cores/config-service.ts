@@ -121,6 +121,15 @@ export class MyConfigService implements ConfigService {
     }
 
     /**
+     * Singleton Instance.
+     */
+    private static _instance: Promise<ConfigService> = null;
+    public static instance(): Promise<ConfigService> {
+        if (!MyConfigService._instance) MyConfigService._instance = MyConfigService.factory();
+        return MyConfigService._instance;
+    }
+
+    /**
      * hello
      */
     public hello() {

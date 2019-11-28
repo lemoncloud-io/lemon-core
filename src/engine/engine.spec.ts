@@ -10,6 +10,7 @@
  */
 import { do_parrallel, doReportError } from './engine';
 import { convDate, convDateToTime, convDateToTS } from './engine';
+import { GETERR, expect2 } from '../common/test-helper';
 
 //! build context.
 const $context = (source = 'express', account = '085403634746' /* profile: lemon */) => {
@@ -114,34 +115,26 @@ describe(`test the 'core/engine.ts'`, () => {
     });
 
     //! doReportError()
-    test('test doReportError() - ignore', (done: any) => {
+    test('test doReportError() - ignore', async (done: any) => {
         const data = 'test-error-data';
         const err = new Error('via doReportError() in `lemon-core`');
-        doReportError(err, $context(), data).then((_: any) => {
-            expect(_).toEqual('!ignore');
-            done();
-        });
+        expect2(await doReportError(err, $context(), data).catch(GETERR)).toEqual('!ignore');
+        done();
     });
 
-    test('test doReportError() - valid mid', (done: any) => {
+    test('test doReportError() - valid mid', async (done: any) => {
         const data = 'test-error-data';
         const err = new Error('via doReportError() in `lemon-core`');
-        doReportError(err, $context(''), data).then((_: string) => {
-            expect(/^[a-z0-9\-]{10,}$/.test(_) || _.indexOf('Missing credentials') > 0 ? 'ok' : _).toEqual('ok');
-            done();
-        });
+        expect2((await doReportError(err, $context(''), data)).length).toEqual(
+            '0eae767f-6457-5020-9d85-2025630fcdad'.length,
+        );
+        done();
     });
 
-    test('test doReportError() - account id', (done: any) => {
+    test('test doReportError() - account id', async (done: any) => {
         const data = 'test-error-data';
         const err = new Error('via doReportError() in `lemon-core`');
-        doReportError(err, $context('', ''), data).then((_: string) => {
-            expect(
-                /^[a-z0-9\-]{10,}$/.test(_) || _.indexOf('Missing credentials') > 0 || _.startsWith('ERROR - ')
-                    ? 'ok'
-                    : _,
-            ).toEqual('ok');
-            done();
-        });
+        expect2(await doReportError(err, $context('', ''), data).catch(GETERR)).toEqual('!err - .accountId is missing');
+        done();
     });
 });

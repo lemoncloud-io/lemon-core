@@ -47,6 +47,16 @@ export interface NextIdentity {
 }
 
 /**
+ * class: `NextIdentityCognito`
+ * - extended infor w/ cognito
+ */
+export interface NextIdentityCognito extends NextIdentity {
+    accountId: string;
+    cognitoId: string;
+    cognitoPoolId: string;
+}
+
+/**
  * class: `NextContext`
  * - information of caller's context.
  *
@@ -58,6 +68,7 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
     clientIp?: string; // ip-address of source client.
     requestId?: string; // id of request to keep track of timing infor w/ `metrics`
     accountId?: string; // id of account of initial request. (ex: `085403634746` for lemon profile)
+    depth?: number; // calling depth for every handler. ( automatically increased from lambda-handler )
 }
 
 /**
@@ -105,9 +116,10 @@ export interface ProtocolParam<TParam = { [key: string]: any }, TBody = { [key: 
 export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventParam> {
     /**
      * transform param to event
+     * @param uri       uri from `asProtocolURI()`
      * @param param     the calling param.
      */
-    transformToEvent(param: ProtocolParam): TEventParam;
+    transformToEvent(uri: string, param: ProtocolParam): TEventParam;
 
     /**
      * transform event data to param
