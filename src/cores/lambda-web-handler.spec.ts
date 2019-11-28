@@ -13,7 +13,7 @@ import { $U } from '../engine/';
 import { loadJsonSync } from '../tools/';
 
 import * as $lambda from './lambda-handler.spec';
-import { NextDecoder, NextHandler } from './core-types';
+import { NextDecoder, NextHandler, NextContext } from './core-types';
 import { LambdaWEBHandler } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 
@@ -141,6 +141,26 @@ describe('LambdaWEBHandler', () => {
         expect2(body.param, '').toEqual({ ts:'1574150700000' });
         expect2(body.body, '').toEqual(null);
         expect2(body.context, 'identity').toEqual({ identity:{ sid:'', uid:'guest' } });
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! test packContext() via lambda protocol
+    it('should pass packContext() via lambda protocol', async done => {
+        /* eslint-disable prettier/prettier */
+        const { lambda, instance } = $web();
+        const event: any = loadJsonSync('data/sample.event.web.json');
+        const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
+        event.headers['x-protocol-context'] = $U.json(context);
+        const id = '!'; // call dump paramters.
+        event.pathParameters['id'] = id;
+        const response = await lambda.handle(event, null).catch(GETERR$);
+        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+        const body = JSON.parse(response.body);
+        expect2(body.id, '').toEqual('!');
+        expect2(body.param, '').toEqual({ ts:'1574150700000' });
+        expect2(body.body, '').toEqual(null);
+        expect2(body.context, '').toEqual(context);
         /* eslint-enable prettier/prettier */
         done();
     });

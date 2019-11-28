@@ -13,7 +13,8 @@ import { expect2, _it, GETERR } from '../common/test-helper';
 import { credentials } from '../tools/';
 import { MyProtocolService } from './protocol-service';
 import { ConfigService, MyConfigService } from './config-service';
-import { STAGE, NextMode, ProtocolParam } from './core-types';
+import { STAGE, NextMode, ProtocolParam, NextContext } from './core-types';
+import { APIGatewayProxyEvent } from 'aws-lambda';
 
 const DEF_SERVICE = 'lemon-hello-api';
 const DEF_TYPE = 'lemon';
@@ -53,7 +54,7 @@ const asParam = (service: string, type?: string, base?: any): ProtocolParam => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('ProtocolService', () => {
-    const PROFILE: string = 1 ? 'lemon' : '';
+    const PROFILE: string = 0 ? 'lemon' : '';
     if (PROFILE) credentials(PROFILE);
 
     //! dummy service.
@@ -169,15 +170,16 @@ describe('ProtocolService', () => {
     it('should pass transformEvent() of web.dev', async done => {
         const { service, config } = instance({ STAGE: 'develop' });
         /* eslint-disable prettier/prettier */
+        const context: NextContext = { requestId:'xxxx', accountId:'0908' };
         const id = '0';
-        const param = asParam('lemon-metrics-api', 'metrics', { id, param:{ ns:'TestTable', id:'abc-123', type: 'TEST', ts: 1567052044463 } });
+        const param = asParam('lemon-metrics-api', 'metrics', { id, param:{ ns:'TestTable', id:'abc-123', type:'TEST', ts:1567052044463 }, context });
         const uri = service.asProtocolURI('web', param, config);
         const path = '/metrics/0';
-        expect2(uri).toEqual('web://lemon-metrics-api-dev-lambda/metrics/0');
-        expect2(service.transformEvent(uri, param), 'headers').toEqual({ headers:{ "x-protocol-context": "{}" }});
+        expect2(uri).toEqual('web://0908@lemon-metrics-api-dev-lambda/metrics/0');
+        expect2(service.transformEvent(uri, param), 'headers').toEqual({ headers:{ "x-protocol-context": JSON.stringify(context) }});
         expect2(service.transformEvent(uri, param), 'httpMethod,path').toEqual({ httpMethod:'GET', path });
         expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({ pathParameters:{ id, cmd:'' } });
-        const requestContext = { accountId: '', httpMethod: 'GET', identity: null as any, path, requestId: '', stage: '' };
+        const requestContext = { accountId: '0908', httpMethod: 'GET', identity: null as any, path, requestId: 'xxxx', stage: '' };
         expect2(service.transformEvent(uri, param), 'requestContext').toEqual({ requestContext });
 
         //! now verify with real lambda call.
@@ -188,6 +190,23 @@ describe('ProtocolService', () => {
             const testData: any = await service.execute({...param, cmd:'test-load-data'}, config);
             expect2(() => testData[0], 'item').toEqual({ item: { count: 1, id: 'abc-123', name: 'abc 1' } });
         }
+
+        //! test with transformToParam()
+        const event2 = service.transformEvent(uri, param) as APIGatewayProxyEvent;
+        const param2 = service.web.transformToParam(event2);
+        expect2(param2, 'service,stage,type').toEqual({ service:'', stage:'', type:'metrics' });
+        expect2(param2, 'mode,id,cmd').toEqual({ mode:'GET', id, cmd:'' });
+        expect2(param2, 'param').toEqual({ param:{ ns:'TestTable', id:'abc-123', type:'TEST', ts:1567052044463 } });
+        expect2(param2, 'body').toEqual({ body:null });
+        expect2(param2.context).toEqual(context);
+
+        //! error exceptions
+        expect2(() => service.web.transformToParam({ ...event2, headers: null })).toEqual('.headers is required');
+        expect2(() => service.web.transformToParam({ ...event2, requestContext: null })).toEqual('.requestContext is required');
+        expect2(() => service.web.transformToParam({ ...event2, headers: {} })).toEqual(".headers['x-protocol-context'] is required");
+        expect2(() => service.web.transformToParam({ ...event2, requestContext: {...event2.requestContext, accountId:'' } })).toEqual("400 INVALID CONTEXT - accountId:0908");
+        expect2(() => service.web.transformToParam({ ...event2, requestContext: {...event2.requestContext, requestId:'' } })).toEqual("400 INVALID CONTEXT - requestId:xxxx");
+
         /* eslint-enable prettier/prettier */
         done();
     });

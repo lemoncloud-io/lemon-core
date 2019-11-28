@@ -10,7 +10,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U, doReportError } from '../engine/';
-import { ProtocolService, ProtocolParam, ProtocolTransformer, STAGE, NextMode } from './core-types';
+import { ProtocolService, ProtocolParam, ProtocolTransformer, STAGE, NextMode, NextContext } from './core-types';
 import { APIGatewayProxyEvent, SNSEvent, SQSEvent, APIGatewayEventRequestContext } from 'aws-lambda';
 import { ConfigService, MyConfigService } from './config-service';
 import AWS, { Lambda, SQS } from 'aws-sdk';
@@ -28,9 +28,9 @@ export class MyProtocolService implements ProtocolService {
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     //! transformers
-    protected web: WEBProtocolTransformer = new WEBProtocolTransformer(this);
-    protected sns: SNSProtocolTransformer = new SNSProtocolTransformer(this);
-    protected sqs: SQSProtocolTransformer = new SQSProtocolTransformer(this);
+    public readonly web: WEBProtocolTransformer = new WEBProtocolTransformer(this);
+    public readonly sns: SNSProtocolTransformer = new SNSProtocolTransformer(this);
+    public readonly sqs: SQSProtocolTransformer = new SQSProtocolTransformer(this);
 
     // config-service to use.
     protected $config: Promise<ConfigService>;
@@ -44,9 +44,9 @@ export class MyProtocolService implements ProtocolService {
     /**
      * default constructor.
      */
-    protected constructor(service?: string, type?: string) {
+    public constructor(service?: string, type?: string, config?: ConfigService) {
         _log(NS, `MyProtocolService()..`);
-        this.$config = MyConfigService.factory();
+        this.$config = config ? Promise.resolve(config) : MyConfigService.factory();
         this.selfService = service || '';
         this.selfType = type || '';
     }
@@ -162,7 +162,7 @@ export class MyProtocolService implements ProtocolService {
      * @param param     the calling param
      */
     public async execute<T>(param: ProtocolParam, config?: ConfigService): Promise<T> {
-        const _log = console.info;
+        // const _log = console.info;
         config = config ? config : await this.$config;
         _log(NS, `execute(${param.service || ''})..`);
         const uri = this.asProtocolURI('web', param, config);
@@ -207,8 +207,7 @@ export class MyProtocolService implements ProtocolService {
                 })();
                 if (statusCode == 400 || statusCode == 404) return Promise.reject(new Error(body || '404 NOT FOUND'));
                 if (statusCode !== 200) {
-                    if (typeof body == 'string' && body.startsWith('404 NOT FOUND'))
-                        throw new Error(body || '404 NOT FOUND');
+                    if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw new Error(body);
                     throw new Error(body || 'Lambda Error. status:' + statusCode);
                 }
                 return body;
@@ -300,7 +299,42 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
      * @param event     the lambda compartible event data.
      */
     public transformToParam(event: APIGatewayProxyEvent): ProtocolParam {
-        const res: ProtocolParam = null;
+        const headers = event.headers;
+        if (!headers) throw new Error('.headers is required');
+        const requestContext = event.requestContext;
+        if (!requestContext) throw new Error('.requestContext is required');
+
+        //! extract part
+        const { path, httpMethod } = event;
+        const $path = event.pathParameters;
+        const param = event.queryStringParameters;
+        const body = typeof event.body == 'string' && event.body.startsWith('{') ? JSON.parse(event.body) : event.body;
+        if (!headers['x-protocol-context']) throw new Error(".headers['x-protocol-context'] is required");
+        const context: NextContext = JSON.parse(headers['x-protocol-context']);
+
+        const service = '';
+        const stage: STAGE = `${requestContext.stage || ''}` as STAGE;
+        const type = `${path || ''}`.split('/')[1] || '';
+        const mode = httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : 'GET';
+
+        //! validate values.
+        if (requestContext.accountId != context.accountId)
+            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
+        if (requestContext.requestId != context.requestId)
+            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+
+        //! prepare result.
+        const res: ProtocolParam = {
+            service,
+            stage,
+            type,
+            mode,
+            id: $path.id,
+            cmd: $path.cmd,
+            param,
+            body,
+            context,
+        };
         return res;
     }
 }
@@ -372,5 +406,5 @@ class MyProtocolServiceMain extends MyProtocolService {
 }
 
 //! create instance & export as default.
-const $instance: ProtocolService = new MyProtocolServiceMain();
+const $instance: MyProtocolService = new MyProtocolServiceMain();
 export default $instance;

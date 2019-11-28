@@ -9,7 +9,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, _log, _inf, _err, $U } from '../engine/';
-import { credentials } from '../tools/';
+import { credentials, loadJsonSync } from '../tools/';
 import { AWSKMSService } from './aws-kms-service';
 import { expect2, _it } from '../common/test-helper';
 
@@ -105,16 +105,19 @@ describe('ConfigService', () => {
                 secret,
             },
         };
+        const $pack = loadJsonSync('package.json');
 
         /* eslint-disable prettier/prettier */
         const origin = JSON.parse($U.json($config));                                        // deep copy
-        const service = await MyConfigService.factory($config);                             // wait until loading completely.
+        const config = await MyConfigService.factory($config);                             // wait until loading completely.
 
         //! check result..
-        expect2(service.hello()).toEqual({ hello: 'config-service' });
-        expect2(service.get('count')).toEqual('1');                                         // must be string.
-        expect2(service.get('token.issuer')).toEqual(origin.token.issuer);                  // not encrypted.
-        expect2(service.get('token.secret')).toEqual(message);                              // decrypted successfully.
+        expect2(config.hello()).toEqual({ hello: 'config-service' });
+        expect2(config.getService()).toEqual('lemon-core');
+        expect2(config.getVersion()).toEqual('' + $pack.version);
+        expect2(config.get('count')).toEqual('1');                                         // must be string.
+        expect2(config.get('token.issuer')).toEqual(origin.token.issuer);                  // not encrypted.
+        expect2(config.get('token.secret')).toEqual(message);                              // decrypted successfully.
 
         // expect2($config).toEqual(origin);                                                // should be `fail`
         expect2($config.count).toBe(1);                                                     // keep number origin

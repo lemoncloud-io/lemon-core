@@ -22,6 +22,7 @@ const NS = $U.NS('CFGS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { STAGE } from './core-types';
 import { AWSKMSService } from './aws-kms-service';
+import { loadJsonSync } from '../tools/shared';
 
 /**
  * filter function()
@@ -73,6 +74,20 @@ export const marshal = <T>(
 export interface ConfigService {
     hello(): any;
     get(key: string): string;
+
+    /**
+     * get the current service name of `package.json#name`
+     */
+    getService(): string;
+
+    /**
+     * get the current service name of `package.son#version`
+     */
+    getVersion(): string;
+
+    /**
+     * get the current stage stage via `env.STAGE`
+     */
     getStage(): STAGE;
 }
 
@@ -133,6 +148,29 @@ export class MyConfigService implements ConfigService {
         const $env = this.$env;
         const val = ret === undefined ? $env[key] : ret;
         return val === undefined ? undefined : `${val}`;
+    }
+
+    //! loading service's package.json
+    private _package: any = null;
+    private loadPackage(): any {
+        if (!this._package) {
+            try {
+                this._package = (loadJsonSync && loadJsonSync('package.json')) || {};
+            } catch (e) {
+                _err(NS, `! err to load package.json =`, e);
+            }
+        }
+        return this._package || {};
+    }
+
+    public getService(): string {
+        const $pack = this.loadPackage();
+        return `${$pack.name || ''}`;
+    }
+
+    public getVersion(): string {
+        const $pack = this.loadPackage();
+        return `${$pack.version || ''}`;
     }
 
     /**

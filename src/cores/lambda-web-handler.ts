@@ -21,6 +21,7 @@ import { doReportError } from '../engine/';
 import { NextDecoder, NextHandler, NextContext, NextMode } from './core-types';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext } from 'aws-lambda';
 import $lambda, { LambdaHandler, WEBHandler, LambdaHandlerService, Context } from './lambda-handler';
+import $protocol from './protocol-service';
 
 /** ********************************************************************************************************************
  *  COMMON Functions.
@@ -202,10 +203,20 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         if (!event) return null;
         _log(NS, `packContext()..`);
 
+        const headers = event.headers || {};
+
+        const res: NextContext = { identity: null };
         //TODO - support cognito authentication.
         //TODO - support internal JWT Token authentication.
-        //TODO - support lambda call JWT Token authentication.
 
+        // STEP.1 support lambda call JWT Token authentication.
+        //! if it is protocol request via lambda, then returns valid context.
+        if (headers['x-protocol-context']) {
+            const $param = $protocol.web.transformToParam(event);
+            return $param.context;
+        }
+
+        // STEP.3 use internal identity json data via python lambda call.
         //! `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
         //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
         //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
@@ -218,13 +229,19 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
                 _err(NS, '!WARN! parse identity. err=', e);
                 return undefined;
             }
-        })((event.headers && event.headers[HEADER_LEMON_IDENTITY]) || ($ctx && $ctx.identity) || '');
+        })(headers[HEADER_LEMON_IDENTITY] || ($ctx && $ctx.identity) || '');
         if (identity && !identity.cognitoIdentityPoolId) _inf(NS, '! identity :=', JSON.stringify(identity));
-        const source = $ctx.accountId;
 
-        //! prepare next-context
-        const res: NextContext = { identity, source };
-        return res;
+        //TODO - build initial source information like protocol-url of self.
+        const service = 'lemon-core';
+        const version = '0.0.0';
+        const stage = $ctx.stage || '';
+        const source = `web://${$ctx.accountId}@${service}-${stage}/${event.path}#${version}`;
+        const requestId = $ctx.requestId;
+        const accountId = $ctx.accountId;
+
+        //! retruns
+        return { ...res, identity, source, requestId, accountId };
     }
 }
 
