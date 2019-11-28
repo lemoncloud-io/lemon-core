@@ -29,23 +29,33 @@ import { SlackPostBody, MetricPostBody } from '../common/types';
 import { loadJsonSync } from '../tools/shared';
 import { SNS } from '../service/sns-service';
 
+import * as $lambda from 'aws-lambda';
+type Context = $lambda.Context;
+type RequestContext = $lambda.APIGatewayEventRequestContext;
+
 //! find ARN('lemon-hello-sns') via context information or environment.
-export const getHelloArn = async (context: any, NS: string) => {
-    const target = 'lemon-hello-sns';
+export const getHelloArn = async (context?: Context | RequestContext, NS?: string): Promise<string> => {
+    NS = NS || $U.NS('HELO');
+
     //! use pre-defined env via `serverless.yml`
     const arn = $engine.environ('REPORT_ERROR_ARN', '') as string;
     if (arn.startsWith('arn:aws:sns:')) return arn;
-    //! build arn via context information.
-    const invokedFunctionArn = (context && context.invokedFunctionArn) || ''; // if called via lambda call.
-    const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (context && context.accountId) || '';
-    const region = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
-    _inf(NS, '! accountId =', accountId);
-    if (!accountId) {
-        _err(NS, 'WARN! account-id is empty.');
-        _inf(NS, '! current ctx =', $U.json(context));
-        throw new Error('.accountId is missing');
+    if (!context) throw new Error(`@context (RequestContext) is required!`);
+    if (true) {
+        const target = 'lemon-hello-sns';
+        const $ctx: Context = context as Context;
+        const $req: RequestContext = context as RequestContext;
+        //! build arn via context information.
+        const invokedFunctionArn = `${$ctx.invokedFunctionArn || ''}`; // if called via lambda call ex: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-messages-api-prod-user'
+        const accountId = invokedFunctionArn.split(':')[4] || $req.accountId || '';
+        const region = invokedFunctionArn.split(':')[3] || `ap-northeast-2`;
+        _inf(NS, '! accountId =', accountId);
+        if (!accountId) {
+            _err(NS, 'ERROR! missing accountId. context =', $U.json(context));
+            throw new Error('.accountId is missing');
+        }
+        return `arn:aws:sns:${region}:${accountId}:${target}`;
     }
-    return `arn:aws:sns:${region}:${accountId}:${target}`;
 };
 
 /**
