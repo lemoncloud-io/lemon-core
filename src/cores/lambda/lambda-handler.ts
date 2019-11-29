@@ -9,9 +9,9 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_ } from '../engine/';
+import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.
-import { doReportError } from '../engine/';
+import { doReportError } from '../../engine/';
 
 import {
     Handler,
@@ -24,7 +24,7 @@ import {
     SQSEvent,
 } from 'aws-lambda';
 import * as $lambda from 'aws-lambda';
-import { NextContext, ProtocolParam } from './core-types';
+import { NextContext, ProtocolParam } from './../core-types';
 
 export type Context = $lambda.Context;
 

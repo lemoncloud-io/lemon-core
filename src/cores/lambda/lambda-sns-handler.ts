@@ -9,13 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '../engine/';
+import { $engine, _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '../../engine/';
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
 import $lambda, { LambdaHandler, SNSHandler, LambdaHandlerService } from './lambda-handler';
-import { ProtocolParam } from './core-types';
-import $protocol from './protocol-service';
+import { ProtocolParam } from './../core-types';
+import $protocol from './../protocol-service';
 
 /**
  * class: LambdaSNSHandler

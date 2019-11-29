@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, GETERR, GETERR$ } from '../common/test-helper';
+import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
 
 import { LambdaHandler } from './lambda-handler';
 import { Handler } from 'aws-lambda';

@@ -9,15 +9,15 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $_, $U, do_parrallel, doReportError } from '../engine/';
+import { _log, _inf, _err, $_, $U, do_parrallel, doReportError } from '../../engine/';
 const NS = $U.NS('HDBS', 'green'); // NAMESPACE TO BE PRINTED.
 
 import { DynamoDBRecord } from 'aws-lambda';
 import $lambda, { LambdaHandler, DynamoStreamHandler, LambdaHandlerService } from './lambda-handler';
-import { NextHandler } from './core-types';
-import { toJavascript } from '../lib/dynamodb-value';
-import { Elastic6Service, Elastic6Item } from './elastic6-service';
-import { DynamoOption } from './dynamo-service';
+import { NextHandler } from './../core-types';
+import { toJavascript } from '../../lib/dynamodb-value';
+import { Elastic6Service, Elastic6Item } from './../elastic6-service';
+import { DynamoOption } from './../dynamo-service';
 
 export interface DynamoStreamParam {
     region?: string;

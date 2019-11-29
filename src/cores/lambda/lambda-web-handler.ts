@@ -14,15 +14,15 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../engine/';
+import { _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
-import { doReportError } from '../engine/';
+import { doReportError } from '../../engine/';
 
-import { NextDecoder, NextHandler, NextContext, NextMode, NextIdentityCognito, ProtocolParam } from './core-types';
+import { NextDecoder, NextHandler, NextContext, NextMode, NextIdentityCognito, ProtocolParam } from './../core-types';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import $lambda, { LambdaHandler, WEBHandler, LambdaHandlerService, Context } from './lambda-handler';
-import $protocol from './protocol-service';
-import { MyConfigService, ConfigService } from './config-service';
+import $protocol from './../protocol-service';
+import { MyConfigService, ConfigService } from './../config-service';
 
 /** ********************************************************************************************************************
  *  COMMON Functions.

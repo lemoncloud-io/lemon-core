@@ -12,8 +12,8 @@
 
 import { LambdaSQSHandler } from './lambda-sqs-handler';
 import { LambdaHandler } from './lambda-handler';
-import { loadJsonSync } from '../tools/shared';
-import { expect2 } from '../common/test-helper';
+import { loadJsonSync } from '../../tools/shared';
+import { expect2 } from '../../common/test-helper';
 
 import * as $lambda from './lambda-handler.spec';
 import * as $web from './lambda-web-handler.spec';

@@ -8,8 +8,8 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2 } from '../common/test-helper';
-import { loadJsonSync } from '../tools/';
+import { expect2 } from '../../common/test-helper';
+import { loadJsonSync } from '../../tools/';
 
 import * as $lambda from './lambda-handler.spec';
 import { LambdaCronHandler } from './lambda-cron-handler';

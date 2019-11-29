@@ -14,7 +14,7 @@ import { ProtocolService, ProtocolParam, ProtocolTransformer, STAGE, NextMode, N
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService, MyConfigService } from './config-service';
 import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
-import { LambdaHandler } from './lambda-handler';
+import { LambdaHandler } from './lambda/';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 import URL from 'url';
 
