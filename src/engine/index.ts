@@ -10,9 +10,9 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 //! create engine in global scope (WARN! should run top level)
-import engine from './builder';
+import { buildEngine } from './builder';
 import { LemonEngine } from './types';
-export const $engine: LemonEngine = engine(global, { env: process.env });
+export const $engine: LemonEngine = buildEngine(global, { env: process.env });
 
 //! re-use core modules.
 export const $U = $engine.U;

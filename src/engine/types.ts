@@ -61,6 +61,24 @@ export interface LemonEngine extends EngineCore {
     ts: (date?: undefined | number | Date, timeZone?: number) => string;
     dt: (time?: string | number | Date, timeZone?: number) => Date;
     $console: EngineConsole;
+
+    /**
+     * register module
+     * @param mod       module instance.
+     */
+    register(mod: EngineModule): void;
+
+    /**
+     * get module by name
+     * @param name      module name.
+     */
+    module(name: string): EngineModule;
+
+    /**
+     * asynced initializer.
+     * @param force     (optional) force to init after already initialized.
+     */
+    initialize(force?: boolean): Promise<any>;
 }
 
 /**
@@ -84,4 +102,25 @@ export interface EngineConsole {
     error: EngineLogger;
     auto_ts: boolean;
     auto_color: boolean;
+}
+
+/**
+ * class: `EngineModule`
+ * - override this to register as module.
+ */
+export interface EngineModule {
+    /**
+     * returns module name
+     */
+    getModuleName(): string;
+
+    /**
+     * initialize module with async
+     * - use `level` to determine the required level if level === undefined.
+     * - start init if level is matched.
+     *
+     * @param level     the level of init. (starts 0)
+     * @return          the required level if !level.
+     */
+    initModule(level?: number): Promise<number>;
 }
