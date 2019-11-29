@@ -357,9 +357,15 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const { path, httpMethod } = event;
         const $path = event.pathParameters;
         const param = event.queryStringParameters;
-        const body = typeof event.body == 'string' && event.body.startsWith('{') ? JSON.parse(event.body) : event.body;
-        if (!headers['x-protocol-context']) throw new Error(".headers['x-protocol-context'] is required");
-        const context: NextContext = JSON.parse(headers['x-protocol-context']);
+        const body =
+            typeof event.body == 'string' && event.body.startsWith('{') && event.body.endsWith('}')
+                ? JSON.parse(event.body)
+                : event.body;
+
+        //! decode context (can be null)
+        if (typeof headers['x-protocol-context'] == 'undefined')
+            throw new Error(".headers['x-protocol-context'] is required");
+        const context: NextContext = headers['x-protocol-context'] ? JSON.parse(headers['x-protocol-context']) : null;
 
         const service = '';
         const stage: STAGE = `${requestContext.stage || ''}` as STAGE;
@@ -367,9 +373,9 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const mode = httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : 'GET';
 
         //! validate values.
-        if (requestContext.accountId != context.accountId)
+        if (context && requestContext.accountId != context.accountId)
             throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
-        if (requestContext.requestId != context.requestId)
+        if (context && requestContext.requestId != context.requestId)
             throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
 
         //! prepare result.

@@ -164,4 +164,24 @@ describe('LambdaWEBHandler', () => {
         /* eslint-enable prettier/prettier */
         done();
     });
+
+    //! test packContext() via web-handler-servce
+    it('should pass packContext() via lambda protocol', async done => {
+        /* eslint-disable prettier/prettier */
+        const { lambda, instance } = $web();
+        const event: any = loadJsonSync('data/sample.event.web.json');
+        const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
+        // event.headers['x-protocol-context'] = $U.json(context);
+        const id = '!'; // call dump paramters.
+        event.pathParameters['id'] = id;
+        const response: any = await instance.handle(event, context).catch(GETERR$);
+        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+        const body = JSON.parse(response.body);
+        expect2(body.id, '').toEqual('!');
+        expect2(body.param, '').toEqual({ ts:'1574150700000' });
+        expect2(body.body, '').toEqual(null);
+        expect2(body.context, '').toEqual(context);
+        /* eslint-enable prettier/prettier */
+        done();
+    });
 });

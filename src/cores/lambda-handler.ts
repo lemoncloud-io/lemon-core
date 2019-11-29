@@ -224,26 +224,20 @@ export class LambdaHandler {
      * - override this function if required!
      *
      * @param event     origin event
-     * @param context   origin context of lambda
+     * @param $ctx   origin context of lambda
      */
-    public async packContext(event: any, context: Context): Promise<NextContext> {
-        const $ctx: NextContext = {};
+    public async packContext(event: any, $ctx: Context): Promise<NextContext> {
+        const context: NextContext = {};
         if (event.requestContext) {
-            const funcName = context.functionName || '';
+            const funcName = $ctx.functionName || '';
             _log(NS, `! context[${funcName}].request =`, $U.json(event.requestContext));
-
-            // //! load identity...
-            // const event2: APIGatewayProxyEvent = event;
-            // const $id = event2.requestContext.identity;
-            // const sourceIp = $id && $id.sourceIp;
-            // const accountId = $id && $id.accountId;
-            // _log(NS, `! sourceIp[${funcName}] =`, sourceIp);
-            // _log(NS, `! accountId[${funcName}] =`, accountId);
+            //! if valid API Request, then use $web's function.
+            const $web: LambdaHandlerService = require('./lambda-web-handler').default;
+            return $web.packContext(event, $ctx);
         } else {
-            context && _log(NS, `! context[${context.functionName || ''}] =`, $U.json(context));
+            $ctx && _log(NS, `! context[${$ctx.functionName || ''}] =`, $U.json($ctx));
         }
-        //NOTE - do nothing in here, by default.
-        return $ctx;
+        return context;
     }
 }
 

@@ -18,7 +18,7 @@ import { _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 import { doReportError } from '../engine/';
 
-import { NextDecoder, NextHandler, NextContext, NextMode, NextIdentity, NextIdentityCognito } from './core-types';
+import { NextDecoder, NextHandler, NextContext, NextMode, NextIdentityCognito, ProtocolParam } from './core-types';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import $lambda, { LambdaHandler, WEBHandler, LambdaHandlerService, Context } from './lambda-handler';
 import $protocol from './protocol-service';
@@ -118,9 +118,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
     /**
      * Default SQS Handler.
      */
-    public handle: WEBHandler = async (event, context) => {
-        // const _log = console.log;
-        // const _err = console.error;
+    public handle: WEBHandler = async (event, $ctx) => {
         //! API parameters.
         _log(NS, `handle()....`);
         // _log(NS, '! event =', $U.json(event));
@@ -131,41 +129,16 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         _log(NS, '! $path =', $U.json($path));
         _log(NS, '! $param =', $U.json($param));
 
-        //! determine running mode.
-        const TYPE = decodeURIComponent($path.type || `${event.path || ''}`.split('/')[1] || ''); // type in path (0st parameter).
-        const ID = decodeURIComponent($path.id || ''); // {id} in path paramter.
-        const METHOD = (!ID && event.httpMethod === 'GET' && 'LIST') || event.httpMethod || ''; // determine method.
-        const CMD = decodeURIComponent($path.cmd || ''); // {cmd} in path paramter.
-        const MODE = METHOD ? METHOD_MODE_MAP[METHOD] : 'GET';
-
-        //! safe decode body if it has json format. (TODO - support url-encoded post body)
-        const $body =
-            (event.body &&
-                (typeof event.body === 'string' && event.body.startsWith('{') && event.body.endsWith('}')
-                    ? JSON.parse(event.body)
-                    : event.body)) ||
-            null;
-        //! debug print body.
-        if (!$body) {
-            _log(NS, `#${MODE}:${CMD} (${METHOD}, ${TYPE}/${ID})....`);
-        } else {
-            _log(NS, `#${MODE}:${CMD} (${METHOD}, ${TYPE}/${ID}).... body.len=`, $body ? $U.json($body).length : -1);
-        }
-
-        //! find target next function
-        const decoder: NextDecoder = this._handlers[TYPE];
-        const next: NextHandler = decoder && decoder(MODE, ID, CMD); // 190314 Save next-function.
-        if (!next) return notfound(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
+        //! prevent error via transform.
+        if (event.headers && !event.headers['x-protocol-context']) event.headers['x-protocol-context'] = $U.json($ctx);
+        const param: ProtocolParam = $protocol.web.transformToParam(event);
+        const TYPE = param.type;
+        const MODE = param.mode;
+        const ID = param.id;
+        const CMD = param.cmd;
 
         //! call next.. (it will return result or promised)
-        return (() => {
-            try {
-                const R = next(ID, $param, $body, context);
-                return R instanceof Promise ? R : Promise.resolve(R);
-            } catch (e) {
-                return Promise.reject(e);
-            }
-        })()
+        return this.handleProtocol(param)
             .then(_ => {
                 return success(_);
             })
@@ -178,7 +151,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
                 }
                 //! report error.
                 if (LambdaHandler.REPORT_ERROR) {
-                    return doReportError(e, context, event).then(() => {
+                    return doReportError(e, $ctx, event).then(() => {
                         return failure(e instanceof Error ? message : e);
                     });
                 }
@@ -193,14 +166,51 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
     };
 
     /**
+     * handle param via protocol-service.
+     *
+     * @param param protocol parameters
+     */
+    public async handleProtocol<TResult = any>(param: ProtocolParam): Promise<TResult> {
+        const TYPE = param.type;
+        const MODE = param.mode;
+        const ID = param.id;
+        const CMD = param.cmd;
+        const $param = param.param;
+        const $body = param.body;
+        const context = param.context;
+
+        //! debug print body.
+        if (!$body) {
+            _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID})....`);
+        } else {
+            _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID}).... body.len=`, $body ? $U.json($body).length : -1);
+        }
+
+        //! find target next function
+        const decoder: NextDecoder = this._handlers[TYPE];
+        const next: NextHandler<any, TResult, any> = decoder && decoder(MODE, ID, CMD); // 190314 Save next-function.
+        if (!next) throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
+
+        //! call next.. (it will return result or promised)
+        return (() => {
+            try {
+                const R = next(ID, $param, $body, context);
+                return R instanceof Promise ? R : Promise.resolve(R);
+            } catch (e) {
+                return Promise.reject(e);
+            }
+        })();
+    }
+
+    /**
      * pack the request context for Http request.
      *
      * @param event
-     * @param context
+     * @param $ctx
      */
-    public async packContext(event: APIGatewayProxyEvent, context: Context): Promise<NextContext> {
+    public async packContext(event: APIGatewayProxyEvent, $ctx: Context): Promise<NextContext> {
         //! prepare chain object.
-        const $ctx: APIGatewayEventRequestContext = event && event.requestContext;
+        const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
         if (!event) return null;
         _log(NS, `packContext()..`);
 
@@ -233,8 +243,8 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         });
 
         //TODO - translate cognito authentication to NextIdentity
-        if ($ctx.identity && !$ctx.identity.cognitoIdentityPoolId) {
-            const $id = $ctx.identity;
+        if (reqContext.identity && !reqContext.identity.cognitoIdentityPoolId) {
+            const $id = reqContext.identity;
             _inf(NS, '! identity.cognito :=', JSON.stringify(identity));
             identity.cognitoId = $id.cognitoIdentityId;
             identity.accountId = $id.accountId;
@@ -245,16 +255,17 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         const config: ConfigService = await MyConfigService.instance();
         const service = (config && config.getService()) || 'lemon-core';
         const version = (config && config.getVersion()) || '0.0.0';
-        const stage = $ctx.stage || (config && config.getStage()) || '';
-        const source = `api://${$ctx.accountId}@${service}-${stage}${event.path}#${version}`; // the origin request protocol uri (must use 'api')
+        const stage = reqContext.stage || (config && config.getStage()) || '';
+        const source = `api://${reqContext.accountId}@${service}-${stage}${event.path}#${version}`; // the origin request protocol uri (must use 'api')
 
         //! - extract original request infor.
-        const clientIp = $ctx.identity && $ctx.identity.sourceIp;
-        const requestId = $ctx.requestId;
-        const accountId = $ctx.accountId;
+        const clientIp = reqContext.identity && reqContext.identity.sourceIp;
+        const requestId = reqContext.requestId;
+        const accountId = reqContext.accountId;
 
-        //! retruns
-        return { ...res, identity, source, clientIp, requestId, accountId };
+        //! save into headers and returns.
+        const context = { ...res, identity, source, clientIp, requestId, accountId };
+        return context;
     }
 }
 
