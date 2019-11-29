@@ -61,6 +61,21 @@ describe(`test the 'core/engine.ts'`, () => {
         });
     });
 
+    test('check do_parallel() w/ string x 1000', (done: any) => {
+        const list: Promise<number>[] = [];
+        for (let i = 1; i <= 1000; i++) list.push(Promise.resolve(i));
+        do_parrallel(list, async (_n, i) => {
+            const n: number = await _n;
+            if (n % 2 == 0) throw new Error(`err ${n}:${i}`);
+            return `N${n}:${i}`;
+        }).then(_ => {
+            expect(_[0] as any).toEqual('N1:0');
+            expect((_[1] as any).message).toEqual('err 2:1');
+            expect((_[999] as any).message).toEqual('err 1000:999');
+            done();
+        });
+    });
+
     test('check do_parallel() w/ param', (done: any) => {
         const list = [1, 2, 3, 4, 5, 6].map(n => {
             return `${n}`;
