@@ -24,7 +24,7 @@ import {
     SQSEvent,
 } from 'aws-lambda';
 import * as $lambda from 'aws-lambda';
-import { NextContext } from './core-types';
+import { NextContext, ProtocolParam } from './core-types';
 
 export type Context = $lambda.Context;
 
@@ -44,15 +44,18 @@ export type Context = $lambda.Context;
 export interface CronEvent {
     cron: { name: string; action: string };
 }
+export type WEBEvent = APIGatewayProxyEvent;
+export type WEBResult = APIGatewayProxyResult;
 export type WSSEvent = APIGatewayProxyEvent;
+export type WSSResult = any;
 
 //! define and export all types.
 export type MyHandler<TEvent = any, TResult = any> = (event: TEvent, context: NextContext) => Promise<TResult>;
 
-export type WEBHandler = MyHandler<APIGatewayProxyEvent, APIGatewayProxyResult>;
+export type WEBHandler = MyHandler<WEBEvent, WEBResult>;
+export type WSSHandler = MyHandler<WSSEvent, WSSResult>;
 export type SNSHandler = MyHandler<SNSEvent, void>;
 export type SQSHandler = MyHandler<SQSEvent, void>;
-export type WSSHandler = MyHandler<APIGatewayProxyEvent, any>;
 export type CronHandler = MyHandler<CronEvent, void>;
 export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
 export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
@@ -77,6 +80,14 @@ export interface LambdaHandlerService<T extends MyHandler = MyHandler> {
      * @param context   origin context of lambda
      */
     packContext?(event: any, context: Context): Promise<NextContext>;
+
+    /**
+     * (optional) handle Protocol Request.
+     * - override this function if required!
+     *
+     * @param param     protocol param.
+     */
+    handleProtocol?<TResult = any>(param: ProtocolParam): Promise<TResult>;
 }
 
 interface HandlerMap {
@@ -217,30 +228,37 @@ export class LambdaHandler {
     };
 
     /**
+     * handle param via protocol-service.
+     * - sub-service could call this method() to bypass request.
+     *
+     * @param param protocol parameters
+     */
+    public async handleProtocol<TResult = any>(param: ProtocolParam): Promise<TResult> {
+        //! if valid API Request, then use $web's function.
+        const $web: LambdaHandlerService = this._map['web'] as LambdaHandlerService;
+        if (!$web || typeof $web != 'object') throw new Error(`500 NO WEB HANDLER - name:web`);
+        return $web.handleProtocol(param);
+    }
+
+    /**
      * (default) pack the origin context to application context.
      * - override this function if required!
      *
      * @param event     origin event
-     * @param context   origin context of lambda
+     * @param $ctx   origin context of lambda
      */
-    public async packContext(event: any, context: Context): Promise<NextContext> {
-        const $ctx: NextContext = {};
+    public async packContext(event: any, $ctx: Context): Promise<NextContext> {
+        const context: NextContext = {};
         if (event.requestContext) {
-            const funcName = context.functionName || '';
+            const funcName = $ctx.functionName || '';
             _log(NS, `! context[${funcName}].request =`, $U.json(event.requestContext));
-
-            // //! load identity...
-            // const event2: APIGatewayProxyEvent = event;
-            // const $id = event2.requestContext.identity;
-            // const sourceIp = $id && $id.sourceIp;
-            // const accountId = $id && $id.accountId;
-            // _log(NS, `! sourceIp[${funcName}] =`, sourceIp);
-            // _log(NS, `! accountId[${funcName}] =`, accountId);
+            //! if valid API Request, then use $web's function.
+            const $web: LambdaHandlerService = require('./lambda-web-handler').default;
+            return $web.packContext(event, $ctx);
         } else {
-            context && _log(NS, `! context[${context.functionName || ''}] =`, $U.json(context));
+            $ctx && _log(NS, `! context[${$ctx.functionName || ''}] =`, $U.json($ctx));
         }
-        //NOTE - do nothing in here, by default.
-        return $ctx;
+        return context;
     }
 }
 

@@ -10,28 +10,81 @@
  */
 // import { _it } from '../common/test-helper';
 
-import * as $lambda from './lambda-handler.spec';
 import { LambdaSQSHandler } from './lambda-sqs-handler';
 import { LambdaHandler } from './lambda-handler';
+import { loadJsonSync } from '../tools/shared';
+import { expect2 } from '../common/test-helper';
+
+import * as $lambda from './lambda-handler.spec';
+import * as $web from './lambda-web-handler.spec';
 
 class LambdaSQSHandlerLocal extends LambdaSQSHandler {
     public constructor(lambda: LambdaHandler) {
         super(lambda, true);
     }
+    public getLastResult = () => this.$lastResult;
 }
-export const $sqs = () => {
+export const instance = () => {
     const { service: lambda } = $lambda.instance();
-    const instance = new LambdaSQSHandlerLocal(lambda);
-    return { lambda, instance };
+    const { service: web } = $web.instance(lambda);
+    const service = new LambdaSQSHandlerLocal(lambda);
+    return { lambda, service, web };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('LambdaSQSHandler', () => {
-    //! list in web-handler
-    it('should pass success GET / via web', async done => {
+    //! protocol param
+    it('should pass handle protocol with web (default)', async done => {
         /* eslint-disable prettier/prettier */
-        // const { lambda, instance } = $sqs();
+        const { lambda, service, web } = instance();
+        const event: any = loadJsonSync('data/protocol.event.sqs.json');
+        expect2(event.Records[0], 'messageId').toEqual({ messageId:'3649c307-b056-406c-b42a-d68493b8055e' });
+
+        //! PRE-CONDITION
+        const result1 = web.result;
+        expect2(result1).toEqual(null);
+        expect2(service.getLastResult()).toEqual(null);
+
+        //! RUN
+        const res = await lambda.handle(event, null);
+        expect2(res).toEqual(undefined);
+
+        //! POST-CONDITION.
+        expect2(service.getLastResult()).toEqual([new Error('404 NOT FOUND - GET /metrics/hello/test-protocol')]);
+        const result2 = web.result;
+        expect2(result2).toEqual(null);
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! protocol param
+    it('should pass handle protocol with web (hello)', async done => {
+        /* eslint-disable prettier/prettier */
+        const { lambda, service, web } = instance();
+        const event: any = loadJsonSync('data/protocol.event.sqs.json');
+        expect2(event.Records[0], 'messageId').toEqual({ messageId:'3649c307-b056-406c-b42a-d68493b8055e' });
+
+        //! CHANGE PARAM
+        const body = JSON.parse(event.Records[0].body);
+        body.type = 'hello';                                // override to `hello` type.
+        event.Records[0].body = JSON.stringify(body);
+
+        //! PRE-CONDITION
+        const result1 = web.result;
+        expect2(result1).toEqual(null);
+        expect2(service.getLastResult()).toEqual(null);
+
+        //! RUN
+        const res = await lambda.handle(event, null);
+        expect2(res).toEqual(undefined);
+
+        //! POST-CONDITION.
+        expect2(service.getLastResult()).toEqual([true]);
+        const result2 = web.result;
+        expect2(result2).toEqual({cmd: "test-protocol", hello: "test-protocol hello", id: "hello"});
+
         /* eslint-enable prettier/prettier */
         done();
     });

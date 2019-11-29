@@ -32,11 +32,23 @@ export const loadJsonSync = (name: string, def: any = {}) => {
 };
 
 //! dynamic loading credentials by profile. (search PROFILE -> NAME)
-export const credentials = async (profile: string) => {
-    const credentials = new AWS.SharedIniFileCredentials({ profile });
-    AWS.config.credentials = credentials;
-    return credentials;
-};
+export const credentials = async (profile: string) =>
+    new Promise((resolve, reject) => {
+        let credentials: any = null;
+        const callback = (e: Error, r?: any) => {
+            // e || console.error('! credentials.res :=', r);
+            // e && console.error('! credentials.err :=', e);
+            if (e) reject(e);
+            else resolve(r || credentials);
+        };
+        try {
+            //NOTE - could not catch AWS.Error `Profile null not found` via callback.
+            credentials = new AWS.SharedIniFileCredentials({ profile, callback });
+            AWS.config.credentials = credentials;
+        } catch (e) {
+            callback(e);
+        }
+    });
 
 //! load yml data via './data/<file>.yml'
 export const loadDataYml = (file: string, folder?: string) => {

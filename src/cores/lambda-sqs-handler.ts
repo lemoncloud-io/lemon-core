@@ -15,6 +15,8 @@ import { doReportError, do_parrallel } from '../engine/';
 
 import { SQSRecord } from 'aws-lambda';
 import $lambda, { SQSHandler, LambdaHandler, LambdaHandlerService } from './lambda-handler';
+import { ProtocolParam } from './core-types';
+import $protocol from './protocol-service';
 
 /**
  * class: LambdaSQSHandler
@@ -23,18 +25,21 @@ import $lambda, { SQSHandler, LambdaHandler, LambdaHandlerService } from './lamb
 export class LambdaSQSHandler implements LambdaHandlerService<SQSHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
+    private lambda: LambdaHandler = null;
 
     /**
      * default constructor w/ registering self.
      */
     protected constructor(lambda: LambdaHandler, register?: boolean) {
         _log(NS, `LambdaSQSHandler()..`);
-        if (register) {
-            lambda.setHandler('sqs', this);
-        }
+        this.lambda = lambda;
+        if (register) lambda.setHandler('sqs', this);
     }
 
     public addListener() {}
+
+    //! for debugging. save last result
+    protected $lastResult: any = null;
 
     /**
      * Default SQS Handler.
@@ -46,7 +51,7 @@ export class LambdaSQSHandler implements LambdaHandlerService<SQSHandler> {
         _log(NS, '> event =', $U.json(event));
 
         //! handle sqs record data.
-        const sqsOnRecord = async (record: SQSRecord, index: number): Promise<string | boolean> => {
+        const onSQSRecord = async (record: SQSRecord, index: number): Promise<string | boolean> => {
             _log(NS, `sqsOnRecord(${(record && record.messageId) || ''}, ${index})...`);
 
             //! retrieve message-attributes as `param`
@@ -58,55 +63,34 @@ export class LambdaSQSHandler implements LambdaHandlerService<SQSHandler> {
                 O[key] = type == 'Number' ? Number(val) : val;
                 return O;
             }, {});
-            _log(NS, '> param =', $U.json(param));
 
-            //! load data as `body`
-            const body =
-                typeof record.body == 'string' && record.body.startsWith('{') && record.body.endsWith('}')
-                    ? JSON.parse(record.body)
-                    : { data: record.body };
-            _log(NS, '> body =', $U.json(body));
+            //! check if via protocol-service.
+            if (param['Subject'] && param['Subject'] == 'x-protocol-service') {
+                const param: ProtocolParam = $protocol.sqs.transformToParam(record);
+                const result = await this.lambda.handleProtocol(param).catch(e => {
+                    doReportError(e, param.context, null, { protocol: param });
+                    throw e;
+                });
+                _log(NS, `> sns[${index}].res =`, $U.json(result));
+                return true;
+            } else {
+                //! load data as `body`
+                const body =
+                    typeof record.body == 'string' && record.body.startsWith('{') && record.body.endsWith('}')
+                        ? JSON.parse(record.body)
+                        : { data: record.body };
+                _log(NS, `> sqs[${index}].param =`, $U.json(param));
+                _log(NS, `> sqs[${index}].body =`, $U.json(body));
+            }
 
-            //! decode function.
-            const safeCall = async (param: any, body: any): Promise<string> => {
-                if (body && body.hello == 'sample') return sqsRegisterSample(); //NOTE - test for internal sqs:sendMessage()
-                // if (body && body.hello == 'error') return sqsOnTicketQueue(null); //NOTE - test for internal error-report.
-                // if (attr.source == 'ticket-queue-service') return sqsOnTicketQueue(data); //NOTE - forward to ticket-service.
-                return 'N/A';
-            };
-
-            //! default return true;
-            return await safeCall(param, body).catch(async (e: Error) => {
-                if (!LambdaSQSHandler.REPORT_ERROR) return `${e.message}`;
-                return doReportError(e, context, null, { from: 'sqsOnRecord', attr: param, data: body })
-                    .catch(() => '')
-                    .then(() => `${e.message}`);
-            });
-        };
-
-        //! register sample sqs message of ticket.
-        const sqsRegisterSample = async (): Promise<string> => {
-            _log(NS, `sqsRegisterSample()...`);
-            // const $handler = new (class implements TicketQueueHandleable {
-            //     // eslint-disable-next-line prettier/prettier
-            //             public async handleQueue(ticketId: string, event?: TicketEvent, ticket?: TicketModel): Promise<TicketModel> {
-            //         _log(NS, `handleQueue(${ticketId})...`);
-            //         _log(NS, '> event =', $U.json(event));
-            //         _log(NS, '> ticket =', $U.json(ticket));
-            //         return ticket;
-            //     }
-            // })();
-            // const sqs = new AWSSQSService();
-            // const que = new MyTicketQueueSQSService($handler, sqs);
-            // const ticket: TicketModel = { id: 'test-ticket' };
-            // const event: TicketEvent = { id: 'event-001', transactionId: '', status: 'sender-error' };
-            // const qid = await que.queTicket(ticket, event);
-            // return qid;
-            return 'N/A';
+            return false;
         };
 
         //! serialize each records.
-        await do_parrallel(records, sqsOnRecord, 1);
+        this.$lastResult = await do_parrallel(records, onSQSRecord, 1);
+
+        //! returns void.
+        return;
     };
 }
 
