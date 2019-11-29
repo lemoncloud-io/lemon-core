@@ -14,10 +14,11 @@
  ** ****************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err } from '../../engine';
-import { environ, region } from './';
+const NS = $U.NS('S3', 'blue');
+
+import $aws from './';
 import AWS from 'aws-sdk';
 import { v4 } from 'uuid';
-const NS = $U.NS('S3', 'blue');
 
 export interface TagSet {
     [key: string]: string;
@@ -40,15 +41,18 @@ export interface CoreS3Service {
  ** ****************************************************************************************************************/
 //! get aws client for S3
 const instance = async () => {
-    const _region = await region();
+    const _region = $aws.region();
     const config = { region: _region };
     return new AWS.S3(config); // SQS Instance. shared one???
 };
 
 //! main service instance.
-export const S3 = new (class implements CoreS3Service {
-    public ENV_NAME = 'CORE_S3_BUCKET';
-    public DEF_BUCKET = 'lemon-hello-www';
+export class AWSS3Service implements CoreS3Service {
+    /**
+     * environ name config.
+     */
+    public static ENV_S3_NAME = 'MY_S3_BUCKET';
+    public static DEF_S3_BUCKET = 'lemon-hello-www';
 
     /**
      * get name of this
@@ -64,8 +68,7 @@ export const S3 = new (class implements CoreS3Service {
      * get target endpoint by name.
      */
     public bucket = async (target?: string) => {
-        // if (!target) throw new Error('@target is required!');
-        return environ(target, this.ENV_NAME, this.DEF_BUCKET);
+        return $aws.environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
     };
 
     /**
@@ -155,4 +158,4 @@ export const S3 = new (class implements CoreS3Service {
     public nextId = () => {
         return v4();
     };
-})();
+}

@@ -8,7 +8,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // require('source-map-support').install();
-const ENV_NAME = 'CORE_S3_BUCKET';
+const ENV_NAME = 'MY_S3_BUCKET';
 const DEF_BUCKET = 'lemon-hello-www';
 
 //! override environ.
@@ -17,7 +17,9 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
-import { S3 } from './aws-s3-service';
+import { AWSS3Service } from './aws-s3-service';
+
+const S3 = new AWSS3Service();
 
 describe(`test service/s3-service.js`, () => {
     test('check name() function', async () => {
@@ -29,8 +31,8 @@ describe(`test service/s3-service.js`, () => {
     });
 
     test('check bucket() function', async () => {
-        expect(S3.ENV_NAME).toEqual(ENV_NAME);
-        expect(S3.DEF_BUCKET).toEqual(DEF_BUCKET);
+        expect(AWSS3Service.ENV_S3_NAME).toEqual(ENV_NAME);
+        expect(AWSS3Service.DEF_S3_BUCKET).toEqual(DEF_BUCKET);
         const a0 = await S3.bucket(ENV_NAME);
         expect(a0).toEqual('hello-bucket');
         const a1 = await S3.bucket('MY_BUCKET');

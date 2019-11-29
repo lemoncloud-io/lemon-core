@@ -14,25 +14,28 @@
  ** ****************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err } from '../../engine';
-import { environ, region } from './';
-import AWS from 'aws-sdk';
 const NS = $U.NS('SNS', 'blue');
 
-export interface CoreSnsService {
-    hello: () => { hello: string };
-    endpoint: (name: string) => Promise<string>;
-    accountID: () => Promise<string>;
-    publish: (target: string, subject: string, payload: any) => Promise<string>;
-    reportError: (e: Error, message: string, target?: string) => Promise<string>;
-}
+import $aws from './';
+import AWS from 'aws-sdk';
+import { CoreSnsService } from '../core-services';
 
 /** ****************************************************************************************************************
  *  Public Instance Exported.
  ** ****************************************************************************************************************/
 //! main service instance.
-export const SNS = new (class implements CoreSnsService {
-    public ENV_NAME = 'CORE_SNS_ARN';
-    public DEF_SNS = 'lemon-hello-sns';
+export class AWSSNSService implements CoreSnsService {
+    /**
+     * environ name of SNS KEY
+     * - for self messaging.
+     */
+    public static ENV_SNS_REGION = 'MY_SNS_REGION';
+    public static DEF_SNS_ENDPOINT = 'lemon-hello-sns';
+
+    private _arn: string;
+    public constructor(arn?: string) {
+        this._arn = arn;
+    }
 
     /**
      * get name of this
@@ -47,11 +50,11 @@ export const SNS = new (class implements CoreSnsService {
     /**
      * get target endpoint by name.
      */
-    public endpoint = async (target: string) => {
-        // if (!target) throw new Error('@target is required!');
-        target = await environ(target, this.ENV_NAME, this.DEF_SNS);
+    public endpoint = async (target?: string) => {
+        target = target || this._arn;
+        target = $aws.environ(target, AWSSNSService.ENV_SNS_REGION, AWSSNSService.DEF_SNS_ENDPOINT);
         if (target.startsWith('arn:aws:sns:')) return target;
-        const REGION = await region();
+        const REGION = $aws.region();
         return this.accountID().then(_ => {
             _log(NS, '> account-id =', _);
             const arn = ['arn', 'aws', 'sns', REGION, _, target].join(':');
@@ -142,13 +145,13 @@ export const SNS = new (class implements CoreSnsService {
      * @param message       simple text message or object to override.
      * @param target        (optional)
      */
-    public reportError = async (e: Error, data: string | object, target?: string): Promise<string> => {
+    public reportError = async (e: Error, data: any, target?: string): Promise<string> => {
         if (!e) return 'N/A';
         _inf(NS, `reportError(${data}, target=${target || ''})...`);
         _err(NS, '> error =', e);
 
         //! find out endpoint.
-        target = await environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
+        target = $aws.environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
         const payload = this.asPayload(e, data);
 
         // _log(NS, '> payload =', $U.json(payload));
@@ -190,4 +193,4 @@ export const SNS = new (class implements CoreSnsService {
         //! returns payload for sns error
         return payload;
     };
-})();
+}

@@ -9,6 +9,25 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-export * from './types';
+import $engine from '../../engine';
+import { CoreConfigService } from './../core-services';
+import { EngineModule, LemonEngine } from '../../engine';
 
+export type ConfigService = CoreConfigService;
 export { MyConfigService } from './config-service';
+
+export class ConfigModule implements EngineModule {
+    private engine: LemonEngine;
+    public constructor(engine?: LemonEngine) {
+        this.engine = engine || $engine; // use input engine or global.
+        this.engine.register(this);
+    }
+    public getModuleName = () => 'config';
+    public async initModule(level?: number): Promise<number> {
+        throw new Error('Method not implemented.');
+    }
+}
+
+//! create default instance, then export as default.
+const $config = new ConfigModule();
+export default $config;

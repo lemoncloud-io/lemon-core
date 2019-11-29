@@ -19,9 +19,9 @@
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
+import $aws from './';
 import AWS from 'aws-sdk';
 import { CoreKmsService } from '../core-services';
-import { region, environ } from './';
 
 //NOTE - use env[KMS_KEY_ID] to overide.
 const ALIAS = `lemon-hello-api`;
@@ -35,15 +35,27 @@ const isBase64 = (text: string) =>
 
 //! get aws client for KMS
 const instance = async () => {
-    const _region = await region();
+    const _region = $aws.region();
     const config = { region: _region };
     return new AWS.KMS(config);
 };
 
-//! main service instance.
-export const KMS = new (class implements CoreKmsService {
-    public ENV_NAME = 'CORE_KMS_KEY';
-    public DEF_TARGET = 'alias/lemon-hello-api';
+/**
+ * class: `AWSKMSService`
+ * - shared Key Management Service to encrypt/decrypt message.
+ */
+export class AWSKMSService implements CoreKmsService {
+    /**
+     * environ name of KMS KEY
+     */
+    public static ENV_KMS_KEY_ID = 'KMS_KEY_ID';
+    public static DEF_KMS_TARGET = `alias/${ALIAS}`;
+
+    private _keyId: string;
+    public constructor(keyId?: string) {
+        keyId = keyId ? keyId : ($engine.environ(AWSKMSService.ENV_KMS_KEY_ID, AWSKMSService.DEF_KMS_TARGET) as string);
+        this._keyId = keyId;
+    }
 
     /**
      * get name of this
@@ -58,10 +70,7 @@ export const KMS = new (class implements CoreKmsService {
     /**
      * get key-id to encrypt.
      */
-    public keyId = async (target?: string) => {
-        // if (!target) throw new Error('@target is required!');
-        return environ(target, this.ENV_NAME, this.DEF_TARGET);
-    };
+    public keyId = () => this._keyId;
 
     /**
      * Encrypt message
@@ -69,9 +78,10 @@ export const KMS = new (class implements CoreKmsService {
      * @param {*} message
      * @param {*} keyId
      */
-    public encrypt = async (message: string, keyId?: string): Promise<string> => {
+    public encrypt = async (message: string): Promise<string> => {
+        const keyId = this.keyId();
         _inf(NS, `encrypt(${keyId})..`);
-        const KeyId = await this.keyId(keyId);
+        const KeyId = keyId;
         const params = {
             KeyId,
             Plaintext: message,
@@ -115,57 +125,6 @@ export const KMS = new (class implements CoreKmsService {
                 _err(NS, '! err=', e);
                 throw e;
             });
-    };
-})();
-
-/**
- * class: `AWSKMSService`
- * - shared Key Management Service to encrypt/decrypt message.
- */
-export class AWSKMSService {
-    /**
-     * environ name of KMS KEY
-     */
-    public static ENV_KMS_KEY_ID = 'KMS_KEY_ID';
-
-    /**
-     * default constructor.
-     */
-    public constructor() {}
-
-    /**
-     * hello
-     */
-    public hello() {
-        return {
-            hello: 'aws-kms-service',
-        };
-    }
-
-    /**
-     * get the current key-id
-     */
-    public keyId = async () => {
-        return $engine.environ(AWSKMSService.ENV_KMS_KEY_ID, `alias/${ALIAS}`) as string;
-    };
-
-    /**
-     * decrypt message.
-     */
-    public decrypt = async (encryptedSecret: string | Buffer): Promise<string> => {
-        _inf(NS, 'decrypt()..');
-        return await KMS.decrypt(encryptedSecret.toString());
-    };
-
-    /**
-     * encrypt message, and returns as base
-     *
-     * @return base64 encoded string
-     */
-    public encrypt = async (message: string) => {
-        _inf(NS, 'encrypt()..');
-        const keyId = await this.keyId();
-        return await KMS.encrypt(message, keyId);
     };
 
     /**

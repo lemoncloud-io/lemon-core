@@ -16,7 +16,9 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
-import { SNS } from './aws-sns-service';
+import { AWSSNSService } from './aws-sns-service';
+
+const SNS = new AWSSNSService();
 
 describe(`test service/sns-service.js`, () => {
     test('check name() function', async () => {
@@ -28,8 +30,8 @@ describe(`test service/sns-service.js`, () => {
     });
 
     test('check endpoint() function', async () => {
-        expect(SNS.ENV_NAME).toEqual(ENV_NAME);
-        expect(SNS.DEF_SNS).toEqual(DEF_SNS);
+        expect(AWSSNSService.ENV_SNS_REGION).toEqual(ENV_NAME);
+        expect(AWSSNSService.DEF_SNS_ENDPOINT).toEqual(DEF_SNS);
         const a0 = await SNS.endpoint(ENV_NAME);
         expect(a0).toEqual('arn:aws:sns:ap-northeast-2::hello');
         const a1 = await SNS.endpoint('arn:aws:sns:....');

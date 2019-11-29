@@ -10,20 +10,68 @@
  */
 import { NextMode, NextContext } from './core-types';
 
+export type STAGE = 'local' | 'dev' | 'prod';
+
 /** ********************************************************************************************************************
  *  Core Services
  ** ********************************************************************************************************************/
-export interface CoreKmsService {
-    hello: () => { hello: string };
+/**
+ * class: `CoreServices`
+ * - common service super class.
+ */
+export interface CoreServices {
+    hello: () => { hello: string; [key: string]: string };
+}
+
+/**
+ * class: `CoreConfigService`
+ * - general interface to provide config
+ */
+export interface CoreConfigService extends CoreServices {
+    /**
+     * get config value.
+     *
+     * @param key key name
+     */
+    get(key: string): string;
+
+    /**
+     * get the current service name of `package.json#name`
+     */
+    getService(): string;
+
+    /**
+     * get the current service name of `package.son#version`
+     */
+    getVersion(): string;
+
+    /**
+     * get the current stage stage via `env.STAGE`
+     */
+    getStage(): STAGE;
+}
+
+/**
+ * class: `CoreKmsService`
+ * - support encrypt/decrypt message.
+ */
+export interface CoreKmsService extends CoreServices {
     encrypt: (message: string, keyId?: string) => Promise<string>;
-    decrypt: (encryptedSecret: string) => Promise<string>;
+    decrypt: (encryptedSecret: string, keyId?: string) => Promise<string>;
+}
+
+/**
+ * class: `CoreSnsService`
+ * - support encrypt/decrypt message.
+ */
+export interface CoreSnsService extends CoreServices {
+    publish: (target: string, subject: string, payload: any) => Promise<string>;
+    reportError: (e: Error, data?: any, target?: string) => Promise<string>;
 }
 
 /** ********************************************************************************************************************
  *  Protocol Services
  ** ********************************************************************************************************************/
-export type STAGE = 'local' | 'dev' | 'prod';
-
 /**
  * class: `ProtocolParam`
  * - common protocol parameters.
