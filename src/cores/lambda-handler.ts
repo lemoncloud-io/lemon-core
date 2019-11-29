@@ -24,7 +24,7 @@ import {
     SQSEvent,
 } from 'aws-lambda';
 import * as $lambda from 'aws-lambda';
-import { NextContext } from './core-types';
+import { NextContext, ProtocolParam } from './core-types';
 
 export type Context = $lambda.Context;
 
@@ -80,6 +80,14 @@ export interface LambdaHandlerService<T extends MyHandler = MyHandler> {
      * @param context   origin context of lambda
      */
     packContext?(event: any, context: Context): Promise<NextContext>;
+
+    /**
+     * (optional) handle Protocol Request.
+     * - override this function if required!
+     *
+     * @param param     protocol param.
+     */
+    handleProtocol?<TResult = any>(param: ProtocolParam): Promise<TResult>;
 }
 
 interface HandlerMap {
@@ -218,6 +226,19 @@ export class LambdaHandler {
                     });
             });
     };
+
+    /**
+     * handle param via protocol-service.
+     * - sub-service could call this method() to bypass request.
+     *
+     * @param param protocol parameters
+     */
+    public async handleProtocol<TResult = any>(param: ProtocolParam): Promise<TResult> {
+        //! if valid API Request, then use $web's function.
+        const $web: LambdaHandlerService = this._map['web'] as LambdaHandlerService;
+        if (!$web || typeof $web != 'object') throw new Error(`500 NO WEB HANDLER - name:web`);
+        return $web.handleProtocol(param);
+    }
 
     /**
      * (default) pack the origin context to application context.

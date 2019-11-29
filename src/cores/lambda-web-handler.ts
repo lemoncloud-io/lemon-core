@@ -65,13 +65,6 @@ interface ModeMap {
 }
 //! constants config
 const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
-const METHOD_MODE_MAP: ModeMap = {
-    LIST: 'LIST',
-    GET: 'GET',
-    PUT: 'PUT',
-    POST: 'POST',
-    DELETE: 'DELETE',
-};
 
 /** ********************************************************************************************************************
  *  Main Class
@@ -171,10 +164,10 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
      * @param param protocol parameters
      */
     public async handleProtocol<TResult = any>(param: ProtocolParam): Promise<TResult> {
-        const TYPE = param.type;
-        const MODE = param.mode;
-        const ID = param.id;
-        const CMD = param.cmd;
+        const TYPE = param.type || '';
+        const MODE = param.mode || 'GET';
+        const ID = param.id || '';
+        const CMD = param.cmd || '';
         const $param = param.param;
         const $body = param.body;
         const context = param.context;
@@ -205,8 +198,8 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
     /**
      * pack the request context for Http request.
      *
-     * @param event
-     * @param $ctx
+     * @param event     origin Event.
+     * @param $ctx      lambda.Context
      */
     public async packContext(event: APIGatewayProxyEvent, $ctx: Context): Promise<NextContext> {
         //! prepare chain object.

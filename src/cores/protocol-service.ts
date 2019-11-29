@@ -16,7 +16,7 @@ import { ConfigService, MyConfigService } from './config-service';
 import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
 import { LambdaHandler } from './lambda-handler';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
-import URL, { Url } from 'url';
+import URL from 'url';
 
 /**
  * class: `MyConfigService`
@@ -508,8 +508,9 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
         const $body = JSON.parse(body);
 
         //! extract message.
-        const { subject, param } = $body;
-        const context = (param && param.context) || {};
+        const subject = messageAttributes['Subject'] && messageAttributes['Subject'].stringValue;
+        const param: ProtocolParam = $body;
+        const context = param && param.context;
 
         //! validate message
         if (subject != 'x-protocol-service') throw new Error(`.subject[${subject}] is not valid protocol.`);
@@ -517,8 +518,10 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
         const requestId: string = messageAttributes['requestId'] && messageAttributes['requestId'].stringValue;
 
         //! validate values.
-        if (accountId != context.accountId) throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
-        if (requestId != context.requestId) throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+        if (context && accountId != context.accountId)
+            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
+        if (context && requestId != context.requestId)
+            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
 
         //! returns.
         const res: ProtocolParam = param;
