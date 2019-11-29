@@ -10,11 +10,15 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, EngineModule, LemonEngine } from '../../engine/';
+import { AWSKMSService } from './aws-kms-service';
+import { AWSSNSService } from './aws-sns-service';
+import { AWSSQSService } from './aws-sqs-service';
 
 //! get common region.
 export * from './../core-types';
 
 export { AWSKMSService } from './aws-kms-service';
+export { AWSSNSService } from './aws-sns-service';
 export { AWSSQSService } from './aws-sqs-service';
 
 export class AWSModule implements EngineModule {
@@ -23,20 +27,11 @@ export class AWSModule implements EngineModule {
         this.engine = engine; // use input engine or global.
         this.engine.register(this);
     }
-    public region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
-    /**
-     * use `target` as value or environment value.
-     * environ('abc') => string 'abc'
-     * environ('ABC') => use `env.ABC`
-     */
-    public environ = (target: string, defEnvName: string, defEnvValue: string) => {
-        const isUpperStr = target && /^[A-Z][A-Z0-9_]+$/.test(target);
-        defEnvName = isUpperStr ? target : defEnvName;
-        const val = defEnvName ? ($engine.environ(defEnvName, defEnvValue) as string) : defEnvValue;
-        target = isUpperStr ? '' : target;
-        return `${target || val}`;
-    };
+    //! create default kms-service with `env.ENV_KMS_KEY_ID`.
+    public kms: AWSKMSService = new AWSKMSService();
+    public sns: AWSSNSService = new AWSSNSService();
+    public sqs: AWSSQSService = new AWSSQSService();
 
     public getModuleName = () => 'aws';
     public async initModule(level?: number): Promise<number> {
@@ -45,6 +40,6 @@ export class AWSModule implements EngineModule {
     }
 }
 
-//! create default instance, then export as default.
+// //! create default instance, then export as default.
 const $aws = new AWSModule($engine);
 export default $aws;

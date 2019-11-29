@@ -65,7 +65,7 @@ export interface EngineModules {
      * get module by name
      * @param name      module name.
      */
-    module(name: string): EngineModule;
+    module<T extends EngineModule>(name: string): T;
 
     /**
      * asynced initializer.

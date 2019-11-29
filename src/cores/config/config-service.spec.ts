@@ -18,8 +18,7 @@ import { expect2, _it } from '../../common/test-helper';
 import { marshal, Filter, MyConfigService } from './config-service';
 
 describe('ConfigService', () => {
-    //TODO - load AWS credentials.
-    const PROFILE = 0 ? 'lemon' : '';
+    const PROFILE = 1 ? 'lemon' : '';
     if (PROFILE) credentials(PROFILE);
 
     //! dummy storage service.
@@ -69,23 +68,6 @@ describe('ConfigService', () => {
         done();
     });
 
-    //! test w/ aws-kms-service
-    _it('should pass aws-kms-service()', async done => {
-        if (!PROFILE) return done();
-
-        //NOTE - use `alias/lemon-hello-api` by default
-        const service = new AWSKMSService();
-        const keyId = 'alias/lemon-hello-api';
-        const message = `hello lemon!`;
-
-        /* eslint-disable prettier/prettier */
-        expect2(await service.hello()).toEqual({ hello: 'aws-kms-service' });
-        expect2(await service.keyId()).toEqual(keyId);
-        expect2(await service.sample(), 'keyId,message,decrypted').toEqual({ keyId, message, decrypted: message });
-        /* eslint-enable prettier/prettier */
-        done();
-    });
-
     //! test config-service
     it('should pass config-service()', async done => {
         if (!PROFILE) return done();
@@ -109,7 +91,9 @@ describe('ConfigService', () => {
 
         /* eslint-disable prettier/prettier */
         const origin = JSON.parse($U.json($config));                                        // deep copy
-        const config = await MyConfigService.factory($config);                             // wait until loading completely.
+        const _conf = new MyConfigService($config);
+        _conf.kms = $kms;
+        const config = await _conf.init();                             // wait until loading completely.
 
         //! check result..
         expect2(config.hello()).toEqual({ hello: 'config-service' });

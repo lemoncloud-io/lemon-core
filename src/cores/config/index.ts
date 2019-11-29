@@ -9,9 +9,10 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import $engine from '../../engine';
+import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { CoreConfigService } from './../core-services';
-import { EngineModule, LemonEngine } from '../../engine';
+import { MyConfigService } from './config-service';
+import { AWSModule } from '../aws';
 
 export type ConfigService = CoreConfigService;
 export { MyConfigService } from './config-service';
@@ -22,9 +23,20 @@ export class ConfigModule implements EngineModule {
         this.engine = engine || $engine; // use input engine or global.
         this.engine.register(this);
     }
+
+    //! create default services
+    public conf: MyConfigService = new MyConfigService();
+
     public getModuleName = () => 'config';
     public async initModule(level?: number): Promise<number> {
-        throw new Error('Method not implemented.');
+        const $aws = this.engine.module<AWSModule>('aws');
+        if (level === undefined) {
+            return $aws ? (await $aws.initModule()) + 1 : 1;
+        } else {
+            // attach external service.
+            if ($aws) this.conf.kms = $aws.kms;
+            await this.conf.init();
+        }
     }
 }
 

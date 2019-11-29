@@ -13,10 +13,9 @@
  *  Common Headers
  ** ****************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U, _log, _inf, _err } from '../../engine';
+import { $engine, $U, _log, _inf, _err } from '../../engine';
 const NS = $U.NS('S3', 'blue');
 
-import $aws from './';
 import AWS from 'aws-sdk';
 import { v4 } from 'uuid';
 
@@ -39,9 +38,24 @@ export interface CoreS3Service {
 /** ****************************************************************************************************************
  *  Public Instance Exported.
  ** ****************************************************************************************************************/
+const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
+
+/**
+ * use `target` as value or environment value.
+ * environ('abc') => string 'abc'
+ * environ('ABC') => use `env.ABC`
+ */
+const environ = (target: string, defEnvName: string, defEnvValue: string) => {
+    const isUpperStr = target && /^[A-Z][A-Z0-9_]+$/.test(target);
+    defEnvName = isUpperStr ? target : defEnvName;
+    const val = defEnvName ? ($engine.environ(defEnvName, defEnvValue) as string) : defEnvValue;
+    target = isUpperStr ? '' : target;
+    return `${target || val}`;
+};
+
 //! get aws client for S3
 const instance = async () => {
-    const _region = $aws.region();
+    const _region = region();
     const config = { region: _region };
     return new AWS.S3(config); // SQS Instance. shared one???
 };
@@ -68,7 +82,7 @@ export class AWSS3Service implements CoreS3Service {
      * get target endpoint by name.
      */
     public bucket = async (target?: string) => {
-        return $aws.environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
+        return environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
     };
 
     /**

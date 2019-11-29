@@ -20,9 +20,8 @@
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('CFGS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-import { STAGE } from './../';
+import { STAGE, CoreKmsService } from './../';
 import { ConfigService } from '.';
-import { AWSKMSService } from './../aws/aws-kms-service';
 import { loadJsonSync } from '../../tools/shared';
 
 /**
@@ -77,42 +76,25 @@ export class MyConfigService implements ConfigService {
      * internal cached config settings.
      */
     protected envConfig: { [key: string]: string } = {};
-    protected kms: AWSKMSService;
     protected $env: any;
+    protected base: any;
+
+    //! external dependency
+    public kms: CoreKmsService;
 
     /**
      * DO NOT craete directly. (use async `ConfigService.factory()`)
      */
-    protected constructor(kms?: AWSKMSService) {
+    public constructor(base?: object, kms?: CoreKmsService) {
         _log(NS, `ConfigService()...`);
+        this.base = base;
         this.kms = kms;
-    }
-
-    /**
-     * Asynchronized factory function.
-     */
-    public static async factory(base: object = null): Promise<ConfigService> {
-        const inst = new MyConfigService(new AWSKMSService());
-        return inst.load(base);
-    }
-
-    /**
-     * Singleton Instance.
-     */
-    private static _instance: Promise<ConfigService> = null;
-    public static instance(): Promise<ConfigService> {
-        if (!MyConfigService._instance) MyConfigService._instance = MyConfigService.factory();
-        return MyConfigService._instance;
     }
 
     /**
      * hello
      */
-    public hello() {
-        return {
-            hello: 'config-service',
-        };
-    }
+    public hello = () => ({ hello: 'config-service' });
 
     /**
      * read all configuration setting
@@ -172,9 +154,10 @@ export class MyConfigService implements ConfigService {
      * load & decrypt the environ.
      * - only if string starts with '*'
      */
-    protected async load(base: object = null): Promise<ConfigService> {
+    public async init(): Promise<ConfigService> {
         // const _log = console.log;
         _log(NS, `load()...`);
+        const base = this.base;
         const $env: any = base || process.env || {};
         this.$env = $env; // save as default environ.
 

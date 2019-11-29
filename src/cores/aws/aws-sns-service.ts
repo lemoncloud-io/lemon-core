@@ -13,12 +13,26 @@
  *  Common Headers
  ** ****************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U, _log, _inf, _err } from '../../engine';
+import { $engine, $U, _log, _inf, _err } from '../../engine';
 const NS = $U.NS('SNS', 'blue');
 
-import $aws from './';
 import AWS from 'aws-sdk';
 import { CoreSnsService } from '../core-services';
+
+const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
+
+/**
+ * use `target` as value or environment value.
+ * environ('abc') => string 'abc'
+ * environ('ABC') => use `env.ABC`
+ */
+const environ = (target: string, defEnvName: string, defEnvValue: string) => {
+    const isUpperStr = target && /^[A-Z][A-Z0-9_]+$/.test(target);
+    defEnvName = isUpperStr ? target : defEnvName;
+    const val = defEnvName ? ($engine.environ(defEnvName, defEnvValue) as string) : defEnvValue;
+    target = isUpperStr ? '' : target;
+    return `${target || val}`;
+};
 
 /** ****************************************************************************************************************
  *  Public Instance Exported.
@@ -52,9 +66,9 @@ export class AWSSNSService implements CoreSnsService {
      */
     public endpoint = async (target?: string) => {
         target = target || this._arn;
-        target = $aws.environ(target, AWSSNSService.ENV_SNS_REGION, AWSSNSService.DEF_SNS_ENDPOINT);
+        target = environ(target, AWSSNSService.ENV_SNS_REGION, AWSSNSService.DEF_SNS_ENDPOINT);
         if (target.startsWith('arn:aws:sns:')) return target;
-        const REGION = $aws.region();
+        const REGION = region();
         return this.accountID().then(_ => {
             _log(NS, '> account-id =', _);
             const arn = ['arn', 'aws', 'sns', REGION, _, target].join(':');
@@ -151,7 +165,7 @@ export class AWSSNSService implements CoreSnsService {
         _err(NS, '> error =', e);
 
         //! find out endpoint.
-        target = $aws.environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
+        target = environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
         const payload = this.asPayload(e, data);
 
         // _log(NS, '> payload =', $U.json(payload));

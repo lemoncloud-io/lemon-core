@@ -19,7 +19,6 @@
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
-import $aws from './';
 import AWS from 'aws-sdk';
 import { CoreKmsService } from '../core-services';
 
@@ -29,13 +28,28 @@ const ALIAS = `lemon-hello-api`;
 /** ****************************************************************************************************************
  *  Public Instance Exported.
  ** ****************************************************************************************************************/
+const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
+
+/**
+ * use `target` as value or environment value.
+ * environ('abc') => string 'abc'
+ * environ('ABC') => use `env.ABC`
+ */
+const environ = (target: string, defEnvName: string, defEnvValue: string) => {
+    const isUpperStr = target && /^[A-Z][A-Z0-9_]+$/.test(target);
+    defEnvName = isUpperStr ? target : defEnvName;
+    const val = defEnvName ? ($engine.environ(defEnvName, defEnvValue) as string) : defEnvValue;
+    target = isUpperStr ? '' : target;
+    return `${target || val}`;
+};
+
 //! check if base64 string.
 const isBase64 = (text: string) =>
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/.test(text);
 
 //! get aws client for KMS
 const instance = async () => {
-    const _region = $aws.region();
+    const _region = region();
     const config = { region: _region };
     return new AWS.KMS(config);
 };
