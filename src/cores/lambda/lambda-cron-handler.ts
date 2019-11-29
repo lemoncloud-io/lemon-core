@@ -12,8 +12,8 @@
 import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HCRN', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-import { NextHandler } from './../core-types';
-import { LambdaHandler, CronHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
+import { NextHandler } from './../core-services';
+import { LambdaHandler, CronHandler, LambdaSubHandler } from './lambda-handler';
 
 export interface CronParam {
     name?: string;

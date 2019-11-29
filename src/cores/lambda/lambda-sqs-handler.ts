@@ -15,7 +15,7 @@ import { doReportError, do_parrallel } from '../../engine/';
 
 import { SQSRecord } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler } from './lambda-handler';
-import { ProtocolParam } from './../';
+import { ProtocolParam } from './../core-services';
 
 import $protocol from '../protocol/';
 import { MyProtocolService } from '../protocol/protocol-service';

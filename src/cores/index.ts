@@ -13,6 +13,7 @@ export * from './core-types';
 export * from './core-services';
 export * from './aws/';
 export * from './lambda/';
+export * from './protocol/';
 
 export { DynamoQueryService, DynamoSimpleQueriable } from './dynamo-query-service';
 export { DynamoService, DynamoOption } from './dynamo-service';

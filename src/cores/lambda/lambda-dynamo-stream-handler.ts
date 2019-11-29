@@ -13,7 +13,7 @@ import { _log, _inf, _err, $_, $U, do_parrallel, doReportError } from '../../eng
 const NS = $U.NS('HDBS', 'green'); // NAMESPACE TO BE PRINTED.
 
 import { DynamoDBRecord } from 'aws-lambda';
-import { LambdaHandler, DynamoStreamHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
+import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler } from './lambda-handler';
 import { NextHandler } from './../core-types';
 import { toJavascript } from '../../lib/dynamodb-value';
 import { Elastic6Service, Elastic6Item } from './../elastic6-service';

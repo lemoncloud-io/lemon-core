@@ -13,8 +13,8 @@ import { $engine, _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
-import { LambdaHandler, SNSHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
-import { ProtocolParam } from './../';
+import { LambdaHandler, SNSHandler, LambdaSubHandler } from './lambda-handler';
+import { ProtocolParam } from './../core-services';
 
 import $protocol from '../protocol/';
 

@@ -14,6 +14,8 @@ import { ConfigModule } from '../config';
 
 export * from './lambda-handler';
 
+export { CronNextHandler, CronParam } from './lambda-cron-handler';
+
 // //! import default with named.
 import { LambdaHandler } from './lambda-handler';
 import { LambdaWEBHandler } from './lambda-web-handler';
@@ -44,7 +46,7 @@ export class LambdaModule implements EngineModule {
     public cognito: LambdaCognitoHandler = new LambdaCognitoHandler(this.lambda);
     public dynamos: LambdaDynamoStreamHandler = new LambdaDynamoStreamHandler(this.lambda);
 
-    public getModuleName = () => 'config';
+    public getModuleName = () => 'lambda';
     public async initModule(level?: number): Promise<number> {
         const $conf = this.engine.module<ConfigModule>('config');
         if (level === undefined) {

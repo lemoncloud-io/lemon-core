@@ -13,7 +13,7 @@ import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HWSS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { APIGatewayProxyResult } from 'aws-lambda';
-import { LambdaHandler, WSSHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
+import { LambdaHandler, WSSHandler, LambdaSubHandler } from './lambda-handler';
 
 /** ********************************************************************************************************************
  *  COMMON Functions.

@@ -12,7 +12,7 @@
 import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-import { LambdaHandler, CognitoHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
+import { LambdaHandler, CognitoHandler, LambdaSubHandler } from './lambda-handler';
 
 /**
  * class: LambdaCognitoHandler

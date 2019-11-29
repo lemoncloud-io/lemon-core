@@ -11,15 +11,16 @@
 import { $engine } from '../engine/';
 import { expect2, _it } from '../common/test-helper';
 import { NextDecoder, NextHandler } from '../cores/core-types';
-import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 import { buildExpress } from './express';
 import request from 'supertest';
 import { loadJsonSync } from './shared';
-import { LambdaHandler } from '../cores/lambda/';
 
-export const instance = () => {
-    const $lambda = new LambdaHandler();
-    const $web = new LambdaWEBHandler($lambda, true);
+//! load all cores.
+import $cores from '../cores/';
+
+export const instance = async () => {
+    await $engine.initialize();
+    const $web = $cores.web;
     $web.setHandler('test', decode_next_handler);
     const $express = buildExpress($engine, $web);
     const $pack = loadJsonSync('package.json');
@@ -53,7 +54,7 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
 //! main test body.
 describe('express', () => {
     _it('should pass express route: GET /', async done => {
-        const { $express, $engine, $web, $pack } = instance();
+        const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         const res = await request(app).get('/');
@@ -67,7 +68,7 @@ describe('express', () => {
 
     //! check id + cmd param
     it('should pass express route: GET /test/abc/hi', async done => {
-        const { $express, $engine, $web, $pack } = instance();
+        const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         const res = await request(app).get('/test/abc/hi');
@@ -78,8 +79,8 @@ describe('express', () => {
     });
 
     //! check mode
-    it('should pass express routes', async done => {
-        const { $express, $engine, $web, $pack } = instance();
+    _it('should pass express routes', async done => {
+        const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         expect2(await request(app).get('/test/abc'), 'status').toEqual({ status: 200 });

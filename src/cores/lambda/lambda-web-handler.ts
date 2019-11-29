@@ -18,11 +18,18 @@ import { _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 import { doReportError } from '../../engine/';
 
-import { NextDecoder, NextHandler, NextContext, NextMode, NextIdentityCognito, ProtocolParam } from './../';
+import {
+    NextDecoder,
+    NextHandler,
+    NextContext,
+    NextMode,
+    NextIdentityCognito,
+    ProtocolParam,
+} from './../core-services';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
-import { ConfigService } from './../config/config-service';
 
+import { ConfigService } from './../config/config-service';
 import $protocol from '../protocol/';
 
 /** ********************************************************************************************************************

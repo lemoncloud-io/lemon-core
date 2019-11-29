@@ -11,10 +11,10 @@
 import { expect2, GETERR } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 
+import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
 import * as $elastic6 from './../elastic6-service.spec';
 import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
-import { LambdaHandler } from './lambda-handler';
 import { DynamoOption } from './../dynamo-service';
 
 class LambdaDynamoStreamHandlerLocal extends LambdaDynamoStreamHandler {
