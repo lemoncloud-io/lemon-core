@@ -21,7 +21,7 @@ import { $engine, _log, _inf, _err, $U } from '../engine/';
 const NS = $U.NS('CFGS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { STAGE } from './core-types';
-import { AWSKMSService } from './aws-kms-service';
+import { AWSKMSService } from './aws/aws-kms-service';
 import { loadJsonSync } from '../tools/shared';
 
 /**

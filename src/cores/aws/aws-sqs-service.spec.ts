@@ -10,11 +10,11 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { credentials } from '../tools/';
+import { credentials } from '../../tools/';
 import { AWSSQSService, MyDummySQSService } from './aws-sqs-service';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, GETERR$, expect2, marshal, Filter, _it } from '../common/test-helper';
+import { GETERR, GETERR$, expect2, marshal, Filter, _it } from '../../common/test-helper';
 
 //! main test body.
 describe('AWSSQSService', () => {

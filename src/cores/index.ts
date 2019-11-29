@@ -10,10 +10,9 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 export * from './core-types';
+export * from './aws/';
 export * from './lambda/';
 
-export { AWSKMSService } from './aws-kms-service';
-export { AWSSQSService } from './aws-sqs-service';
 export { DynamoQueryService, DynamoSimpleQueriable } from './dynamo-query-service';
 export { DynamoService, DynamoOption } from './dynamo-service';
 export { Elastic6QueryService } from './elastic6-query-service';

@@ -16,8 +16,8 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U } from '../engine/';
-import { KMS } from '../service/kms-service';
+import { $engine, _log, _inf, _err, $U } from '../../engine/';
+import { KMS } from '../../service/kms-service';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
 //NOTE - use env[KMS_KEY_ID] to overide.

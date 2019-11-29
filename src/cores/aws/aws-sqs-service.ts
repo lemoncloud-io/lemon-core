@@ -11,7 +11,7 @@
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U } from '../engine/';
+import { $engine, _log, _inf, _err, $U } from '../../engine/';
 import AWS, { SQS } from 'aws-sdk';
 
 const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.

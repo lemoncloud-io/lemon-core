@@ -10,7 +10,7 @@
  */
 import { $engine, _log, _inf, _err, $U } from '../engine/';
 import { credentials, loadJsonSync } from '../tools/';
-import { AWSKMSService } from './aws-kms-service';
+import { AWSKMSService } from './aws/aws-kms-service';
 import { expect2, _it } from '../common/test-helper';
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
