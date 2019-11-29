@@ -29,7 +29,7 @@ import {
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
 
-import { ConfigService } from './../config/config-service';
+import { ConfigService } from './../config/';
 import $protocol from '../protocol/';
 
 /** ********************************************************************************************************************
@@ -130,7 +130,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         //! prevent error via transform.
         if (event.headers && !event.headers['x-protocol-context']) event.headers['x-protocol-context'] = $U.json($ctx);
-        const param: ProtocolParam = $protocol.protocol.web.transformToParam(event);
+        const param: ProtocolParam = $protocol.service.web.transformToParam(event);
         const TYPE = param.type;
         const MODE = param.mode;
         const ID = param.id;
@@ -220,7 +220,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         //! if it is protocol request via lambda, then returns valid context.
         const headers = event.headers || {};
         if (headers['x-protocol-context']) {
-            const $param = $protocol.protocol.web.transformToParam(event);
+            const $param = $protocol.service.web.transformToParam(event);
             return $param.context;
         }
 

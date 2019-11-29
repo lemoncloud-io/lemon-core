@@ -20,7 +20,7 @@ import $cores from '../cores/';
 
 export const instance = async () => {
     await $engine.initialize();
-    const $web = $cores.web;
+    const $web = $cores.lambda.web;
     $web.setHandler('test', decode_next_handler);
     const $express = buildExpress($engine, $web);
     const $pack = loadJsonSync('package.json');

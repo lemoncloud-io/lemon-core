@@ -13,6 +13,8 @@ import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { MyConfigService } from './config-service';
 import { AWSModule } from '../aws';
 
+export * from './config-service';
+
 export class ConfigModule implements EngineModule {
     private engine: LemonEngine;
     public constructor(engine?: LemonEngine) {
@@ -37,5 +39,4 @@ export class ConfigModule implements EngineModule {
 }
 
 //! create default instance, then export as default.
-const $config = new ConfigModule();
-export default $config;
+export default new ConfigModule();

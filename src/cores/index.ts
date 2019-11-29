@@ -21,8 +21,9 @@ export { Elastic6QueryService } from './elastic6-query-service';
 export { Elastic6Service, Elastic6Option } from './elastic6-service';
 
 //! import default with named.
-import $lambda from './lambda/';
-import $protocol from './protocol/';
+import aws from './aws/';
+import lambda from './lambda/';
+import protocol from './protocol/';
 
 //! export default.
-export default { ...$lambda, protocol: $protocol.protocol };
+export default { aws, lambda, protocol };

@@ -36,10 +36,8 @@ export class AWSModule implements EngineModule {
     public getModuleName = () => 'aws';
     public async initModule(level?: number): Promise<number> {
         if (level === undefined) return 1;
-        //TODO - initialize module like to create instance.
     }
 }
 
 // //! create default instance, then export as default.
-const $aws = new AWSModule($engine);
-export default $aws;
+export default new AWSModule($engine);

@@ -58,5 +58,4 @@ export class LambdaModule implements EngineModule {
 }
 
 //! create default instance, then export as default.
-const $lambda = new LambdaModule();
-export default $lambda;
+export default new LambdaModule();

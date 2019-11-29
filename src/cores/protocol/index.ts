@@ -23,7 +23,7 @@ export class ProtocolModule implements EngineModule {
     }
 
     //! create default services
-    public protocol: MyProtocolService = new MyProtocolService();
+    public service: MyProtocolService = new MyProtocolService();
 
     public getModuleName = () => 'protocol';
     public async initModule(level?: number): Promise<number> {
@@ -37,5 +37,4 @@ export class ProtocolModule implements EngineModule {
 }
 
 //! create default instance, then export as default.
-const $protocol = new ProtocolModule();
-export default $protocol;
+export default new ProtocolModule();

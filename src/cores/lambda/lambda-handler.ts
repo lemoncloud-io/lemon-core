@@ -24,9 +24,8 @@ import {
     SQSEvent,
 } from 'aws-lambda';
 import * as $lambda from 'aws-lambda';
-import { NextContext } from './../core-types';
-import { ProtocolParam } from './../core-services';
-import { ConfigService } from '../config/config-service';
+import { NextContext, ProtocolParam } from './../core-services';
+import { ConfigService } from '../config/';
 
 export type Context = $lambda.Context;
 

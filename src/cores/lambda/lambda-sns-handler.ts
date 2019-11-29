@@ -13,9 +13,9 @@ import { $engine, _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
-import { LambdaHandler, SNSHandler, LambdaSubHandler } from './lambda-handler';
 import { ProtocolParam } from './../core-services';
 
+import { LambdaHandler, SNSHandler, LambdaSubHandler } from './';
 import $protocol from '../protocol/';
 
 /**
@@ -56,7 +56,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
             const $msg: SNSMessage = record.Sns;
             const { Subject } = $msg;
             if (Subject == 'x-protocol-service') {
-                const param: ProtocolParam = $protocol.protocol.sns.transformToParam($msg);
+                const param: ProtocolParam = $protocol.service.sns.transformToParam($msg);
                 const result = await this.lambda.handleProtocol(param).catch(e => {
                     doReportError(e, param.context, null, { protocol: param });
                     throw e;

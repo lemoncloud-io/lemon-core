@@ -17,8 +17,7 @@ import { SQSRecord } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler } from './lambda-handler';
 import { ProtocolParam } from './../core-services';
 
-import $protocol from '../protocol/';
-import { MyProtocolService } from '../protocol/protocol-service';
+import $protocol, { MyProtocolService } from '../protocol/';
 
 /**
  * class: LambdaSQSHandler
@@ -66,7 +65,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
 
             //! check if via protocol-service.
             if (param['Subject'] && param['Subject'] == 'x-protocol-service') {
-                const protocol: MyProtocolService = $protocol.protocol;
+                const protocol: MyProtocolService = $protocol.service;
                 const param: ProtocolParam = protocol.sqs.transformToParam(record);
                 const result = await this.lambda.handleProtocol(param).catch(e => {
                     doReportError(e, param.context, null, { protocol: param });
