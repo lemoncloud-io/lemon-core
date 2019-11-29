@@ -17,12 +17,13 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U } from '../engine/';
+import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('CFGS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-import { STAGE } from './core-types';
-import { AWSKMSService } from './aws/aws-kms-service';
-import { loadJsonSync } from '../tools/shared';
+import { STAGE } from './../';
+import { ConfigService } from '.';
+import { AWSKMSService } from './../aws/aws-kms-service';
+import { loadJsonSync } from '../../tools/shared';
 
 /**
  * filter function()
@@ -68,30 +69,6 @@ export const marshal = <T>(
 };
 
 /**
- * class: `ConfigService`
- * - general interface to provide config
- */
-export interface ConfigService {
-    hello(): any;
-    get(key: string): string;
-
-    /**
-     * get the current service name of `package.json#name`
-     */
-    getService(): string;
-
-    /**
-     * get the current service name of `package.son#version`
-     */
-    getVersion(): string;
-
-    /**
-     * get the current stage stage via `env.STAGE`
-     */
-    getStage(): STAGE;
-}
-
-/**
  * class: `MyConfigService`
  * - sample for asynchronized factory.
  */
@@ -115,7 +92,6 @@ export class MyConfigService implements ConfigService {
      * Asynchronized factory function.
      */
     public static async factory(base: object = null): Promise<ConfigService> {
-        // _log(NS, 'factory()...');
         const inst = new MyConfigService(new AWSKMSService());
         return inst.load(base);
     }

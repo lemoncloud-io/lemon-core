@@ -10,6 +10,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 export * from './core-types';
+export * from './core-services';
 export * from './aws/';
 export * from './lambda/';
 

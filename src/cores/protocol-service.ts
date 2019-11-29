@@ -10,9 +10,10 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U, doReportError, getHelloArn } from '../engine/';
-import { ProtocolService, ProtocolParam, ProtocolTransformer, STAGE, NextMode, NextContext } from './core-types';
+import { NextMode, NextContext } from './core-types';
+import { STAGE, ProtocolService, ProtocolParam, ProtocolTransformer } from './core-services';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
-import { ConfigService, MyConfigService } from './config-service';
+import { ConfigService, MyConfigService } from './config/';
 import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
 import { LambdaHandler } from './lambda/';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.

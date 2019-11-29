@@ -13,7 +13,7 @@ import { $U } from '../../engine/';
 import { loadJsonSync } from '../../tools/';
 
 import * as $lambda from './lambda-handler.spec';
-import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-types';
+import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../';
 import { LambdaWEBHandler } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 

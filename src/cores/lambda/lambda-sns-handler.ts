@@ -14,7 +14,7 @@ const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
 import $lambda, { LambdaHandler, SNSHandler, LambdaHandlerService } from './lambda-handler';
-import { ProtocolParam } from './../core-types';
+import { ProtocolParam } from './../';
 import $protocol from './../protocol-service';
 
 /**

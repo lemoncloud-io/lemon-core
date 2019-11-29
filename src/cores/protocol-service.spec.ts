@@ -12,8 +12,9 @@ import { $engine, _log, _inf, _err, $U } from '../engine/';
 import { expect2, _it, GETERR } from '../common/test-helper';
 import { credentials } from '../tools/';
 import { MyProtocolService } from './protocol-service';
-import { ConfigService, MyConfigService } from './config-service';
-import { STAGE, NextMode, ProtocolParam, NextContext } from './core-types';
+import { ConfigService, MyConfigService } from './config/';
+import { NextContext } from './core-types';
+import { ProtocolParam } from './core-services';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 
 const DEF_SERVICE = 'lemon-hello-api';
