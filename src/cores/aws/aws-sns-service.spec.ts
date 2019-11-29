@@ -16,7 +16,7 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
-import { SNS } from './sns-service';
+import { SNS } from './aws-sns-service';
 
 describe(`test service/sns-service.js`, () => {
     test('check name() function', async () => {

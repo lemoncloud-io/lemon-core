@@ -27,7 +27,7 @@ import { $engine, $U, _log, _inf, _err } from './index';
 //! import sub-modules.
 import { SlackPostBody, MetricPostBody } from '../common/types';
 import { loadJsonSync } from '../tools/shared';
-import { SNS } from '../cores/aws/sns-service';
+import { SNS } from '../cores/aws/aws-sns-service';
 
 import * as $lambda from 'aws-lambda';
 import { NextContext } from '../cores/core-types';

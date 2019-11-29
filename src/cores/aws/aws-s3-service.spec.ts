@@ -17,7 +17,7 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
-import { S3 } from './s3-service';
+import { S3 } from './aws-s3-service';
 
 describe(`test service/s3-service.js`, () => {
     test('check name() function', async () => {
