@@ -9,7 +9,17 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { EngineOption, EngineLogger, EngineConsole, LemonEngine, GeneralFuntion, EngineModule } from './types';
+import {
+    EngineOption,
+    EngineLogger,
+    EngineConsole,
+    LemonEngine,
+    GeneralFuntion,
+    EngineModule,
+    EngineModules,
+    EngineScope,
+    ENGINE_KEY_IN_SCOPE,
+} from './types';
 import { Utilities } from './utilities';
 import _ from 'lodash';
 //WARN! - ------------------------------------------------------
@@ -17,7 +27,7 @@ import _ from 'lodash';
 //WARN! - ------------------------------------------------------
 
 //! build environment getter
-const build_environ = (options: EngineOption) => (name: string, defVal: any) => {
+export const build_environ = (options: EngineOption) => (name: string, defVal: any) => {
     // as default, load from proces.env.
     const env = options.env || (process && process.env) || {};
     const val = env[name];
@@ -28,23 +38,25 @@ const build_environ = (options: EngineOption) => (name: string, defVal: any) => 
 };
 
 // build timestamp like 2016-12-08 13:30:44
-const build_ts = () => (date?: undefined | number | Date, timeZone?: number) => {
-    return Utilities.timestamp(date, timeZone);
+export const build_ts = (options?: EngineOption) => {
+    const $console = options && options.console;
+    const _ts = $console && typeof $console.ts == 'function' ? $console.ts : Utilities.timestamp;
+    return (date?: undefined | number | Date, timeZone?: number) => _ts(date, timeZone);
 };
 
 const LEVEL_LOG = '-';
 const LEVEL_INF = 'I';
 const LEVEL_ERR = 'E';
 
-const RED = '\x1b[31m';
-const BLUE = '\x1b[32m';
-const YELLOW = '\x1b[33m';
-const RESET = '\x1b[0m';
+export const RED = '\x1b[31m';
+export const BLUE = '\x1b[32m';
+export const YELLOW = '\x1b[33m';
+export const RESET = '\x1b[0m';
 
 /* eslint-disable @typescript-eslint/indent */
-const build_log = ($console: EngineConsole): EngineLogger =>
+export const build_log = ($console: EngineConsole): EngineLogger =>
     function() {
-        const _ts = build_ts();
+        const _ts = build_ts({ console: $console });
         let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
             args.unshift(RESET),
@@ -53,29 +65,27 @@ const build_log = ($console: EngineConsole): EngineLogger =>
         else $console.auto_ts && args.unshift(_ts(), LEVEL_LOG);
         return $console.log.apply($console.thiz, args);
     };
-const build_inf = ($console: EngineConsole): EngineLogger =>
+export const build_inf = ($console: EngineConsole): EngineLogger =>
     function() {
-        const _ts = build_ts();
+        const _ts = build_ts({ console: $console });
         let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
-            args.unshift(''),
-                args.push(RESET),
+            args.push(RESET),
                 ($console.auto_ts && args.unshift(_ts(), LEVEL_INF)) || args.unshift(LEVEL_INF),
                 args.unshift(YELLOW);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_INF);
-        return $console.log.apply($console.thiz, args);
+        return ($console.info || $console.log).apply($console.thiz, args);
     };
-const build_err = ($console: EngineConsole): EngineLogger =>
+export const build_err = ($console: EngineConsole): EngineLogger =>
     function() {
-        const _ts = build_ts();
+        const _ts = build_ts({ console: $console });
         let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
-            args.unshift(''),
-                args.push(RESET),
+            args.push(RESET),
                 ($console.auto_ts && args.unshift(_ts(), LEVEL_ERR)) || args.unshift(LEVEL_ERR),
                 args.unshift(RED);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_ERR);
-        return $console.error.apply($console.thiz, args);
+        return ($console.error || $console.log).apply($console.thiz, args);
     };
 /* eslint-enable @typescript-eslint/indent */
 
@@ -91,7 +101,7 @@ const build_err = ($console: EngineConsole): EngineLogger =>
  * @param pos           (optional) current pos
  * @param result        (optional) result set.
  */
-const do_serialize = <T, U>(
+export const do_serialize = <T, U>(
     param: T[],
     callback: (node: T, index: number) => U,
     size?: number,
@@ -120,6 +130,64 @@ const do_serialize = <T, U>(
 };
 
 /**
+ * class: `MyEngineModules`
+ * - local implementation of EngineModules
+ */
+class MyEngineModules implements EngineModules {
+    private mods: EngineModule[] = [];
+    private inited: boolean = false;
+    public constructor() {}
+    public register(mod: EngineModule) {
+        this.mods.push(mod);
+    }
+    public module(name: string) {
+        const mods = this.mods.filter(_ => _.getModuleName() == name);
+        return mods && mods[0];
+    }
+    public async initialize(force?: boolean, getLevels?: boolean) {
+        if (!force && this.inited) return;
+        this.inited = true;
+        //! setup init level per each module.
+        const mods = await Promise.all(
+            this.mods.map(async mod => {
+                const level = await mod.initModule();
+                return { level, mod };
+            }),
+        );
+        //! build map by level => Module.
+        const maps: { [key: number]: EngineModule[] } = _.reduce(
+            mods,
+            (M: any, inf) => {
+                if (M[inf.level]) {
+                    M[inf.level].push(inf.mod);
+                } else {
+                    M[inf.level] = [inf.mod];
+                }
+                return M;
+            },
+            {},
+        );
+        // eslint-disable-next-line prettier/prettier
+        const levels: number[] = Object.keys(maps).map(_ => Number(_)).sort();
+        if (getLevels) return levels;
+        //! do serialize per each level.
+        const res = await do_serialize(levels, level =>
+            Promise.all(
+                maps[level].map(
+                    mod =>
+                        mod &&
+                        mod
+                            .initModule(level)
+                            .then(() => mod.getModuleName())
+                            .catch(e => `ERR[${mod.getModuleName()}] ${e.message}`),
+                ),
+            ),
+        );
+        return res;
+    }
+}
+
+/**
  * initialize as EngineInterface
  *
  * ```ts
@@ -130,11 +198,9 @@ const do_serialize = <T, U>(
  * @param scope         main scope like global, browser, ...
  * @param options       configuration.
  */
-export const buildEngine = (
-    scope: { _$?: LemonEngine; [key: string]: any } = null,
-    options: EngineOption = {},
-): LemonEngine => {
+export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonEngine => {
     scope = scope || {};
+    options = options || {};
 
     //! load configuration.
     const ROOT_NAME = options.name || 'lemon';
@@ -152,6 +218,7 @@ export const buildEngine = (
         error: LS ? silent : console.error,
         auto_ts: TS,
         auto_color: LC,
+        ...options.console, // override with options
     };
     const _log = build_log($console);
     const _inf = build_inf($console);
@@ -159,11 +226,9 @@ export const buildEngine = (
 
     //! create root instance to manage global objects.
     const createEngine = (): LemonEngine => {
-        //! create basic LemonEngine..
-        const $engine: LemonEngine = new (class implements LemonEngine {
-            private mods: EngineModule[] = [];
-            private inited: boolean = false;
+        const $engine: LemonEngine = new (class extends MyEngineModules implements LemonEngine {
             public constructor() {
+                super();
                 this.U = new Utilities(this);
             }
             public readonly STAGE: string = STAGE;
@@ -174,61 +239,13 @@ export const buildEngine = (
             public readonly U: Utilities;
             public readonly _: any = _;
             public readonly $console: EngineConsole = $console;
-            public ts: (date?: number | Date, timeZone?: number) => string = build_ts();
+            public ts: (date?: number | Date, timeZone?: number) => string = build_ts({ console: $console });
             public dt: (time?: string | number | Date, timeZone?: number) => Date = Utilities.datetime;
             public environ: (
                 name: string,
                 defValue?: string | number | boolean,
             ) => string | number | boolean = _environ;
             public toString = () => `engine: ${ROOT_NAME}`;
-            public register(mod: EngineModule) {
-                this.mods.push(mod);
-            }
-            public module(name: string) {
-                const mods = this.mods.filter(_ => _.getModuleName() == name);
-                return mods && mods[0];
-            }
-            public async initialize(force?: boolean, getLevels?: boolean) {
-                if (!force && this.inited) return;
-                this.inited = true;
-                //! setup init level per each module.
-                const mods = await Promise.all(
-                    this.mods.map(async mod => {
-                        const level = await mod.initModule(0);
-                        return { level, mod };
-                    }),
-                );
-                //! build map by level => Module.
-                const maps: { [key: number]: EngineModule[] } = _.reduce(
-                    mods,
-                    (M: any, inf) => {
-                        if (M[inf.level]) {
-                            M[inf.level].push(inf.mod);
-                        } else {
-                            M[inf.level] = [inf.mod];
-                        }
-                        return M;
-                    },
-                    {},
-                );
-                // eslint-disable-next-line prettier/prettier
-                const levels: number[] = Object.keys(maps).map(_ => Number(_)).sort();
-                if (getLevels) return levels;
-                //! do serialize per each level.
-                const res = await do_serialize(levels, level =>
-                    Promise.all(
-                        maps[level].map(
-                            mod =>
-                                mod &&
-                                mod
-                                    .initModule(level)
-                                    .then(() => mod.getModuleName())
-                                    .catch(e => `ERR[${mod.getModuleName()}] ${e.message}`),
-                        ),
-                    ),
-                );
-                return res;
-            }
         })();
         //! start initialization only if making $engine.
         STAGE && _inf('#STAGE =', STAGE);
@@ -237,13 +254,13 @@ export const buildEngine = (
     };
 
     //! reuse via scope or build new.
-    const $engine: LemonEngine = scope._$ || createEngine(); //NOTE - reuse instance.
+    const $engine: LemonEngine = scope[ENGINE_KEY_IN_SCOPE] || createEngine(); //NOTE - reuse instance.
 
     //! register as global instances.
-    scope._log = scope._log || _log;
-    scope._inf = scope._inf || _inf;
-    scope._err = scope._err || _err;
-    scope._$ = $engine;
+    scope._log = $engine.log || _log;
+    scope._inf = $engine.inf || _inf;
+    scope._err = $engine.err || _err;
+    scope[ENGINE_KEY_IN_SCOPE] = $engine;
 
     //! returns finally.
     return $engine;

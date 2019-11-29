@@ -2,6 +2,13 @@
  * `engine/index.tx`
  * - engine bootloader
  *
+ * - single global instance of $engine.
+ *
+ * ```ts
+ * import $engine from 'lemon-core'
+ * import { $engine, _log, _inf, _err } from 'lemon-core'
+ * ```
+ *
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2018-05-23 initial version
@@ -25,7 +32,7 @@ export const _log = $engine.log;
 export const _inf = $engine.inf;
 export const _err = $engine.err;
 
-//! export sub-modules
+//! export sub-modules..
 export * from './types';
 export * from './engine';
 

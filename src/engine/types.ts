@@ -51,17 +51,10 @@ export interface EngineCore {
 }
 
 /**
- * class: `LemonEngine`
- * - core part of lemon-engine.
+ * class: `EngineModules`
+ * - manager EngineModules.
  */
-export interface LemonEngine extends EngineCore {
-    // (name: string, opts: any): any;
-    STAGE: string;
-    id: string;
-    ts: (date?: undefined | number | Date, timeZone?: number) => string;
-    dt: (time?: string | number | Date, timeZone?: number) => Date;
-    $console: EngineConsole;
-
+export interface EngineModules {
     /**
      * register module
      * @param mod       module instance.
@@ -82,12 +75,40 @@ export interface LemonEngine extends EngineCore {
 }
 
 /**
+ * class: `LemonEngine`
+ * - core part of lemon-engine.
+ */
+export interface LemonEngine extends EngineCore, EngineModules {
+    // (name: string, opts: any): any;
+    STAGE: string;
+    id: string;
+    ts: (date?: undefined | number | Date, timeZone?: number) => string;
+    dt: (time?: string | number | Date, timeZone?: number) => Date;
+    $console: EngineConsole;
+}
+
+/**
+ * the key of $engine in scope.
+ */
+export const ENGINE_KEY_IN_SCOPE = `_$`;
+
+/**
+ * class: `EngineScope`
+ * - engine
+ */
+export interface EngineScope {
+    [ENGINE_KEY_IN_SCOPE]?: LemonEngine;
+    [key: string]: any;
+}
+
+/**
  * class: `EngineOption`
  * - creation options
  */
 export interface EngineOption {
     name?: string;
     env?: { [key: string]: string };
+    console?: EngineConsole;
 }
 
 export type EngineLogger = GeneralFuntion;
@@ -98,8 +119,10 @@ export type EngineLogger = GeneralFuntion;
  */
 export interface EngineConsole {
     thiz: any;
-    log: EngineLogger;
-    error: EngineLogger;
+    ts?: GeneralFuntion; // get timestamp like '2019-11-29 22:38:20'
+    log: EngineLogger; // for _log()
+    info?: EngineLogger; // for _inf()
+    error?: EngineLogger; // for _err()
     auto_ts: boolean;
     auto_color: boolean;
 }
