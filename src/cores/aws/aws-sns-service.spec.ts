@@ -7,7 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-const ENV_NAME = 'CORE_SNS_ARN';
+const ENV_NAME = 'MY_SNS_REGION';
 const DEF_SNS = 'lemon-hello-sns';
 
 //! override environ.

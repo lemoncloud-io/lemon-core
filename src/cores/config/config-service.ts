@@ -20,9 +20,10 @@
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('CFGS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-import { STAGE, CoreKmsService } from './../';
-import { ConfigService } from '.';
+import { STAGE, CoreKmsService, CoreConfigService } from './../core-services';
 import { loadJsonSync } from '../../tools/shared';
+
+export type ConfigService = CoreConfigService;
 
 /**
  * filter function()

@@ -9,13 +9,13 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, doReportError, getHelloArn } from '../engine/';
-import { NextMode, NextContext } from './core-types';
-import { STAGE, ProtocolService, ProtocolParam, ProtocolTransformer } from './core-services';
+import { $engine, _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
+import { NextMode, NextContext } from './../core-types';
+import { STAGE, ProtocolService, ProtocolParam, ProtocolTransformer } from './../core-services';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
-import { ConfigService, MyConfigService } from './config/';
+import { ConfigService } from './../config/config-service';
 import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
-import { LambdaHandler } from './lambda/';
+import { LambdaHandler } from './../lambda/lambda-handler';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 import URL from 'url';
 
@@ -34,7 +34,7 @@ export class MyProtocolService implements ProtocolService {
     public readonly sqs: SQSProtocolTransformer = new SQSProtocolTransformer(this);
 
     // config-service to use.
-    protected $config: Promise<ConfigService>;
+    public config: ConfigService;
 
     // self service name
     protected selfService: string;
@@ -47,9 +47,9 @@ export class MyProtocolService implements ProtocolService {
      */
     public constructor(service?: string, type?: string, config?: ConfigService) {
         _log(NS, `MyProtocolService()..`);
-        this.$config = config ? Promise.resolve(config) : MyConfigService.factory();
         this.selfService = service || '';
         this.selfType = type || '';
+        this.config = config;
     }
 
     /**
@@ -170,7 +170,7 @@ export class MyProtocolService implements ProtocolService {
      */
     public async execute<T>(param: ProtocolParam, config?: ConfigService): Promise<T> {
         // const _log = console.info;
-        config = config ? config : await this.$config;
+        config = config || this.config;
         _log(NS, `execute(${param.service || ''})..`);
         const uri = this.asProtocolURI('web', param, config);
         _inf(NS, `> uri =`, uri);
@@ -231,7 +231,7 @@ export class MyProtocolService implements ProtocolService {
      */
     public async notify(param: ProtocolParam, callback?: ProtocolParam, config?: ConfigService): Promise<string> {
         // const _log = console.info;
-        config = config ? config : await this.$config;
+        config = config || this.config;
         const service = param.service || config.getService() || '';
         _log(NS, `notify(${service})..`);
         const uri = this.asProtocolURI('sns', param, config);
@@ -263,7 +263,7 @@ export class MyProtocolService implements ProtocolService {
      */
     public async enqueue(param: ProtocolParam, callback?: ProtocolParam, config?: ConfigService): Promise<string> {
         // const _log = console.info;
-        config = config ? config : await this.$config;
+        config = config || this.config;
         const service = param.service || config.getService() || '';
         _log(NS, `enqueue(${service})..`);
         const uri = this.asProtocolURI('sqs', param, config);
@@ -529,17 +529,3 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
         return res;
     }
 }
-
-/**
- * class: `MyProtocolServiceMain`
- * - default instance.
- */
-class MyProtocolServiceMain extends MyProtocolService {
-    public constructor() {
-        super();
-    }
-}
-
-//! create instance & export as default.
-const $instance: MyProtocolService = new MyProtocolServiceMain();
-export default $instance;

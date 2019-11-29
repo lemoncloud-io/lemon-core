@@ -11,12 +11,15 @@
 import { $engine } from '../engine/';
 import { expect2, _it } from '../common/test-helper';
 import { NextDecoder, NextHandler } from '../cores/core-types';
-import $web from '../cores/lambda-web-handler';
+import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 import { buildExpress } from './express';
 import request from 'supertest';
 import { loadJsonSync } from './shared';
+import { LambdaHandler } from '../cores/lambda/';
 
 export const instance = () => {
+    const $lambda = new LambdaHandler();
+    const $web = new LambdaWEBHandler($lambda, true);
     $web.setHandler('test', decode_next_handler);
     const $express = buildExpress($engine, $web);
     const $pack = loadJsonSync('package.json');

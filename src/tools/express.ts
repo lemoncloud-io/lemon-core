@@ -24,7 +24,7 @@
  */
 import { LemonEngine } from '../engine/';
 import { loadJsonSync, getRunParam } from './shared';
-import { LambdaWEBHandler } from '../cores/';
+import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 
 import AWS from 'aws-sdk';
 import express from 'express';

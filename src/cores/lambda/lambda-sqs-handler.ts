@@ -14,26 +14,26 @@ const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 import { doReportError, do_parrallel } from '../../engine/';
 
 import { SQSRecord } from 'aws-lambda';
-import $lambda, { SQSHandler, LambdaHandler, LambdaHandlerService } from './lambda-handler';
+import { SQSHandler, LambdaHandler, LambdaSubHandler } from './lambda-handler';
 import { ProtocolParam } from './../';
-import $protocol from './../protocol-service';
+
+import $protocol from '../protocol/';
+import { MyProtocolService } from '../protocol/protocol-service';
 
 /**
  * class: LambdaSQSHandler
  * - default SQS Handler w/ event-listeners.
  */
-export class LambdaSQSHandler implements LambdaHandlerService<SQSHandler> {
+export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
-    private lambda: LambdaHandler = null;
 
     /**
      * default constructor w/ registering self.
      */
-    protected constructor(lambda: LambdaHandler, register?: boolean) {
+    public constructor(lambda: LambdaHandler, register?: boolean) {
+        super(lambda, register ? 'sqs' : undefined);
         _log(NS, `LambdaSQSHandler()..`);
-        this.lambda = lambda;
-        if (register) lambda.setHandler('sqs', this);
     }
 
     public addListener() {}
@@ -66,7 +66,8 @@ export class LambdaSQSHandler implements LambdaHandlerService<SQSHandler> {
 
             //! check if via protocol-service.
             if (param['Subject'] && param['Subject'] == 'x-protocol-service') {
-                const param: ProtocolParam = $protocol.sqs.transformToParam(record);
+                const protocol: MyProtocolService = $protocol.protocol;
+                const param: ProtocolParam = protocol.sqs.transformToParam(record);
                 const result = await this.lambda.handleProtocol(param).catch(e => {
                     doReportError(e, param.context, null, { protocol: param });
                     throw e;
@@ -93,17 +94,3 @@ export class LambdaSQSHandler implements LambdaHandlerService<SQSHandler> {
         return;
     };
 }
-
-/**
- * class: `LambdaSQSHandlerMain`
- * - default implementations.
- */
-class LambdaSQSHandlerMain extends LambdaSQSHandler {
-    public constructor() {
-        super($lambda, true);
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaSQSHandler = new LambdaSQSHandlerMain();
-export default $instance;

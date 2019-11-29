@@ -13,7 +13,7 @@ import { _log, _inf, _err, $_, $U, do_parrallel, doReportError } from '../../eng
 const NS = $U.NS('HDBS', 'green'); // NAMESPACE TO BE PRINTED.
 
 import { DynamoDBRecord } from 'aws-lambda';
-import $lambda, { LambdaHandler, DynamoStreamHandler, LambdaHandlerService } from './lambda-handler';
+import { LambdaHandler, DynamoStreamHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
 import { NextHandler } from './../core-types';
 import { toJavascript } from '../../lib/dynamodb-value';
 import { Elastic6Service, Elastic6Item } from './../elastic6-service';
@@ -37,18 +37,16 @@ export type DynamoStreamNextHandler<T = any> = NextHandler<DynamoStreamParam, vo
  * class: LambdaDynamoStreamHandler
  * - default DynamoDBStream Handler w/ event-listeners.
  */
-export class LambdaDynamoStreamHandler implements LambdaHandlerService<DynamoStreamHandler> {
+export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
      * default constructor w/ registering self.
      */
-    protected constructor(lambda: LambdaHandler, register?: boolean) {
+    public constructor(lambda: LambdaHandler, register?: boolean) {
+        super(lambda, register ? 'dynamo-stream' : undefined);
         _log(NS, `LambdaDynamoStreamHandler()..`);
-        if (register) {
-            lambda.setHandler('dynamo-stream', this);
-        }
     }
 
     protected listeners: DynamoStreamNextHandler[] = [];
@@ -191,17 +189,3 @@ export class LambdaDynamoStreamHandler implements LambdaHandlerService<DynamoStr
         return handler;
     }
 }
-
-/**
- * class: `LambdaDynamoStreamHandlerMain`
- * - default implementations.
- */
-class LambdaDynamoStreamHandlerMain extends LambdaDynamoStreamHandler {
-    public constructor() {
-        super($lambda, true);
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaDynamoStreamHandler = new LambdaDynamoStreamHandlerMain();
-export default $instance;

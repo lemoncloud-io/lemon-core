@@ -9,25 +9,52 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { $engine, EngineModule, LemonEngine } from '../../engine/';
+import { ConfigModule } from '../config';
+
 export * from './lambda-handler';
 
-export { LambdaCognitoHandler } from './lambda-cognito-handler';
-export { LambdaCronHandler, CronNextHandler } from './lambda-cron-handler';
-export { LambdaDynamoStreamHandler, DynamoStreamNextHandler } from './lambda-dynamo-stream-handler';
-export { LambdaSNSHandler } from './lambda-sns-handler';
-export { LambdaSQSHandler } from './lambda-sqs-handler';
-export { LambdaWEBHandler } from './lambda-web-handler';
-export { LambdaWSSHandler } from './lambda-wss-handler';
+// //! import default with named.
+import { LambdaHandler } from './lambda-handler';
+import { LambdaWEBHandler } from './lambda-web-handler';
+import { LambdaSNSHandler } from './lambda-sns-handler';
+import { LambdaSQSHandler } from './lambda-sqs-handler';
+import { LambdaWSSHandler } from './lambda-wss-handler';
+import { LambdaCronHandler } from './lambda-cron-handler';
+import { LambdaCognitoHandler } from './lambda-cognito-handler';
+import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
 
-//! import default with named.
-import lambda from './lambda-handler';
-import web from './lambda-web-handler';
-import wss from './lambda-wss-handler';
-import sns from './lambda-sns-handler';
-import sqs from './lambda-sqs-handler';
-import cron from './lambda-cron-handler';
-import cognito from './lambda-cognito-handler';
-import dynamos from './lambda-dynamo-stream-handler';
+// //! export default.
+// export default { lambda, web, wss, sns, sqs, cron, cognito, dynamos };
 
-//! export default.
-export default { lambda, web, wss, sns, sqs, cron, cognito, dynamos };
+export class LambdaModule implements EngineModule {
+    private engine: LemonEngine;
+    public constructor(engine?: LemonEngine) {
+        this.engine = engine || $engine; // use input engine or global.
+        this.engine.register(this);
+    }
+
+    //! create default services
+    public lambda: LambdaHandler = new LambdaHandler();
+    public web: LambdaWEBHandler = new LambdaWEBHandler(this.lambda);
+    public sns: LambdaSNSHandler = new LambdaSNSHandler(this.lambda);
+    public sqs: LambdaSQSHandler = new LambdaSQSHandler(this.lambda);
+    public wss: LambdaWSSHandler = new LambdaWSSHandler(this.lambda);
+    public cron: LambdaCronHandler = new LambdaCronHandler(this.lambda);
+    public cognito: LambdaCognitoHandler = new LambdaCognitoHandler(this.lambda);
+    public dynamos: LambdaDynamoStreamHandler = new LambdaDynamoStreamHandler(this.lambda);
+
+    public getModuleName = () => 'config';
+    public async initModule(level?: number): Promise<number> {
+        const $conf = this.engine.module<ConfigModule>('config');
+        if (level === undefined) {
+            return $conf ? (await $conf.initModule()) + 1 : 1;
+        } else {
+            this.lambda.config = $conf.config;
+        }
+    }
+}
+
+//! create default instance, then export as default.
+const $lambda = new LambdaModule();
+export default $lambda;

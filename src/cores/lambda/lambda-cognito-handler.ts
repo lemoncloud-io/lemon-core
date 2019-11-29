@@ -12,24 +12,22 @@
 import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-import $lambda, { LambdaHandler, CognitoHandler, LambdaHandlerService } from './lambda-handler';
+import { LambdaHandler, CognitoHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
 
 /**
  * class: LambdaCognitoHandler
  * - default COGNITO Handler w/ event-listeners.
  */
-export class LambdaCognitoHandler implements LambdaHandlerService<CognitoHandler> {
+export class LambdaCognitoHandler extends LambdaSubHandler<CognitoHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
      * default constructor w/ registering self.
      */
-    protected constructor(lambda: LambdaHandler, register?: boolean) {
+    public constructor(lambda: LambdaHandler, register?: boolean) {
+        super(lambda, register ? 'cognito' : undefined);
         _log(NS, `LambdaCognitoHandler()..`);
-        if (register) {
-            lambda.setHandler('cognito', this);
-        }
     }
 
     public addListener() {}
@@ -43,17 +41,3 @@ export class LambdaCognitoHandler implements LambdaHandlerService<CognitoHandler
         _log(NS, '> event =', $U.json(event));
     };
 }
-
-/**
- * class: `LambdaCognitoHandlerMain`
- * - default implementations.
- */
-class LambdaCognitoHandlerMain extends LambdaCognitoHandler {
-    public constructor() {
-        super($lambda, true);
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaCognitoHandler = new LambdaCognitoHandlerMain();
-export default $instance;

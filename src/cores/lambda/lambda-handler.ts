@@ -25,6 +25,7 @@ import {
 } from 'aws-lambda';
 import * as $lambda from 'aws-lambda';
 import { NextContext, ProtocolParam } from './../';
+import { ConfigService } from '../config/config-service';
 
 export type Context = $lambda.Context;
 
@@ -94,6 +95,23 @@ interface HandlerMap {
     [key: string]: LambdaHandlerService | Handler;
 }
 
+export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHandlerService<T> {
+    protected lambda: LambdaHandler;
+    protected type: string;
+    public constructor(lambda: LambdaHandler, type?: HandlerType) {
+        this.lambda = lambda;
+        this.type = type;
+        if (lambda && type) lambda.setHandler(type, this);
+    }
+    abstract handle: T;
+    // public abstract packContext?(event: any, context: $lambda.Context): Promise<NextContext<import("..").NextIdentity>> {
+    //     throw new Error("Method not implemented.");
+    // }
+    // handleProtocol?<TResult = any>(param: ProtocolParam<{ [key: string]: any; }, { [key: string]: any; }>): Promise<TResult> {
+    //     throw new Error("Method not implemented.");
+    // }
+}
+
 /**
  * class: `LambdaHandler`
  * - general lambda handler so that routes to proper target handlers.
@@ -105,8 +123,11 @@ export class LambdaHandler {
     //! handler map.
     protected _map: HandlerMap = {};
 
+    public config: ConfigService;
     //! protected constructor.
-    protected constructor() {}
+    public constructor(config?: ConfigService) {
+        this.config = config;
+    }
 
     /**
      * set service lambda handler.
@@ -261,17 +282,3 @@ export class LambdaHandler {
         return context;
     }
 }
-
-/**
- * class: `LambdaHandlerMain`
- * - local implementations.
- */
-class LambdaHandlerMain extends LambdaHandler {
-    public constructor() {
-        super();
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaHandler = new LambdaHandlerMain();
-export default $instance;

@@ -10,10 +10,10 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, EngineModule, LemonEngine } from '../../engine/';
-import { MyConfigService } from './config-service';
-import { AWSModule } from '../aws';
+import { MyProtocolService } from './protocol-service';
+import { ConfigModule } from '../config';
 
-export class ConfigModule implements EngineModule {
+export class ProtocolModule implements EngineModule {
     private engine: LemonEngine;
     public constructor(engine?: LemonEngine) {
         this.engine = engine || $engine; // use input engine or global.
@@ -21,21 +21,19 @@ export class ConfigModule implements EngineModule {
     }
 
     //! create default services
-    public config: MyConfigService = new MyConfigService();
+    public protocol: MyProtocolService = new MyProtocolService();
 
     public getModuleName = () => 'config';
     public async initModule(level?: number): Promise<number> {
-        const $aws = this.engine.module<AWSModule>('aws');
+        const $conf = this.engine.module<ConfigModule>('config');
         if (level === undefined) {
-            return $aws ? (await $aws.initModule()) + 1 : 1;
+            return $conf ? (await $conf.initModule()) + 1 : 1;
         } else {
-            // attach external service.
-            if ($aws) this.config.kms = $aws.kms;
-            await this.config.init();
+            // this.lambda.config = $conf.config;
         }
     }
 }
 
 //! create default instance, then export as default.
-const $config = new ConfigModule();
-export default $config;
+const $protocol = new ProtocolModule();
+export default $protocol;

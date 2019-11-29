@@ -140,9 +140,10 @@ class MyEngineModules implements EngineModules {
     public register(mod: EngineModule) {
         this.mods.push(mod);
     }
-    public module(name: string) {
+    public module<T extends EngineModule>(name: string) {
         const mods = this.mods.filter(_ => _.getModuleName() == name);
-        return mods && mods[0];
+        const res: T = (mods && mods[0]) as T;
+        return res;
     }
     public async initialize(force?: boolean, getLevels?: boolean) {
         if (!force && this.inited) return;

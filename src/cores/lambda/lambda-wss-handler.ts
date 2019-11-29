@@ -13,7 +13,7 @@ import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HWSS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { APIGatewayProxyResult } from 'aws-lambda';
-import $lambda, { LambdaHandler, WSSHandler, LambdaHandlerService } from './lambda-handler';
+import { LambdaHandler, WSSHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
 
 /** ********************************************************************************************************************
  *  COMMON Functions.
@@ -52,18 +52,16 @@ export const failure = (body: any) => {
  * class: LambdaWSSHandler
  * - default WSS Handler w/ event-listeners.
  */
-export class LambdaWSSHandler implements LambdaHandlerService<WSSHandler> {
+export class LambdaWSSHandler extends LambdaSubHandler<WSSHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
      * default constructor w/ registering self.
      */
-    protected constructor(lambda: LambdaHandler, register?: boolean) {
+    public constructor(lambda: LambdaHandler, register?: boolean) {
+        super(lambda, register ? 'wss' : undefined);
         _log(NS, `LambdaWSSHandler()..`);
-        if (register) {
-            lambda.setHandler('wss', this);
-        }
     }
 
     public addListener() {}
@@ -91,17 +89,3 @@ export class LambdaWSSHandler implements LambdaHandlerService<WSSHandler> {
         return success('ok');
     };
 }
-
-/**
- * class: `LambdaWSSHandlerMain`
- * - default implementations.
- */
-class LambdaWSSHandlerMain extends LambdaWSSHandler {
-    public constructor() {
-        super($lambda, true);
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaWSSHandler = new LambdaWSSHandlerMain();
-export default $instance;

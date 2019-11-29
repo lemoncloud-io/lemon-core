@@ -13,26 +13,25 @@ import { $engine, _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
-import $lambda, { LambdaHandler, SNSHandler, LambdaHandlerService } from './lambda-handler';
+import { LambdaHandler, SNSHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
 import { ProtocolParam } from './../';
-import $protocol from './../protocol-service';
+
+import $protocol from '../protocol/';
 
 /**
  * class: LambdaSNSHandler
  * - default SNS Handler w/ event-listeners.
  */
-export class LambdaSNSHandler implements LambdaHandlerService<SNSHandler> {
+export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
-    private lambda: LambdaHandler = null;
 
     /**
      * default constructor w/ registering self.
      */
-    protected constructor(lambda: LambdaHandler, register?: boolean) {
+    public constructor(lambda: LambdaHandler, register?: boolean) {
+        super(lambda, register ? 'sns' : undefined);
         _log(NS, `LambdaSNSHandler()..`);
-        this.lambda = lambda;
-        if (register) lambda.setHandler('sns', this);
     }
 
     public addListener() {}
@@ -57,7 +56,7 @@ export class LambdaSNSHandler implements LambdaHandlerService<SNSHandler> {
             const $msg: SNSMessage = record.Sns;
             const { Subject } = $msg;
             if (Subject == 'x-protocol-service') {
-                const param: ProtocolParam = $protocol.sns.transformToParam($msg);
+                const param: ProtocolParam = $protocol.protocol.sns.transformToParam($msg);
                 const result = await this.lambda.handleProtocol(param).catch(e => {
                     doReportError(e, param.context, null, { protocol: param });
                     throw e;
@@ -92,17 +91,3 @@ export class LambdaSNSHandler implements LambdaHandlerService<SNSHandler> {
         return;
     };
 }
-
-/**
- * class: `LambdaSNSHandlerMain`
- * - default implementations.
- */
-class LambdaSNSHandlerMain extends LambdaSNSHandler {
-    public constructor() {
-        super($lambda, true);
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaSNSHandler = new LambdaSNSHandlerMain();
-export default $instance;

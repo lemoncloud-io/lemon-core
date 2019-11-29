@@ -20,9 +20,10 @@ import { doReportError } from '../../engine/';
 
 import { NextDecoder, NextHandler, NextContext, NextMode, NextIdentityCognito, ProtocolParam } from './../';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
-import $lambda, { LambdaHandler, WEBHandler, LambdaHandlerService, Context } from './lambda-handler';
-import $protocol from './../protocol-service';
-import { ConfigService, MyConfigService } from './../config/';
+import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
+import { ConfigService } from './../config/config-service';
+
+import $protocol from '../protocol/';
 
 /** ********************************************************************************************************************
  *  COMMON Functions.
@@ -73,7 +74,7 @@ const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
  * class: LambdaWEBHandler
  * - default WEB Handler w/ event-listeners.
  */
-export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
+export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
@@ -83,11 +84,9 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
     /**
      * default constructor w/ registering self.
      */
-    protected constructor(lambda: LambdaHandler, register?: boolean) {
+    public constructor(lambda: LambdaHandler, register?: boolean) {
+        super(lambda, register ? 'web' : undefined);
         _log(NS, `LambdaWEBHandler()..`);
-        if (register) {
-            lambda.setHandler('web', this);
-        }
     }
 
     /**
@@ -124,7 +123,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
 
         //! prevent error via transform.
         if (event.headers && !event.headers['x-protocol-context']) event.headers['x-protocol-context'] = $U.json($ctx);
-        const param: ProtocolParam = $protocol.web.transformToParam(event);
+        const param: ProtocolParam = $protocol.protocol.web.transformToParam(event);
         const TYPE = param.type;
         const MODE = param.mode;
         const ID = param.id;
@@ -214,7 +213,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         //! if it is protocol request via lambda, then returns valid context.
         const headers = event.headers || {};
         if (headers['x-protocol-context']) {
-            const $param = $protocol.web.transformToParam(event);
+            const $param = $protocol.protocol.web.transformToParam(event);
             return $param.context;
         }
 
@@ -245,7 +244,7 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         }
 
         //! - build initial `source` like protocol-url of self out of initial request context.
-        const config: ConfigService = await MyConfigService.instance();
+        const config: ConfigService = this.lambda.config;
         const service = (config && config.getService()) || 'lemon-core';
         const version = (config && config.getVersion()) || '0.0.0';
         const stage = reqContext.stage || (config && config.getStage()) || '';
@@ -261,17 +260,3 @@ export class LambdaWEBHandler implements LambdaHandlerService<WEBHandler> {
         return context;
     }
 }
-
-/**
- * class: `LambdaWEBHandlerMain`
- * - default implementations.
- */
-class LambdaWEBHandlerMain extends LambdaWEBHandler {
-    public constructor() {
-        super($lambda, true);
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaWEBHandler = new LambdaWEBHandlerMain();
-export default $instance;

@@ -13,7 +13,7 @@ import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HCRN', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { NextHandler } from './../core-types';
-import $lambda, { LambdaHandler, CronHandler, LambdaHandlerService } from './lambda-handler';
+import { LambdaHandler, CronHandler, LambdaHandlerService, LambdaSubHandler } from './lambda-handler';
 
 export interface CronParam {
     name?: string;
@@ -25,18 +25,16 @@ export type CronNextHandler = NextHandler<CronParam, void>;
  * class: LambdaCronHandler
  * - default CRON Handler w/ event-listeners.
  */
-export class LambdaCronHandler implements LambdaHandlerService<CronHandler> {
+export class LambdaCronHandler extends LambdaSubHandler<CronHandler> {
     //! shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
      * default constructor w/ registering self.
      */
-    protected constructor(lambda: LambdaHandler, register?: boolean) {
+    public constructor(lambda: LambdaHandler, register?: boolean) {
+        super(lambda, register ? 'cron' : undefined);
         _log(NS, `LambdaCronHandler()..`);
-        if (register) {
-            lambda.setHandler('cron', this);
-        }
     }
 
     protected listeners: CronNextHandler[] = [];
@@ -60,17 +58,3 @@ export class LambdaCronHandler implements LambdaHandlerService<CronHandler> {
         await Promise.all(this.listeners.map(_ => _(ID, cron, null, context)));
     };
 }
-
-/**
- * class: `LambdaCronHandlerMain`
- * - default implementations.
- */
-class LambdaCronHandlerMain extends LambdaCronHandler {
-    public constructor() {
-        super($lambda, true);
-    }
-}
-
-//! create instance & export as default.
-const $instance: LambdaCronHandler = new LambdaCronHandlerMain();
-export default $instance;
