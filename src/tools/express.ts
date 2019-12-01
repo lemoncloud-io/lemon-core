@@ -24,7 +24,7 @@
  */
 import { LemonEngine } from '../engine/';
 import { loadJsonSync, getRunParam } from './shared';
-import { LambdaWEBHandler } from '../cores/';
+import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 
 import AWS from 'aws-sdk';
 import express from 'express';
@@ -101,6 +101,7 @@ export const buildExpress = (
             url: req.url,
             headers: req.headers,
             body: req.body,
+            requestContext: { source: 'express' },
         };
         const context = { source: 'express' };
         const callback = (err: any, data: any) => {
@@ -229,6 +230,8 @@ export const buildExpress = (
                 const addr: any = server.address();
                 const port = $U.NS(`${addr && addr.port}`, 'yellow').split(':')[0];
                 _log(NS, `Server[${process.env.NAME}:${process.env.STAGE}] is listening on Port:${port}`);
+                //TODO - proper way to initialize.
+                $engine.initialize();
             })
             .on('error', (e: any) => {
                 _inf(NS, '!ERR - listen.err = ', e);

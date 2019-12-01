@@ -27,12 +27,15 @@ import { $engine, $U, _log, _inf, _err } from './index';
 //! import sub-modules.
 import { SlackPostBody, MetricPostBody } from '../common/types';
 import { loadJsonSync } from '../tools/shared';
-import { SNS } from '../service/sns-service';
+import { AWSSNSService } from '../cores/aws/aws-sns-service';
 
 import * as $lambda from 'aws-lambda';
 import { NextContext } from '../cores/core-types';
 type Context = $lambda.Context;
 type RequestContext = $lambda.APIGatewayEventRequestContext;
+
+//! create SNS Service
+const $sns = (arn: string): AWSSNSService => new AWSSNSService(arn);
 
 //! find ARN('lemon-hello-sns') via context information or environment.
 export const getHelloArn = (context?: Context | RequestContext | NextContext, NS?: string): string => {
@@ -102,8 +105,8 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         //! find target arn.
         const arn = getHelloArn(context, NS);
         _log(NS, `> report-error.arn =`, arn);
-        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
-        return SNS.reportError(e, payload, arn)
+        return $sns(arn)
+            .reportError(e, payload, arn)
             .then((mid: string) => {
                 _inf(NS, '> err.message-id =', mid);
                 return `${mid}`;
@@ -145,8 +148,8 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
         //! find target arn.
         const arn = getHelloArn(context, NS);
         _log(NS, `> report-slack.arn =`, arn);
-        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
-        return SNS.publish(arn, 'slack', payload)
+        return $sns(arn)
+            .publish(arn, 'slack', payload)
             .then((mid: string) => {
                 _inf(NS, '> sns.message-id =', mid);
                 return `${mid}`;
@@ -200,8 +203,8 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
         // eslint-disable-next-line prettier/prettier
         const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v,i)=>i==5?target:v).join(':') : arn0;
         _log(NS, `> report-metric.arn =`, arn);
-        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
-        return SNS.publish(arn || target, 'metric', payload)
+        return $sns(arn)
+            .publish(arn || target, 'metric', payload)
             .then((mid: string) => {
                 _inf(NS, '> sns.message-id =', mid);
                 return `${mid}`;
