@@ -15,9 +15,20 @@ Lemon Core Bootloader for Serverless Micro-Service
     ![](assets/2019-11-26-23-43-47.png)
 
 
+## Architecture
+
+Basic MicroService Architecutre with `API` + `SNS` + `SQS`.
+
+![](assets/lemon-core-ms-arch.png)
+
+- `NextHandler`: basic controller method to handle user service
+- `NextDecoder`: mapper from `httpMethod + id + cmd` to `NextHandler`
+- `NextContext`: initial requester's context with `identity`.
+
+
 ## Usage
 
-1. install `lemon-core` module (>= 2.0.0).
+1. install `lemon-core` module (>= 2.0.1).
 
 ```sh
 $ npm install lemon-core --save
