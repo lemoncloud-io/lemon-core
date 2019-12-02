@@ -31,7 +31,7 @@ export const instance = async () => {
 const decode_next_handler: NextDecoder = (mode, id, cmd) => {
     let next: NextHandler = null;
     /* eslint-disable prettier/prettier */
-    // console.info(`> decode: mode=${mode} /${id}/${cmd || ''}`)
+    // _log(`> decode: mode=${mode} /${id}/${cmd || ''}`)
     switch (mode) {
         case 'LIST':
             next = async () => ({ hello: 'LIST' });
@@ -45,6 +45,7 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
             else if (id == '!') next = async (id, param, body, context) => ({ id, param, body, context });  // dump parameter if '!'
             else if (cmd) next = async id => ({ id, cmd, hello: `${cmd} ${id}` });
             else next = async id => ({ id, hello: `${id}` });
+            break;
     }
     /* eslint-enable prettier/prettier */
     return next;
@@ -53,7 +54,7 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('express', () => {
-    _it('should pass express route: GET /', async done => {
+    it('should pass express route: GET /', async done => {
         const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
@@ -72,14 +73,13 @@ describe('express', () => {
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         const res = await request(app).get('/test/abc/hi');
-        expect2(res, 'status').toEqual({ status: 200 });
-        expect2(res, 'body').toEqual({ body: { id:'abc', cmd:'hi', hello:'hi abc'} });
+        expect2(res, 'status,body').toEqual({ status: 200, body: { id:'abc', cmd:'hi', hello:'hi abc'} });
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! check mode
-    _it('should pass express routes', async done => {
+    it('should pass express routes', async done => {
         const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
