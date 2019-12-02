@@ -15,10 +15,11 @@ export * from './aws/';
 export * from './lambda/';
 export * from './protocol/';
 
+export { DynamoOption, DynamoService } from './dynamo-service';
 export { DynamoQueryService, DynamoSimpleQueriable } from './dynamo-query-service';
-export { DynamoService, DynamoOption } from './dynamo-service';
+export { Elastic6Option, Elastic6Service } from './elastic6-service';
 export { Elastic6QueryService } from './elastic6-query-service';
-export { Elastic6Service, Elastic6Option } from './elastic6-service';
+export { StorageModel, StorageService, DynamoStorageService, DummyStorageService } from './storage-service';
 
 //! import default with named.
 import aws from './aws/';

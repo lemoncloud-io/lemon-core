@@ -1,0 +1,11 @@
+# dummy data for ticketing internal test!
+data:
+  - id: A00000
+    type: account
+
+  - id: A00001
+    type: account
+    name: Hong
+    slot: 0
+    last: 0
+    balance: 1200

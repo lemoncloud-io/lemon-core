@@ -115,17 +115,22 @@ export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventPar
  */
 export interface ProtocolService {
     /**
-     * synchronized call to target function.
-     *
+     * synchronized call to target function via 'Lambda'.
      * @param param     the calling param
      */
     execute<T>(param: ProtocolParam): Promise<T>;
 
     /**
-     * Asynchronized call to target function.
-     *
+     * asynchronized call to target function via 'SNS'.
      * @param param     the calling param
      * @param callback  the return target
      */
     notify(param: ProtocolParam, callback?: ProtocolParam): Promise<string>;
+
+    /**
+     * asynchronized call to target function via 'SNS'.
+     * @param param     the calling param
+     * @param callback  the return target
+     */
+    enqueue(param: ProtocolParam, callback?: ProtocolParam): Promise<string>;
 }
