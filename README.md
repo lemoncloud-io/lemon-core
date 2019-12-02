@@ -56,6 +56,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.0.3     | support `StorageService` along with `DynamoStorageService`
 | 2.0.2     | refactoring, and support `ProtocolService`
 | 2.0.1     | fix package dependencies.
 | 2.0.0     | remove `lemon-engine`, and support `typescript` fully.
