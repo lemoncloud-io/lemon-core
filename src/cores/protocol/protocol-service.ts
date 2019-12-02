@@ -167,6 +167,7 @@ export class MyProtocolService implements ProtocolService {
      * synchronized call to target function via `Lambda`
      *
      * @param param     the calling param
+     * @param config    config instance
      */
     public async execute<T>(param: ProtocolParam, config?: ConfigService): Promise<T> {
         // const _log = console.info;
@@ -228,6 +229,7 @@ export class MyProtocolService implements ProtocolService {
      *
      * @param param     the calling param
      * @param callback  the return target
+     * @param config    config instance
      */
     public async notify(param: ProtocolParam, callback?: ProtocolParam, config?: ConfigService): Promise<string> {
         // const _log = console.info;
@@ -260,6 +262,7 @@ export class MyProtocolService implements ProtocolService {
      *
      * @param param     the calling param
      * @param callback  the return target
+     * @param config    config instance
      */
     public async enqueue(param: ProtocolParam, callback?: ProtocolParam, config?: ConfigService): Promise<string> {
         // const _log = console.info;
