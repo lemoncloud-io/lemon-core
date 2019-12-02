@@ -8,11 +8,10 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { $engine, _log, _inf, _err, $U } from '../../engine/';
-import { expect2, _it, GETERR } from '../../common/test-helper';
+import { expect2, GETERR, environ } from '../../common/test-helper';
 import { credentials } from '../../tools/';
 import { MyProtocolService } from './protocol-service';
-import { ConfigService, MyConfigService } from './../config/config-service';
+import { MyConfigService } from './../config/config-service';
 import { NextContext } from './../core-types';
 import { ProtocolParam } from './../core-services';
 import { APIGatewayProxyEvent } from 'aws-lambda';
@@ -55,8 +54,8 @@ const asParam = (service: string, type?: string, base?: any): ProtocolParam => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('ProtocolService', () => {
-    const PROFILE: string = 0 ? 'lemon' : '';
-    if (PROFILE) credentials(PROFILE);
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
 
     //! dummy service.
     it('should pass basic protocol', async done => {

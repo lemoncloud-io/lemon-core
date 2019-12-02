@@ -14,13 +14,12 @@ import { credentials } from '../../tools/';
 import { AWSSQSService, MyDummySQSService } from './aws-sqs-service';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, GETERR$, expect2, marshal, Filter, _it } from '../../common/test-helper';
+import { GETERR, GETERR$, expect2, marshal, Filter, _it, environ } from '../../common/test-helper';
 
 //! main test body.
 describe('AWSSQSService', () => {
-    //TODO - load AWS credentials ONLY if to verify dynamo-service()
-    const PROFILE = 0 ? 'lemon' : '';
-    if (PROFILE) credentials(PROFILE);
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
 
     const ENDPOINTS: { [key: string]: string } = {
         lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-test-sqs',

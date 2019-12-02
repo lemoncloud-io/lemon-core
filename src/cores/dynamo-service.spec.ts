@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, GETERR$, expect2, marshal, Filter, _it } from '../common/test-helper';
+import { GETERR, expect2, _it, environ } from '../common/test-helper';
 
 import { credentials } from '../tools/';
 import { GeneralItem } from './core-types';
@@ -30,9 +30,8 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoService', () => {
-    //TODO - load AWS credentials.
-    const PROFILE = 0 ? 'lemon' : '';
-    if (PROFILE) credentials(PROFILE);
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
 
     //! dummy storage service.
     it('should pass basic CRUD w/ dummy', async done => {

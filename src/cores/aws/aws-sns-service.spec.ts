@@ -17,10 +17,15 @@ process.env = Object.assign(process.env, {
 
 //! load $engine, and prepare dummy handler
 import { AWSSNSService } from './aws-sns-service';
+import { credentials } from '../../tools/shared';
+import { environ } from '../../common/test-helper';
 
 const SNS = new AWSSNSService();
 
 describe(`test service/sns-service.js`, () => {
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
+
     test('check name() function', async () => {
         expect(SNS.name()).toEqual('SNS');
     });
