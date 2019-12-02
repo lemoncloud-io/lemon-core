@@ -10,7 +10,7 @@
  */
 import { do_parrallel, doReportError } from './engine';
 import { convDate, convDateToTime, convDateToTS } from './engine';
-import { GETERR, expect2 } from '../common/test-helper';
+import { GETERR, expect2, _it } from '../common/test-helper';
 
 //! build context.
 const $context = (source = 'express', account = '085403634746' /* profile: lemon */) => {
@@ -137,7 +137,7 @@ describe(`test the 'core/engine.ts'`, () => {
         done();
     });
 
-    test('test doReportError() - valid mid', async (done: any) => {
+    _it('test doReportError() - valid mid', async (done: any) => {
         const data = 'test-error-data';
         const err = new Error('via doReportError() in `lemon-core`');
         expect2((await doReportError(err, $context(''), data)).length).toEqual(

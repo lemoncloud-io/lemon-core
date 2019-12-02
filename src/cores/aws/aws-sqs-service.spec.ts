@@ -37,7 +37,8 @@ describe('AWSSQSService', () => {
     //! test basic of service.
     it('should pass basic AWSSQSService()', async done => {
         // expect2(() => new AWSSQSService()).toEqual('env.SQS_ENDPOINT is required!');
-        expect2(() => new AWSSQSService()).toEqual('env.MY_SQS_ENDPOINT is required w/ stage:');
+        // expect2(() => new AWSSQSService()).toEqual('env.MY_SQS_ENDPOINT is required w/ stage:');
+        expect2(() => new AWSSQSService(), '_endpoint,_region').toEqual({ _endpoint: '', _region: 'ap-northeast-2' });
         if (ENDPOINT) {
             /* eslint-disable prettier/prettier */
             const service = new AWSSQSService(ENDPOINT);

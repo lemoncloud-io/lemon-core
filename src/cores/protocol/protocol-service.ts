@@ -371,7 +371,8 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const service = '';
         const stage: STAGE = `${requestContext.stage || ''}` as STAGE;
         const type = `${path || ''}`.split('/')[1] || '';
-        const mode = httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : 'GET';
+        const mode: NextMode =
+            httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : (`${httpMethod}`.toUpperCase() as NextMode);
 
         //! validate values.
         if (context && requestContext.accountId != context.accountId)

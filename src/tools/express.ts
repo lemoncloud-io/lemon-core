@@ -94,6 +94,7 @@ export const buildExpress = (
     const middle = (req: any, res: any, next: any) => {
         //! prepare event
         const event = {
+            path: req.path,
             queryStringParameters: req.query || {},
             pathParameters: req.params,
             httpMethod: req.method,
@@ -129,7 +130,7 @@ export const buildExpress = (
         //! use json parser or multer.
         const method = req.method || '';
         const ctype = (req.headers && req.headers['content-type']) || '';
-        // _log(NS, '!',method,':', url,' - ', ctype);
+        _log(NS, `! ${method} ${req.url} =`, ctype);
 
         if (ctype.indexOf('multipart/') >= 0) {
             const parser = uploader.single('file');
@@ -183,11 +184,11 @@ export const buildExpress = (
                     req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
                     $web.handle(req.$event, req.$context)
                         .then(_ => {
-                            // console.info('! res =', _);
+                            // _inf(NS, '! exp.res =', _);
                             callback && callback(null, _);
                         })
                         .catch(e => {
-                            // console.error('! err =', e);
+                            // _err(NS, '! exp.err =', e);
                             callback && callback(e);
                         });
                 };

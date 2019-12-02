@@ -18,7 +18,7 @@ import { expect2, _it } from '../../common/test-helper';
 import { marshal, Filter, MyConfigService } from './config-service';
 
 describe('ConfigService', () => {
-    const PROFILE = 1 ? 'lemon' : '';
+    const PROFILE = 0 ? 'lemon' : '';
     if (PROFILE) credentials(PROFILE);
 
     //! dummy storage service.
