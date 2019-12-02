@@ -11,12 +11,16 @@
 import { $engine } from '../engine/';
 import { expect2, _it } from '../common/test-helper';
 import { NextDecoder, NextHandler } from '../cores/core-types';
-import $web from '../cores/lambda-web-handler';
 import { buildExpress } from './express';
 import request from 'supertest';
 import { loadJsonSync } from './shared';
 
-export const instance = () => {
+//! load all cores.
+import $cores from '../cores/';
+
+export const instance = async () => {
+    await $engine.initialize();
+    const $web = $cores.lambda.web;
     $web.setHandler('test', decode_next_handler);
     const $express = buildExpress($engine, $web);
     const $pack = loadJsonSync('package.json');
@@ -27,7 +31,7 @@ export const instance = () => {
 const decode_next_handler: NextDecoder = (mode, id, cmd) => {
     let next: NextHandler = null;
     /* eslint-disable prettier/prettier */
-    // console.info(`> decode: mode=${mode} /${id}/${cmd || ''}`)
+    // _log(`> decode: mode=${mode} /${id}/${cmd || ''}`)
     switch (mode) {
         case 'LIST':
             next = async () => ({ hello: 'LIST' });
@@ -41,6 +45,7 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
             else if (id == '!') next = async (id, param, body, context) => ({ id, param, body, context });  // dump parameter if '!'
             else if (cmd) next = async id => ({ id, cmd, hello: `${cmd} ${id}` });
             else next = async id => ({ id, hello: `${id}` });
+            break;
     }
     /* eslint-enable prettier/prettier */
     return next;
@@ -49,8 +54,8 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('express', () => {
-    _it('should pass express route: GET /', async done => {
-        const { $express, $engine, $web, $pack } = instance();
+    it('should pass express route: GET /', async done => {
+        const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         const res = await request(app).get('/');
@@ -64,19 +69,18 @@ describe('express', () => {
 
     //! check id + cmd param
     it('should pass express route: GET /test/abc/hi', async done => {
-        const { $express, $engine, $web, $pack } = instance();
+        const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         const res = await request(app).get('/test/abc/hi');
-        expect2(res, 'status').toEqual({ status: 200 });
-        expect2(res, 'body').toEqual({ body: { id:'abc', cmd:'hi', hello:'hi abc'} });
+        expect2(res, 'status,body').toEqual({ status: 200, body: { id:'abc', cmd:'hi', hello:'hi abc'} });
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! check mode
     it('should pass express routes', async done => {
-        const { $express, $engine, $web, $pack } = instance();
+        const { $express, $engine, $web, $pack } = await instance();
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         expect2(await request(app).get('/test/abc'), 'status').toEqual({ status: 200 });

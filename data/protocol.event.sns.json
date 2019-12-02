@@ -1,0 +1,40 @@
+{
+    "!": "protocol.notify() 실행시, 수신쪽에서 받는 데이터!  @191128",
+    "ProtocolParam": {
+        "service": "self",
+        "type": "metrics",
+        "id": "hello",
+        "cmd": "test-protocol",
+        "param": {
+            "hello": "protocol"
+        },
+        "context": {}
+    },
+    "Records": [{
+        "EventSource": "aws:sns",
+        "EventVersion": "1.0",
+        "EventSubscriptionArn": "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev:04c684f1-eac3-424b-8a04-938b97b51921",
+        "Sns": {
+            "Type": "Notification",
+            "MessageId": "7820a87c-f73c-5c88-b2be-fe250be6b564",
+            "TopicArn": "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev",
+            "Subject": "x-protocol-service",
+            "Message": "{\"service\":\"self\",\"type\":\"metrics\",\"id\":\"hello\",\"cmd\":\"test-protocol\",\"param\":{\"hello\":\"protocol\"},\"context\":{\"identity\":{\"cognitoIdentityPoolId\":null,\"accountId\":null,\"cognitoIdentityId\":null,\"caller\":null,\"sourceIp\":\"222.237.200.191\",\"principalOrgId\":null,\"accessKey\":null,\"cognitoAuthenticationType\":null,\"cognitoAuthenticationProvider\":null,\"userArn\":null,\"userAgent\":\"HTTPie/1.0.2\",\"user\":null},\"source\":\"api://796730245826@lemon-metrics-api-dev/metrics/notify/test-protocol#1.0.2\",\"clientIp\":\"222.237.200.191\",\"requestId\":\"8146e9e8-92e9-427a-86de-a4263b7c42ba\",\"accountId\":\"796730245826\"}}",
+            "Timestamp": "2019-11-28T16:49:30.772Z",
+            "SignatureVersion": "1",
+            "Signature": "CRM1vneLuAms26b/JKc2NT6HYdrWzCH+syuhvUm1cYCD539EhSzzL5N0ki3SdNcFgmOawMH18LroensID2e+lYVAX/s8j+MjAeWl26SKF2rHjWvBjgalSpceGFCTbUO0BmBQb/a+ROW0Wxbqx+yqLi96f2XhlPNER1jL74yhB4a93SdE5ZjfBSyB6an1wXQsmH9fUx0utWt0mtfwDw1EL2LtxVHzUSDgB3ttDsIszlBO921sS7nMVQaPQDvFsFIlF21ZSh9W+dPN6wLzBQ5mbA4jvUy1Ha33Llj6WscHtxvo7NEjDsUBfJzbMbGsNWgp23oR2qosO73Z0E3cghRmbA==",
+            "SigningCertUrl": "https://sns.ap-northeast-2.amazonaws.com/SimpleNotificationService-6aad65c2f9911b05cd53efda11f913f9.pem",
+            "UnsubscribeUrl": "https://sns.ap-northeast-2.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev:04c684f1-eac3-424b-8a04-938b97b51921",
+            "MessageAttributes": {
+                "accountId": {
+                    "Type": "String",
+                    "Value": "796730245826"
+                },
+                "requestId": {
+                    "Type": "String",
+                    "Value": "8146e9e8-92e9-427a-86de-a4263b7c42ba"
+                }
+            }
+        }
+    }]
+}

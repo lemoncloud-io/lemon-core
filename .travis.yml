@@ -6,7 +6,7 @@ node_js:
 branches:
   only:
   - master
-  # - develop
+  - develop
 install:
 - npm install
 cache:

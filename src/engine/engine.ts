@@ -27,25 +27,40 @@ import { $engine, $U, _log, _inf, _err } from './index';
 //! import sub-modules.
 import { SlackPostBody, MetricPostBody } from '../common/types';
 import { loadJsonSync } from '../tools/shared';
-import { SNS } from '../service/sns-service';
+import { AWSSNSService } from '../cores/aws/aws-sns-service';
+
+import * as $lambda from 'aws-lambda';
+import { NextContext } from '../cores/core-types';
+type Context = $lambda.Context;
+type RequestContext = $lambda.APIGatewayEventRequestContext;
+
+//! create SNS Service
+const $sns = (arn: string): AWSSNSService => new AWSSNSService(arn);
 
 //! find ARN('lemon-hello-sns') via context information or environment.
-export const getHelloArn = async (context: any, NS: string) => {
-    const target = 'lemon-hello-sns';
+export const getHelloArn = (context?: Context | RequestContext | NextContext, NS?: string): string => {
+    NS = NS || $U.NS('HELO');
+
     //! use pre-defined env via `serverless.yml`
     const arn = $engine.environ('REPORT_ERROR_ARN', '') as string;
     if (arn.startsWith('arn:aws:sns:')) return arn;
-    //! build arn via context information.
-    const invokedFunctionArn = (context && context.invokedFunctionArn) || ''; // if called via lambda call.
-    const accountId = (invokedFunctionArn && invokedFunctionArn.split(':')[4]) || (context && context.accountId) || '';
-    const region = (invokedFunctionArn && invokedFunctionArn.split(':')[3]) || `ap-northeast-2`; //TODO - detecting region.
-    _inf(NS, '! accountId =', accountId);
-    if (!accountId) {
-        _err(NS, 'WARN! account-id is empty.');
-        _inf(NS, '! current ctx =', $U.json(context));
-        throw new Error('.accountId is missing');
+    if (!context) throw new Error(`@context (RequestContext) is required!`);
+    if (true) {
+        const target = 'lemon-hello-sns';
+        const $ctx: Context = context as Context;
+        const $req: RequestContext = context as RequestContext;
+        const $ncx: NextContext = context as NextContext;
+        //! build arn via context information.
+        const invokedFunctionArn = `${$ctx.invokedFunctionArn || ''}`; // if called via lambda call ex: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-messages-api-prod-user'
+        const accountId = `${$ncx.accountId || invokedFunctionArn.split(':')[4] || $req.accountId || ''}`;
+        const region = invokedFunctionArn.split(':')[3] || `ap-northeast-2`;
+        _inf(NS, '! accountId =', accountId);
+        if (!accountId) {
+            _err(NS, 'ERROR! missing accountId. context =', $U.json(context));
+            throw new Error('.accountId is missing');
+        }
+        return `arn:aws:sns:${region}:${accountId}:${target}`;
     }
-    return `arn:aws:sns:${region}:${accountId}:${target}`;
 };
 
 /**
@@ -88,10 +103,10 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         };
 
         //! find target arn.
-        const arn = await getHelloArn(context, NS).catch(() => '');
+        const arn = getHelloArn(context, NS);
         _log(NS, `> report-error.arn =`, arn);
-        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
-        return SNS.reportError(e, payload, arn)
+        return $sns(arn)
+            .reportError(e, payload, arn)
             .then((mid: string) => {
                 _inf(NS, '> err.message-id =', mid);
                 return `${mid}`;
@@ -131,10 +146,10 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
         };
 
         //! find target arn.
-        const arn = await getHelloArn(context, NS).catch(() => '');
+        const arn = getHelloArn(context, NS);
         _log(NS, `> report-slack.arn =`, arn);
-        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
-        return SNS.publish(arn, 'slack', payload)
+        return $sns(arn)
+            .publish(arn, 'slack', payload)
             .then((mid: string) => {
                 _inf(NS, '> sns.message-id =', mid);
                 return `${mid}`;
@@ -184,12 +199,12 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
 
         //! find metric-arn via error-arn.
         const target = 'lemon-metrics-sns';
-        const arn0 = await getHelloArn(context, NS).catch(() => '');
+        const arn0 = getHelloArn(context, NS);
         // eslint-disable-next-line prettier/prettier
         const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v,i)=>i==5?target:v).join(':') : arn0;
         _log(NS, `> report-metric.arn =`, arn);
-        if (!SNS) throw new Error(`.$sns(sns-service) is required!`);
-        return SNS.publish(arn || target, 'metric', payload)
+        return $sns(arn)
+            .publish(arn || target, 'metric', payload)
             .then((mid: string) => {
                 _inf(NS, '> sns.message-id =', mid);
                 return `${mid}`;

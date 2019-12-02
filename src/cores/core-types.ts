@@ -29,8 +29,15 @@ export interface GeneralItem {
  *  COMMON Interfaces
  ** ********************************************************************************************************************/
 /**
+ * type: `NextMode`
+ * - compartible with REST API Method.
+ */
+export type NextMode = 'LIST' | 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+
+/**
  * class: `NextIdentity`
  * - the context parameter for each next-handler `fx(id, param, body, context)`
+ * - possible to query user's detail via OAuth Resource Server.
  */
 export interface NextIdentity {
     sid: string; // site-id (like domain group)
@@ -40,14 +47,28 @@ export interface NextIdentity {
 }
 
 /**
+ * class: `NextIdentityCognito`
+ * - extended infor w/ cognito
+ */
+export interface NextIdentityCognito extends NextIdentity {
+    accountId: string;
+    cognitoId: string;
+    cognitoPoolId: string;
+}
+
+/**
  * class: `NextContext`
  * - information of caller's context.
  *
  * //TODO - define more in order to pass calling flow.
  */
-export interface NextContext {
-    identity?: NextIdentity; // user identity after authentication.
+export interface NextContext<T extends NextIdentity = NextIdentity> {
+    identity?: T; // user identity after authentication.
     source?: string; // origin event source. can be 'express' if `npm run express.local`.
+    clientIp?: string; // ip-address of source client.
+    requestId?: string; // id of request to keep track of timing infor w/ `metrics`
+    accountId?: string; // id of account of initial request. (ex: `085403634746` for lemon profile)
+    depth?: number; // calling depth for every handler. ( automatically increased from lambda-handler )
 }
 
 /**
@@ -65,4 +86,4 @@ export type NextHandler<TParam = any, TResult = any, TBody = any> = (
 /**
  * Decode `NextHandler` by mode + id + cmd.
  */
-export type NextDecoder<TMode = string, TId = string> = (mode: TMode, id?: TId, cmd?: string) => NextHandler;
+export type NextDecoder<TMode = NextMode> = (mode: TMode, id?: string, cmd?: string) => NextHandler;
