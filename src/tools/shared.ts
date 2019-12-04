@@ -53,8 +53,8 @@ export const asyncCredentials = async (profile: string) =>
 //! dynamic loading credentials by profile. (search PROFILE -> NAME)
 export const credentials = (profile: string): string => {
     if (!profile) return '';
-    console.info('! credentials.profile =', profile);
-    //WARN! - could not catch AWS.Error `Profile null not found` via callback.
+    // console.info('! credentials.profile =', profile);
+    // WARN! - could not catch AWS.Error `Profile null not found` via callback.
     const credentials = new AWS.SharedIniFileCredentials({ profile });
     AWS.config.credentials = credentials;
     return `${profile}`;

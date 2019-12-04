@@ -132,3 +132,18 @@ export const marshal = <T>(
     }
     return list;
 };
+
+/**
+ * wait for some time (in msec).
+ *
+ * ```js
+ * await waited();
+ * ``
+ * @param t msec
+ */
+export const waited = async (t: number = 200) =>
+    new Promise(resolve => {
+        setTimeout(() => {
+            resolve();
+        }, t);
+    });
