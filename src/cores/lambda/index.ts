@@ -17,7 +17,7 @@ export * from './lambda-handler';
 export { CronNextHandler, CronParam } from './lambda-cron-handler';
 
 // //! import default with named.
-import { LambdaHandler } from './lambda-handler';
+import { LambdaHandler, Context } from './lambda-handler';
 import { LambdaWEBHandler } from './lambda-web-handler';
 import { LambdaSNSHandler } from './lambda-sns-handler';
 import { LambdaSQSHandler } from './lambda-sqs-handler';
@@ -26,34 +26,67 @@ import { LambdaCronHandler } from './lambda-cron-handler';
 import { LambdaCognitoHandler } from './lambda-cognito-handler';
 import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
 
-// //! export default.
-// export default { lambda, web, wss, sns, sqs, cron, cognito, dynamos };
+/**
+ * class: `LambdaHandlerDefault`
+ * - default lambda-handler with `engine.initialize()`.
+ */
+class LambdaHandlerDefault extends LambdaHandler {
+    private engine: LemonEngine;
+    public constructor(engine: LemonEngine) {
+        super();
+        this.engine = engine;
+    }
+    public async handle(event: any, context: Context): Promise<any> {
+        return this.engine.initialize().then(() => super.handle(event, context));
+    }
+}
 
+/**
+ * class: `LambdaModule`
+ * - default module
+ */
 export class LambdaModule implements EngineModule {
     private engine: LemonEngine;
     public constructor(engine?: LemonEngine) {
         this.engine = engine || $engine; // use input engine or global.
         this.engine.register(this);
+
+        //! make default lambda-handler to initialize engine properly.
+        const thiz = this;
+        const lambda = new (class extends LambdaHandler {
+            public async handle(event: any, context: Context): Promise<any> {
+                return thiz.engine.initialize().then(() => super.handle(event, context));
+            }
+        })();
+        this.lambda = lambda;
+        this.web = new LambdaWEBHandler(lambda, true);
+        this.sns = new LambdaSNSHandler(lambda, true);
+        this.sqs = new LambdaSQSHandler(lambda, true);
+        this.wss = new LambdaWSSHandler(lambda, true);
+        this.cron = new LambdaCronHandler(lambda, true);
+        this.cognito = new LambdaCognitoHandler(lambda, true);
+        this.dynamos = new LambdaDynamoStreamHandler(lambda, true);
     }
 
-    //! create default services
-    public lambda: LambdaHandler = new LambdaHandler();
-    public web: LambdaWEBHandler = new LambdaWEBHandler(this.lambda);
-    public sns: LambdaSNSHandler = new LambdaSNSHandler(this.lambda);
-    public sqs: LambdaSQSHandler = new LambdaSQSHandler(this.lambda);
-    public wss: LambdaWSSHandler = new LambdaWSSHandler(this.lambda);
-    public cron: LambdaCronHandler = new LambdaCronHandler(this.lambda);
-    public cognito: LambdaCognitoHandler = new LambdaCognitoHandler(this.lambda);
-    public dynamos: LambdaDynamoStreamHandler = new LambdaDynamoStreamHandler(this.lambda);
+    //! default services to export.
+    public readonly lambda: LambdaHandler;
+    public readonly web: LambdaWEBHandler;
+    public readonly sns: LambdaSNSHandler;
+    public readonly sqs: LambdaSQSHandler;
+    public readonly wss: LambdaWSSHandler;
+    public readonly cron: LambdaCronHandler;
+    public readonly cognito: LambdaCognitoHandler;
+    public readonly dynamos: LambdaDynamoStreamHandler;
 
+    //! module setting.
     public getModuleName = () => 'lambda';
     public async initModule(level?: number): Promise<number> {
         const $conf = this.engine.module<ConfigModule>('config');
         if (level === undefined) {
             return $conf ? (await $conf.initModule()) + 1 : 1;
-        } else {
-            this.lambda.config = $conf.config;
         }
+        //console.info(`! LambdaModule.init()..`);
+        if ($conf) this.lambda.config = $conf.config;
     }
 }
 

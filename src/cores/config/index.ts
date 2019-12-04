@@ -13,8 +13,6 @@ import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { MyConfigService } from './config-service';
 import { AWSModule } from '../aws';
 
-export * from './config-service';
-
 export class ConfigModule implements EngineModule {
     private engine: LemonEngine;
     public constructor(engine?: LemonEngine) {
@@ -30,11 +28,11 @@ export class ConfigModule implements EngineModule {
         const $aws = this.engine.module<AWSModule>('aws');
         if (level === undefined) {
             return $aws ? (await $aws.initModule()) + 1 : 1;
-        } else {
-            // attach external service.
-            if ($aws) this.config.kms = $aws.kms;
-            await this.config.init();
         }
+        // console.info(`! ConfigModule.init()..`);
+        // attach external service.
+        if ($aws) this.config.kms = $aws.kms;
+        await this.config.init();
     }
 }
 

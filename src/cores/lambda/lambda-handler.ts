@@ -24,9 +24,9 @@ import {
     SQSEvent,
 } from 'aws-lambda';
 import * as $lambda from 'aws-lambda';
-import { NextContext, ProtocolParam } from './../core-services';
-import { ConfigService } from '../config/';
+import { NextContext, ProtocolParam, CoreConfigService } from './../core-services';
 
+export type ConfigService = CoreConfigService;
 export type Context = $lambda.Context;
 
 /**
@@ -99,6 +99,7 @@ export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHan
     protected lambda: LambdaHandler;
     protected type: string;
     public constructor(lambda: LambdaHandler, type?: HandlerType) {
+        if (!lambda) throw new Error('@lambda (lambda-handler) is required!');
         this.lambda = lambda;
         this.type = type;
         if (lambda && type) lambda.setHandler(type, this);
@@ -135,6 +136,7 @@ export class LambdaHandler {
      * @param handler   handler of service
      */
     public setHandler(type: HandlerType, handler: LambdaHandlerService | Handler) {
+        // console.info(`! set-handler[${type}] =`, typeof handler);
         this._map[type] = handler;
     }
 
@@ -171,7 +173,7 @@ export class LambdaHandler {
      *
      * @returns boolean
      */
-    public handle = async (event: any, context: Context): Promise<any> => {
+    public async handle(event: any, context: Context): Promise<any> {
         if (!event) throw new Error('@event is required!');
 
         //! WARN! allows for using callbacks as finish/error-handlers
@@ -246,7 +248,7 @@ export class LambdaHandler {
                         throw e;
                     });
             });
-    };
+    }
 
     /**
      * handle param via protocol-service.

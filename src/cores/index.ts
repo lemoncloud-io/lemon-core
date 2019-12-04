@@ -12,6 +12,7 @@
 export * from './core-types';
 export * from './core-services';
 export * from './aws/';
+export * from './config/';
 export * from './lambda/';
 export * from './protocol/';
 
@@ -24,8 +25,9 @@ export { StorageModel, StorageService, DynamoStorageService, DummyStorageService
 
 //! import default with named.
 import aws from './aws/';
+import config from './config/';
 import lambda from './lambda/';
 import protocol from './protocol/';
 
 //! export default.
-export default { aws, lambda, protocol };
+export default { aws, config, lambda, protocol };
