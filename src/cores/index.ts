@@ -15,6 +15,7 @@ export * from './aws/';
 export * from './lambda/';
 export * from './protocol/';
 
+export { APIHeaders, APIService, APIServiceClient, APIHttpMethod } from './api-service';
 export { DynamoOption, DynamoService } from './dynamo-service';
 export { DynamoQueryService, DynamoSimpleQueriable } from './dynamo-query-service';
 export { Elastic6Option, Elastic6Service } from './elastic6-service';

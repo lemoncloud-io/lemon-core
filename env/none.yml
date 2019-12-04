@@ -7,6 +7,13 @@ default_env: &default_env
   LC: 1                   # line-coloring
   TS: 1                   # time-stamp in line
   NAME: 'none'            # profile name.
+  BACKBONE_API:  ''       # no backbone
+
+#-----------------------------------
+# test configuration.
+test:
+  <<: *default_env
+  STAGE: 'test'
 
 #-----------------------------------
 # local development configuration.
