@@ -7,7 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { GETERR, expect2 } from '../common/test-helper';
+import { GETERR, expect2, environ } from '../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageModel } from './storage-service';
 import { credentials } from '../tools/';
 
@@ -20,9 +20,8 @@ interface AccountModel extends StorageModel {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('StorageService', () => {
-    //TODO - load AWS credentials.
-    const PROFILE = 0 ? 'lemon' : '';
-    if (PROFILE) credentials(PROFILE);
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
 
     //! dummy storage service.
     it('should pass dummy storage-service', async done => {

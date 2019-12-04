@@ -49,14 +49,14 @@ export const loadEnviron = (process: any, options?: Options) => {
     let { ENV, STAGE, ENV_PATH } = options;
     const $env = (process && process.env) || {};
     const QUIET = 0 ? 0 : $env['LS'] === '1'; // LOG SILENT - PRINT NO LOG MESSAGE
-    ENV = ENV || $env['ENV'] || 'none.yml'; // Environment file.
+    const PROFILE = ENV || $env['PROFILE'] || $env['ENV'] || 'none'; // Environment Profile Name.
     STAGE = STAGE || $env['STAGE'] || $env['NODE_ENV'] || 'local'; // Global STAGE/NODE_ENV For selecting.
     const _log = QUIET ? (...a: any) => {} : console.log;
-    _log(`! ENV =${ENV} STAGE=${STAGE}`);
+    _log(`! PROFILE=${PROFILE} STAGE=${STAGE}`);
 
     //! initialize environment via 'env.yml'
     return ($det => {
-        const file = ENV;
+        const file = PROFILE;
         const path = `${ENV_PATH || './env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
         if (!fs.existsSync(path)) throw new Error('FILE NOT FOUND:' + path);
         _log(`! loading yml-file: "${path}"`);

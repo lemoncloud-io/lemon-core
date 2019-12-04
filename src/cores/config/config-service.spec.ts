@@ -8,18 +8,18 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { $engine, _log, _inf, _err, $U } from '../../engine/';
+import { $U } from '../../engine/';
 import { credentials, loadJsonSync } from '../../tools/';
 import { AWSKMSService } from './../aws/aws-kms-service';
-import { expect2, _it } from '../../common/test-helper';
+import { expect2, environ } from '../../common/test-helper';
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 import { marshal, Filter, MyConfigService } from './config-service';
 
 describe('ConfigService', () => {
-    const PROFILE = 0 ? 'lemon' : '';
-    if (PROFILE) credentials(PROFILE);
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
 
     //! dummy storage service.
     it('should pass expect2 helper', async done => {

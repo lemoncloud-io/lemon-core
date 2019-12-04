@@ -30,25 +30,12 @@ const ALIAS = `lemon-hello-api`;
  ** ****************************************************************************************************************/
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
-/**
- * use `target` as value or environment value.
- * environ('abc') => string 'abc'
- * environ('ABC') => use `env.ABC`
- */
-const environ = (target: string, defEnvName: string, defEnvValue: string) => {
-    const isUpperStr = target && /^[A-Z][A-Z0-9_]+$/.test(target);
-    defEnvName = isUpperStr ? target : defEnvName;
-    const val = defEnvName ? ($engine.environ(defEnvName, defEnvValue) as string) : defEnvValue;
-    target = isUpperStr ? '' : target;
-    return `${target || val}`;
-};
-
 //! check if base64 string.
 const isBase64 = (text: string) =>
     /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/.test(text);
 
 //! get aws client for KMS
-const instance = async () => {
+const instance = () => {
     const _region = region();
     const config = { region: _region };
     return new AWS.KMS(config);
@@ -79,7 +66,7 @@ export class AWSKMSService implements CoreKmsService {
     /**
      * hello
      */
-    public hello = () => ({ hello: 'kms-service' });
+    public hello = () => ({ hello: 'aws-kms-service' });
 
     /**
      * get key-id to encrypt.
@@ -100,18 +87,13 @@ export class AWSKMSService implements CoreKmsService {
             KeyId,
             Plaintext: message,
         };
-        return instance()
-            .then(_ => _.encrypt(params).promise())
-            .then(result => {
-                _log(NS, '> result =', result);
-                const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
-                _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
-                return ciphertext;
-            })
-            .catch(e => {
-                _err(NS, '! err=', e);
-                throw e;
-            });
+        const result = await instance()
+            .encrypt(params)
+            .promise();
+        _log(NS, '> result =', result);
+        const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
+        _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
+        return ciphertext;
     };
 
     /**
@@ -129,16 +111,11 @@ export class AWSKMSService implements CoreKmsService {
                 : encryptedSecret;
         //! api param.
         const params = { CiphertextBlob };
-        return instance()
-            .then(_ => _.decrypt(params).promise())
-            .then(data => {
-                _log(NS, '> data.type =', typeof data);
-                return data.Plaintext ? data.Plaintext.toString() : '';
-            })
-            .catch(e => {
-                _err(NS, '! err=', e);
-                throw e;
-            });
+        const data: any = await instance()
+            .decrypt(params)
+            .promise();
+        _log(NS, '> data.type =', typeof data);
+        return data && data.Plaintext ? data.Plaintext.toString() : '';
     };
 
     /**

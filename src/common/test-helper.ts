@@ -81,6 +81,16 @@ export const _it = (name: string, callback?: (done?: any) => any) => {
 };
 
 /**
+ * use `target` as value or environment value.
+ * environ('PROFILE', 'none') => use env.PROFILE if exist, or 'none'
+ */
+export const environ = (envName: string, envValue?: string) => {
+    const $env = process.env;
+    const val = $env[envName] !== undefined ? $env[envName] : envValue;
+    return `${val || ''}`;
+};
+
+/**
  * filter function()
  */
 export interface Filter<T> {
@@ -122,3 +132,18 @@ export const marshal = <T>(
     }
     return list;
 };
+
+/**
+ * wait for some time (in msec).
+ *
+ * ```js
+ * await waited();
+ * ``
+ * @param t msec
+ */
+export const waited = async (t: number = 200) =>
+    new Promise(resolve => {
+        setTimeout(() => {
+            resolve();
+        }, t);
+    });

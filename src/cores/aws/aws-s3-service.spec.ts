@@ -18,10 +18,15 @@ process.env = Object.assign(process.env, {
 
 //! load $engine, and prepare dummy handler
 import { AWSS3Service } from './aws-s3-service';
+import { credentials } from '../../tools/shared';
+import { environ } from '../../common/test-helper';
 
 const S3 = new AWSS3Service();
 
 describe(`test service/s3-service.js`, () => {
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
+
     test('check name() function', async () => {
         expect(S3.name()).toEqual('S3');
     });

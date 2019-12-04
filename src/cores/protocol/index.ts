@@ -30,9 +30,8 @@ export class ProtocolModule implements EngineModule {
         const $conf = this.engine.module<ConfigModule>('config');
         if (level === undefined) {
             return $conf ? (await $conf.initModule()) + 1 : 1;
-        } else {
-            // this.lambda.config = $conf.config;
         }
+        // console.info(`! ProtocolModule.init()..`);
     }
 }
 

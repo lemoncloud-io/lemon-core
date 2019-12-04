@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, marshal, Filter, _it } from './test-helper';
+import { expect2, marshal, Filter, _it, environ, waited } from './test-helper';
 
 //! main test body.
 describe('TestHelper', () => {
@@ -29,7 +29,20 @@ describe('TestHelper', () => {
     });
 
     //! test expect2()
-    _it('should pass expect2 helper', async done => {
+    it('should pass expect2 helper', async done => {
+        done();
+    });
+
+    //! test _it()
+    _it('should ignore this test', async done => {
+        done();
+    });
+
+    //! test environ()
+    it('should pass environ helper', async done => {
+        expect2(environ('LS')).toEqual(process.env['LS']);
+        expect2(environ('ABC')).toEqual('');
+        expect2(environ('ABC', 'abc')).toEqual('abc');
         done();
     });
 
@@ -68,6 +81,15 @@ describe('TestHelper', () => {
         }
 
         /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! test waited()
+    it('should pass waited() by 200msec', async done => {
+        const t1 = new Date().getTime();
+        expect2(await waited()).toEqual(undefined);
+        const t2 = new Date().getTime();
+        expect2(t2 - t1 >= 200).toEqual(true);
         done();
     });
 });

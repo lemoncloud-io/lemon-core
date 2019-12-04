@@ -25,12 +25,13 @@ import {
     NextMode,
     NextIdentityCognito,
     ProtocolParam,
+    CoreConfigService,
 } from './../core-services';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
-
-import { ConfigService } from './../config/';
 import $protocol from '../protocol/';
+
+export type ConfigService = CoreConfigService;
 
 /** ********************************************************************************************************************
  *  COMMON Functions.

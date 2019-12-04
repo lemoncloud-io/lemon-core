@@ -138,6 +138,7 @@ class MyEngineModules implements EngineModules {
     private inited: boolean = false;
     public constructor() {}
     public register(mod: EngineModule) {
+        // console.info(`! mod.reg(${mod.getModuleName()})..`);
         this.mods.push(mod);
     }
     public module<T extends EngineModule>(name: string) {
@@ -147,6 +148,7 @@ class MyEngineModules implements EngineModules {
     }
     public async initialize(force?: boolean, getLevels?: boolean) {
         if (!force && this.inited) return;
+        // console.info(`! EngineModules.init()..`);
         this.inited = true;
         //! setup init level per each module.
         const mods = await Promise.all(
@@ -171,6 +173,10 @@ class MyEngineModules implements EngineModules {
         // eslint-disable-next-line prettier/prettier
         const levels: number[] = Object.keys(maps).map(_ => Number(_)).sort();
         if (getLevels) return levels;
+        const catchModError = (e: Error, mod: EngineModule) => {
+            console.error(`! mod[${mod.getModuleName()}].err =`, e);
+            return `ERR[${mod.getModuleName()}] ${e.message}`;
+        };
         //! do serialize per each level.
         const res = await do_serialize(levels, level =>
             Promise.all(
@@ -180,10 +186,11 @@ class MyEngineModules implements EngineModules {
                         mod
                             .initModule(level)
                             .then(() => mod.getModuleName())
-                            .catch(e => `ERR[${mod.getModuleName()}] ${e.message}`),
+                            .catch(e => catchModError(e, mod)),
                 ),
             ),
         );
+        // console.info(`! engine[${res.length}].inited =`, res);
         return res;
     }
 }
