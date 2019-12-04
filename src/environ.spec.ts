@@ -48,7 +48,7 @@ describe(`test the 'environ.ts'`, () => {
 
     test('check default envion', () => {
         const $conf = $environ(null);
-        expect($conf).toEqual({ LC: '1', LS: '0', NAME: 'none', STAGE: 'local', TS: '1' });
+        expect($conf).toEqual({ LC: '1', LS: '0', NAME: 'none', STAGE: 'local', TS: '1', BACKBONE_API: '' });
     });
 
     test('check unknown envion.stage', () => {
