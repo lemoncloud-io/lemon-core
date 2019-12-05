@@ -14,11 +14,18 @@ import { $engine, _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
+ * only for type information for internal partition-key.
+ */
+export interface InternalKey {
+    _id?: string; // default partition-key name.
+}
+
+/**
  * use shared `NoSQL` data storage. (ex: DynamoDB, MongoDB, ...)
  * - use `key-value` simple storage service.
  * - `no-search`: need to support 'search' function. (but scan)
  */
-export interface StorageModel {
+export interface StorageModel extends InternalKey {
     id?: string; // unique id value.
     type?: string; // type of data.
     stereo?: string; // stereo of type.
@@ -35,7 +42,7 @@ export interface StorageService<T extends StorageModel> {
      *
      * @returns     simple service name like `storage-service:${name}`
      */
-    hello(): Promise<string>;
+    hello(): string;
 
     /**
      * read (or error `404 NOT FOUND - id:...`)
@@ -76,8 +83,9 @@ export interface StorageService<T extends StorageModel> {
      *
      * @param id        unique-id
      * @param model     data (ONLY number is supportable)
+     * @param $update   (optional) update-set.
      */
-    increment(id: string, model: T): Promise<T>;
+    increment(id: string, model: T, $update?: T): Promise<T>;
 
     /**
      * delete item by id
@@ -96,6 +104,12 @@ import { loadDataYml } from '../tools/shared';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
 
+const clearDuplicated = (arr: string[]) =>
+    arr.sort().reduce((L, val) => {
+        if (L.indexOf(val) < 0) L.push(val);
+        return L;
+    }, []);
+
 /**
  * class: `DynamoStorageService`
  * - service via DynamoDB with id + json data.
@@ -110,8 +124,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
         if (!table) throw new Error(`@table (table-name) is required!`);
         this._table = table;
         this._idName = idName;
-        this._fields = ['id', 'type', 'stereo', 'meta'].concat(fields);
-        this._fields[0] = idName; // make sure that 1st field is 'idName'
+        this._fields = clearDuplicated(['id', 'type', 'stereo', 'meta', idName].concat(fields));
         this.$dynamo = new DynamoService({ tableName: this._table, idName, idType });
     }
 
@@ -119,9 +132,12 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * say hello()
      * @param name  (optional) given name
      */
-    public async hello(): Promise<string> {
-        return `dynamo-storage-service:${this._table}/${this._idName}/${this._fields.length}`;
-    }
+    public hello = () => `dynamo-storage-service:${this._table}/${this._idName}/${this._fields.length}`;
+
+    /**
+     * (extended) get copy of fields.
+     */
+    public fields = () => [...this._fields];
 
     /**
      * Read whole model via database.
@@ -193,14 +209,19 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      *
      * @param id        id
      * @param model     attributes of number.
+     * @param $update   (optional) update-set.
      */
-    public async increment(id: string, model: T): Promise<T> {
+    public async increment(id: string, model: T, $update?: T): Promise<T> {
         const $org: any = await this.read(id).catch(e => {
             if (`${e.message || e}`.startsWith('404 NOT FOUND')) return { id };
             throw e;
         });
         const fields = this._fields || [];
-        const $U: MyGeneral = {};
+        const $U: MyGeneral = fields.reduce((N: any, key) => {
+            const val = $update ? ($update as any)[key] : undefined;
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
         const $I: Incrementable = fields.reduce((N: any, key) => {
             const val = (model as any)[key];
             // if (val !== undefined && typeof val !== 'number') throw new Error(`number is required at key:${key}`);
@@ -246,10 +267,12 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
  */
 export class DummyStorageService<T extends StorageModel> implements StorageService<T> {
     private name: string;
-    public constructor(dataFile: string, name: string = 'memory') {
+    private idName: string;
+    public constructor(dataFile: string, name: string = 'memory', idName?: string) {
         _log(NS, `DummyStorageService(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');
-        this.name = name || '';
+        this.name = `${name || ''}`;
+        this.idName = `${idName || 'id'}`;
         // const loadDataYml = require('../express').loadDataYml;
         const dummy = loadDataYml(dataFile);
         this.load(dummy.data);
@@ -268,22 +291,21 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
      * say hello()
      * @param name  (optional) given name
      */
-    public async hello(name?: string): Promise<string> {
-        return `dummy-storage-service:${name || this.name}`;
-    }
+    public hello = () => `dummy-storage-service:${this.name}/${this.idName}`;
 
     public async read(id: string): Promise<T> {
-        if (!id.trim()) throw new Error('@id(string) is required!');
+        if (!id.trim()) throw new Error('@id (string) is required!');
         const item = this.buffer[id];
-        if (!item) throw new Error(`404 NOT FOUND - id:${id}`);
-        return item as T;
+        if (!item) throw new Error(`404 NOT FOUND - ${this.idName}:${id}`);
+        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
+        return { ...item, [this.idName]: id } as T;
     }
 
     protected async readSafe(id: string): Promise<T> {
         return this.read(id).catch(e => {
             if (`${e.message || e}`.startsWith('404 NOT FOUND')) {
                 // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
-                const $org: T = { id } as T;
+                const $org: T = ({ [this.idName]: id } as unknown) as T;
                 return $org;
             }
             throw e;
@@ -310,30 +332,35 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         const $org = await this.readSafe(id);
         const $new = Object.assign($org, item);
         await this.save(id, $new);
-        return Object.assign({ id }, item);
+        return Object.assign({ [this.idName]: id }, item);
     }
 
-    public async increment(id: string, item: T): Promise<T> {
+    public async increment(id: string, item: T, $update?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
-        if (!item) throw new Error('@item is required!');
+        if (!item && !$update) throw new Error('@item is required!');
         const $org: any = await this.readSafe(id);
-        const $U = Object.keys(item).reduce((N: any, key: string) => {
-            const val = (item as any)[key];
-            const org = $org[key];
-            if (val !== undefined) {
-                if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
-                    throw new Error('number is required at key:' + key);
-                if (typeof val !== 'number') {
-                    N[key] = val;
-                } else {
-                    N[key] = (org === undefined ? 0 : org) + val;
-                    $org[key] = (org === undefined ? 0 : org) + val;
+        const $U = Object.keys(item)
+            .concat(Object.keys($update || {}))
+            .reduce((N: any, key: string) => {
+                const val = item ? (item as any)[key] : undefined;
+                const upt = $update ? ($update as any)[key] : undefined;
+                const org = $org[key];
+                if (upt !== undefined) {
+                    N[key] = upt;
+                } else if (val !== undefined) {
+                    if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
+                        throw new Error('number is required at key:' + key);
+                    if (typeof val !== 'number') {
+                        N[key] = val;
+                    } else {
+                        N[key] = (org === undefined ? 0 : org) + val;
+                        $org[key] = (org === undefined ? 0 : org) + val;
+                    }
                 }
-            }
-            return N;
-        }, {});
+                return N;
+            }, {});
         await this.save(id, Object.assign($org, $U));
-        return Object.assign({ id }, $U);
+        return Object.assign({ [this.idName]: id }, $U);
     }
 
     public async delete(id: string): Promise<T> {
