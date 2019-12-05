@@ -33,6 +33,16 @@ import $protocol from '../protocol/';
 
 export type ConfigService = CoreConfigService;
 
+/**
+ * class: `WEBController`
+ * - common controller interface.
+ */
+export interface CoreWEBController {
+    hello(): string;
+    type(): string;
+    decode: NextDecoder;
+}
+
 /** ********************************************************************************************************************
  *  COMMON Functions.
  ** ********************************************************************************************************************/
@@ -87,7 +97,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     //! handlers map.
-    private _handlers: { [key: string]: NextDecoder } = {};
+    private _handlers: { [key: string]: NextDecoder | CoreWEBController } = {};
 
     /**
      * default constructor w/ registering self.
@@ -104,7 +114,15 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * @param decoder   next decorder
      */
     public setHandler(type: string, decoder: NextDecoder) {
+        if (typeof type !== 'string') throw new Error(`@type (string) is required!`);
         this._handlers[type] = decoder;
+    }
+
+    public addController(controller: CoreWEBController) {
+        if (typeof controller !== 'object') throw new Error(`@controller (object) is required!`);
+        const type = controller.type();
+        _log(NS, `> web-controller[${type}] =`, controller.hello());
+        this._handlers[type] = controller;
     }
 
     /**
@@ -112,7 +130,17 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public getHandlerDecoders(): { [key: string]: NextDecoder } {
         //! copy
-        return { ...this._handlers };
+        // return { ...this._handlers };
+        const map: any = $_.reduce(
+            this._handlers,
+            (M: any, val: any, key: string) => {
+                if (typeof val == 'function') M[key] = val;
+                else M[key] = (m: any, i: any, c: any) => (val as CoreWEBController).decode(m, i, c);
+                return M;
+            },
+            {},
+        );
+        return map;
     }
 
     /**
@@ -187,8 +215,14 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         }
 
         //! find target next function
-        const decoder: NextDecoder = this._handlers[TYPE];
-        const next: NextHandler<any, TResult, any> = decoder && decoder(MODE, ID, CMD); // 190314 Save next-function.
+        const decoder: NextDecoder | CoreWEBController = this._handlers[TYPE];
+        // const next: NextHandler<any, TResult, any> = decoder && decoder(MODE, ID, CMD); // 190314 Save next-function.
+        const next: NextHandler<any, TResult, any> = (() => {
+            if (!decoder) return null;
+            if (typeof decoder == 'function') return decoder(MODE, ID, CMD);
+            else if (typeof decoder == 'object') return (decoder as CoreWEBController).decode(MODE, ID, CMD);
+            return null;
+        })();
         if (!next) throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
 
         //! call next.. (it will return result or promised)

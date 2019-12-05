@@ -15,6 +15,7 @@ import { ConfigModule } from '../config';
 export * from './lambda-handler';
 
 export { CronNextHandler, CronParam } from './lambda-cron-handler';
+export { CoreWEBController } from './lambda-web-handler';
 
 // //! import default with named.
 import { LambdaHandler, Context } from './lambda-handler';

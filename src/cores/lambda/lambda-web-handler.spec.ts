@@ -14,7 +14,7 @@ import { loadJsonSync } from '../../tools/';
 
 import * as $lambda from './lambda-handler.spec';
 import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
-import { LambdaWEBHandler } from './lambda-web-handler';
+import { LambdaWEBHandler, CoreWEBController } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
@@ -31,8 +31,10 @@ class LambdaWEBHandlerLocal extends LambdaWEBHandler {
 export const instance = (_lambda?: LambdaHandler) => {
     const { service: lambda } = $lambda.instance();
     const service = new LambdaWEBHandlerLocal(_lambda || lambda);
+    const lemon = new MyLemonWebController();
     service.setHandler('hello', decode_next_handler);
-    return { lambda, service };
+    service.addController(lemon);
+    return { lambda, service, lemon };
 };
 
 /**
@@ -57,6 +59,21 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
     return next;
 };
 
+class MyLemonWebController implements CoreWEBController {
+    public constructor() {}
+    public hello = () => `my-lemon-web-controller:${this.type()}`;
+    public type = () => 'lemon';
+    public decode: NextDecoder = (mode, id, cmd) => {
+        const next: NextHandler = async (id, param, body) => ({ mode: `MY ${mode}`, id, cmd, param, body });
+        if (mode == 'LIST') return this.doList;
+        else if (mode == 'PUT') return null;
+        return next;
+    };
+    public doList: NextHandler = async (id, param, body) => {
+        return { mode: 'do-list', type: `${this.type()}`, hello: `${this.hello()}` };
+    };
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('LambdaWEBHandler', () => {
@@ -70,6 +87,23 @@ describe('LambdaWEBHandler', () => {
         const res = await service.handle(event, null);
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
         expect2(res, 'body').toEqual({ body:$U.json({ hello: 'LIST'}) });
+
+        //! service handlers
+        expect2(Object.keys(service.getHandlerDecoders())).toEqual([ 'hello', 'lemon' ]);   // must be maps
+        expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function');          // must be decoder function
+
+        //! GET `/lemon` controller
+        event.path = '/lemon';
+        expect2(await service.handle(event, null), 'body').toEqual({ body:$U.json({ mode:'do-list', type:'lemon', hello:'my-lemon-web-controller:lemon' })});
+
+        //! GET `/lemon/123` controller
+        event.path = '/lemon/123'; event.pathParameters['id'] = '123';
+        expect2(await service.handle(event, null), 'body').toEqual({ body:$U.json({ mode:'MY GET', id:'123', cmd:'', param:{ ts:"1574150700000" }, body:null })});
+
+        //! PUT `/lemon` controller
+        event.path = '/lemon'; event.httpMethod = 'PUT';
+        expect2(await service.handle(event, null), 'body').toEqual({ body:'404 NOT FOUND - PUT /lemon/123'});
+
         /* eslint-enable prettier/prettier */
         done();
     });
