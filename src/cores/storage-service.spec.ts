@@ -29,7 +29,7 @@ describe('StorageService', () => {
         const $storage = new DummyStorageService('ticketing-dummy-data', 'memory', 'id');
         const $account = $storage as DummyStorageService<AccountModel>;
         /* eslint-disable prettier/prettier */
-        expect(await $account.hello()).toEqual('dummy-storage-service:memory/id');
+        expect2(() => $account.hello()).toEqual('dummy-storage-service:memory/id');
         expect(await $account.read('A00000')).toEqual({ id: 'A00000', type: 'account' });
         expect(await $account.update('A00000', { stereo:'lemon' })).toEqual({ id: 'A00000', stereo:'lemon' });
         expect(await $account.increment('A00000', { slot:1 })).toEqual({ id: 'A00000', slot:1 });
@@ -69,7 +69,7 @@ describe('StorageService', () => {
         const $storage = new DummyStorageService('ticketing-dummy-data', 'memory2', '_id');
         const $account = $storage as DummyStorageService<AccountModel>;
         /* eslint-disable prettier/prettier */
-        expect(await $account.hello()).toEqual('dummy-storage-service:memory2/_id');
+        expect2(() => $account.hello()).toEqual('dummy-storage-service:memory2/_id');
         expect(await $account.read('A00000')).toEqual({ _id: 'A00000', id: 'A00000', type: 'account' });
         expect(await $account.update('A00000', { stereo:'lemon' })).toEqual({ _id: 'A00000', stereo:'lemon' });
         expect(await $account.increment('A00000', { slot:1 })).toEqual({ _id: 'A00000', slot:1 });
@@ -105,12 +105,16 @@ describe('StorageService', () => {
 
     //! dynamo storage service. (should be equivalent with `dummy-storage-server`)
     it(`should pass dynamo[${PROFILE}] storage-service`, async done => {
-        if (!PROFILE) return done(); //! ignore if no profile.
-        //! load dynamo storage service.
         /* eslint-disable prettier/prettier */
+        //! load dynamo storage service.
         expect2(() => new DynamoStorageService<AccountModel>('', [], 'no')).toEqual(`@table (table-name) is required!`);
         const $dynamo = new DynamoStorageService<AccountModel>('TestTable', ['name','slot','balance'], 'no');
-        expect(await $dynamo.hello()).toEqual('dynamo-storage-service:TestTable/no/8');
+        expect2(() => $dynamo.hello()).toEqual('dynamo-storage-service:TestTable/no/8');
+        expect2(() => $dynamo.fields()).toEqual('balance,id,meta,name,no,slot,stereo,type'.split(','));                         //! must be sorted w/o duplicated
+
+        //! ignore if no profile.
+        if (!PROFILE) return done(); //! ignore if no profile.
+
         // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         expect(await $dynamo.save('A00000', { type:'account', ha:'ho' } as AccountModel)).toEqual({ no:'A00000', type:'account' });//! init with property filtering.
         expect(await $dynamo.update('A00000', { stereo:'lemon'})).toEqual({ no:'A00000', stereo:'lemon' });                        //! it will have ONLY update-set.

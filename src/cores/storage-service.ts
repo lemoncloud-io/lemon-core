@@ -135,6 +135,11 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
     public hello = () => `dynamo-storage-service:${this._table}/${this._idName}/${this._fields.length}`;
 
     /**
+     * (extended) get copy of fields.
+     */
+    public fields = () => [...this._fields];
+
+    /**
      * Read whole model via database.
      *
      * @param id        id
