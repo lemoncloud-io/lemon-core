@@ -12,11 +12,19 @@
 import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { ConfigModule } from '../config';
 
+//! export default
 export * from './lambda-handler';
 
+//! export core classes
+export { CoreWEBController, LambdaWEBHandler } from './lambda-web-handler';
+export { LambdaSNSHandler } from './lambda-sns-handler';
+export { LambdaSQSHandler } from './lambda-sqs-handler';
+export { LambdaWSSHandler } from './lambda-wss-handler';
 export { CronNextHandler, CronParam } from './lambda-cron-handler';
+export { LambdaCognitoHandler } from './lambda-cognito-handler';
+export { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
 
-// //! import default with named.
+//! import default with named.
 import { LambdaHandler, Context } from './lambda-handler';
 import { LambdaWEBHandler } from './lambda-web-handler';
 import { LambdaSNSHandler } from './lambda-sns-handler';
@@ -25,21 +33,6 @@ import { LambdaWSSHandler } from './lambda-wss-handler';
 import { LambdaCronHandler } from './lambda-cron-handler';
 import { LambdaCognitoHandler } from './lambda-cognito-handler';
 import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
-
-/**
- * class: `LambdaHandlerDefault`
- * - default lambda-handler with `engine.initialize()`.
- */
-class LambdaHandlerDefault extends LambdaHandler {
-    private engine: LemonEngine;
-    public constructor(engine: LemonEngine) {
-        super();
-        this.engine = engine;
-    }
-    public async handle(event: any, context: Context): Promise<any> {
-        return this.engine.initialize().then(() => super.handle(event, context));
-    }
-}
 
 /**
  * class: `LambdaModule`
