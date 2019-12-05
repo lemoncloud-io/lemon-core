@@ -56,6 +56,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.0.6     | support `CoreWEBController`, and `lambda.cores.web.addController(...)`
 | 2.0.5     | support `APIService`, and fix `engine.initialize()`
 | 2.0.4     | improve test-helper w/ `environ`, `credentials`
 | 2.0.3     | support `StorageService` along with `DynamoStorageService`
