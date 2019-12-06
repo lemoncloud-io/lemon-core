@@ -9,7 +9,7 @@
     "build-ts": "tsc",
     "watch-ts": "tsc -w",
     "doc": "npm run doc:html && open dist/docs/index.html",
-    "doc:html": "typedoc src/libs --exclude **/*.spec.ts --target ES6 --mode file --out dist/docs",
+    "doc:html": "typedoc src/ --exclude **/*.spec.ts --target ES6 --mode file --out dist/docs",
     "doc:publish": "npm run doc:html && gh-pages -m \"docs(gh-pages): publish gh-pages via typedoc\" -d dist/docs",
     "lint": "tsc --noEmit && eslint '*/**/*.{js,ts,jsx,tsx}' --fix",
     "format": "prettier --write \"src/**/*.ts\" \"src/**/*.js\"",
