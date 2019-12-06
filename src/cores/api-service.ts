@@ -422,12 +422,27 @@ export const createHttpWebProxy = (
  ** ********************************************************************************************************************/
 import fs from 'fs';
 import { loadJsonSync } from '../tools/shared';
-// import { ApiHttpProxy, APIHttpMethod } from 'lemon-core/dist/cores/api-service';
 
 /**
  * class: `MocksAPIService`
- * - use `mocks` data instead of real http request.
+ * - use <mock>.json file in `./data/mocks/` instead of real http request.
  * - it redirect to url like `endpoint/type/id/cmd`
+ *
+ * ```ts
+ * // json format
+ * {
+ *    param: {          // input format
+ *      method: string;
+ *      endpoint: string;
+ *      id?: string;
+ *      cmd?: string;
+ *    },
+ *    data: {           // response data
+ *      ...
+ *    },
+ *    error?: string;   // in case of error.
+ * }
+ * ```
  */
 export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
     private $map: any;
