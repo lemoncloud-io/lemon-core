@@ -112,16 +112,28 @@ export class APIService implements APIServiceClient {
      * create API service.
      *
      * ```js
+     * // basic
      * const api = new API('web', 'http://localhost:8081', {});
+     * api.doGet('');
+     *
+     * // proxy server
+     * const api = new API('web', 'http://localhost:8081', {}, null, proxy);
      * api.doGet('');
      * ```
      *
      * @param type      type in endpoint
      * @param endpoint  base endpoint (support ONLY http, https)
      * @param headers   common headers.
-     * @param client    api-service client to use (or create later)
+     * @param client    real api-client to use (or use proxy, or create default)
+     * @param proxy     proxy-service to use if there is no client
      */
-    public constructor(type: string, endpoint: string, headers?: APIHeaders, client?: APIServiceClient) {
+    public constructor(
+        type: string,
+        endpoint: string,
+        headers?: APIHeaders,
+        client?: APIServiceClient,
+        proxy?: ApiHttpProxy,
+    ) {
         if (!endpoint) throw new Error('@endpoint (url) is required');
         if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://'))
             throw new Error(`@endpoint (url) is not valid http-url:${endpoint}`);
@@ -130,6 +142,8 @@ export class APIService implements APIServiceClient {
         this.headers = headers;
         if (client) {
             this.client = client;
+        } else if (proxy) {
+            this.client = APIService.buildClient(this.type, this.endpoint, this.headers, null, proxy);
         } else {
             //! use default `env.BACKBONE_API` to detect proxy-server.
             const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
@@ -141,7 +155,7 @@ export class APIService implements APIServiceClient {
     public hello = () => `api-service:${this.client.hello()}`;
 
     /**
-     * make client
+     * helper to make http client
      *
      * @param backbone  backbone address like 'http://localhost:8081'
      */
@@ -150,30 +164,45 @@ export class APIService implements APIServiceClient {
         endpoint: string,
         headers?: APIHeaders,
         backbone?: string,
+        proxy?: ApiHttpProxy,
     ): APIServiceClient {
-        _log(NS, `makeClient()...`);
+        _log(NS, `buildClient(${type})...`);
+        if (!endpoint) throw new Error('@endpoint (url) is required');
         type = `${type || ''}`;
         const host = `${endpoint || ''}`.split('/')[2];
+        //! if using backbone, need host+path for full-url. or need only `type` + `id/cmd` pair for direct http agent.
         const base = backbone ? `${endpoint || ''}` : undefined;
-        // const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
-        const proxy: ApiHttpProxy = (() => {
-            if (backbone) {
-                //! use web-proxy configuration.
-                const NAME = `WEB:${host}-${type}`;
-                const encoder = (name: string, path: string) => encodeURIComponent(path);
-                const relayHeaderKey = 'x-lemon-';
-                const resultKey = 'result';
-                return createHttpWebProxy(NAME, `${backbone}/web`, headers, encoder, relayHeaderKey, resultKey); // use default web-proxy service
-            } else {
-                //!
-                const NAME = `API:${host}-${type}`;
-                return createHttpWebProxy(NAME, endpoint, headers, (n, s) => s, ''); // use default web-proxy service
-            }
-        })();
+        //! make the default proxy-client if not in.
+        if (proxy) {
+            proxy = proxy;
+        } else if (backbone) {
+            //! use web-proxy configuration.
+            const NAME = `WEB:${host}-${type}`;
+            const encoder = (name: string, path: string) => encodeURIComponent(path);
+            const relayHeaderKey = 'x-lemon-';
+            const resultKey = 'result';
+            //! use default backbone's web-proxy service.
+            proxy = createHttpWebProxy(NAME, `${backbone}/web`, headers, encoder, relayHeaderKey, resultKey);
+        } else {
+            //! use direct web request.. (only read `type` + `id/cmd` later)
+            const NAME = `API:${host}-${type}`;
+            proxy = createHttpWebProxy(NAME, endpoint, headers, (n, s) => s, '');
+        }
 
-        //! create inner APIService()
+        /**
+         * create internal client to translate of full url path with `host`+`path`
+         */
         const client = new (class implements APIServiceClient {
-            protected asPath = (type?: string, id?: string, cmd?: string) => {
+            private proxy: ApiHttpProxy;
+            private base: string;
+            private type: string;
+            public constructor(proxy?: ApiHttpProxy, base?: string, type?: string) {
+                this.proxy = proxy;
+                this.base = base;
+                this.type = type;
+            }
+            protected asPath = (id?: string, cmd?: string) => {
+                const type = this.type;
                 return (
                     '' +
                     (type === undefined ? '' : '/' + encodeURIComponent(type)) +
@@ -182,39 +211,48 @@ export class APIService implements APIServiceClient {
                     ''
                 );
             };
-            protected asHostPath = (base?: string, type?: string, id?: string, cmd?: string) => {
-                let host = base ? base : undefined;
-                let path = this.asPath(type, id, cmd);
-                if (host) {
+            protected asPath2 = (id?: string, cmd?: string) => {
+                return (
+                    '' +
+                    (id === undefined ? '' : encodeURIComponent(id)) +
+                    (id === undefined || cmd === undefined ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
+                    ''
+                );
+            };
+            protected asHostPath = (id?: string, cmd?: string) => {
+                let host = this.base ? this.base : this.type;
+                let path = this.base ? this.asPath(id, cmd) : this.asPath2(id, cmd);
+                if (this.base) {
                     const url = (!host.startsWith('http') ? 'http://' : '') + `${host}${path || ''}`;
                     const $url = URL.parse(url);
                     host = `${$url.protocol || 'http'}//${$url.hostname}`;
                     path = `${$url.path}`;
                 }
+                // this.base || console.info(`! asHostPath(${id}, ${cmd}) => `, { host, path });
                 return { host, path };
             };
-            public hello = () => `api-client:${proxy.hello()}`;
+            public hello = () => `api-client:${this.proxy.hello()}`;
             public doGet(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(base, type, id, cmd);
-                return proxy.doProxy('GET', host, path, param, body, ctx);
+                const { host, path } = this.asHostPath(id, cmd);
+                return this.proxy.doProxy('GET', host, path, param, body, ctx);
             }
             public doPut(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(base, type, id, cmd);
-                return proxy.doProxy('PUT', host, path, param, body, ctx);
+                const { host, path } = this.asHostPath(id, cmd);
+                return this.proxy.doProxy('PUT', host, path, param, body, ctx);
             }
             public doPost(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(base, type, id, cmd);
-                return proxy.doProxy('POST', host, path, param, body, ctx);
+                const { host, path } = this.asHostPath(id, cmd);
+                return this.proxy.doProxy('POST', host, path, param, body, ctx);
             }
             public doPatch(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(base, type, id, cmd);
-                return proxy.doProxy('PATCH', host, path, param, body, ctx);
+                const { host, path } = this.asHostPath(id, cmd);
+                return this.proxy.doProxy('PATCH', host, path, param, body, ctx);
             }
             public doDelete(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(base, type, id, cmd);
-                return proxy.doProxy('DELETE', host, path, param, body, ctx);
+                const { host, path } = this.asHostPath(id, cmd);
+                return this.proxy.doProxy('DELETE', host, path, param, body, ctx);
             }
-        })();
+        })(proxy, base, type);
         return client;
     }
 
@@ -262,7 +300,11 @@ import REQUEST from 'request';
 import queryString from 'query-string';
 
 /**
- * create http-proxy client
+ * create http-web-proxy agent which using endpoint as proxy server.
+ *
+ * # as cases.
+ * as proxy agent: GET <endpoint>/<host?>/<path?>
+ * as direct agent: GET <endpoint>/<id?>/<cmd?>
  *
  * @param name              client-name
  * @param endpoint          service url (or backbone proxy-url)
@@ -289,26 +331,27 @@ export const createHttpWebProxy = (
      * - http proxy client via backbone's web.
      */
     return new (class implements ApiHttpProxy {
+        public constructor() {}
         public hello = () => `http-web-proxy:${name}`;
         public doProxy<T = any>(
             method: APIHttpMethod,
-            host: string,
-            path?: string,
+            path1?: string,
+            path2?: string,
             $param?: any,
             $body?: any,
             ctx?: any,
         ): Promise<T> {
             if (!method) throw new Error('@method is required!');
             _log(NS, `doProxy(${method})..`);
-            host && _log(NS, `> host =`, host);
-            path && _log(NS, `> path =`, path);
+            path1 && _log(NS, `> host(id) =`, path1);
+            path2 && _log(NS, `> path(cmd) =`, path2);
 
             //! prepare request parameters
             const query_string = $param ? queryString.stringify($param) : '';
             const url =
                 endpoint +
-                (host === undefined ? '' : `/${encoder('host', host)}`) +
-                (host === undefined && path === undefined ? '' : `/${encoder('path', path)}`) +
+                (path1 === undefined ? '' : `/${encoder('host', path1)}`) +
+                (path1 === undefined && path2 === undefined ? '' : `/${encoder('path', path2)}`) +
                 (!query_string ? '' : '?' + query_string);
             const request = REQUEST;
             const options: any = {
@@ -373,3 +416,98 @@ export const createHttpWebProxy = (
         }
     })();
 };
+
+/** ********************************************************************************************************************
+ *  MOCKS API-SERVICE
+ ** ********************************************************************************************************************/
+import fs from 'fs';
+import { loadJsonSync } from '../tools/shared';
+// import { ApiHttpProxy, APIHttpMethod } from 'lemon-core/dist/cores/api-service';
+
+/**
+ * class: `MocksAPIService`
+ * - use `mocks` data instead of real http request.
+ * - it redirect to url like `endpoint/type/id/cmd`
+ */
+export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
+    private $map: any;
+    private type: string;
+    private endpoint: string;
+    public constructor(type: string, endpoint: string) {
+        this.type = type;
+        this.endpoint = endpoint;
+    }
+
+    protected loadSync() {
+        if (this.$map) return;
+        const PATH = './data/mocks/';
+        const files = fs.readdirSync(PATH);
+        // console.log(NS, '> files =', files);
+        const $map = files
+            .sort()
+            .map(file => ({ file, json: loadJsonSync(`${PATH}${file}`) }))
+            .reduce((M: any, F) => {
+                const file = F.file || '';
+                const data = F.json;
+                const param: any = data.param || {};
+                const { method, endpoint, id, cmd } = param;
+                const url = `${endpoint}` + (id ? `/${id}` : '') + (id && cmd ? `/${cmd}` : '');
+                const key = `${method} ${url}`;
+                //! save by file & key.
+                M[file] = data;
+                M[key] = data;
+                return M;
+            }, {});
+        // console.log(NS, '> $map =', $map);
+        this.$map = $map;
+    }
+
+    protected asPath = (type?: string, path?: string) => {
+        return (
+            '' +
+            (type === undefined ? '' : '/' + encodeURIComponent(type)) +
+            (type === undefined || !path ? '' : '/' + encodeURI(path)) +
+            ''
+        );
+    };
+
+    public async doProxy<T = any>(
+        method: APIHttpMethod,
+        type: string,
+        path: string,
+        param?: any,
+        body?: any,
+        ctx?: any,
+    ): Promise<T> {
+        // console.info(`! mocks.proxy(${method},${type},${path})...`);
+        this.loadSync();
+        const file = path && path.endsWith('.json') ? path.split('/').pop() : '';
+        const key = `${method} ${this.endpoint}${this.asPath(this.type, path)}`;
+        const data: any = this.$map[file] || this.$map[key];
+        if (!data) throw new Error(`404 NOT FOUND - ${key}`);
+        const err = data.error;
+        if (err && typeof err == 'string') {
+            if (err.startsWith('{') && err.endsWith('}')) throw JSON.parse(err);
+            else throw new Error(err);
+        } else if (err) {
+            throw err;
+        }
+        return data.data ? JSON.parse($U.json(data.data)) : data.data;
+    }
+    public hello = () => `mocks-api-service:${this.endpoint}/${this.type}`;
+    public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.doProxy<T>('GET', id, cmd, param, body);
+    }
+    public doPut<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.doProxy<T>('PUT', id, cmd, param, body);
+    }
+    public doPost<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.doProxy<T>('POST', id, cmd, param, body);
+    }
+    public doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.doProxy<T>('PATCH', id, cmd, param, body);
+    }
+    public doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.doProxy<T>('DELETE', id, cmd, param, body);
+    }
+}
