@@ -171,7 +171,7 @@ export class APIService implements APIServiceClient {
         type = `${type || ''}`;
         const host = `${endpoint || ''}`.split('/')[2];
         //! if using backbone, need host+path for full-url. or need only `type` + `id/cmd` pair for direct http agent.
-        const base = backbone ? `${endpoint || ''}` : undefined;
+        const base = !proxy && backbone ? `${endpoint || ''}` : undefined;
         //! make the default proxy-client if not in.
         if (proxy) {
             proxy = proxy;
@@ -465,7 +465,7 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
     protected asPath = (type?: string, path?: string) => {
         return (
             '' +
-            (type === undefined ? '' : '/' + encodeURIComponent(type)) +
+            (type === undefined ? '' : encodeURIComponent(type)) +
             (type === undefined || !path ? '' : '/' + encodeURI(path)) +
             ''
         );
@@ -482,7 +482,7 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         // console.info(`! mocks.proxy(${method},${type},${path})...`);
         this.loadSync();
         const file = path && path.endsWith('.json') ? path.split('/').pop() : '';
-        const key = `${method} ${this.endpoint}${this.asPath(this.type, path)}`;
+        const key = `${method} ${this.endpoint}/${type || ''}${path ? '/' : ''}${path || ''}`;
         const data: any = this.$map[file] || this.$map[key];
         if (!data) throw new Error(`404 NOT FOUND - ${key}`);
         const err = data.error;
@@ -496,18 +496,23 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
     }
     public hello = () => `mocks-api-service:${this.endpoint}/${this.type}`;
     public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.doProxy<T>('GET', id, cmd, param, body);
+        const path = this.asPath(id, cmd); // use mocks.type infor
+        return this.doProxy<T>('GET', this.type, path, param, body);
     }
     public doPut<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.doProxy<T>('PUT', id, cmd, param, body);
+        const path = this.asPath(id, cmd); // use mocks.type infor
+        return this.doProxy<T>('PUT', this.type, path, param, body);
     }
     public doPost<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.doProxy<T>('POST', id, cmd, param, body);
+        const path = this.asPath(id, cmd); // use mocks.type infor
+        return this.doProxy<T>('POST', this.type, path, param, body);
     }
     public doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.doProxy<T>('PATCH', id, cmd, param, body);
+        const path = this.asPath(id, cmd); // use mocks.type infor
+        return this.doProxy<T>('PATCH', this.type, path, param, body);
     }
     public doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.doProxy<T>('DELETE', id, cmd, param, body);
+        const path = this.asPath(id, cmd); // use mocks.type infor
+        return this.doProxy<T>('DELETE', this.type, path, param, body);
     }
 }
