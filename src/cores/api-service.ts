@@ -22,7 +22,8 @@ export interface APIHeaders {
 }
 
 /**
- * General API Endpoint.
+ * class: `APIServiceClient`
+ * - General API Request Client w/ url like `GET <endpoint>/<id>?/<cmd>?`
  */
 export interface APIServiceClient {
     hello(): string; // say this agent's name.
@@ -39,7 +40,8 @@ export interface APIServiceClient {
 export type APIHttpMethod = 'GET' | 'PUT' | 'POST' | 'PATCH' | 'DELETE';
 
 /**
- * http proxy service.
+ * class: `ApiHttpProxy`
+ * - http proxy service.
  */
 export interface ApiHttpProxy {
     /**
@@ -70,7 +72,34 @@ export interface ApiHttpProxy {
 }
 
 /**
- * class: API
+ * class: `APIProxyClient`
+ * - proxed APIServiceClient
+ */
+export class APIProxyClient implements APIServiceClient {
+    protected service: APIServiceClient;
+    public constructor(service: APIServiceClient) {
+        this.service = service;
+    }
+    public hello = () => this.service.hello();
+    public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.service.doGet(id, cmd, param, body);
+    }
+    public doPut<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.service.doPut(id, cmd, param, body);
+    }
+    public doPost<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.service.doPost(id, cmd, param, body);
+    }
+    public doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.service.doPatch(id, cmd, param, body);
+    }
+    public doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+        return this.service.doDelete(id, cmd, param, body);
+    }
+}
+
+/**
+ * class: `APIService`
  * - use internal http-proxy service due to restriction internet-face in VPC lambda.
  */
 export class APIService implements APIServiceClient {
@@ -234,12 +263,13 @@ import queryString from 'query-string';
 
 /**
  * create http-proxy client
- * @param name      client-name
- * @param endpoint  service url (or backbone proxy-url)
- * @param headers   headers
- * @param encoder   path encoder (default encodeURIComponent)
- * @param relayHeaderKey   relay-key in headers for proxy.
- * @param resultKey   resultKey in response
+ *
+ * @param name              client-name
+ * @param endpoint          service url (or backbone proxy-url)
+ * @param headers           headers
+ * @param encoder           path encoder (default encodeURIComponent)
+ * @param relayHeaderKey    relay-key in headers for proxy.
+ * @param resultKey         resultKey in response
  */
 export const createHttpWebProxy = (
     name: string,
