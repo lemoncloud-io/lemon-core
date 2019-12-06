@@ -5,7 +5,7 @@
         "module": "commonjs",
         "resolveJsonModule": true,
         "esModuleInterop": true,
-        "removeComments": true,
+        "removeComments": false,
         "emitDecoratorMetadata": true,
         "target": "es6",
         "noImplicitAny": true,
