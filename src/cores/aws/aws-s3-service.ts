@@ -18,13 +18,13 @@ const NS = $U.NS('S3', 'blue');
 
 import AWS from 'aws-sdk';
 import { v4 } from 'uuid';
+import { CoreServices } from '../core-services';
 
 export interface TagSet {
     [key: string]: string;
 }
 
-export interface CoreS3Service {
-    hello: () => { hello: string };
+export interface CoreS3Service extends CoreServices {
     bucket: (target?: string) => Promise<string>;
     putObject: (
         body: string,
@@ -76,7 +76,7 @@ export class AWSS3Service implements CoreS3Service {
     /**
      * hello
      */
-    public hello = () => ({ hello: 's3-service' });
+    public hello = () => `aws-s3-service:${''}`;
 
     /**
      * get target endpoint by name.

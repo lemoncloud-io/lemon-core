@@ -13,6 +13,7 @@ import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { AWSKMSService } from './aws-kms-service';
 import { AWSSNSService } from './aws-sns-service';
 import { AWSSQSService } from './aws-sqs-service';
+import { AWSS3Service } from './aws-s3-service';
 
 //! get common region.
 export * from './../core-types';
@@ -20,6 +21,7 @@ export * from './../core-types';
 export { AWSKMSService } from './aws-kms-service';
 export { AWSSNSService } from './aws-sns-service';
 export { AWSSQSService } from './aws-sqs-service';
+export { AWSS3Service } from './aws-s3-service';
 
 export class AWSModule implements EngineModule {
     private engine: LemonEngine;
@@ -32,6 +34,7 @@ export class AWSModule implements EngineModule {
     public kms: AWSKMSService = new AWSKMSService();
     public sns: AWSSNSService = new AWSSNSService();
     public sqs: AWSSQSService = new AWSSQSService();
+    public s3: AWSS3Service = new AWSS3Service();
 
     public getModuleName = () => 'aws';
     public async initModule(level?: number): Promise<number> {

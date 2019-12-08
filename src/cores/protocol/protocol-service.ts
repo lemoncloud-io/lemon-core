@@ -55,7 +55,7 @@ export class MyProtocolService implements ProtocolService {
     /**
      * say hello() of this service
      */
-    public hello = (): string => `protocol-service`;
+    public hello = (): string => `protocol-service:${this.selfService || ''}/${this.selfType || ''}`;
 
     //! determine path part
     public asPath = (type: string, id?: string, cmd?: string): string => {

@@ -59,7 +59,7 @@ export class AWSSNSService implements CoreSnsService {
     /**
      * hello
      */
-    public hello = () => ({ hello: 'sns-service' });
+    public hello = () => `aws-sns-service:${this._arn || ''}`;
 
     /**
      * get target endpoint by name.
