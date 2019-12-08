@@ -46,6 +46,47 @@ describe('APIService', () => {
         done();
     });
 
+    //! via direct request /w header
+    it('should pass API w/ direct request w/ header', async done => {
+        //! create direct client.
+        const TYPE = 'hello';
+        const ENDPOINT = 'http://localhost:7101';
+        const HEADERS: APIHeaders = { 'content-type': 'application/x-www-form-urlencoded' };
+
+        const client0: APIServiceClient = APIService.buildClient(null, ENDPOINT, null, '');
+        const client1: APIServiceClient = APIService.buildClient(TYPE, ENDPOINT, null, '');
+        const client2: APIServiceClient = APIService.buildClient(TYPE, ENDPOINT, HEADERS, '');
+        const { service: service1 } = instance(client1);
+        const { service: service2 } = instance(client2);
+
+        /* eslint-disable prettier/prettier */
+        expect2(client0.hello()).toEqual(`api-client:http-web-proxy:API:localhost:7101-`);
+        const ERRCON = await client0.doGet(null).catch(GETERR);
+        if (ERRCON.startsWith('connect ECONNREFUSED 127.0.0.1:7101')) return done();        //! ignore test.
+        expect2(await client0.doGet(null).catch(GETERR)).toEqual('lemon-hello-api');
+
+        //! request with `application/json`
+        expect2(service1.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:7101'}-${TYPE}`);
+        expect2(await service1.doPost('echo'), 'method,param,body').toEqual({ method:'POST', param:{}, body:{} });
+        expect2(await service1.doPost('echo'), 'headers').toEqual({ headers:{ host:'localhost:7101', 'content-length':'0', accept:'application/json', connection:'close'} });
+        expect2(await service1.doPost('echo', undefined, null, { a:1 }), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:1 } });
+
+        //! request with `application/x-www-form-urlencoded`
+        expect2(service2.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:7101'}-${TYPE}`);
+        expect2(await service2.doPost('echo'), 'method,param,body').toEqual({ method:'POST', param:{}, body:{} });
+        expect2(await service2.doPost('echo'), 'headers').toEqual({ headers:{ host:'localhost:7101', 'content-length':'0', accept:'application/json', connection:'close', 'content-type':'application/x-www-form-urlencoded'} });
+        // expect2(await service2.doPost('echo', null, undefined, { a:1 }), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } }); //WARN - do not pass object as body if 'content-type' is not json.
+
+        expect2(await service2.doPost('echo', undefined, null, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } });
+        expect2(await service2.doPost('echo', undefined, null, "a=1"), 'headers').toEqual({ headers:{ host:'localhost:7101', 'content-length':'3', connection:'close', 'content-type':'application/x-www-form-urlencoded'} });
+        expect2(await service2.doPost('echo', null, undefined, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } });
+        expect2(await service2.doPost('echo', null, { b:1 }, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{ b:'1' }, body:{ a:"1" } });
+        expect2(await service2.doPost('echo', null, "b=1", "a=1"), 'method,param,body').toEqual({ method:'POST', param:{ b:'1' }, body:{ a:"1" } });
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
     //! via backbone's web-proxy.
     it('should pass API w/ backbone proxy', async done => {
         //! create proxy client.

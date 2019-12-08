@@ -166,9 +166,8 @@ export class APIService implements APIServiceClient {
         backbone?: string,
         proxy?: ApiHttpProxy,
     ): APIServiceClient {
-        _log(NS, `buildClient(${type})...`);
+        _log(NS, `buildClient(${type || ''})...`);
         if (!endpoint) throw new Error('@endpoint (url) is required');
-        type = `${type || ''}`;
         const host = `${endpoint || ''}`.split('/')[2];
         //! if using backbone, need host+path for full-url. or need only `type` + `id/cmd` pair for direct http agent.
         const base = !proxy && backbone ? `${endpoint || ''}` : undefined;
@@ -177,7 +176,7 @@ export class APIService implements APIServiceClient {
             proxy = proxy;
         } else if (backbone) {
             //! use web-proxy configuration.
-            const NAME = `WEB:${host}-${type}`;
+            const NAME = `WEB:${host}-${type || ''}`;
             const encoder = (name: string, path: string) => encodeURIComponent(path);
             const relayHeaderKey = 'x-lemon-';
             const resultKey = 'result';
@@ -185,7 +184,7 @@ export class APIService implements APIServiceClient {
             proxy = createHttpWebProxy(NAME, `${backbone}/web`, headers, encoder, relayHeaderKey, resultKey);
         } else {
             //! use direct web request.. (only read `type` + `id/cmd` later)
-            const NAME = `API:${host}-${type}`;
+            const NAME = `API:${host}-${type || ''}`;
             proxy = createHttpWebProxy(NAME, endpoint, headers, (n, s) => s, '');
         }
 
@@ -203,19 +202,21 @@ export class APIService implements APIServiceClient {
             }
             protected asPath = (id?: string, cmd?: string) => {
                 const type = this.type;
+                const _isNa = (a: any) => a === undefined || a === null;
                 return (
                     '' +
-                    (type === undefined ? '' : '/' + encodeURIComponent(type)) +
-                    (type === undefined || id === undefined ? '' : '/' + encodeURIComponent(id)) +
-                    (type === undefined || id === undefined || cmd === undefined ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
+                    (_isNa(type) ? '' : '/' + encodeURIComponent(type)) +
+                    (_isNa(type) || _isNa(id) ? '' : '/' + encodeURIComponent(id)) +
+                    (_isNa(type) || _isNa(id) || _isNa(undefined) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
                     ''
                 );
             };
             protected asPath2 = (id?: string, cmd?: string) => {
+                const _isNa = (a: any) => a === undefined || a === null;
                 return (
                     '' +
-                    (id === undefined ? '' : encodeURIComponent(id)) +
-                    (id === undefined || cmd === undefined ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
+                    (_isNa(id) ? '' : encodeURIComponent(id)) +
+                    (_isNa(id) || _isNa(cmd) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
                     ''
                 );
             };
@@ -341,17 +342,21 @@ export const createHttpWebProxy = (
             $body?: any,
             ctx?: any,
         ): Promise<T> {
+            // const _log = console.info;
             if (!method) throw new Error('@method is required!');
             _log(NS, `doProxy(${method})..`);
-            path1 && _log(NS, `> host(id) =`, path1);
-            path2 && _log(NS, `> path(cmd) =`, path2);
+            const _isNa = (a: any) => a === undefined || a === null;
+            _log(NS, '> endpoint =', endpoint);
+            _isNa(path1) && _log(NS, `> host(id) =`, typeof path1, path1);
+            _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
 
             //! prepare request parameters
-            const query_string = $param ? queryString.stringify($param) : '';
+            // eslint-disable-next-line prettier/prettier
+            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
             const url =
                 endpoint +
-                (path1 === undefined ? '' : `/${encoder('host', path1)}`) +
-                (path1 === undefined && path2 === undefined ? '' : `/${encoder('path', path2)}`) +
+                (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
+                (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
                 (!query_string ? '' : '?' + query_string);
             const request = REQUEST;
             const options: any = {
@@ -478,10 +483,11 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
     }
 
     protected asPath = (type?: string, path?: string) => {
+        const _isNa = (a: any) => a === undefined || a === null;
         return (
             '' +
-            (type === undefined ? '' : encodeURIComponent(type)) +
-            (type === undefined || !path ? '' : '/' + encodeURI(path)) +
+            (_isNa(type) ? '' : encodeURIComponent(type)) +
+            (_isNa(type) || !path ? '' : '/' + encodeURI(path)) +
             ''
         );
     };
