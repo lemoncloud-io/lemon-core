@@ -107,7 +107,7 @@ export class AWSS3Service implements CoreS3Service {
      */
     public putObject = async (body: string, fileName?: string, contentType?: string, tags?: TagSet) => {
         if (!body) throw new Error('@body is required!');
-        _log(NS, `putObject(${fileName})...`);
+        _log(NS, `putObject(${fileName || ''})...`);
         //! get unique file name.
         fileName = fileName || `${this.nextId()}.json`;
         contentType = contentType || 'application/json';

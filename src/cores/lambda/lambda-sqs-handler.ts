@@ -15,7 +15,7 @@ import { doReportError, do_parrallel } from '../../engine/';
 
 import { SQSRecord } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler } from './lambda-handler';
-import { ProtocolParam } from './../core-services';
+import { ProtocolParam, NextHandler } from './../core-services';
 
 import $protocol, { MyProtocolService } from '../protocol/';
 
@@ -35,7 +35,10 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
         _log(NS, `LambdaSQSHandler()..`);
     }
 
-    public addListener() {}
+    protected listeners: NextHandler[] = [];
+    public addListener(handler: NextHandler) {
+        this.listeners.push(handler);
+    }
 
     //! for debugging. save last result
     protected $lastResult: any = null;
@@ -54,7 +57,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
             _log(NS, `sqsOnRecord(${(record && record.messageId) || ''}, ${index})...`);
 
             //! retrieve message-attributes as `param`
-            const param = Object.keys(record.messageAttributes).reduce((O: any, key: string) => {
+            const param = Object.keys(record.messageAttributes || {}).reduce((O: any, key: string) => {
                 const V = record.messageAttributes[key];
                 if (!V) return O;
                 const type = V.dataType || '';
@@ -81,6 +84,23 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         : { data: record.body };
                 _log(NS, `> sqs[${index}].param =`, $U.json(param));
                 _log(NS, `> sqs[${index}].body =`, $U.json(body));
+
+                //! process for each listeners.
+                const res: string[] = await Promise.all(
+                    this.listeners.map((h, i) =>
+                        h(`SQS`, param, body, null)
+                            .then(_ => {
+                                _log(NS, `>> [${i}].res =`, $U.json(_));
+                                return `${i}`;
+                            })
+                            .catch((e: Error) => {
+                                doReportError(e, null, null, { i, param, body });
+                                return `ERR[${i}] - ${e.message}`;
+                            }),
+                    ),
+                );
+                //! concont
+                return res.join(',');
             }
 
             return false;

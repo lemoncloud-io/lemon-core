@@ -359,7 +359,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
 
         //! extract part
         const { path, httpMethod } = event;
-        const $path = event.pathParameters;
+        const $path = event.pathParameters || {};
         const param = event.queryStringParameters;
         const body =
             typeof event.body == 'string' && event.body.startsWith('{') && event.body.endsWith('}')
@@ -454,8 +454,10 @@ export class SNSProtocolTransformer implements ProtocolTransformer<SNSEventParam
 
         //! validate message
         if (Subject != 'x-protocol-service') throw new Error(`.Subject[${Subject}] is not valid protocol.`);
-        const accountId: string = MessageAttributes['accountId'] && MessageAttributes['accountId'].Value;
-        const requestId: string = MessageAttributes['requestId'] && MessageAttributes['requestId'].Value;
+        const accountId: string =
+            MessageAttributes && MessageAttributes['accountId'] && MessageAttributes['accountId'].Value;
+        const requestId: string =
+            MessageAttributes && MessageAttributes['requestId'] && MessageAttributes['requestId'].Value;
 
         //! validate values.
         if (accountId != context.accountId) throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);

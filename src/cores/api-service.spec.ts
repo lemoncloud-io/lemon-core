@@ -13,14 +13,15 @@ import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService
 import $engine from '../engine';
 import environ from '../environ';
 
+//! api with `lemon-hello-api` in prod @lemon.
 const TYPE = 'hello';
 const HOST = 'hg9errxv25.execute-api.ap-northeast-2.amazonaws.com';
 const ENDPOINT = `https://${HOST}/prod`;
 
-//! api with `lemon-hello-api` in prod @lemon.
+//! build instance
 const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHttpProxy) => {
     const type = TYPE || 'hello';
-    const endpoint = ENDPOINT || 'https://hg9errxv25.execute-api.ap-northeast-2.amazonaws.com/prod';
+    const endpoint = ENDPOINT || '';
     const service = new APIService(type, endpoint, headers, client, proxy);
     return { service };
 };
@@ -49,8 +50,8 @@ describe('APIService', () => {
     //! via direct request /w header
     it('should pass API w/ direct request w/ header', async done => {
         //! create direct client.
-        const TYPE = 'hello';
-        const ENDPOINT = 'http://localhost:7101';
+        const TYPE = 'echo';
+        const ENDPOINT = 'http://localhost:8888';
         const HEADERS: APIHeaders = { 'content-type': 'application/x-www-form-urlencoded' };
 
         const client0: APIServiceClient = APIService.buildClient(null, ENDPOINT, null, '');
@@ -60,28 +61,28 @@ describe('APIService', () => {
         const { service: service2 } = instance(client2);
 
         /* eslint-disable prettier/prettier */
-        expect2(client0.hello()).toEqual(`api-client:http-web-proxy:API:localhost:7101-`);
+        expect2(client0.hello()).toEqual(`api-client:http-web-proxy:API:localhost:8888-`);
         const ERRCON = await client0.doGet(null).catch(GETERR);
-        if (ERRCON.startsWith('connect ECONNREFUSED 127.0.0.1:7101')) return done();        //! ignore test.
-        expect2(await client0.doGet(null).catch(GETERR)).toEqual('lemon-hello-api');
+        if (ERRCON.startsWith('connect ECONNREFUSED 127.0.0.1:8888')) return done();        //! ignore test.
+        expect2(await client0.doGet(null).catch(GETERR)).toEqual('lemon-hello-api/2.0.1');  //! required to run `lemon-hello-api` as `$ npm run express`
 
         //! request with `application/json`
-        expect2(service1.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:7101'}-${TYPE}`);
-        expect2(await service1.doPost('echo'), 'method,param,body').toEqual({ method:'POST', param:{}, body:{} });
-        expect2(await service1.doPost('echo'), 'headers').toEqual({ headers:{ host:'localhost:7101', 'content-length':'0', accept:'application/json', connection:'close'} });
-        expect2(await service1.doPost('echo', undefined, null, { a:1 }), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:1 } });
+        expect2(service1.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:8888'}-${TYPE}`);
+        expect2(await service1.doPost(''), 'method,param,body').toEqual({ method:'POST', param:{}, body:{} });
+        expect2(await service1.doPost(''), 'headers').toEqual({ headers:{ host:'localhost:8888', 'content-length':'0', accept:'application/json', connection:'close'} });
+        expect2(await service1.doPost('', undefined, null, { a:1 }), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:1 } });
 
         //! request with `application/x-www-form-urlencoded`
-        expect2(service2.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:7101'}-${TYPE}`);
-        expect2(await service2.doPost('echo'), 'method,param,body').toEqual({ method:'POST', param:{}, body:{} });
-        expect2(await service2.doPost('echo'), 'headers').toEqual({ headers:{ host:'localhost:7101', 'content-length':'0', accept:'application/json', connection:'close', 'content-type':'application/x-www-form-urlencoded'} });
+        expect2(service2.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:8888'}-${TYPE}`);
+        expect2(await service2.doPost(''), 'method,param,body').toEqual({ method:'POST', param:{}, body:{} });
+        expect2(await service2.doPost(''), 'headers').toEqual({ headers:{ host:'localhost:8888', 'content-length':'0', accept:'application/json', connection:'close', 'content-type':'application/x-www-form-urlencoded'} });
         // expect2(await service2.doPost('echo', null, undefined, { a:1 }), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } }); //WARN - do not pass object as body if 'content-type' is not json.
 
-        expect2(await service2.doPost('echo', undefined, null, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } });
-        expect2(await service2.doPost('echo', undefined, null, "a=1"), 'headers').toEqual({ headers:{ host:'localhost:7101', 'content-length':'3', connection:'close', 'content-type':'application/x-www-form-urlencoded'} });
-        expect2(await service2.doPost('echo', null, undefined, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } });
-        expect2(await service2.doPost('echo', null, { b:1 }, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{ b:'1' }, body:{ a:"1" } });
-        expect2(await service2.doPost('echo', null, "b=1", "a=1"), 'method,param,body').toEqual({ method:'POST', param:{ b:'1' }, body:{ a:"1" } });
+        expect2(await service2.doPost('', undefined, null, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } });
+        expect2(await service2.doPost('', undefined, null, "a=1"), 'headers').toEqual({ headers:{ host:'localhost:8888', 'content-length':'3', connection:'close', 'content-type':'application/x-www-form-urlencoded'} });
+        expect2(await service2.doPost('', null, undefined, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{}, body:{ a:"1" } });
+        expect2(await service2.doPost('', null, { b:1 }, "a=1"), 'method,param,body').toEqual({ method:'POST', param:{ b:'1' }, body:{ a:"1" } });
+        expect2(await service2.doPost('', null, "b=1", "a=1"), 'method,param,body').toEqual({ method:'POST', param:{ b:'1' }, body:{ a:"1" } });
 
         /* eslint-enable prettier/prettier */
         done();
