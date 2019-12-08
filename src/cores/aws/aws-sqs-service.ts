@@ -12,16 +12,16 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
-import AWS, { SQS } from 'aws-sdk';
-
 const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
+
+import AWS, { SQS } from 'aws-sdk';
+import { CoreServices } from '../core-services';
 
 /**
  * interface: SQSService
  * - common interface type for `SQS`
  */
-export interface SQSService {
-    hello: () => { hello: string };
+export interface SQSService extends CoreServices {
     sendMessage(data: any, attr?: SQSAttribute): Promise<string>;
     receiveMessage(size?: number): Promise<{ list: SqsMessage[] }>;
     deleteMessage(handle: string): Promise<void>;
@@ -93,7 +93,7 @@ export class AWSSQSService implements SQSService {
     /**
      * hello
      */
-    public hello = () => ({ hello: 'aws-sqs-service' });
+    public hello = () => `aws-sqs-service:${this._endpoint || ''}`;
 
     /**
      * send message into SQS.
@@ -242,7 +242,7 @@ export class MyDummySQSService implements SQSService {
         this.endpoint = endpoint;
         this.timeout = timeout;
     }
-    public hello = () => ({ hello: 'dummy-sqs-service' });
+    public hello = () => `dummy-sqs-service:${this.endpoint}`;
     public async sendMessage(data: any, attr?: SQSAttribute): Promise<string> {
         if (!data) throw new Error('@data(object) is required!');
         const fn = (n: number): string => {

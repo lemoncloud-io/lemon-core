@@ -13,7 +13,7 @@ import { $engine, _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
-import { ProtocolParam } from './../core-services';
+import { ProtocolParam, NextHandler } from './../core-services';
 
 import { LambdaHandler, SNSHandler, LambdaSubHandler } from './';
 import $protocol from '../protocol/';
@@ -34,7 +34,10 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
         _log(NS, `LambdaSNSHandler()..`);
     }
 
-    public addListener() {}
+    protected listeners: NextHandler[] = [];
+    public addListener(handler: NextHandler) {
+        this.listeners.push(handler);
+    }
 
     //! for debugging. save last result
     protected $lastResult: any = null;
@@ -65,12 +68,15 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                 return true;
             } else {
                 //! retrieve message-attributes as `param`
-                const param = Object.keys($msg.MessageAttributes).reduce((O: any, key: string) => {
-                    const V = $msg.MessageAttributes[key];
-                    if (!V) return O;
-                    O[key] = V.Type == 'Number' ? Number(V.Value) : V.Value;
-                    return O;
-                }, {});
+                const param = Object.keys($msg.MessageAttributes || {}).reduce(
+                    (O: any, key: string) => {
+                        const V = $msg.MessageAttributes[key];
+                        if (!V) return O;
+                        O[key] = V.Type == 'Number' ? Number(V.Value) : V.Value;
+                        return O;
+                    },
+                    { subject: Subject }, //NOTE! - should have 'subject' property.
+                );
                 //! load data as `body`
                 const body =
                     typeof $msg.Message == 'string' && $msg.Message.startsWith('{') && $msg.Message.endsWith('}')
@@ -78,10 +84,24 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                         : { data: $msg.Message };
                 _log(NS, `> sns[${index}].param =`, $U.json(param));
                 _log(NS, `> sns[${index}].body =`, $U.json(body));
-            }
 
-            // or returns false.
-            return false;
+                //! process for each listeners.
+                const res: string[] = await Promise.all(
+                    this.listeners.map((h, i) =>
+                        h(`SNS`, param, body, null)
+                            .then(_ => {
+                                _log(NS, `>> [${i}].res =`, $U.json(_));
+                                return `${i}`;
+                            })
+                            .catch((e: Error) => {
+                                doReportError(e, null, null, { i, param, body });
+                                return `ERR[${i}] - ${e.message}`;
+                            }),
+                    ),
+                );
+                //! concont
+                return res.join(',');
+            }
         };
 
         //! serialize each records.

@@ -22,7 +22,7 @@ export type STAGE = 'local' | 'dev' | 'prod';
  * - common service super class.
  */
 export interface CoreServices {
-    hello: () => { hello: string; [key: string]: string };
+    hello(): string;
 }
 
 /**

@@ -32,7 +32,7 @@ describe(`test service/s3-service.js`, () => {
     });
 
     test('check hello() function', async () => {
-        expect(S3.hello()).toEqual({ hello: 's3-service' });
+        expect(S3.hello()).toEqual('aws-s3-service:');
     });
 
     test('check bucket() function', async () => {

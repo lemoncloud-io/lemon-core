@@ -96,7 +96,7 @@ describe('ConfigService', () => {
         const config = await _conf.init();                             // wait until loading completely.
 
         //! check result..
-        expect2(config.hello()).toEqual({ hello: 'config-service' });
+        expect2(config.hello()).toEqual('config-service');
         expect2(config.getService()).toEqual('lemon-core');
         expect2(config.getVersion()).toEqual('' + $pack.version);
         expect2(config.get('count')).toEqual('1');                                         // must be string.

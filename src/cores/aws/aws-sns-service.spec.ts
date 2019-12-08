@@ -31,7 +31,7 @@ describe(`test service/sns-service.js`, () => {
     });
 
     test('check hello() function', async () => {
-        expect(SNS.hello()).toEqual({ hello: 'sns-service' });
+        expect(SNS.hello()).toEqual('aws-sns-service:');
     });
 
     test('check endpoint() function', async () => {

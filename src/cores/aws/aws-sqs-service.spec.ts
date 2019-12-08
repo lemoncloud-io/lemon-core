@@ -41,7 +41,7 @@ describe('AWSSQSService', () => {
         if (ENDPOINT) {
             /* eslint-disable prettier/prettier */
             const service = new AWSSQSService(ENDPOINT);
-            expect2(() => service.hello()).toEqual({ hello: 'aws-sqs-service' });
+            expect2(() => service.hello()).toEqual(`aws-sqs-service:${ENDPOINT}`);
             expect2(() => service.sendMessage(null, null)).toEqual('@data(object) is required!');
 
             //! read origin stats
@@ -89,7 +89,7 @@ describe('AWSSQSService', () => {
     it('should pass dummy MyDummySQSService()', async done => {
         /* eslint-disable prettier/prettier */
         const service = new MyDummySQSService(ENDPOINT);
-        expect2(() => service.hello()).toEqual({ hello: 'dummy-sqs-service' });
+        expect2(() => service.hello()).toEqual(`dummy-sqs-service:${ENDPOINT}`);
         expect2(() => service.sendMessage(null, null)).toEqual('@data(object) is required!');
 
         //! read origin stats
