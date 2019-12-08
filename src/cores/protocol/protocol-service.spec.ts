@@ -31,7 +31,7 @@ class MyConfigServiceTest extends MyConfigService {
         super(null);
         this.env = env;
     }
-    public hello = () => ({ hello: `config-service-test:${this.getStage()}` });
+    public hello = () => `config-service-test:${this.getStage()}`;
     public get = (key: string): string => this.env[key];
 }
 export const instance = (env?: { [key: string]: string }) => {
@@ -63,7 +63,7 @@ describe('ProtocolService', () => {
         /* eslint-disable prettier/prettier */
         expect2(()=>{ throw new Error('HI Error') }).toBe('HI Error');
         expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api/lemon');
-        expect2(config.hello()).toEqual({ hello:'config-service-test:local' });
+        expect2(config.hello()).toEqual('config-service-test:local');
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -72,7 +72,7 @@ describe('ProtocolService', () => {
     it('should pass asServiceURI() w/ local', async done => {
         const { service, config } = instance();
         /* eslint-disable prettier/prettier */
-        expect2(config.hello()).toEqual({ hello:'config-service-test:local' });
+        expect2(config.hello()).toEqual('config-service-test:local');
 
         //! as standard format name.
         expect2(service.asProtocolURI('web', asParam(''), config)).toEqual('web://lemon-hello-api-dev-lambda');
@@ -104,7 +104,7 @@ describe('ProtocolService', () => {
     it('should pass asServiceURI() w/ develop', async done => {
         const { service, config } = instance({ STAGE: 'develop' });
         /* eslint-disable prettier/prettier */
-        expect2(config.hello()).toEqual({ hello:'config-service-test:dev' });
+        expect2(config.hello()).toEqual('config-service-test:dev');
 
         //! as standard format name.
         expect2(service.asProtocolURI('web', asParam(''), config)).toEqual('web://lemon-hello-api-dev-lambda');
@@ -126,7 +126,7 @@ describe('ProtocolService', () => {
     it('should pass asServiceURI() w/ production', async done => {
         const { service, config } = instance({ STAGE: 'production' });
         /* eslint-disable prettier/prettier */
-        expect2(config.hello()).toEqual({ hello:'config-service-test:prod' });
+        expect2(config.hello()).toEqual('config-service-test:prod');
 
         //! as standard format name.
         expect2(service.asProtocolURI('web', asParam('self'), config)).toEqual('web://lemon-hello-api-prod-lambda');

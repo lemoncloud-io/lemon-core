@@ -27,7 +27,7 @@ describe('AWSKMSService', () => {
         const message = `hello lemon!`;
 
         /* eslint-disable prettier/prettier */
-        expect2(service.hello()).toEqual({ hello: 'aws-kms-service' });
+        expect2(service.hello()).toEqual(`aws-kms-service:${keyId}`);
         expect2(service.keyId()).toEqual(keyId);
 
         //! break if no profile.

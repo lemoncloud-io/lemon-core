@@ -66,7 +66,7 @@ export class AWSKMSService implements CoreKmsService {
     /**
      * hello
      */
-    public hello = () => ({ hello: 'aws-kms-service' });
+    public hello = () => `aws-kms-service:${this._keyId}`;
 
     /**
      * get key-id to encrypt.

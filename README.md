@@ -56,6 +56,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.0.8     | improve `APIService` w/ mocks data.
 | 2.0.7     | improve `StorageService` along w/ dummy-storage-service.
 | 2.0.6     | support `CoreWEBController`, and `lambda.cores.web.addController(...)`
 | 2.0.5     | support `APIService`, and fix `engine.initialize()`

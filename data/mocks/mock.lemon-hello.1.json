@@ -1,0 +1,11 @@
+{
+    "!": "read hello of lemon",
+    "param": {
+        "method": "GET",
+        "endpoint": "https://api.lemoncloud.io/hello/hello/1"
+    },
+    "data": {
+        "name": "cloud"
+    },
+    "error": ""
+}

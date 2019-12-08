@@ -20,6 +20,7 @@ env:
 after_success:
 - "./node_modules/.bin/codecov"
 - npm run build
+- npm run doc:html
 #! todo - make auto release if commit to master.
 #! need to push git via travis: https://gist.github.com/willprice/e07efd73fb7f13f917ea
 #- npm run release.minor

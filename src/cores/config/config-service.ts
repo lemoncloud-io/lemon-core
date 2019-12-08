@@ -95,7 +95,7 @@ export class MyConfigService implements ConfigService {
     /**
      * hello
      */
-    public hello = () => ({ hello: 'config-service' });
+    public hello = () => `config-service`;
 
     /**
      * read all configuration setting

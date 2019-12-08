@@ -89,6 +89,7 @@ export const buildExpress = (
 
     app.use(cors());
     app.use(bodyParser.json({ limit: '10mb' })); //default limit 100kb
+    app.use(bodyParser.urlencoded({ extended: true }));
 
     //! middle ware
     const middle = (req: any, res: any, next: any) => {
