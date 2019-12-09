@@ -174,7 +174,7 @@ class MyEngineModules implements EngineModules {
         const levels: number[] = Object.keys(maps).map(_ => Number(_)).sort();
         if (getLevels) return levels;
         const catchModError = (e: Error, mod: EngineModule) => {
-            console.error(`! mod[${mod.getModuleName()}].err =`, e);
+            // console.error(`! mod[${mod.getModuleName()}].err =`, e);
             return `ERR[${mod.getModuleName()}] ${e.message}`;
         };
         //! do serialize per each level.

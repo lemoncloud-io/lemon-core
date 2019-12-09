@@ -76,6 +76,12 @@ export const failure = (body: any, status?: number) => {
     return buildResponse(status === undefined ? 503 : status, body);
 };
 
+export const redirect = (location: any, status?: number) => {
+    const res = buildResponse(status === undefined ? 300 : status, '');
+    res.headers['Location'] = location; // set location.
+    return res;
+};
+
 /** ********************************************************************************************************************
  *  COMMON Constants
  ** ********************************************************************************************************************/
@@ -177,17 +183,25 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 if (message.startsWith('404 NOT FOUND')) {
                     return notfound(message);
                 }
+
                 //! report error.
                 if (LambdaHandler.REPORT_ERROR) {
                     return doReportError(e, $ctx, event).then(() => {
                         return failure(e instanceof Error ? message : e);
                     });
                 }
+
                 //! common format of error.
                 if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
                     const status = $U.N(message.substring(0, 3), 0);
+                    //! handle for 302/301 redirect. format: 303 REDIRECT - http://~~~
+                    if ((status == 301 || status == 302) && message.indexOf(' - ') > 0) {
+                        const loc = message.substring(message.indexOf(' - ') + 3).trim();
+                        if (loc) return redirect(loc, status);
+                    }
                     return failure(message, status);
                 }
+
                 //! send failure.
                 return failure(e instanceof Error ? message : e);
             });
@@ -291,6 +305,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const version = (config && config.getVersion()) || '0.0.0';
         const stage = reqContext.stage || (config && config.getStage()) || '';
         const source = `api://${reqContext.accountId}@${service}-${stage}${event.path}#${version}`; // the origin request protocol uri (must use 'api')
+        const domain = reqContext.domainName || event.headers['Host'] || event.headers['host'];
 
         //! - extract original request infor.
         const clientIp = reqContext.identity && reqContext.identity.sourceIp;
@@ -298,7 +313,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const accountId = reqContext.accountId;
 
         //! save into headers and returns.
-        const context = { ...res, identity, source, clientIp, requestId, accountId };
+        const context: NextContext = { ...res, identity, source, clientIp, requestId, accountId, domain };
         return context;
     }
 }
