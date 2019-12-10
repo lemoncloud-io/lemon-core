@@ -174,12 +174,13 @@ export class Elastic6Service<T extends Elastic6Item> {
      * @param id    id
      * @param item  item to save
      */
-    public async saveItem(id: string, item: T): Promise<T> {
+    public async saveItem(id: string, item: T, type?: string): Promise<T> {
         const { endpoint, indexName, idName } = this.options;
         const { client } = instance(endpoint);
         _log(NS, `- saveItem(${id})`);
 
-        const type = 1 ? '_doc' : '';
+        // const type = 1 ? '_doc' : '';
+        type = `${type || '_doc'}`;
         const params: CreateDocumentParams = {
             index: indexName,
             type,

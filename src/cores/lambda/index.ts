@@ -22,7 +22,12 @@ export { LambdaSQSHandler } from './lambda-sqs-handler';
 export { LambdaWSSHandler } from './lambda-wss-handler';
 export { CronNextHandler, CronParam } from './lambda-cron-handler';
 export { LambdaCognitoHandler } from './lambda-cognito-handler';
-export { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
+export {
+    LambdaDynamoStreamHandler,
+    DynamoStreamParam,
+    DynamoStreamBody,
+    DynamoStreamNextHandler,
+} from './lambda-dynamo-stream-handler';
 
 //! import default with named.
 import { LambdaHandler, Context } from './lambda-handler';
