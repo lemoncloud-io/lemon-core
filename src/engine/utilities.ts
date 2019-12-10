@@ -541,9 +541,17 @@ export class Utilities {
         return param;
     }
 
-    //! export as member.
+    /**
+     * group as qs
+     */
     public readonly qs = {
+        /**
+         * parse qs string
+         */
         parse: (q: string) => this.qs_parse(q),
+        /**
+         * stringify qs object
+         */
         stringify: (q: { [key: string]: any }) => this.qs_stringify(q),
     };
 

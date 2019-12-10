@@ -177,7 +177,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 return success(_);
             })
             .catch((e: any) => {
-                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].err =`, typeof e, e);
+                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].err =`, e instanceof Error ? e : $U.json(e));
                 const message = `${e.message || e.reason || $U.json(e)}`;
                 _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].msg =`, message);
                 if (message.startsWith('404 NOT FOUND')) {

@@ -397,7 +397,7 @@ export const createHttpWebProxy = (
                             return reject(new Error(msg.startsWith('404 NOT FOUND') ? msg : `404 NOT FOUND - ${msg}`));
                         }
                         statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
-                        body && _log(NS, `> body[${statusCode}] =`, body);
+                        body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
                         body = body || statusMessage;
                         return reject(typeof body === 'string' ? new Error(body) : body);
                     }
@@ -409,7 +409,7 @@ export const createHttpWebProxy = (
                             body = JSON.parse(body);
                         }
                     } catch (e) {
-                        _err(NS, '!WARN! parse(body) =', e);
+                        _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
                     }
                     //! ok! successed.
                     resolve(body);
