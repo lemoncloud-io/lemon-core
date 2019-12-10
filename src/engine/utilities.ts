@@ -556,6 +556,41 @@ export class Utilities {
     };
 
     /**
+     * get crypto object.
+     */
+    public readonly crypto = (passwd: string, algorithm?: string) => {
+        algorithm = algorithm || 'aes-256-ctr';
+        const MAGIC = 'LM!#';
+        return new (class {
+            public encrypt = (val: string): string => {
+                val = val === undefined ? null : val;
+                // msg = msg && typeof msg == 'object' ? JSON_TAG+JSON.stringify(msg) : msg;
+                //! 어느 데이터 타입이든 저장하기 위해서, object로 만든다음, 암호화 시킨다.
+                const msg = JSON.stringify({ alg: algorithm, val: val });
+                const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
+                // const key = Buffer.from(`${passwd || ''}`, 'utf8');
+                const cipher = crypto.createCipher(algorithm, passwd);
+                // const cipher = crypto.createCipheriv(algorithm, key, iv);
+                const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
+                return crypted.toString(1 ? 'base64' : 'utf8');
+            };
+            public decrypt = (msg: string): string => {
+                const buffer = Buffer.from(`${msg || ''}`, 'base64');
+                // const key = Buffer.from(`${passwd || ''}`, 'utf8');
+                const decipher = crypto.createDecipher(algorithm, passwd);
+                // const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                const dec = Buffer.concat([decipher.update(buffer), decipher.final()]).toString('utf8');
+                if (!dec.startsWith(MAGIC)) throw new Error('400 INVALID PASSWD - invalid magic string!');
+                const data = dec.substr(MAGIC.length);
+                if (data && !data.startsWith('{') && !data.endsWith('}'))
+                    throw new Error('400 INVALID PASSWD - invalid json string!');
+                var $msg = JSON.parse(data) || {};
+                return $msg.val;
+            };
+        })();
+    };
+
+    /**
      * get UUID as `uuid.v4()`
      */
     public uuid() {

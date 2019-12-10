@@ -29,7 +29,7 @@ export interface StorageModel extends InternalKey {
     id?: string; // unique id value.
     type?: string; // type of data.
     stereo?: string; // stereo of type.
-    meta?: string; // json formated string.
+    meta?: string | any; // json formated string (or parsed object).
 }
 
 /**
