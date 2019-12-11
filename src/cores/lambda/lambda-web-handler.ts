@@ -172,7 +172,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const CMD = param.cmd;
 
         //! call next.. (it will return result or promised)
-        return this.handleProtocol(param)
+        return this.handleProtocol(param, event)
             .then(_ => {
                 return success(_);
             })
@@ -211,8 +211,9 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * handle param via protocol-service.
      *
      * @param param protocol parameters
+     * @param event (optional) origin event object.
      */
-    public async handleProtocol<TResult = any>(param: ProtocolParam): Promise<TResult> {
+    public async handleProtocol<TResult = any>(param: ProtocolParam, event?: APIGatewayProxyEvent): Promise<TResult> {
         const TYPE = param.type || '';
         const MODE = param.mode || 'GET';
         const ID = param.id || '';
@@ -237,7 +238,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             else if (typeof decoder == 'object') return (decoder as CoreWEBController).decode(MODE, ID, CMD);
             return null;
         })();
-        if (!next) throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
+        if (!next) {
+            _err(NS, `! WARN ! MISSING NEXT-HANDLER. event=`, $U.json(event));
+            throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
+        }
 
         //! call next.. (it will return result or promised)
         return (() => {

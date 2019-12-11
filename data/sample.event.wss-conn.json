@@ -7,7 +7,7 @@
         "Sec-WebSocket-Key": "+oMrC1reoMH8eLaAE5ZBjA==",
         "Sec-WebSocket-Version": "13",
         "X-Amzn-Trace-Id": "Root=1-5dd7b56a-ec51b75404c81b12f77e1a34",
-        "X-Forwarded-For": "221.149.250.13",
+        "X-Forwarded-For": "221.149.250.0",
         "X-Forwarded-Port": "443",
         "X-Forwarded-Proto": "https"
     },
@@ -17,7 +17,7 @@
         "Sec-WebSocket-Key": ["+oMrC1reoMH8eLaAE5ZBjA=="],
         "Sec-WebSocket-Version": ["13"],
         "X-Amzn-Trace-Id": ["Root=1-5dd7b56a-ec51b75404c81b12f77e1a34"],
-        "X-Forwarded-For": ["221.149.250.13"],
+        "X-Forwarded-For": ["221.149.250.0"],
         "X-Forwarded-Port": ["443"],
         "X-Forwarded-Proto": ["https"]
     },
@@ -40,7 +40,7 @@
             "userAgent": null,
             "accountId": null,
             "caller": null,
-            "sourceIp": "221.149.250.13",
+            "sourceIp": "221.149.250.0",
             "accessKey": null,
             "cognitoAuthenticationProvider": null,
             "user": null

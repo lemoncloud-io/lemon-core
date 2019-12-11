@@ -56,7 +56,7 @@ export const instance = (endpoint: string) => {
  * class: `Elastic6Service`
  * - basic CRUD service for Elastic Search 6
  */
-export class Elastic6Service<T extends Elastic6Item> {
+export class Elastic6Service<T extends Elastic6Item = any> {
     protected options: Elastic6Option;
     public constructor(options: Elastic6Option) {
         // eslint-disable-next-line prettier/prettier

@@ -1,7 +1,7 @@
 {
-    "!":"API Gateway Event Data @191121 w/ comics.dev",
-    "resource": "/hello/{id}",
-    "path": "/hello/a_123_test",
+    "!":"api.lemoncloud.io/ses-v1 에 매핑했을때의 샘플 데이터",
+    "resource": "/session/{id}/{cmd}",
+    "path": "/ses-v1/session/t001/test-es6",
     "httpMethod": "GET",
     "headers": {
         "Accept": "*/*",
@@ -12,12 +12,12 @@
         "CloudFront-Is-SmartTV-Viewer": "false",
         "CloudFront-Is-Tablet-Viewer": "false",
         "CloudFront-Viewer-Country": "KR",
-        "Host": "na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com",
+        "Host": "api.lemoncloud.io",
         "User-Agent": "HTTPie/1.0.2",
-        "Via": "1.1 0bfcbc7afd4267da2d9699285b757c04.cloudfront.net (CloudFront)",
-        "X-Amz-Cf-Id": "cD2syb0t6Am8ifoMdWzF77eG0Mq0kBdJZtmDppVbYOCIAAIkIVbH0Q==",
-        "X-Amzn-Trace-Id": "Root=1-5dd78f40-51a9a4c0cd7274d057a2d560",
-        "X-Forwarded-For": "221.149.250.0, 52.46.53.0",
+        "Via": "1.1 0859cbbec76cd864e788bbbbaaae34b.cloudfront.net (CloudFront)",
+        "X-Amz-Cf-Id": "Lgj8y55Xd3EPsakrcf1Wu-QzJxY8D1L5Q4XQeIKauIq800000crf4qg==",
+        "X-Amzn-Trace-Id": "Root=1-5df0d8ad-70f0105718c5b4619d4444b4",
+        "X-Forwarded-For": "221.149.250.0, 52.46.53.11",
         "X-Forwarded-Port": "443",
         "X-Forwarded-Proto": "https"
     },
@@ -30,38 +30,35 @@
         "CloudFront-Is-SmartTV-Viewer": ["false"],
         "CloudFront-Is-Tablet-Viewer": ["false"],
         "CloudFront-Viewer-Country": ["KR"],
-        "Host": ["na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com"],
+        "Host": ["api.lemoncloud.io"],
         "User-Agent": ["HTTPie/1.0.2"],
-        "Via": ["1.1 0bfcbc7afd4267da2d9699285b757c04.cloudfront.net (CloudFront)"],
-        "X-Amz-Cf-Id": ["cD2syb0t6Am8ifoMdWzF77eG0Mq0kBdJZtmDppVbYOCIAAIkIVbH0Q=="],
-        "X-Amzn-Trace-Id": ["Root=1-5dd78f40-51a9a4c0cd7274d057a2d560"],
-        "X-Forwarded-For": ["221.149.250.13, 52.46.53.80"],
+        "Via": ["1.1 0859cbbec76cd864e788bbbbaaae34b.cloudfront.net (CloudFront)"],
+        "X-Amz-Cf-Id": ["Lgj8y55Xd3EPsakrcf1Wu-QzJxY8D1L5Q4XQeIKauIq800000crf4qg=="],
+        "X-Amzn-Trace-Id": ["Root=1-5df0d8ad-70f0105718c5b4619d4444b4"],
+        "X-Forwarded-For": ["221.149.250.0, 52.46.53.11"],
         "X-Forwarded-Port": ["443"],
         "X-Forwarded-Proto": ["https"]
     },
-    "queryStringParameters": {
-        "ts": "1574150700000"
-    },
-    "multiValueQueryStringParameters": {
-        "ts": ["1574150700000"]
-    },
+    "queryStringParameters": null,
+    "multiValueQueryStringParameters": null,
     "pathParameters": {
-        "id": "a_123_test"
+        "id": "t001",
+        "cmd": "test-es6"
     },
     "stageVariables": null,
     "requestContext": {
-        "resourceId": "0e9zzv",
-        "resourcePath": "/hello/{id}",
+        "resourceId": "hjxx3d",
+        "resourcePath": "/session/{id}/{cmd}",
         "httpMethod": "GET",
-        "extendedRequestId": "DjNSJEFkIE0FpLw=",
-        "requestTime": "22/Nov/2019:07:33:20 +0000",
-        "path": "/dev/hello/a_123_test",
-        "accountId": "796730245826",
+        "extendedRequestId": "EibLDFc1EEEFbTw=",
+        "requestTime": "11/Dec/2019:11:53:17 +0000",
+        "path": "/ses-v1/session/t001/test-es6",
+        "accountId": "085403634746",
         "protocol": "HTTP/1.1",
-        "stage": "dev",
-        "domainPrefix": "na12ibnzu4",
-        "requestTimeEpoch": 1574408000840,
-        "requestId": "d8485d00-5624-4094-9a93-ce09c351ee5b",
+        "stage": "prod",
+        "domainPrefix": "api",
+        "requestTimeEpoch": 1576065197060,
+        "requestId": "b0ce5f49-89ca-4d44-a2dc-7edcb1fc72cb",
         "identity": {
             "cognitoIdentityPoolId": null,
             "accountId": null,
@@ -76,8 +73,8 @@
             "userAgent": "HTTPie/1.0.2",
             "user": null
         },
-        "domainName": "na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com",
-        "apiId": "na12ibnzu4"
+        "domainName": "api.lemoncloud.io",
+        "apiId": "koy1g8piab"
     },
     "body": null,
     "isBase64Encoded": false

@@ -358,7 +358,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         if (!requestContext) throw new Error('.requestContext is required');
 
         //! extract part
-        const { path, httpMethod } = event;
+        const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
         const $path = event.pathParameters || {};
         const param = event.queryStringParameters;
         const body =
@@ -373,7 +373,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
 
         const service = '';
         const stage: STAGE = `${requestContext.stage || ''}` as STAGE;
-        const type = `${path || ''}`.split('/')[1] || '';
+        const type = `${resource || path || ''}`.split('/')[1] || ''; // 1st path param will be type of resource.
         const mode: NextMode =
             httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : (`${httpMethod}`.toUpperCase() as NextMode);
 
