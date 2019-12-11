@@ -37,6 +37,7 @@ export interface Elastic6Option {
     indexName: string; // index-name
     idName?: string; // id-name (optional if time-seriese)
     idType?: KEY_TYPE; // id-type
+    docType?: string; // document type (default as `_doc` in ES6)
     timeSeries?: boolean; // is TIMESERIES?
 }
 
@@ -63,7 +64,7 @@ export class Elastic6Service<T extends Elastic6Item> {
         if (!options.endpoint) throw new Error('.endpoint (URL) is required');
         if (!options.indexName) throw new Error('.indexName (string) is required');
         // if (!options.idName) throw new Error('.idName (string) is required');
-        this.options = { ...options };
+        this.options = { docType: '_doc', ...options };
     }
 
     /**
@@ -99,7 +100,7 @@ export class Elastic6Service<T extends Elastic6Item> {
         const { client } = instance(endpoint);
         const res = await client.indices.create({ index: indexName, body: payload }).catch(
             $ERROR.handler('create', e => {
-                _err(NS, `> create[${indexName}].err =`, e);
+                _err(NS, `> create[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 if (`${e.message}`.startsWith('400 resource_already_exists_exception'))
                     throw new Error(`400 IN USE - index:${indexName}`);
                 throw e;
@@ -124,7 +125,7 @@ export class Elastic6Service<T extends Elastic6Item> {
         const { client } = instance(endpoint);
         const res = await client.indices.delete({ index: indexName }).catch(
             $ERROR.handler('destroy', e => {
-                _err(NS, `> destory[${indexName}].err =`, e);
+                _err(NS, `> destory[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 if (`${e.message}`.startsWith('404 index_not_found_exception'))
                     throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
@@ -148,7 +149,7 @@ export class Elastic6Service<T extends Elastic6Item> {
         //! read settings.
         const res = await client.indices.getSettings({ index: indexName }).catch(
             $ERROR.handler('describe', e => {
-                _err(NS, `> describe[${indexName}].err =`, e);
+                _err(NS, `> describe[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 if (`${e.message}`.startsWith('404 index_not_found_exception'))
                     throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
@@ -175,24 +176,25 @@ export class Elastic6Service<T extends Elastic6Item> {
      * @param item  item to save
      */
     public async saveItem(id: string, item: T, type?: string): Promise<T> {
-        const { endpoint, indexName, idName } = this.options;
+        const { endpoint, indexName, idName, docType } = this.options;
         const { client } = instance(endpoint);
+        // const _log = console.info;
         _log(NS, `- saveItem(${id})`);
 
-        // const type = 1 ? '_doc' : '';
-        type = `${type || '_doc'}`;
+        type = `${type || docType}`;
         const params: CreateDocumentParams = {
             index: indexName,
             type,
             id,
             body: { ...item, [idName]: id },
+            // versionType: 'force',
         };
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
         const res = await client.create(params).catch(
             $ERROR.handler('save', e => {
-                _err(NS, `> save[${indexName}].err =`, e);
+                _log(NS, `> save[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 if (`${e.message}`.startsWith('409 version_conflict_engine_exception')) {
                     //! try to update document...
                     const params = { index: indexName, type, id, body: { doc: item } };
@@ -219,11 +221,12 @@ export class Elastic6Service<T extends Elastic6Item> {
      *
      * @param item  item to push
      */
-    public async pushItem(item: T): Promise<T> {
-        const { endpoint, indexName } = this.options;
+    public async pushItem(item: T, type?: string): Promise<T> {
+        const { endpoint, indexName, docType } = this.options;
         const { client } = instance(endpoint);
         const id = '';
-        const type = 1 ? '_doc' : '';
+
+        type = `${type || docType}`;
         _log(NS, `- pushItem(${id})`);
         const params: IndexDocumentParams<any> = {
             index: indexName,
@@ -234,7 +237,7 @@ export class Elastic6Service<T extends Elastic6Item> {
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
         const res = await client.index(params).catch(
             $ERROR.handler('index', e => {
-                _err(NS, `> index[${indexName}].err =`, e);
+                _err(NS, `> index[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 throw e;
             }),
         );
@@ -256,9 +259,9 @@ export class Elastic6Service<T extends Elastic6Item> {
      * @param views     projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
-        const { endpoint, indexName } = this.options;
+        const { endpoint, indexName, docType } = this.options;
         const { client } = instance(endpoint);
-        const type = 1 ? '_doc' : '';
+        const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
         const params: GetParams = { index: indexName, type, id };
@@ -273,7 +276,7 @@ export class Elastic6Service<T extends Elastic6Item> {
         _log(NS, `> params[${id}] =`, $U.json(params));
         const res = await client.get(params).catch(
             $ERROR.handler('read', e => {
-                _err(NS, `> read[${indexName}].err =`, e);
+                _err(NS, `> read[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 if (`${e.message}`.startsWith('404 Not Found')) throw new Error(`404 NOT FOUND - id:${id}`);
                 throw e;
             }),
@@ -296,16 +299,16 @@ export class Elastic6Service<T extends Elastic6Item> {
      * @param id        item-id
      */
     public async deleteItem(id: string): Promise<T> {
-        const { endpoint, indexName } = this.options;
+        const { endpoint, indexName, docType } = this.options;
         const { client } = instance(endpoint);
-        const type = 1 ? '_doc' : '';
+        const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
         const params: DeleteDocumentParams = { index: indexName, type, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
         const res = await client.delete(params).catch(
             $ERROR.handler('delete', e => {
-                _err(NS, `> delete[${indexName}].err =`, e);
+                _err(NS, `> delete[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 if (`${e.message}`.startsWith('404 Not Found')) throw new Error(`404 NOT FOUND - id:${id}`);
                 throw e;
             }),
@@ -329,9 +332,9 @@ export class Elastic6Service<T extends Elastic6Item> {
      * @param item      item to update
      */
     public async updateItem(id: string, item: T, increments?: Incrementable): Promise<T> {
-        const { endpoint, indexName } = this.options;
+        const { endpoint, indexName, docType } = this.options;
         const { client } = instance(endpoint);
-        const type = 1 ? '_doc' : '';
+        const type = `${docType}`;
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
@@ -354,13 +357,13 @@ export class Elastic6Service<T extends Elastic6Item> {
         _log(NS, `> params[${id}] =`, $U.json(params));
         const res = await client.update(params).catch(
             $ERROR.handler('update', e => {
-                _err(NS, `> update[${indexName}].err =`, e);
+                _err(NS, `> update[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 //! id 아이템이 없을 경우 발생함.
                 if (`${e.message}`.startsWith('404 document_missing_exception'))
                     throw new Error(`404 NOT FOUND - id:${id}`);
                 //! 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
                 if (`${e.message}`.startsWith('400 remote_transport_exception'))
-                    throw new Error(`404 INVALID FIELD - id:${id}`);
+                    throw new Error(`400 INVALID FIELD - id:${id}`);
                 if (`${e.message}`.startsWith('404 Not Found')) throw new Error(`404 NOT FOUND - id:${id}`);
                 throw e;
             }),
@@ -508,7 +511,7 @@ export class Elastic6Service<T extends Elastic6Item> {
 export const $ERROR = {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     handler: (name: string, cb?: (e: Error) => any) => (e: any) => {
-        _err(NS, `! err[${name}] =`, e instanceof Error, $U.json(e));
+        _err(NS, `! err[${name}]@a =`, e instanceof Error, $U.json(e));
         const status = `${e.statusCode || ''}`;
         const message = `${e.message || e.msg || ''}`;
         const error = ((e: any) => {
@@ -535,8 +538,8 @@ export const $ERROR = {
         error.message = error.message || message;
         //! print the unknown type exception
         if (!error || error.status) {
-            _err(NS, `! err[${name}] =`, e instanceof Error, $U.json(e));
-            _err(NS, `> error[${name}] =`, $U.json(error));
+            // _err(NS, `! err[${name}]@b =`, e instanceof Error, $U.json(e));
+            // _err(NS, `> err[${name}]@c =`, $U.json(error));
             // _err(NS, `> error[${name}].type =`, error.type);
             // _err(NS, `> error[${name}].reason =`, error.reason);
             // _err(NS, `> error[${name}].message =`, error.message);
