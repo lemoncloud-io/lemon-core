@@ -13,13 +13,13 @@ import { $engine, _log, _inf, _err, $U } from '../engine/';
 const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 
 import { GeneralItem } from './core-types';
-import { instance, DynamoOption } from './dynamo-service';
+import { DynamoOption, DynamoService } from './dynamo-service';
 
 /**
  * class: QueryResult
  * - result information of query.
  */
-export interface QueryResult<T> {
+export interface DynamoQueryResult<T> {
     // list of data
     list: T[];
     // number of data
@@ -38,7 +38,7 @@ export interface DynamoSimpleQueriable<T extends GeneralItem> {
      *
      * @param pkey  value of partition-key
      */
-    queryAll(pkey: string, limit?: number, isDesc?: boolean): Promise<QueryResult<T>>;
+    queryAll(pkey: string, limit?: number, isDesc?: boolean): Promise<DynamoQueryResult<T>>;
 
     /**
      * simple range query by `partition-key` and `range: sort-key` w/ limit.
@@ -49,7 +49,7 @@ export interface DynamoSimpleQueriable<T extends GeneralItem> {
      * @param limit limit of page
      * @param last  the last evaluated key (as sort-key)
      */
-    queryRange(pkey: string, from: number, to: number, limit?: number, last?: number): Promise<QueryResult<T>>;
+    queryRange(pkey: string, from: number, to: number, limit?: number, last?: number): Promise<DynamoQueryResult<T>>;
 }
 
 /** ****************************************************************************************************************
@@ -72,7 +72,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         this.options = options;
     }
 
-    public async queryAll(pkey: string, limit?: number, isDesc?: boolean): Promise<QueryResult<T>> {
+    public async queryAll(pkey: string, limit?: number, isDesc?: boolean): Promise<DynamoQueryResult<T>> {
         return this.queryRangeBy(pkey, -1, -1, limit, null, isDesc);
     }
 
@@ -82,7 +82,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         to: number,
         limit?: number,
         last?: number,
-    ): Promise<QueryResult<T>> {
+    ): Promise<DynamoQueryResult<T>> {
         return this.queryRangeBy(pkey, from, to, limit, last, false);
     }
 
@@ -97,7 +97,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         limit?: number,
         last?: number,
         isDesc?: boolean,
-    ): Promise<QueryResult<T>> {
+    ): Promise<DynamoQueryResult<T>> {
         _log(NS, `queryRangeBy(${pkey}, ${from}, ${to})...`);
 
         //! load table information..
@@ -136,7 +136,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         _log(NS, `> payload[${pkey}] =`, $U.json(payload));
 
         //! get instance of dynamodoc, and execute query().
-        const { dynamodoc } = instance();
+        const { dynamodoc } = DynamoService.instance();
         const res = await dynamodoc.query(payload).promise();
         if (res) {
             // _log(NS, `> query[${pkey}].res =`, $U.json(res)); // `startKey`
@@ -150,7 +150,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
             _log(NS, `> query[${pkey}].scannedCount =`, scannedCount);
             _log(NS, `> query[${pkey}].lastKey =`, last);
             //! prepare result-set
-            const result: QueryResult<T> = {
+            const result: DynamoQueryResult<T> = {
                 list: items as T[],
                 count,
                 last,

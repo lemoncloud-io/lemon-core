@@ -9,3 +9,7 @@ data:
     name: Hong
     last: 0
     balance: 1200
+
+  - id: A2
+    type: account
+    name: last

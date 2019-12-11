@@ -9,11 +9,11 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_ } from '../engine/';
+import { _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
 
 import { GeneralItem } from './core-types';
-import { Elastic6Option, instance, $ERROR } from './elastic6-service';
+import { Elastic6Option, $ERROR, Elastic6Service } from './elastic6-service';
 import { SearchParams } from 'elasticsearch';
 
 /**
@@ -25,6 +25,10 @@ export interface QueryResult<T> {
     list: T[];
     // number of data
     total?: number;
+    // current page
+    page?: number;
+    // limit of list.
+    limit?: number;
 }
 /**
  * class: `SimpleSearchParam`
@@ -132,7 +136,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
     public async searchSimple(param: SimpleSearchParam) {
         if (!param) throw new Error('@param (SimpleSearchParam) is required');
         const { endpoint, indexName, docType } = this.options;
-        const { client } = instance(endpoint);
+        const { client } = Elastic6Service.instance(endpoint);
         _log(NS, `- search(${indexName})....`);
         _log(NS, `> param =`, $U.json(param));
 

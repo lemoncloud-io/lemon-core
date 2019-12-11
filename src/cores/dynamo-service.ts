@@ -6,6 +6,7 @@
  * @date        2019-08-28 initial version
  * @date        2019-10-16 cleanup and optimize log
  * @date        2019-11-19 optimize 404 error case, and normalize key.
+ * @date        2019-12-10 support `DummyDynamoService.listItems()` for mocks
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -40,13 +41,9 @@ export interface DynamoOption {
 }
 
 //! create(or get) instance.
-export const instance = () => {
+const instance = () => {
     const region = 'ap-northeast-2';
-    const config = { region };
-    const dynamo = new AWS.DynamoDB(config); // DynamoDB Main.
-    const dynamodoc = new AWS.DynamoDB.DocumentClient(config); // DynamoDB Document.
-    const dynamostr = new AWS.DynamoDBStreams(config); // DynamoDB Stream.
-    return { dynamo, dynamostr, dynamodoc };
+    return DynamoService.instance(region);
 };
 
 //! normalize dynamo properties.
@@ -81,7 +78,20 @@ export class DynamoService<T extends GeneralItem> {
     /**
      * say hello of identity.
      */
-    public hello = async () => `dynamo-service:${this.options.tableName}`;
+    public hello = () => `dynamo-service:${this.options.tableName}`;
+
+    /**
+     * simple instance maker.
+     * @param region    (default as `ap-northeast-2`)
+     */
+    public static instance(region?: string) {
+        region = `${region || 'ap-northeast-2'}`;
+        const config = { region };
+        const dynamo = new AWS.DynamoDB(config); // DynamoDB Main.
+        const dynamodoc = new AWS.DynamoDB.DocumentClient(config); // DynamoDB Document.
+        const dynamostr = new AWS.DynamoDBStreams(config); // DynamoDB Stream.
+        return { dynamo, dynamostr, dynamodoc };
+    }
 
     /**
      * prepare `CreateTable` payload.
@@ -429,7 +439,23 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
     /**
      * say hello()
      */
-    public hello = async () => `dummy-dynamo-service:${this.options.tableName}`;
+    public hello = () => `dummy-dynamo-service:${this.options.tableName}`;
+
+    /**
+     * ONLY FOR DUMMY
+     * - send list of data.
+     *
+     * @param page  page number starts from 1
+     * @param limit limit of count.
+     */
+    public async listItems(page?: number, limit?: number) {
+        page = $U.N(page, 1);
+        limit = $U.N(limit, 2);
+        const keys = Object.keys(this.buffer);
+        const total = keys.length;
+        const list = keys.slice((page - 1) * limit, page * limit).map(_ => this.buffer[_]);
+        return { page, limit, total, list };
+    }
 
     public async readItem(id: string, sort?: string | number): Promise<T> {
         const item: T = this.buffer[id];

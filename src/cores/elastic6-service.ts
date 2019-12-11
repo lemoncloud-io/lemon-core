@@ -27,7 +27,7 @@ import { loadDataYml } from '../tools/shared';
 /**
  * types of key
  */
-export type KEY_TYPE = 'number' | 'string';
+type KEY_TYPE = 'number' | 'string';
 
 /**
  * options for construction.
@@ -47,9 +47,8 @@ export interface Elastic6Item extends GeneralItem {
 }
 
 //! create(or get) instance.
-export const instance = (endpoint: string) => {
-    const client = new elasticsearch.Client({ host: endpoint });
-    return { client };
+const instance = (endpoint: string) => {
+    return Elastic6Service.instance(endpoint);
 };
 
 /**
@@ -70,7 +69,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * say hello of identity.
      */
-    public hello = async () => `elastic6-service:${this.options.indexName}`;
+    public hello = () => `elastic6-service:${this.options.indexName}`;
+
+    /**
+     * simple instance maker.
+     * @param endpoint  service-url
+     */
+    public static instance(endpoint: string) {
+        const client = new elasticsearch.Client({ host: endpoint });
+        return { client };
+    }
 
     /**
      * create index by name
@@ -631,7 +639,7 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
     /**
      * say hello()
      */
-    public hello = async () => `dummy-elastic6-service:${this.options.indexName}`;
+    public hello = () => `dummy-elastic6-service:${this.options.indexName}`;
 
     public async readItem(id: string): Promise<T> {
         const item: T = this.buffer[id];

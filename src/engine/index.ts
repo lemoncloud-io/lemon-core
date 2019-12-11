@@ -35,6 +35,7 @@ export const _err = $engine.err;
 //! export sub-modules..
 export * from './types';
 export * from './engine';
+export { buildEngine } from './builder';
 
 //! export default.
 export default $engine;
