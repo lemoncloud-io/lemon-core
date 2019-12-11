@@ -93,6 +93,7 @@ describe('LambdaWEBHandler', () => {
         expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function');          // must be decoder function
 
         //! GET `/lemon` controller
+        event.resource = '/lemon/{id}'
         event.path = '/lemon';
         expect2(await service.handle(event, null), 'body').toEqual({ body:$U.json({ mode:'do-list', type:'lemon', hello:'my-lemon-web-controller:lemon' })});
 

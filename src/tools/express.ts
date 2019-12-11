@@ -99,7 +99,7 @@ export const buildExpress = (
             queryStringParameters: req.query || {},
             pathParameters: req.params,
             httpMethod: req.method,
-            connection: req.connection,
+            connection: 1 ? null : req.connection, //WARN! - DO NOT USE THIS DUE TO CIRCULAR STRUCTURE.
             url: req.url,
             headers: req.headers,
             body: req.body,
@@ -189,7 +189,7 @@ export const buildExpress = (
                             callback && callback(null, _);
                         })
                         .catch(e => {
-                            // _err(NS, '! exp.err =', e);
+                            _err(NS, '! exp.err =', e);
                             callback && callback(e);
                         });
                 };
