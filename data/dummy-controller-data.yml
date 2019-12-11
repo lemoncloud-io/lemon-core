@@ -1,0 +1,10 @@
+# dummy data for ticketing internal test!
+data:
+  - id: A0
+    type: user
+    name: lemon
+
+  - id: A1
+    type: null
+    nick: cloud
+    last: 0
