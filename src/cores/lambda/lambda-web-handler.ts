@@ -76,6 +76,12 @@ export const failure = (body: any, status?: number) => {
     return buildResponse(status === undefined ? 503 : status, body);
 };
 
+export const redirect = (location: any, status?: number) => {
+    const res = buildResponse(status === undefined ? 300 : status, '');
+    res.headers['Location'] = location; // set location.
+    return res;
+};
+
 /** ********************************************************************************************************************
  *  COMMON Constants
  ** ********************************************************************************************************************/
@@ -166,28 +172,36 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const CMD = param.cmd;
 
         //! call next.. (it will return result or promised)
-        return this.handleProtocol(param)
+        return this.handleProtocol(param, event)
             .then(_ => {
                 return success(_);
             })
             .catch((e: any) => {
-                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].err =`, typeof e, e);
+                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].err =`, e instanceof Error ? e : $U.json(e));
                 const message = `${e.message || e.reason || $U.json(e)}`;
                 _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].msg =`, message);
                 if (message.startsWith('404 NOT FOUND')) {
                     return notfound(message);
                 }
+
                 //! report error.
                 if (LambdaHandler.REPORT_ERROR) {
                     return doReportError(e, $ctx, event).then(() => {
                         return failure(e instanceof Error ? message : e);
                     });
                 }
+
                 //! common format of error.
                 if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
                     const status = $U.N(message.substring(0, 3), 0);
+                    //! handle for 302/301 redirect. format: 303 REDIRECT - http://~~~
+                    if ((status == 301 || status == 302) && message.indexOf(' - ') > 0) {
+                        const loc = message.substring(message.indexOf(' - ') + 3).trim();
+                        if (loc) return redirect(loc, status);
+                    }
                     return failure(message, status);
                 }
+
                 //! send failure.
                 return failure(e instanceof Error ? message : e);
             });
@@ -197,8 +211,9 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * handle param via protocol-service.
      *
      * @param param protocol parameters
+     * @param event (optional) origin event object.
      */
-    public async handleProtocol<TResult = any>(param: ProtocolParam): Promise<TResult> {
+    public async handleProtocol<TResult = any>(param: ProtocolParam, event?: APIGatewayProxyEvent): Promise<TResult> {
         const TYPE = param.type || '';
         const MODE = param.mode || 'GET';
         const ID = param.id || '';
@@ -223,7 +238,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             else if (typeof decoder == 'object') return (decoder as CoreWEBController).decode(MODE, ID, CMD);
             return null;
         })();
-        if (!next) throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
+        if (!next) {
+            _err(NS, `! WARN ! MISSING NEXT-HANDLER. event=`, $U.json(event));
+            throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
+        }
 
         //! call next.. (it will return result or promised)
         return (() => {
@@ -291,6 +309,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const version = (config && config.getVersion()) || '0.0.0';
         const stage = reqContext.stage || (config && config.getStage()) || '';
         const source = `api://${reqContext.accountId}@${service}-${stage}${event.path}#${version}`; // the origin request protocol uri (must use 'api')
+        const domain = reqContext.domainName || event.headers['Host'] || event.headers['host'];
 
         //! - extract original request infor.
         const clientIp = reqContext.identity && reqContext.identity.sourceIp;
@@ -298,7 +317,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const accountId = reqContext.accountId;
 
         //! save into headers and returns.
-        const context = { ...res, identity, source, clientIp, requestId, accountId };
+        const context: NextContext = { ...res, identity, source, clientIp, requestId, accountId, domain };
         return context;
     }
 }

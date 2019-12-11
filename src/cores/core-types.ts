@@ -68,6 +68,7 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
     clientIp?: string; // ip-address of source client.
     requestId?: string; // id of request to keep track of timing infor w/ `metrics`
     accountId?: string; // id of account of initial request. (ex: `085403634746` for lemon profile)
+    domain?: string; // domain name of request.
     depth?: number; // calling depth for every handler. ( automatically increased from lambda-handler )
 }
 

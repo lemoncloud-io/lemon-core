@@ -71,8 +71,15 @@ describe('Elastic6Service', () => {
         if (hasError.endsWith('unknown error')) return done(); // ignore!
 
         //! make sure deleted.
-        await service.deleteItem('A0').catch(GETERR);
-        await service.deleteItem('A1').catch(GETERR);
+        const initA0 = await service.deleteItem('A0').catch(GETERR);
+        const initA1 = await service.deleteItem('A1').catch(GETERR);
+
+        //! make sure the index is ready.
+        if (initA0 == '404 index_not_found_exception - no such index') {
+            expect2(await service.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: "test-v3", shards_acknowledged: true });
+        }
+
+        //! make sure empty index.
         expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
         expect2(await service.readItem('A1').catch(GETERR)).toEqual('404 NOT FOUND - id:A1');
 
@@ -87,9 +94,22 @@ describe('Elastic6Service', () => {
         expect2(await service.updateItem('A0', { nick:'bb' }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'bb' });
         expect2(await service.readItem('A0').catch(GETERR), '').toEqual({ _id:'A0', _version: Number(data0._version)+2, id:'A0', type:'', name:'b0', nick:'bb' }); // `._version` is incremented.
 
-        expect2(await service.updateItem('A0', null, { count:2 }).catch(GETERR), '!_version').toEqual('404 INVALID FIELD - id:A0'); // no `.count` property.
+        expect2(await service.updateItem('A0', null, { count:2 }).catch(GETERR), '!_version').toEqual('400 INVALID FIELD - id:A0'); // no `.count` property.
         expect2(await service.updateItem('A0', { count:10 }).catch(GETERR), '!_version').toEqual({ _id:'A0', count:10 });
         expect2(await service.updateItem('A0', null, { count:2 }).catch(GETERR), '!_version').toEqual({ _id:'A0' });
+
+        //! try to overwrite, and update
+        expect2(await service.saveItem('A0', { count:10, nick:null, name:'dumm' }).catch(GETERR), '!_version').toEqual({ _id:'A0', count:10, name:'dumm', nick: null });
+        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', count:10, name:'dumm', nick:null, type:'' });     // support number, string, null type.
+
+        expect2(await service.updateItem('A0', { nick:'dumm', name:null }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'dumm', name: null });
+        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', count:10, nick:'dumm', name:null, type:'' });     //! count should be remained
+
+        //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS.
+        // expect2(await service.saveItem('A0', { nick:'name', name:null }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'name', name: null });
+        // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', nick:'name', name:null, type:'' });               //! `count` should be cleared
+
+        //! delete
         expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0' });
         expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
 

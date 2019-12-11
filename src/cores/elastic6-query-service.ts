@@ -131,7 +131,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      */
     public async searchSimple(param: SimpleSearchParam) {
         if (!param) throw new Error('@param (SimpleSearchParam) is required');
-        const { endpoint, indexName } = this.options;
+        const { endpoint, indexName, docType } = this.options;
         const { client } = instance(endpoint);
         _log(NS, `- search(${indexName})....`);
         _log(NS, `> param =`, $U.json(param));
@@ -140,7 +140,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         const payload = this.buildQueryBody(param);
 
         const id = '';
-        const type = 1 ? '_doc' : '';
+        const type = `${docType}`;
         const params: SearchParams = { index: indexName, type, body: payload };
         _log(NS, `> params[${id}] =`, $U.json(params));
         const res = await client.search(params).catch(
@@ -150,11 +150,11 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             }),
         );
         // {"took":6,"timed_out":false,"_shards":{"total":4,"successful":4,"skipped":0,"failed":0},"hits":{"total":1,"max_score":0.2876821,"hits":[{"_index":"test-v3","_type":"_doc","_id":"aaa","_score":0.2876821,"_source":{"name":"AAA","@id":"aaa","a":-3,"b":-2}}]}}
-        _log(NS, `> search[${id}].res =`, $U.json(res));
+        // _log(NS, `> search[${id}].res =`, $U.json(res));
         _log(NS, `> search[${id}].took =`, res.took);
         _log(NS, `> search[${id}].hits.total =`, res.hits && res.hits.total);
         _log(NS, `> search[${id}].hits.max_score =`, res.hits && res.hits.max_score);
-        _log(NS, `> search[${id}].hits.hits[0] =`, res.hits && res.hits.hits[0]);
+        _log(NS, `> search[${id}].hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
 
         //! extract for result.
         const $hits = res.hits;
@@ -164,7 +164,9 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             const id = _ && _._id; // id of elastic-search
             const score = _ && _._score; // search score.
             const source = _ && _._source; // origin data
+            //! save as internal
             source._id = source._id || id; // attach to internal-id
+            source._score = score;
             return source as T;
         });
 
@@ -213,7 +215,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                         //! escape queries..
                         // + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /
                         // val = val.replace(/([\(\)])/ig,'\\$1');	    //TODO - 이걸 무시하면, 중복 조건 검색에 문제가 생김, 하여 일단 안하는걸루. @180828.
-                        list.push('(' + val + ')');
+                        list.push(`(${val})`);
                     }
                 } else if (key === '$A') {
                     $A = `${val}`.trim(); // ',' delimited terms to count
@@ -232,7 +234,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                         let $includes: string[] = [];
                         let $excludes: string[] = [];
                         vals.forEach(val => {
-                            val = (val || '').trim();
+                            val = `${val || ''}`.trim();
                             if (!val) return;
                             if (val.startsWith('!')) {
                                 $excludes.push(val.substr(1));
@@ -245,9 +247,8 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                         $source = val;
                     }
                 } else if (key === '$exist' || key === '$exists') {
-                    let vals: string[] = val.split(',') || [];
-                    vals.forEach(val => {
-                        val = (val || '').trim();
+                    (val.split(',') || []).forEach((val: any) => {
+                        val = `${val || ''}`.trim();
                         if (!val) return;
                         if (val.startsWith('!')) {
                             list.push('NOT _exists_:' + val.substr(1));
@@ -293,20 +294,12 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                         if ($source && $source.includes) {
                             $source.includes.push(key.substr(1));
                         }
+                    } else if (val === undefined) {
+                        //! nop
+                    } else if (val && Array.isArray(val)) {
+                        list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
                     } else {
-                        if (Array.isArray(val)) {
-                            list.push(
-                                '(' +
-                                    val
-                                        .map(_ => {
-                                            return key + ':' + _;
-                                        })
-                                        .join(' OR ') +
-                                    ')',
-                            );
-                        } else {
-                            list.push(key + ':' + val);
-                        }
+                        list.push(`${key}:${val}`);
                     }
                 }
                 return list;

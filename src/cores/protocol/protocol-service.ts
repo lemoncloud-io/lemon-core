@@ -352,14 +352,16 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
      * @param event     the lambda compartible event data.
      */
     public transformToParam(event: APIGatewayProxyEvent): ProtocolParam {
+        if (!event) throw new Error('@event (API Event) is required!'); // avoid null exception.
         const headers = event.headers;
         if (!headers) throw new Error('.headers is required');
         const requestContext = event.requestContext;
         if (!requestContext) throw new Error('.requestContext is required');
 
         //! extract part
-        const { path, httpMethod } = event;
-        const $path = event.pathParameters || {};
+        const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
+        //! the path format should be `/{type}/{id}/{cmd}`
+        const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || {};
         const param = event.queryStringParameters;
         const body =
             typeof event.body == 'string' && event.body.startsWith('{') && event.body.endsWith('}')
@@ -371,9 +373,10 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             throw new Error(".headers['x-protocol-context'] is required");
         const context: NextContext = headers['x-protocol-context'] ? JSON.parse(headers['x-protocol-context']) : null;
 
+        //! determine execute mode.
         const service = '';
         const stage: STAGE = `${requestContext.stage || ''}` as STAGE;
-        const type = `${path || ''}`.split('/')[1] || '';
+        const type = $path.type || `${resource || path || ''}`.split('/')[1] || ''; // 1st path param will be type of resource.
         const mode: NextMode =
             httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : (`${httpMethod}`.toUpperCase() as NextMode);
 
@@ -383,7 +386,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         if (context && requestContext.requestId != context.requestId)
             throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
 
-        //! prepare result.
+        //! pack as protocol-param.
         const res: ProtocolParam = {
             service,
             stage,

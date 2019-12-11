@@ -16,6 +16,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
 import QUERY_STRING from 'query-string';
+import * as uuid from 'uuid';
 
 /**
  * class: Utilities
@@ -238,9 +239,8 @@ export class Utilities {
      *
      * @returns {number}
      */
-    public current_time_ms() {
-        //TODO:XENI - 서버와 시간 동기화를 위해서, 디비서버에등에서 일체화된 시간 동기값을 환산하여 준다.
-        var time_shift = 0;
+    public current_time_ms(shift?: number) {
+        var time_shift = this.N(shift, 0);
         var ret = new Date().getTime();
         ret += time_shift;
         return ret;
@@ -398,6 +398,12 @@ export class Utilities {
         return diff;
     }
 
+    /**
+     * calcualte node differences
+     *
+     * @param obj1
+     * @param obj2
+     */
     public diff_node(obj1: any, obj2: any) {
         let keys1: any = [],
             keys2: any = [];
@@ -425,7 +431,12 @@ export class Utilities {
         return diff;
     }
 
-    public hash(data: any) {
+    /**
+     * get 32-bits hash value.
+     *
+     * @param data
+     */
+    public hash(data: any): string {
         data = data || '';
         data = typeof data === 'object' ? this.json(data, true) : data; //WARN! it must be sorted json.
         data = typeof data !== 'string' ? String(data) : data;
@@ -440,7 +451,7 @@ export class Utilities {
          * @param {integer} [seed] optionally pass the hash of the previous chunk
          * @returns {integer | string}
          */
-        const hashFnv32a = function(str: any, asString?: any, seed?: any) {
+        const hashFnv32a = function(str: any, asString?: any, seed?: any): string {
             /*jshint bitwise:false */
             let i, l;
             let hval = seed === undefined ? 0x811c9dc5 : seed;
@@ -449,13 +460,10 @@ export class Utilities {
                 hval ^= str.charCodeAt(i);
                 hval += (hval << 1) + (hval << 4) + (hval << 7) + (hval << 8) + (hval << 24);
             }
-            if (asString) {
-                // Convert to 8 digit hex string
-                return ('0000000' + (hval >>> 0).toString(16)).substr(-8);
-            }
-            return hval >>> 0;
+            // Convert to 8 digit hex string
+            return ('0000000' + (hval >>> 0).toString(16)).substr(-8);
         };
-        return hashFnv32a(data);
+        return hashFnv32a(data, true);
     }
 
     //! start promise chain.
@@ -478,7 +486,10 @@ export class Utilities {
         return chain;
     }
 
-    public md5(data: any, digest: any) {
+    /**
+     * get md5 hash
+     */
+    public md5(data: any, digest: 'latin1' | 'hex' | 'base64') {
         digest = digest === undefined ? 'hex' : digest;
         return crypto
             .createHash('md5')
@@ -486,7 +497,10 @@ export class Utilities {
             .digest(digest);
     }
 
-    public hmac(data: any, KEY: any, algorithm: any, encoding: any) {
+    /**
+     * get hmac hash
+     */
+    public hmac(data: any, KEY?: string, algorithm?: string, encoding?: 'latin1' | 'hex' | 'base64') {
         KEY = KEY || 'XENI';
         encoding = encoding || 'base64';
         algorithm = algorithm || 'sha256';
@@ -496,6 +510,11 @@ export class Utilities {
             .digest(encoding);
     }
 
+    /**
+     * parse query-string.
+     *
+     * @param query
+     */
     public qs_parse(query: string) {
         const param: any = QUERY_STRING.parse(query);
         Object.keys(param).forEach(key => {
@@ -513,8 +532,68 @@ export class Utilities {
         return param;
     }
 
+    /**
+     * stringify as querystring.
+     * @param query
+     */
     public qs_stringify(query: { [key: string]: any }) {
         const param = QUERY_STRING.stringify(query);
         return param;
+    }
+
+    /**
+     * group as qs
+     */
+    public readonly qs = {
+        /**
+         * parse qs string
+         */
+        parse: (q: string) => this.qs_parse(q),
+        /**
+         * stringify qs object
+         */
+        stringify: (q: { [key: string]: any }) => this.qs_stringify(q),
+    };
+
+    /**
+     * get crypto object.
+     */
+    public readonly crypto = (passwd: string, algorithm?: string) => {
+        algorithm = algorithm || 'aes-256-ctr';
+        const MAGIC = 'LM!#';
+        return new (class {
+            public encrypt = (val: string): string => {
+                val = val === undefined ? null : val;
+                // msg = msg && typeof msg == 'object' ? JSON_TAG+JSON.stringify(msg) : msg;
+                //! 어느 데이터 타입이든 저장하기 위해서, object로 만든다음, 암호화 시킨다.
+                const msg = JSON.stringify({ alg: algorithm, val: val });
+                const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
+                // const key = Buffer.from(`${passwd || ''}`, 'utf8');
+                const cipher = crypto.createCipher(algorithm, passwd);
+                // const cipher = crypto.createCipheriv(algorithm, key, iv);
+                const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
+                return crypted.toString(1 ? 'base64' : 'utf8');
+            };
+            public decrypt = (msg: string): string => {
+                const buffer = Buffer.from(`${msg || ''}`, 'base64');
+                // const key = Buffer.from(`${passwd || ''}`, 'utf8');
+                const decipher = crypto.createDecipher(algorithm, passwd);
+                // const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                const dec = Buffer.concat([decipher.update(buffer), decipher.final()]).toString('utf8');
+                if (!dec.startsWith(MAGIC)) throw new Error('400 INVALID PASSWD - invalid magic string!');
+                const data = dec.substr(MAGIC.length);
+                if (data && !data.startsWith('{') && !data.endsWith('}'))
+                    throw new Error('400 INVALID PASSWD - invalid json string!');
+                var $msg = JSON.parse(data) || {};
+                return $msg.val;
+            };
+        })();
+    };
+
+    /**
+     * get UUID as `uuid.v4()`
+     */
+    public uuid() {
+        return uuid.v4();
     }
 }
