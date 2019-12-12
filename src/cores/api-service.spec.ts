@@ -47,6 +47,24 @@ describe('APIService', () => {
         done();
     });
 
+    //! via direct request.
+    it('should pass API (SubTyped) w/ direct request', async done => {
+        //! create direct client.
+        const type0 = ENDPOINT.substring(ENDPOINT.lastIndexOf('/') + 1);
+        const endpoint = ENDPOINT.substring(0, ENDPOINT.lastIndexOf('/'));
+        const client: APIServiceClient = APIService.buildClient(type0, endpoint, null, '');
+        const { service: service0 } = instance(client);
+        const service = service0.buildSubTypeClient(TYPE);
+        /* eslint-disable prettier/prettier */
+        expect2(service.hello()).toEqual(`sub-typed:api-service:api-client:http-web-proxy:API:${HOST}-${type0}`);
+        expect2(await service.doGet(undefined)).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
+        expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
+        expect2(await service.doGet('0')).toEqual({ name: 'lemon' });
+        expect2(await service.doGet('99').catch(GETERR)).toEqual('404 NOT FOUND - id:99');
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
     //! via direct request /w header
     it('should pass API w/ direct request w/ header', async done => {
         //! create direct client.

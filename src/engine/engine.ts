@@ -130,16 +130,17 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
  * send callback web-hook
  * @param data
  */
-export const doReportCallback = async (data: CallbackData, context?: any): Promise<string> => {
+export const doReportCallback = async (data: CallbackData, service?: string, context?: any): Promise<string> => {
     const NS = $U.NS('callback', 'cyan');
-    const stage = $U.env('STAGE', 'local');
-    const name = ($U.env('NAME') as string) || '';
-    const service = ('sms://lemon-todaq-api' + (stage ? `/${name}-${stage}` : `/${name}`)).toLowerCase();
-    const payload = { service, data };
     try {
+        const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
+        const stage = `${$U.env('STAGE', 'local')}`.toLowerCase();
+        const name = `${$U.env('NAME', '')}`.toLowerCase();
+        service = service || `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}/${name}-${stage}`;
+        const payload = { service, data };
         const arn = getHelloArn(context, NS);
         return $sns(arn)
-            .publish('', 'callback', payload)
+            .publish('', 'callback', payload) // subject should be 'callback'
             .then((mid: string) => {
                 _inf(NS, '> callback.res =', mid);
                 return `${mid}`;

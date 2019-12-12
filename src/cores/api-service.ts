@@ -187,75 +187,122 @@ export class APIService implements APIServiceClient {
             const NAME = `API:${host}-${type || ''}`;
             proxy = createHttpWebProxy(NAME, endpoint, headers, (n, s) => s, '');
         }
-
         /**
          * create internal client to translate of full url path with `host`+`path`
          */
-        const client = new (class implements APIServiceClient {
-            private proxy: ApiHttpProxy;
-            private base: string;
-            private type: string;
-            public constructor(proxy?: ApiHttpProxy, base?: string, type?: string) {
-                this.proxy = proxy;
-                this.base = base;
-                this.type = type;
-            }
-            protected asPath = (id?: string, cmd?: string) => {
-                const type = this.type;
-                const _isNa = (a: any) => a === undefined || a === null;
-                return (
-                    '' +
-                    (_isNa(type) ? '' : '/' + encodeURIComponent(type)) +
-                    (_isNa(type) || _isNa(id) ? '' : '/' + encodeURIComponent(id)) +
-                    (_isNa(type) || _isNa(id) || _isNa(undefined) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
-                    ''
-                );
-            };
-            protected asPath2 = (id?: string, cmd?: string) => {
-                const _isNa = (a: any) => a === undefined || a === null;
-                return (
-                    '' +
-                    (_isNa(id) ? '' : encodeURIComponent(id)) +
-                    (_isNa(id) || _isNa(cmd) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
-                    ''
-                );
-            };
-            protected asHostPath = (id?: string, cmd?: string) => {
-                let host = this.base ? this.base : this.type;
-                let path = this.base ? this.asPath(id, cmd) : this.asPath2(id, cmd);
-                if (this.base) {
-                    const url = (!host.startsWith('http') ? 'http://' : '') + `${host}${path || ''}`;
-                    const $url = URL.parse(url);
-                    host = `${$url.protocol || 'http'}//${$url.hostname}`;
-                    path = `${$url.path}`;
-                }
-                // this.base || console.info(`! asHostPath(${id}, ${cmd}) => `, { host, path });
-                return { host, path };
-            };
-            public hello = () => `api-client:${this.proxy.hello()}`;
-            public doGet(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(id, cmd);
-                return this.proxy.doProxy('GET', host, path, param, body, ctx);
-            }
-            public doPut(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(id, cmd);
-                return this.proxy.doProxy('PUT', host, path, param, body, ctx);
-            }
-            public doPost(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(id, cmd);
-                return this.proxy.doProxy('POST', host, path, param, body, ctx);
-            }
-            public doPatch(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(id, cmd);
-                return this.proxy.doProxy('PATCH', host, path, param, body, ctx);
-            }
-            public doDelete(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
-                const { host, path } = this.asHostPath(id, cmd);
-                return this.proxy.doProxy('DELETE', host, path, param, body, ctx);
-            }
-        })(proxy, base, type);
-        return client;
+        return new APIService.ProxyServiceClient(proxy, base, type);
     }
+
+    /**
+     * make a client for sub-typed endpoint.
+     * @param subType   string
+     */
+    public buildSubTypeClient(subType: string): APIServiceClient {
+        return new APIService.SubTypeClient(this, subType);
+    }
+
+    /**
+     * class: `TypedEndpoint`
+     * - by using common proxy, extends endpoint by type.
+     * - endpoint := base+'/'+type.
+     */
+    private static ProxyServiceClient = class implements APIServiceClient {
+        private proxy: ApiHttpProxy;
+        private base: string;
+        private type: string;
+        public constructor(proxy?: ApiHttpProxy, base?: string, type?: string) {
+            this.proxy = proxy;
+            this.base = base;
+            this.type = type;
+        }
+        protected asPath = (id?: string, cmd?: string) => {
+            const type = this.type;
+            const _isNa = (a: any) => a === undefined || a === null;
+            return (
+                '' +
+                (_isNa(type) ? '' : '/' + encodeURIComponent(type)) +
+                (_isNa(type) || _isNa(id) ? '' : '/' + encodeURIComponent(id)) +
+                (_isNa(type) || _isNa(id) || _isNa(undefined) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
+                ''
+            );
+        };
+        protected asPath2 = (id?: string, cmd?: string) => {
+            const _isNa = (a: any) => a === undefined || a === null;
+            return (
+                '' +
+                (_isNa(id) ? '' : encodeURIComponent(id)) +
+                (_isNa(id) || _isNa(cmd) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
+                ''
+            );
+        };
+        protected asHostPath = (id?: string, cmd?: string) => {
+            let host = this.base ? this.base : this.type;
+            let path = this.base ? this.asPath(id, cmd) : this.asPath2(id, cmd);
+            if (this.base) {
+                const url = (!host.startsWith('http') ? 'http://' : '') + `${host}${path || ''}`;
+                const $url = URL.parse(url);
+                host = `${$url.protocol || 'http'}//${$url.hostname}`;
+                path = `${$url.path}`;
+            }
+            // this.base || console.info(`! asHostPath(${id}, ${cmd}) => `, { host, path });
+            return { host, path };
+        };
+        public hello = () => `api-client:${this.proxy.hello()}`;
+        public doGet(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+            const { host, path } = this.asHostPath(id, cmd);
+            return this.proxy.doProxy('GET', host, path, param, body, ctx);
+        }
+        public doPut(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+            const { host, path } = this.asHostPath(id, cmd);
+            return this.proxy.doProxy('PUT', host, path, param, body, ctx);
+        }
+        public doPost(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+            const { host, path } = this.asHostPath(id, cmd);
+            return this.proxy.doProxy('POST', host, path, param, body, ctx);
+        }
+        public doPatch(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+            const { host, path } = this.asHostPath(id, cmd);
+            return this.proxy.doProxy('PATCH', host, path, param, body, ctx);
+        }
+        public doDelete(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+            const { host, path } = this.asHostPath(id, cmd);
+            return this.proxy.doProxy('DELETE', host, path, param, body, ctx);
+        }
+    };
+
+    /**
+     * use sub-typed endpoint.
+     * - extends as endpoint := parent.endpoint + '/' + type
+     */
+    public static SubTypeClient = class implements APIServiceClient {
+        public readonly parent: APIServiceClient;
+        public readonly type: string;
+        public constructor(parent: APIServiceClient, type: string) {
+            this.parent = parent;
+            this.type = `${type || ''}`;
+        }
+        public hello = () => `sub-typed:${this.parent.hello()}`;
+        public asCmd = (id: string, cmd?: string) => {
+            if (id === undefined || id === null) return '';
+            if (id != encodeURI(id)) throw new Error(`@id (string) is not valid format.`);
+            return cmd !== undefined && cmd !== null ? `${id || ''}/${cmd}` : `${id || ''}`;
+        };
+        public doGet(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.parent.doGet(this.type, this.asCmd(id, cmd), param, body);
+        }
+        public doPut(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.parent.doPut(this.type, this.asCmd(id, cmd), param, body);
+        }
+        public doPost(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.parent.doPost(this.type, this.asCmd(id, cmd), param, body);
+        }
+        public doPatch(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.parent.doPatch(this.type, this.asCmd(id, cmd), param, body);
+        }
+        public doDelete(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.parent.doDelete(this.type, this.asCmd(id, cmd), param, body);
+        }
+    };
 
     /**
      * GET HOST/PATH?$param
