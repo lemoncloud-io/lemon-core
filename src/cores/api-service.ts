@@ -248,23 +248,23 @@ export class APIService implements APIServiceClient {
             return { host, path };
         };
         public hello = () => `api-client:${this.proxy.hello()}`;
-        public doGet(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doGet(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
             return this.proxy.doProxy('GET', host, path, param, body, ctx);
         }
-        public doPut(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doPut(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
             return this.proxy.doProxy('PUT', host, path, param, body, ctx);
         }
-        public doPost(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doPost(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
             return this.proxy.doProxy('POST', host, path, param, body, ctx);
         }
-        public doPatch(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doPatch(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
             return this.proxy.doProxy('PATCH', host, path, param, body, ctx);
         }
-        public doDelete(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doDelete(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
             return this.proxy.doProxy('DELETE', host, path, param, body, ctx);
         }
@@ -287,19 +287,19 @@ export class APIService implements APIServiceClient {
             if (id != encodeURI(id)) throw new Error(`@id (string) is not valid format.`);
             return cmd !== undefined && cmd !== null ? `${id || ''}/${cmd}` : `${id || ''}`;
         };
-        public doGet(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+        public async doGet(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
             return this.parent.doGet(this.type, this.asCmd(id, cmd), param, body);
         }
-        public doPut(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+        public async doPut(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
             return this.parent.doPut(this.type, this.asCmd(id, cmd), param, body);
         }
-        public doPost(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+        public async doPost(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
             return this.parent.doPost(this.type, this.asCmd(id, cmd), param, body);
         }
-        public doPatch(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+        public async doPatch(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
             return this.parent.doPatch(this.type, this.asCmd(id, cmd), param, body);
         }
-        public doDelete(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+        public async doDelete(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
             return this.parent.doDelete(this.type, this.asCmd(id, cmd), param, body);
         }
     };
