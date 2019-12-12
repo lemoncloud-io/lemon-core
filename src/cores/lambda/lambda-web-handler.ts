@@ -30,6 +30,7 @@ import {
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
 import $protocol from '../protocol/';
+import { loadJsonSync } from '../../tools/shared';
 
 export type ConfigService = CoreConfigService;
 
@@ -166,6 +167,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         //! prevent error via transform.
         if (event.headers && !event.headers['x-protocol-context']) event.headers['x-protocol-context'] = $U.json($ctx);
         const param: ProtocolParam = $protocol.service.web.transformToParam(event);
+        _log(NS, '! protocol-param =', $U.json(param));
         const TYPE = param.type;
         const MODE = param.mode;
         const ID = param.id;
@@ -214,10 +216,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * @param event (optional) origin event object.
      */
     public async handleProtocol<TResult = any>(param: ProtocolParam, event?: APIGatewayProxyEvent): Promise<TResult> {
-        const TYPE = param.type || '';
-        const MODE = param.mode || 'GET';
-        const ID = param.id || '';
-        const CMD = param.cmd || '';
+        const TYPE = `${param.type || ''}`;
+        const MODE: NextMode = `${param.mode || 'GET'}` as NextMode;
+        const ID = `${param.id || ''}`;
+        const CMD = `${param.cmd || ''}`;
         const $param = param.param;
         const $body = param.body;
         const context = param.context;
@@ -230,14 +232,28 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         }
 
         //! find target next function
-        const decoder: NextDecoder | CoreWEBController = this._handlers[TYPE];
-        // const next: NextHandler<any, TResult, any> = decoder && decoder(MODE, ID, CMD); // 190314 Save next-function.
-        const next: NextHandler<any, TResult, any> = (() => {
+        // const decoder: NextDecoder | CoreWEBController = this._handlers[TYPE];
+        const next: NextHandler<any, TResult, any> = ((decoder: any) => {
+            //! as default handler '/', say the current version.
+            if (MODE === 'LIST' && TYPE === '' && ID === '' && CMD === '') {
+                return async () => {
+                    const $pack = loadJsonSync('package.json');
+                    const name = ($pack && $pack.name) || 'LEMON API';
+                    const version = ($pack && $pack.version) || '0.0.0';
+                    return `${name}/${version}`;
+                };
+            }
+
+            //! error if no decoder.
             if (!decoder) return null;
+
+            //! use decoder() to find target.
             if (typeof decoder == 'function') return decoder(MODE, ID, CMD);
             else if (typeof decoder == 'object') return (decoder as CoreWEBController).decode(MODE, ID, CMD);
             return null;
-        })();
+        })(this._handlers[TYPE]);
+
+        //! if no next, then report error.
         if (!next) {
             _err(NS, `! WARN ! MISSING NEXT-HANDLER. event=`, $U.json(event));
             throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);

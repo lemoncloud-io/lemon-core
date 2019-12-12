@@ -16,20 +16,13 @@ export * from './config/';
 export * from './lambda/';
 export * from './protocol/';
 
-export {
-    APIHttpMethod,
-    ApiHttpProxy,
-    APIHeaders,
-    APIService,
-    APIServiceClient,
-    APIProxyClient,
-    MocksAPIService,
-} from './api-service';
-export { DynamoOption, DynamoService } from './dynamo-service';
-export { DynamoQueryService, DynamoSimpleQueriable } from './dynamo-query-service';
-export { Elastic6Option, Elastic6Service } from './elastic6-service';
-export { Elastic6QueryService } from './elastic6-query-service';
-export { StorageModel, StorageService, DynamoStorageService, DummyStorageService } from './storage-service';
+//! export services
+export * from './api-service';
+export * from './dynamo-service';
+export * from './dynamo-query-service';
+export * from './elastic6-service';
+export * from './elastic6-query-service';
+export * from './storage-service';
 
 //! import default with named.
 import aws from './aws/';

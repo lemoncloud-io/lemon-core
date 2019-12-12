@@ -56,6 +56,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.0.10    | show current name/version by `GET /`.
 | 2.0.9     | improve `Elastic6Service` + `Elastic6QueryService`.
 | 2.0.8     | improve `APIService` w/ mocks data.
 | 2.0.7     | improve `StorageService` along w/ dummy-storage-service.
