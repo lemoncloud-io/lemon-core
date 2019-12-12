@@ -119,7 +119,7 @@ export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHan
  */
 export class LambdaHandler {
     //! shared config.
-    public static REPORT_ERROR: boolean = false;
+    public static REPORT_ERROR: boolean = $U.env('REPORT_ERROR', '1') == '1';
 
     //! handler map.
     protected _map: HandlerMap = {};
