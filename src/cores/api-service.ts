@@ -125,7 +125,7 @@ export class APIService implements APIServiceClient {
      * @param endpoint  base endpoint (support ONLY http, https)
      * @param headers   common headers.
      * @param client    real api-client to use (or use proxy, or create default)
-     * @param proxy     proxy-service to use if there is no client
+     * @param proxy     proxy-service to use if there is no client (or use backbone server)
      */
     public constructor(
         type: string,
@@ -195,10 +195,19 @@ export class APIService implements APIServiceClient {
 
     /**
      * make a client for sub-typed endpoint.
-     * @param subType   string
+     * @param type      sub-type path.
      */
-    public buildSubTypeClient(subType: string): APIServiceClient {
-        return new APIService.SubTypeClient(this, subType);
+    public buildSubTypeClient(type: string, useRecord?: boolean, folder?: string): APIServiceClient {
+        const client = new APIService.SubTypeClient(this, type);
+        return useRecord ? new APIService.APIServiceClientRecorder(client, `${this.endpoint}/${type}`, folder) : client;
+    }
+
+    /**
+     * make api recorder of this service.
+     * @param folder    base folder (default `./logs`)
+     */
+    public buildRecorder(folder?: string): APIServiceClient {
+        return new APIService.APIServiceClientRecorder(this, this.endpoint, folder);
     }
 
     /**
@@ -207,9 +216,9 @@ export class APIService implements APIServiceClient {
      * - endpoint := base+'/'+type.
      */
     private static ProxyServiceClient = class implements APIServiceClient {
-        private proxy: ApiHttpProxy;
-        private base: string;
-        private type: string;
+        public readonly proxy: ApiHttpProxy;
+        public readonly base: string;
+        public readonly type: string;
         public constructor(proxy?: ApiHttpProxy, base?: string, type?: string) {
             this.proxy = proxy;
             this.base = base;
@@ -301,6 +310,123 @@ export class APIService implements APIServiceClient {
         }
         public async doDelete(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
             return this.parent.doDelete(this.type, this.asCmd(id, cmd), param, body);
+        }
+    };
+
+    /**
+     * recorder of api-http-proxy client.
+     */
+    public static ApiHttpProxyRecorder = class implements ApiHttpProxy {
+        public readonly target: ApiHttpProxy;
+        public readonly folder: string;
+        public static next: number = 1;
+        public constructor(target: ApiHttpProxy, folder?: string) {
+            this.target = target;
+            this.folder = `${folder || './logs'}`;
+        }
+        public hello = () => `recorder:${this.target.hello()}`;
+        public async doProxy<T = any>(
+            method: APIHttpMethod,
+            host: string,
+            path?: string,
+            param?: any,
+            body?: any,
+            context?: any,
+        ): Promise<T> {
+            const endpoint =
+                host.startsWith('http://') || host.startsWith('https://') ? `${host}${path}` : `http://${host}${path}`;
+            const index = APIService.ApiHttpProxyRecorder.next++;
+            const load = { method, endpoint, param, body, context };
+            return this.target
+                .doProxy(method, host, path, param, body, context)
+                .then((data: any) => ({ index, load, data, error: null }))
+                .catch((error: any) => ({ index, load, data: null, error }))
+                .then(({ index, load, data, error }) => {
+                    const baseDir = (() => {
+                        // eslint-disable-next-line prettier/prettier
+                        const ts = $U.ts().substring(0, '1999-01-01'.length).replace(/\-/ig, '');
+                        const fn = `${this.folder}/R${ts}`;
+                        if (index <= 1 && !fs.existsSync(`${this.folder}`)) fs.mkdirSync(`${this.folder}`);
+                        if (index <= 1 && !fs.existsSync(fn)) fs.mkdirSync(fn);
+                        return fn;
+                    })();
+                    // eslint-disable-next-line prettier/prettier
+                    const message = error instanceof Error ? `${error.message}` : typeof error != 'object' ? `${error}` : error ? JSON.stringify(error) : '';
+                    const fn = (n: number): string => {
+                        const [S, s] = ['00000', `${n}`];
+                        return n > 0 ? `${S.substring(s.length)}${s}` : s.startsWith('-') ? `N${s.substring(1)}` : s;
+                    };
+                    const file = `${baseDir}/P${fn(index)}.json`;
+                    fs.writeFileSync(file, JSON.stringify({ param: load, data, error: message }, null, '  '), 'utf8');
+                    if (error) throw error;
+                    else return data;
+                });
+        }
+    };
+
+    /**
+     * recorder of api-service client.
+     */
+    public static APIServiceClientRecorder = class implements APIServiceClient {
+        public readonly target: APIServiceClient;
+        public readonly endpoint: string;
+        public readonly folder: string;
+        public static next: number = 1;
+        public constructor(target: APIServiceClient, endpoint: string, folder?: string) {
+            this.target = target;
+            this.endpoint = `${endpoint || ''}`;
+            this.folder = `${folder || './logs'}`;
+        }
+        public hello = () => `recorder:${this.target.hello()}`;
+        public async doRecord(method: APIHttpMethod, id: string, cmd?: string, param?: any, body?: any) {
+            const index = APIService.APIServiceClientRecorder.next++;
+            const load = { method, endpoint: `${this.endpoint || ''}`, id, cmd, param, body };
+            const call = async (method: APIHttpMethod) => {
+                if (method == 'GET') return this.target.doGet(id, cmd, param, body);
+                if (method == 'PUT') return this.target.doPut(id, cmd, param, body);
+                if (method == 'POST') return this.target.doPost(id, cmd, param, body);
+                if (method == 'PATCH') return this.target.doPatch(id, cmd, param, body);
+                if (method == 'DELETE') return this.target.doDelete(id, cmd, param, body);
+                throw new Error(`@method is not valid. method:${method}`);
+            };
+            return call(method)
+                .then((data: any) => ({ index, load, data, error: null }))
+                .catch((error: any) => ({ index, load, data: null, error }))
+                .then(({ index, load, data, error }) => {
+                    const baseDir = (() => {
+                        // eslint-disable-next-line prettier/prettier
+                        const ts = $U.ts().substring(0, '1999-01-01'.length).replace(/\-/ig, '');
+                        const fn = `${this.folder}/R${ts}`;
+                        if (index <= 1 && !fs.existsSync(`${this.folder}`)) fs.mkdirSync(`${this.folder}`);
+                        if (index <= 1 && !fs.existsSync(fn)) fs.mkdirSync(fn);
+                        return fn;
+                    })();
+                    // eslint-disable-next-line prettier/prettier
+                    const message = error instanceof Error ? `${error.message}` : typeof error != 'object' ? `${error}` : error ? JSON.stringify(error) : '';
+                    const fn = (n: number): string => {
+                        const [S, s] = ['00000', `${n}`];
+                        return n > 0 ? `${S.substring(s.length)}${s}` : s.startsWith('-') ? `N${s.substring(1)}` : s;
+                    };
+                    const file = `${baseDir}/D${fn(index)}.json`;
+                    fs.writeFileSync(file, JSON.stringify({ param: load, data, error: message }, null, '  '), 'utf8');
+                    if (error) throw error;
+                    else return data;
+                });
+        }
+        public async doGet(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.doRecord('GET', id, cmd, param, body);
+        }
+        public async doPut(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.doRecord('PUT', id, cmd, param, body);
+        }
+        public async doPost(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.doRecord('POST', id, cmd, param, body);
+        }
+        public async doPatch(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.doRecord('PATCH', id, cmd, param, body);
+        }
+        public async doDelete(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
+            return this.doRecord('DELETE', id, cmd, param, body);
         }
     };
 
@@ -529,14 +655,9 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         this.$map = $map;
     }
 
-    protected asPath = (type?: string, path?: string) => {
+    protected asPath = (id?: string, cmd?: string) => {
         const _isNa = (a: any) => a === undefined || a === null;
-        return (
-            '' +
-            (_isNa(type) ? '' : encodeURIComponent(type)) +
-            (_isNa(type) || !path ? '' : '/' + encodeURI(path)) +
-            ''
-        );
+        return (_isNa(id) ? '' : encodeURIComponent(id)) + (_isNa(id) || !cmd ? '' : '/' + encodeURI(cmd));
     };
 
     public async doProxy<T = any>(
@@ -550,7 +671,8 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         // console.info(`! mocks.proxy(${method},${type},${path})...`);
         this.loadSync();
         const file = path && path.endsWith('.json') ? path.split('/').pop() : '';
-        const key = `${method} ${this.endpoint}/${type || ''}${path ? '/' : ''}${path || ''}`;
+        // eslint-disable-next-line prettier/prettier
+        const key = `${method} ${this.endpoint}${this.na(type, '', '/')}${type || ''}${!path || path.startsWith('/') ? '' : '/'}${path || ''}`;
         const data: any = this.$map[file] || this.$map[key];
         if (!data) throw new Error(`404 NOT FOUND - ${key}`);
         const err = data.error;
@@ -562,7 +684,9 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         }
         return data.data ? JSON.parse($U.json(data.data)) : data.data;
     }
-    public hello = () => `mocks-api-service:${this.endpoint}/${this.type}`;
+
+    protected na = (a: any, x: string, y: string) => (a === undefined || a === null ? x : y);
+    public hello = () => `mocks-api-service:${this.endpoint}${this.na(this.type, '', '/')}${this.type || ''}`;
     public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
         const path = this.asPath(id, cmd); // use mocks.type infor
         return this.doProxy<T>('GET', this.type, path, param, body);
