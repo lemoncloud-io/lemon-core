@@ -125,6 +125,18 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         this._handlers[type] = decoder;
     }
 
+    /**
+     * check if there is handler for type.
+     * @param type      type of WEB(API)
+     */
+    public hasHandler(type: string): boolean {
+        return typeof this._handlers[type] != 'undefined';
+    }
+
+    /**
+     * registr web-controller.
+     * @param controller the web-controller.
+     */
     public addController(controller: CoreWEBController) {
         if (typeof controller !== 'object') throw new Error(`@controller (object) is required!`);
         const type = controller.type();
@@ -151,7 +163,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     }
 
     /**
-     * Default SQS Handler.
+     * Default WEB Handler.
      */
     public handle: WEBHandler = async (event, $ctx) => {
         //! API parameters.
