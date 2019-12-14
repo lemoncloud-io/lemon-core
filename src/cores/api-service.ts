@@ -231,7 +231,7 @@ export class APIService implements APIServiceClient {
                 '' +
                 (_isNa(type) ? '' : '/' + encodeURIComponent(type)) +
                 (_isNa(type) || _isNa(id) ? '' : '/' + encodeURIComponent(id)) +
-                (_isNa(type) || _isNa(id) || _isNa(undefined) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
+                (_isNa(type) || _isNa(id) || _isNa(cmd) ? '' : '/' + encodeURI(cmd)) + //NOTE - cmd could have additional '/' char.
                 ''
             );
         };
@@ -252,8 +252,10 @@ export class APIService implements APIServiceClient {
                 const $url = URL.parse(url);
                 host = `${$url.protocol || 'http'}//${$url.hostname}`;
                 path = `${$url.path}`;
+                // console.info(`! asHostPath(${id}, ${cmd})@1 => `, { host, path });
+            } else {
+                // console.info(`! asHostPath(${id}, ${cmd})@2 => `, { host, path });
             }
-            // this.base || console.info(`! asHostPath(${id}, ${cmd}) => `, { host, path });
             return { host, path };
         };
         public hello = () => `api-client:${this.proxy.hello()}`;
