@@ -261,7 +261,11 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
             //! use decoder() to find target.
             if (typeof decoder == 'function') return decoder(MODE, ID, CMD);
-            else if (typeof decoder == 'object') return (decoder as CoreWEBController).decode(MODE, ID, CMD);
+            else if (typeof decoder == 'object') {
+                const func = (decoder as CoreWEBController).decode(MODE, ID, CMD);
+                const next: NextHandler = (i, p, b, c) => func.call(decoder, i, p, b, c);
+                return next;
+            }
             return null;
         })(this._handlers[TYPE]);
 

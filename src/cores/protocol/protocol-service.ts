@@ -9,7 +9,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
+import { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
 import { NextMode, NextContext } from './../core-types';
 import { STAGE, ProtocolService, ProtocolParam, ProtocolTransformer } from './../core-services';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';

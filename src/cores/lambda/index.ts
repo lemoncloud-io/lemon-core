@@ -79,6 +79,7 @@ export class LambdaModule implements EngineModule {
     //! module setting.
     public getModuleName = () => 'lambda';
     public async initModule(level?: number): Promise<number> {
+        // it should wait until config-module is ready.
         const $conf = this.engine.module<ConfigModule>('config');
         if (level === undefined) {
             return $conf ? (await $conf.initModule()) + 1 : 1;
