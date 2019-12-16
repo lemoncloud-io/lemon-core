@@ -11,7 +11,7 @@
 
 /**
  * class: `CallbackData`
- * - data types for `callback` notification.
+ * - data types for `/callback` notification.
  * - payload data-set to report callback.
  */
 export interface CallbackData {

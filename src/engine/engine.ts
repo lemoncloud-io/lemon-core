@@ -127,8 +127,9 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
 };
 
 /**
- * send callback web-hook
- * @param data
+ * send callback data via web-hook endpoint.
+ * TODO - improve function identity.!! @191212.
+ * @param data  payload
  */
 export const doReportCallback = async (data: CallbackData, service?: string, context?: any): Promise<string> => {
     const NS = $U.NS('callback', 'cyan');

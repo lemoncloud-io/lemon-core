@@ -115,6 +115,19 @@ export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventPar
  */
 export interface ProtocolService {
     /**
+     * from string url, transform to protocol-param.
+     * *mode* is dependent on body condition.
+     * - if body is undefined, then mode will be 'GET'
+     * - if body is not undefined, then mode will be 'POST'.
+     *
+     * @param context   the current execute context via controller.
+     * @param url       url string must start with 'lemon://' like `lemon://lemon-hello-api/hello/0`
+     * @param param     query parameter (optional)
+     * @param body      post body (optional)
+     */
+    fromURL(context: NextContext, url: string, param?: any, body?: any): ProtocolParam;
+
+    /**
      * synchronized call to target function via 'Lambda'.
      * @param param     the calling param
      */

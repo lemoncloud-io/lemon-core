@@ -234,4 +234,34 @@ describe('ProtocolService', () => {
         /* eslint-enable prettier/prettier */
         done();
     });
+
+    //! in local environ.
+    it('should pass fromURL() w/ local', async done => {
+        const { service } = instance();
+        /* eslint-disable prettier/prettier */
+        expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api/lemon');
+
+        const context: NextContext = {};
+        expect2(() => service.fromURL(context, 'http://self/'), 'service,type').toEqual('@url - should starts with lemon://');
+        expect2(() => service.fromURL(context, 'lemon://self/'), 'service,type,id,cmd').toEqual({ service:'self', type:'', id:null, cmd:null });
+        expect2(() => service.fromURL(context, 'lemon://self/a'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:null, cmd:null });
+        expect2(() => service.fromURL(context, 'lemon://self/a/'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'', cmd:null });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'b', cmd:null });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b/'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'b', cmd:'' });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b/c'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'b', cmd:'c' });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b/c/'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'b', cmd:'c/' });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b/c/d'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'b', cmd:'c/d' });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b/c/d/'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'b', cmd:'c/d/' });
+
+        expect2(() => service.fromURL(context, 'lemon://u@self/a/b/c/d/'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'b', cmd:'c/d/' });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b/c/d/'), 'context').toEqual({ context:{ } });
+        expect2(() => service.fromURL(context, 'lemon://u@self/a/b/c/d/'), 'context').toEqual({ context:{ accountId:'u' } });
+
+        expect2(() => service.fromURL(context, 'lemon://self/a/b', {}), 'service,type,mode,body').toEqual({ service:'self', type:'a', mode:'GET' });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b', {}, null), 'service,type,mode,body').toEqual({ service:'self', type:'a', mode:'POST', body:null });
+        expect2(() => service.fromURL(context, 'lemon://self/a/b', {}, { a:1 }), 'service,type,mode,body').toEqual({ service:'self', type:'a', mode:'POST',body:{ a:1 } });
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
 });

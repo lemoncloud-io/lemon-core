@@ -17,14 +17,14 @@ export * from './common/test-helper';
 export * from './engine/';
 export * from './cores/';
 export * from './tools/';
+export * from './controllers/';
 
 //! import core modules.
 import engine from './engine/';
 import cores from './cores/';
-import * as tools from './tools/';
 
-//! import additional common class.
-import * as controllers from './controllers/';
+import * as tools from './tools/';
+import * as controllers from './tools/';
 
 //! export as default.
 export default { engine, cores, tools, controllers };

@@ -14,7 +14,7 @@
  ** ********************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, $_ } from '../engine/';
-import { NextDecoder, NextHandler, NextMode } from '../cores/core-types';
+import { NextHandler, NextMode } from '../cores/core-types';
 import { DummyDynamoService } from '../cores/dynamo-service';
 import { GeneralController } from './general-controller';
 

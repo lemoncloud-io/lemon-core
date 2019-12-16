@@ -164,6 +164,41 @@ export class MyProtocolService implements ProtocolService {
     }
 
     /**
+     * from string url, transform to protocol-param.
+     * *mode* is dependent on body condition.
+     * - if body is undefined, then mode will be 'GET'
+     * - if body is not undefined, then mode will be 'POST'.
+     *
+     * @param context   the current execute context via controller.
+     * @param url       url string must start with 'lemon://' like `lemon://lemon-hello-api/hello/0`
+     * @param param     query parameter (optional)
+     * @param body      post body (optional)
+     */
+    public fromURL(context: NextContext, url: string, param?: any, body?: any): ProtocolParam {
+        if (!url) throw new Error('@url (lemon-protocol) is required!');
+        if (!url.startsWith('lemon://')) throw new Error('@url - should starts with lemon://');
+        const uri = URL.parse(url);
+        const path = uri.path;
+        const paths = path.split('/', 4); // '/a/b/c/d/e' => ['', a, b, c]
+        const type = `${paths[1] || ''}`;
+        const id = paths.length > 2 ? paths[2] : null;
+        const cmd = paths.length > 3 ? path.substring(['', type, id].join('/').length + 1) : null;
+        //! prepare protocol-param.
+        const proto: ProtocolParam = {
+            mode: body === undefined ? 'GET' : 'POST',
+            service: uri.host,
+            type,
+            id,
+            cmd,
+            context: { ...context },
+        };
+        if (param !== undefined) proto.param = param;
+        if (body !== undefined) proto.body = body;
+        if (uri.auth && context) proto.context.accountId = uri.auth;
+        return proto;
+    }
+
+    /**
      * synchronized call to target function via `Lambda`
      *
      * @param param     the calling param

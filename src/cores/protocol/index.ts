@@ -10,8 +10,8 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, EngineModule, LemonEngine } from '../../engine/';
-import { MyProtocolService } from './protocol-service';
 import { ConfigModule } from '../config';
+import { MyProtocolService } from './protocol-service';
 
 export { MyProtocolService } from './protocol-service';
 
