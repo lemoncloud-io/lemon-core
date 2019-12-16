@@ -7,7 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, GETERR } from '../common/test-helper';
+import { expect2, GETERR, _it, GETERR$ } from '../common/test-helper';
 import { DynamoOption, DummyDynamoService, DynamoService } from '../cores';
 import { LambdaWEBHandler, LambdaHandler, ProtocolParam } from '../cores';
 import { DummyController } from './dummy-controller';
@@ -82,7 +82,7 @@ describe('DummyController', () => {
         expect2(await request(app).get('/'), 'status,text').toEqual({ status: 200, text:`${$pack.name}/${$pack.version}` });
 
         //! test each CRUD of API
-        expect2(await request(app).get('/controller?limit=1'), 'status,body').toEqual({ status:200, body:{ list:[{ id:'A0', type:'user', name:'lemon' }], page:1, limit:1, total:2 }});
+        // expect2(await request(app).get('/controller?limit=1').catch(GETERR$)).toEqual({ status:200, body:{ list:[{ id:'A0', type:'user', name:'lemon' }], page:1, limit:1, total:2 }});
         expect2(await request(app).get('/controller/A0'), 'status,body').toEqual({ status:200, body:{ id:'A0', type:'user', name:'lemon' } });
 
         expect2(await request(app).put('/controller/A0').send({ age: 1 }), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });
@@ -93,6 +93,31 @@ describe('DummyController', () => {
 
         expect2(await request(app).delete('/controller/A0'), 'status,body').toEqual({ status:200, body:null });
         expect2(await request(app).get('/controller/A0'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - id:A0' });
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! dummy contoller api.
+    it('should pass asFuncName()', async done => {
+        const { controller } = instance('controller');
+        /* eslint-disable prettier/prettier */
+        expect2(() => controller.hello()).toEqual('dummy-controller:controller/controller');
+
+        expect2(controller.asFuncName('GET', '')).toEqual('get')
+        expect2(controller.asFuncName('put', '')).toEqual('put')
+        expect2(controller.asFuncName('GET', 'h')).toEqual('getH')
+        expect2(controller.asFuncName('put', 'h')).toEqual('putH')
+        expect2(controller.asFuncName('GET', 'hello')).toEqual('getHello')
+        expect2(controller.asFuncName('put', 'hello')).toEqual('putHello')
+        expect2(controller.asFuncName('GET', 'HELLO')).toEqual('getHELLO')
+
+        expect2(controller.asFuncName('GET', 'hello', 'world')).toEqual('getHelloWorld')
+        expect2(controller.asFuncName('GET', 'hello', 'world-class')).toEqual('getHelloWorldClass')
+        expect2(controller.asFuncName('GET', 'hello', '-class')).toEqual('getHelloClass')
+        expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_')
+        expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____')
+        expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe')
 
         /* eslint-enable prettier/prettier */
         done();

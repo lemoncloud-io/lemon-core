@@ -8,4 +8,5 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+export * from './general-controller';
 export * from './dummy-controller';

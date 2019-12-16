@@ -14,9 +14,9 @@
  ** ********************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, $_ } from '../engine/';
-import { NextDecoder, NextHandler } from '../cores/core-types';
-import { CoreWEBController } from '../cores/lambda/lambda-web-handler';
+import { NextDecoder, NextHandler, NextMode } from '../cores/core-types';
 import { DummyDynamoService } from '../cores/dynamo-service';
+import { GeneralController } from './general-controller';
 
 /** ********************************************************************************************************************
  *  MAIN IMPLEMENTATION.
@@ -25,8 +25,7 @@ import { DummyDynamoService } from '../cores/dynamo-service';
  * class: `DummyController`
  * - to serve basic CRUD with `dummy-<type>-data.yml`
  */
-export class DummyController implements CoreWEBController {
-    protected _type: string;
+export class DummyController extends GeneralController {
     protected _name: string;
     protected service: DummyDynamoService<any>;
 
@@ -38,7 +37,7 @@ export class DummyController implements CoreWEBController {
      * @param idName    name of id (default as 'id')
      */
     public constructor(type: string, name?: string, idName: string = 'id') {
-        this._type = type;
+        super(type);
         this._name = name || type;
         //! prepare dynamo options.
         const tableName = `dummy-${this._name}`;
@@ -49,22 +48,22 @@ export class DummyController implements CoreWEBController {
     /**
      * name of this resource.
      */
-    public hello = () => `dummy-controller:${this._type}/${this._name}`;
-
-    /**
-     * type of api-endpoint.
-     */
-    public type = () => `${this._type || ''}`;
+    public hello = () => `dummy-controller:${this.type()}/${this._name}`;
 
     /**
      * decode to target `next-handler`
      * - use pattern `do_<mode>_<cmd?>`
      */
-    public decode: NextDecoder = (mode, id, cmd) => {
+    public decode(mode: NextMode, id: string, cmd: string) {
+        //WARN - if like to use `super.` in here. must use function style.
+        const fx = super.decode(mode, id, cmd);
+        if (fx) return fx;
+
+        //! decode as `do_<mode>_<cmd?>` style.
         const funcName = (cmd ? `do_${mode}_${cmd}` : `do_${mode}`).toLowerCase();
         const handler = (this as any)[funcName];
         return typeof handler == 'function' ? handler : null;
-    };
+    }
 
     /**
      * get list of data.
