@@ -62,9 +62,12 @@ describe('DummyController', () => {
     //! dummy contoller api.
     it('should pass asFuncName()', async done => {
         const { controller } = instance('hello');
+        const { controller: controller2 } = instance(null);
         /* eslint-disable prettier/prettier */
         expect2(() => controller.hello()).toEqual('general-controller:hello');
+        expect2(() => controller2.hello()).toEqual('general-controller:');
 
+        expect2(controller.asFuncName('GET', null)).toEqual('get')
         expect2(controller.asFuncName('GET', '')).toEqual('get')
         expect2(controller.asFuncName('put', '')).toEqual('put')
         expect2(controller.asFuncName('GET', 'h')).toEqual('getH')
@@ -72,6 +75,11 @@ describe('DummyController', () => {
         expect2(controller.asFuncName('GET', 'hello')).toEqual('getHello')
         expect2(controller.asFuncName('put', 'hello')).toEqual('putHello')
         expect2(controller.asFuncName('GET', 'HELLO')).toEqual('getHELLO')
+
+        expect2(controller.asFuncName('', 'hello')).toEqual('doHello')
+        expect2(controller.asFuncName(null, 'hello')).toEqual('doHello')
+        expect2(controller2.asFuncName('', 'hello')).toEqual('doHello')
+        expect2(controller2.asFuncName(null, 'hello')).toEqual('doHello')
 
         expect2(controller.asFuncName('GET', 'hello', 'world')).toEqual('getHelloWorld')
         expect2(controller.asFuncName('GET', 'hello', 'world-class')).toEqual('getHelloWorldClass')
