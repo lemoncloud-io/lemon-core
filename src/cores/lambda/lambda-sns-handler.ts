@@ -9,13 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '../../engine/';
+import { _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '../../engine/';
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
-import { ProtocolParam, NextHandler } from './../core-services';
-
-import { LambdaHandler, SNSHandler, LambdaSubHandler } from './';
+import { NextContext, NextHandler } from './../core-services';
+import { LambdaHandler, SNSHandler, LambdaSubHandler } from './lambda-handler';
+import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
 
 /**
@@ -59,11 +59,20 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
             const $msg: SNSMessage = record.Sns;
             const { Subject } = $msg;
             if (Subject == 'x-protocol-service') {
-                const param: ProtocolParam = $protocol.service.sns.transformToParam($msg);
-                const result = await this.lambda.handleProtocol(param).catch(e => {
-                    doReportError(e, param.context, null, { protocol: param });
-                    throw e;
-                });
+                const param: MyProtocolParam = $protocol.service.asTransformer('sns').transformToParam($msg);
+                const context: NextContext = param.context;
+                const callback = param.callback || '';
+                const result = await this.lambda
+                    .handleProtocol(param)
+                    .then(body => {
+                        // _log(NS, `! res[${index}] =`, $U.json(body));
+                        const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
+                        return proto ? $protocol.service.execute(proto) : body;
+                    })
+                    .catch(e => {
+                        doReportError(e, param.context, null, { protocol: param });
+                        throw e;
+                    });
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
                 return true;
             } else {

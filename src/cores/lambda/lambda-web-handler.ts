@@ -29,8 +29,8 @@ import {
 } from './../core-services';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
-import $protocol from '../protocol/';
 import { loadJsonSync } from '../../tools/shared';
+import $protocol from '../protocol/';
 
 export type ConfigService = CoreConfigService;
 
@@ -178,7 +178,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         //! prevent error via transform.
         if (event.headers && !event.headers['x-protocol-context']) event.headers['x-protocol-context'] = $U.json($ctx);
-        const param: ProtocolParam = $protocol.service.web.transformToParam(event);
+        const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
         _log(NS, '! protocol-param =', $U.json(param));
         const TYPE = param.type;
         const MODE = param.mode;
@@ -306,7 +306,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         //! if it is protocol request via lambda, then returns valid context.
         const headers = event.headers || {};
         if (headers['x-protocol-context']) {
-            const $param = $protocol.service.web.transformToParam(event);
+            const $param = $protocol.service.asTransformer('web').transformToParam(event);
             return $param.context;
         }
 
@@ -336,21 +336,15 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             identity.cognitoPoolId = $id.cognitoIdentityPoolId;
         }
 
-        //! - build initial `source` like protocol-url of self out of initial request context.
-        const config: ConfigService = this.lambda.config;
-        const service = (config && config.getService()) || 'lemon-core';
-        const version = (config && config.getVersion()) || '0.0.0';
-        const stage = reqContext.stage || (config && config.getStage()) || '';
-        const source = `api://${reqContext.accountId}@${service}-${stage}${event.path}#${version}`; // the origin request protocol uri (must use 'api')
-        const domain = reqContext.domainName || event.headers['Host'] || event.headers['host'];
-
         //! - extract original request infor.
         const clientIp = reqContext.identity && reqContext.identity.sourceIp;
         const requestId = reqContext.requestId;
         const accountId = reqContext.accountId;
+        const domain = reqContext.domainName || event.headers['Host'] || event.headers['host'];
 
         //! save into headers and returns.
-        const context: NextContext = { ...res, identity, source, clientIp, requestId, accountId, domain };
+        const context: NextContext = { ...res, identity, clientIp, requestId, accountId, domain };
+        context.source = $protocol.service.myProtocolURI(context); // self service-uri as source
         return context;
     }
 }

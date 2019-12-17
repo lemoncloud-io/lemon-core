@@ -11,9 +11,8 @@
  */
 import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { ConfigModule } from '../config';
+import { ProtocolService } from '../core-services';
 import { MyProtocolService } from './protocol-service';
-
-export { MyProtocolService } from './protocol-service';
 
 export class ProtocolModule implements EngineModule {
     private engine: LemonEngine;
@@ -23,7 +22,7 @@ export class ProtocolModule implements EngineModule {
     }
 
     //! create default services
-    public service: MyProtocolService = new MyProtocolService();
+    public service: ProtocolService = new MyProtocolService();
 
     public getModuleName = () => 'protocol';
     public async initModule(level?: number): Promise<number> {

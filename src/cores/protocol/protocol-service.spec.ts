@@ -11,19 +11,18 @@
 import { expect2, GETERR, environ } from '../../common/test-helper';
 import { credentials } from '../../tools/';
 import { MyProtocolService } from './protocol-service';
-import { MyConfigService } from './../config/config-service';
+import { MyConfigService, ConfigService } from './../config/config-service';
 import { NextContext } from './../core-types';
-import { ProtocolParam } from './../core-services';
+import { ProtocolParam, STAGE, CallbackParam } from './../core-services';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 
 const DEF_SERVICE = 'lemon-hello-api';
-const DEF_TYPE = 'lemon';
 
 class MyProtocolServiceTest extends MyProtocolService {
-    public constructor(service: string = DEF_SERVICE, type: string = DEF_TYPE) {
-        super(service, type);
+    public constructor(config?: ConfigService, service: string = DEF_SERVICE) {
+        super(service, config);
     }
-    public hello = () => `protocol-service-test:${this.selfService}/${this.selfType}`;
+    public hello = () => `protocol-service-test:${this.selfService}`;
 }
 class MyConfigServiceTest extends MyConfigService {
     private env: { [key: string]: string };
@@ -34,11 +33,33 @@ class MyConfigServiceTest extends MyConfigService {
     public hello = () => `config-service-test:${this.getStage()}`;
     public get = (key: string): string => this.env[key];
 }
+
+class MyConfigServiceTest2 extends MyConfigService {
+    private env: { [key: string]: string };
+    public constructor(env: { [key: string]: string }) {
+        super(null);
+        this.env = env;
+    }
+    public hello = () => `config-service-test2:${this.getStage()}`;
+    public get = (key: string): string => this.env[key];
+    public getService(): string {
+        return `${this.env['name'] || ''}`;
+    }
+    public getVersion(): string {
+        return `${this.env['version'] || ''}`;
+    }
+    public getStage(): STAGE {
+        return `${this.env['stage'] || ''}` as STAGE;
+    }
+}
+
 export const instance = (env?: { [key: string]: string }) => {
     env = { STAGE: 'local', NAME: 'test', ...env };
-    const service = new MyProtocolServiceTest();
     const config = new MyConfigServiceTest(env);
-    return { service, config };
+    const config2 = new MyConfigServiceTest2(env);
+    const service = new MyProtocolServiceTest();
+    const service2 = new MyProtocolServiceTest(config2);
+    return { service, config, service2, config2 };
 };
 
 const asParam = (service: string, type?: string, base?: any): ProtocolParam => {
@@ -62,7 +83,7 @@ describe('ProtocolService', () => {
         const { service, config } = instance();
         /* eslint-disable prettier/prettier */
         expect2(()=>{ throw new Error('HI Error') }).toBe('HI Error');
-        expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api/lemon');
+        expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api');
         expect2(config.hello()).toEqual('config-service-test:local');
         /* eslint-enable prettier/prettier */
         done();
@@ -84,7 +105,7 @@ describe('ProtocolService', () => {
         expect2(service.asProtocolURI('sns', asParam('lemon-lambda'), config)).toEqual('sns://lemon-lambda-dev');
         expect2(service.asProtocolURI('sqs', asParam('lemon-lambda'), config)).toEqual('sqs://lemon-lambda-dev');
 
-        //! check path.
+        //! check path. (id should be encoded)
         expect2(service.asProtocolURI('sqs', asParam('', 'test'), config)).toEqual('sqs://lemon-hello-sqs-dev/test');
         expect2(service.asProtocolURI('sqs', asParam('', 'test/0'), config)).toEqual('sqs://lemon-hello-sqs-dev/test%2F0');
         expect2(service.asProtocolURI('sqs', asParam('', 'test 0'), config)).toEqual('sqs://lemon-hello-sqs-dev/test%200');
@@ -94,7 +115,8 @@ describe('ProtocolService', () => {
         expect2(service.asProtocolURI('sqs', asParam('', 'test', { id:'', cmd:'' }), config)).toEqual('sqs://lemon-hello-sqs-dev/test/');
         expect2(service.asProtocolURI('sqs', asParam('', 'test', { id:'1', cmd:'2' }), config)).toEqual('sqs://lemon-hello-sqs-dev/test/1/2');
         expect2(service.asProtocolURI('sqs', asParam('', 'test', { id:'', cmd:'2' }), config)).toEqual('sqs://lemon-hello-sqs-dev/test//2');
-        expect2(service.asProtocolURI('sqs', asParam('', 'test', { id:'1', cmd:'2/3' }), config)).toEqual('sqs://lemon-hello-sqs-dev/test/1/2%2F3');
+        expect2(service.asProtocolURI('sqs', asParam('', 'test', { id:'1', cmd:'2/3' }), config)).toEqual('sqs://lemon-hello-sqs-dev/test/1/2/3');
+        expect2(service.asProtocolURI('sqs', asParam('', 'test', { id:'1/2', cmd:'3' }), config)).toEqual('sqs://lemon-hello-sqs-dev/test/1%2F2/3');
 
         /* eslint-enable prettier/prettier */
         done();
@@ -239,10 +261,10 @@ describe('ProtocolService', () => {
     it('should pass fromURL() w/ local', async done => {
         const { service } = instance();
         /* eslint-disable prettier/prettier */
-        expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api/lemon');
+        expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api');
 
         const context: NextContext = {};
-        expect2(() => service.fromURL(context, 'http://self/'), 'service,type').toEqual('@url - should starts with lemon://');
+        expect2(() => service.fromURL(context, 'http://self/'), 'service,type').toEqual('@url - protocol not supportable (http://)');
         expect2(() => service.fromURL(context, 'lemon://self/'), 'service,type,id,cmd').toEqual({ service:'self', type:'', id:null, cmd:null });
         expect2(() => service.fromURL(context, 'lemon://self/a'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:null, cmd:null });
         expect2(() => service.fromURL(context, 'lemon://self/a/'), 'service,type,id,cmd').toEqual({ service:'self', type:'a', id:'', cmd:null });
@@ -260,6 +282,135 @@ describe('ProtocolService', () => {
         expect2(() => service.fromURL(context, 'lemon://self/a/b', {}), 'service,type,mode,body').toEqual({ service:'self', type:'a', mode:'GET' });
         expect2(() => service.fromURL(context, 'lemon://self/a/b', {}, null), 'service,type,mode,body').toEqual({ service:'self', type:'a', mode:'POST', body:null });
         expect2(() => service.fromURL(context, 'lemon://self/a/b', {}, { a:1 }), 'service,type,mode,body').toEqual({ service:'self', type:'a', mode:'POST',body:{ a:1 } });
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! for local stage
+    it('should pass buildProtocolURI() w/ config (local)', async done => {
+        const name = 'lemon-hello-api';
+        const version = '1.2.3';
+        const stage = 'local';
+
+        const { service2 } = instance({ name, version, stage });
+        /* eslint-disable prettier/prettier */
+        expect2(service2.hello()).toEqual('protocol-service-test:lemon-hello-api');
+
+        // with account-id
+        const context: NextContext = { accountId:'melon' };
+        expect2(() => service2.myProtocolURI(context)).toEqual('api://melon@lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.myProtocolURI(context, '')).toEqual('api://melon@lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a')).toEqual('api://melon@lemon-hello-api-dev/a#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', '')).toEqual('api://melon@lemon-hello-api-dev/a/#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', '', '')).toEqual('api://melon@lemon-hello-api-dev/a/#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b')).toEqual('api://melon@lemon-hello-api-dev/a/b#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b', '')).toEqual('api://melon@lemon-hello-api-dev/a/b#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b', 'c')).toEqual('api://melon@lemon-hello-api-dev/a/b/c#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b', 'c/d')).toEqual('api://melon@lemon-hello-api-dev/a/b/c/d#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b/c', 'd')).toEqual('api://melon@lemon-hello-api-dev/a/b%2Fc/d#1.2.3');
+
+        // reverse url must be matched.
+        expect2(() => service2.fromURL(context, service2.myProtocolURI(context, 'a')),'!mode').toEqual({ service:name, stage:'dev', type:'a', id:null, cmd:null, context });
+        expect2(() => service2.fromURL(context, service2.myProtocolURI(context, 'a', 'b', 'c/d')),'!mode').toEqual({ service:name, stage:'dev', type:'a', id:'b', cmd:'c/d', context });
+        expect2(() => service2.fromURL(context, service2.myProtocolURI(context, 'a', 'b/c', 'd')),'!mode').toEqual({ service:name, stage:'dev', type:'a', id:'b/c', cmd:'d', context });
+
+        // without account-id
+        const context2: NextContext = { accountId:'' };
+        expect2(() => service2.myProtocolURI(context2)).toEqual('api://lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.myProtocolURI(context2, '')).toEqual('api://lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.myProtocolURI(context2, 'a')).toEqual('api://lemon-hello-api-dev/a#1.2.3');
+        expect2(() => service2.myProtocolURI(context2, 'a', '')).toEqual('api://lemon-hello-api-dev/a/#1.2.3');
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! for prod stage
+    it('should pass buildProtocolURI() w/ config (local)', async done => {
+        const name = 'lemon-hello-api';
+        const version = '1.2.3';
+        const stage = 'prod';
+
+        const { service2 } = instance({ name, version, stage });
+        /* eslint-disable prettier/prettier */
+        expect2(service2.hello()).toEqual('protocol-service-test:lemon-hello-api');
+
+        // with account-id
+        const context: NextContext = { accountId:'melon' };
+        expect2(() => service2.myProtocolURI(context)).toEqual('api://melon@lemon-hello-api#1.2.3');
+        expect2(() => service2.myProtocolURI(context, '')).toEqual('api://melon@lemon-hello-api#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a')).toEqual('api://melon@lemon-hello-api/a#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', '')).toEqual('api://melon@lemon-hello-api/a/#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', '', '')).toEqual('api://melon@lemon-hello-api/a/#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b')).toEqual('api://melon@lemon-hello-api/a/b#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b', '')).toEqual('api://melon@lemon-hello-api/a/b#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b', 'c')).toEqual('api://melon@lemon-hello-api/a/b/c#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b', 'c/d')).toEqual('api://melon@lemon-hello-api/a/b/c/d#1.2.3');
+        expect2(() => service2.myProtocolURI(context, 'a', 'b/c', 'd')).toEqual('api://melon@lemon-hello-api/a/b%2Fc/d#1.2.3');
+
+        // reversed-url should be matched. (and accountId should be recovered)
+        const context1: NextContext = { accountId:'' };
+        expect2(() => service2.fromURL(context1, service2.myProtocolURI(context, 'a')),'!mode').toEqual({ service:name, stage:'prod', type:'a', id:null, cmd:null, context });
+        expect2(() => service2.fromURL(context1, service2.myProtocolURI(context, 'a', 'b', 'c/d')),'!mode').toEqual({ service:name, stage:'prod', type:'a', id:'b', cmd:'c/d', context });
+        expect2(() => service2.fromURL(context1, service2.myProtocolURI(context, 'a', 'b/c', 'd')),'!mode').toEqual({ service:name, stage:'prod', type:'a', id:'b/c', cmd:'d', context });
+
+        // without account-id
+        const context2: NextContext = { accountId:'' };
+        expect2(() => service2.myProtocolURI(context2)).toEqual('api://lemon-hello-api#1.2.3');
+        expect2(() => service2.myProtocolURI(context2, '')).toEqual('api://lemon-hello-api#1.2.3');
+        expect2(() => service2.myProtocolURI(context2, 'a')).toEqual('api://lemon-hello-api/a#1.2.3');
+        expect2(() => service2.myProtocolURI(context2, 'a', '')).toEqual('api://lemon-hello-api/a/#1.2.3');
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! for local stage
+    it('should pass asCallbackURI() w/ config (local)', async done => {
+        const name = 'lemon-hello-api';
+        const version = '1.2.3';
+        const stage = 'local';
+
+        const { service2 } = instance({ name, version, stage });
+        /* eslint-disable prettier/prettier */
+        expect2(service2.hello()).toEqual('protocol-service-test:lemon-hello-api');
+
+        // with account-id
+        const context: NextContext = { accountId:'melon' };
+        const cb = (type?: any, id?: any, cmd?: any): CallbackParam => ({ type, id, cmd });
+        expect2(() => service2.asCallbackURI(context, cb())).toEqual('api://melon@lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb(''))).toEqual('api://melon@lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a'))).toEqual('api://melon@lemon-hello-api-dev/a#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a', ''))).toEqual('api://melon@lemon-hello-api-dev/a/#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a', '', ''))).toEqual('api://melon@lemon-hello-api-dev/a/#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a', 'b'))).toEqual('api://melon@lemon-hello-api-dev/a/b#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a', 'b', ''))).toEqual('api://melon@lemon-hello-api-dev/a/b#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a', 'b', 'c'))).toEqual('api://melon@lemon-hello-api-dev/a/b/c#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a', 'b', 'c/d'))).toEqual('api://melon@lemon-hello-api-dev/a/b/c/d#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb('a', 'b/c', 'd'))).toEqual('api://melon@lemon-hello-api-dev/a/b%2Fc/d#1.2.3');
+
+        // reverse url must be matched.
+        expect2(() => service2.fromURL(context, service2.asCallbackURI(context, cb('a'))),'!mode').toEqual({ service:name, stage:'dev', type:'a', id:null, cmd:null, context });
+        expect2(() => service2.fromURL(context, service2.asCallbackURI(context, cb('a', 'b', 'c/d'))),'!mode').toEqual({ service:name, stage:'dev', type:'a', id:'b', cmd:'c/d', context });
+        expect2(() => service2.fromURL(context, service2.asCallbackURI(context, cb('a', 'b/c', 'd'))),'!mode').toEqual({ service:name, stage:'dev', type:'a', id:'b/c', cmd:'d', context });
+
+        // without account-id
+        const context2: NextContext = { accountId:'' };
+        expect2(() => service2.asCallbackURI(context2, cb())).toEqual('api://lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.asCallbackURI(context2, cb(''))).toEqual('api://lemon-hello-api-dev#1.2.3');
+        expect2(() => service2.asCallbackURI(context2, cb('a'))).toEqual('api://lemon-hello-api-dev/a#1.2.3');
+        expect2(() => service2.asCallbackURI(context2, cb('a', ''))).toEqual('api://lemon-hello-api-dev/a/#1.2.3');
+
+        //! support with query string from callback.param.
+        const param = { x:'', y:1 };
+        const cb2 = (t?: any, i?: any, c?: any) => ({ ...cb(t,i,c), param });
+        expect2(() => service2.asCallbackURI(context, cb2('a'))).toEqual('api://melon@lemon-hello-api-dev/a?x=&y=1#1.2.3');
+        expect2(() => service2.asCallbackURI(context, cb2('a', 'b'))).toEqual('api://melon@lemon-hello-api-dev/a/b?x=&y=1#1.2.3');
+
+        const body = { z:2 };
+        expect2(() => service2.fromURL(context, service2.asCallbackURI(context, cb2('a')), null, body)).toEqual({ service:name, stage:'dev', type:'a', id:null, cmd:null, context, mode:'POST', param, body });
+        expect2(() => service2.fromURL(context, service2.asCallbackURI(context, cb2('a', 'b')), null, body)).toEqual({ service:name, stage:'dev', type:'a', id:'b', cmd:null, context, mode:'POST', param, body });
 
         /* eslint-enable prettier/prettier */
         done();
