@@ -50,6 +50,12 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 [MIT](LICENSE) - (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
 
 
+----------------
+# TODO TASK #
+
+- [ ] use environ as default region like `ap-northeast-2`.
+- [ ] draw protocol's sequence diagram w/ `callback` mechanism.
+
 
 ----------------
 # VERSION INFO #
