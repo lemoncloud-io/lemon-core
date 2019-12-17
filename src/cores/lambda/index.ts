@@ -22,12 +22,8 @@ export { LambdaSQSHandler } from './lambda-sqs-handler';
 export { LambdaWSSHandler } from './lambda-wss-handler';
 export { CronNextHandler, CronParam } from './lambda-cron-handler';
 export { LambdaCognitoHandler } from './lambda-cognito-handler';
-export {
-    LambdaDynamoStreamHandler,
-    DynamoStreamParam,
-    DynamoStreamBody,
-    DynamoStreamNextHandler,
-} from './lambda-dynamo-stream-handler';
+export * from './lambda-dynamo-stream-handler';
+export * from './lambda-notification-handler';
 
 //! import default with named.
 import { LambdaHandler, Context } from './lambda-handler';
@@ -38,6 +34,7 @@ import { LambdaWSSHandler } from './lambda-wss-handler';
 import { LambdaCronHandler } from './lambda-cron-handler';
 import { LambdaCognitoHandler } from './lambda-cognito-handler';
 import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
+import { LambdaNotificationHandler } from './lambda-notification-handler';
 
 /**
  * class: `LambdaModule`
@@ -64,6 +61,7 @@ export class LambdaModule implements EngineModule {
         this.cron = new LambdaCronHandler(lambda, true);
         this.cognito = new LambdaCognitoHandler(lambda, true);
         this.dynamos = new LambdaDynamoStreamHandler(lambda, true);
+        this.notification = new LambdaNotificationHandler(lambda, true);
     }
 
     //! default services to export.
@@ -75,6 +73,7 @@ export class LambdaModule implements EngineModule {
     public readonly cron: LambdaCronHandler;
     public readonly cognito: LambdaCognitoHandler;
     public readonly dynamos: LambdaDynamoStreamHandler;
+    public readonly notification: LambdaNotificationHandler;
 
     //! module setting.
     public getModuleName = () => 'lambda';

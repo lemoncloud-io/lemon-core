@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
+import { _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.
 import { doReportError } from '../../engine/';
 
@@ -60,8 +60,9 @@ export type SQSHandler = MyHandler<SQSEvent, void>;
 export type CronHandler = MyHandler<CronEvent, void>;
 export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
 export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
+export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
 
-export type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'cron' | 'cognito' | 'dynamo-stream';
+export type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'cron' | 'cognito' | 'dynamo-stream' | 'notification';
 
 /**
  * class: `LambdaHandlerService`
@@ -105,12 +106,6 @@ export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHan
         if (lambda && type) lambda.setHandler(type, this);
     }
     abstract handle: T;
-    // public abstract packContext?(event: any, context: $lambda.Context): Promise<NextContext<import("..").NextIdentity>> {
-    //     throw new Error("Method not implemented.");
-    // }
-    // handleProtocol?<TResult = any>(param: ProtocolParam<{ [key: string]: any; }, { [key: string]: any; }>): Promise<TResult> {
-    //     throw new Error("Method not implemented.");
-    // }
 }
 
 /**
@@ -142,10 +137,22 @@ export class LambdaHandler {
 
     //! Find Service By Event
     public findService = (event: any): HandlerType => {
-        if (event.requestContext && event.pathParameters !== undefined) {
+        const headers = (event && event.headers) || {};
+        _log(NS, `> headers =`, $U.json(headers));
+        //! check if AWS SNS Notification Subscription -> notification controller.
+        if (
+            event.requestContext &&
+            headers['x-amz-sns-message-type'] &&
+            headers['x-amz-sns-message-id'] &&
+            headers['x-amz-sns-topic-arn']
+        ) {
+            //! via HTTP/HTTPS SNS
+            return 'notification';
+        } else if (event.requestContext && event.pathParameters !== undefined) {
             //! via AgiGateway
             return 'web';
         } else if (event.requestContext && event.requestContext.eventType !== undefined) {
+            //! via WEB-SOCKET from ApiGateway
             return 'wss';
         } else {
             if (event.cron) {
@@ -272,15 +279,7 @@ export class LambdaHandler {
      */
     public async packContext(event: any, $ctx: Context): Promise<NextContext> {
         const context: NextContext = {};
-        if (event.requestContext) {
-            const funcName = $ctx.functionName || '';
-            _log(NS, `! context[${funcName}].request =`, $U.json(event.requestContext));
-            //! if valid API Request, then use $web's function.
-            const $web: LambdaHandlerService = require('./lambda-web-handler').default;
-            return $web.packContext(event, $ctx);
-        } else {
-            $ctx && _log(NS, `! context[${$ctx.functionName || ''}] =`, $U.json($ctx));
-        }
+        $ctx && _log(NS, `! context[${$ctx.functionName || ''}] =`, $U.json($ctx));
         return context;
     }
 }
