@@ -30,6 +30,7 @@ import {
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
 import { loadJsonSync } from '../../tools/shared';
+import { GETERR } from '../../common/test-helper';
 import $protocol from '../protocol/';
 
 export type ConfigService = CoreConfigService;
@@ -74,11 +75,11 @@ export const notfound = (body: any) => {
 };
 
 export const failure = (body: any, status?: number) => {
-    return buildResponse(status === undefined ? 503 : status, body);
+    return buildResponse(status || 503, body);
 };
 
 export const redirect = (location: any, status?: number) => {
-    const res = buildResponse(status === undefined ? 300 : status, '');
+    const res = buildResponse(status || 302, '');
     res.headers['Location'] = location; // set location.
     return res;
 };
@@ -199,11 +200,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 }
 
                 //! report error.
-                if (LambdaHandler.REPORT_ERROR) {
-                    return doReportError(e, $ctx, event).then(() => {
-                        return failure(e instanceof Error ? message : e);
-                    });
-                }
+                if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
 
                 //! common format of error.
                 if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {

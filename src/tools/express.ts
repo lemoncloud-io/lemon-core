@@ -93,6 +93,7 @@ export const buildExpress = (
 
     //! middle ware
     const middle = (req: any, res: any, next: any) => {
+        // const _err = console.error;
         //! prepare event
         const event = {
             path: req.path,
@@ -108,6 +109,7 @@ export const buildExpress = (
         const context = { source: 'express' };
         const callback = (err: any, data: any) => {
             err && _err(NS, '! err@callback =', err);
+            data && _err(NS, '! res@callback =', data);
             let contentType = null;
             if (data.headers) {
                 Object.keys(data.headers).map(k => {
