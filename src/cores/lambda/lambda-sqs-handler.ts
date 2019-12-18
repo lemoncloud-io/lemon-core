@@ -9,15 +9,15 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
+import { _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 import { doReportError, do_parrallel } from '../../engine/';
 
 import { SQSRecord } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler } from './lambda-handler';
-import { ProtocolParam, NextHandler } from './../core-services';
-
-import $protocol, { MyProtocolService } from '../protocol/';
+import { NextHandler, NextContext } from './../core-services';
+import { MyProtocolParam } from '../protocol/protocol-service';
+import $protocol from '../protocol/';
 
 /**
  * class: LambdaSQSHandler
@@ -68,12 +68,21 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
 
             //! check if via protocol-service.
             if (param['Subject'] && param['Subject'] == 'x-protocol-service') {
-                const protocol: MyProtocolService = $protocol.service;
-                const param: ProtocolParam = protocol.sqs.transformToParam(record);
-                const result = await this.lambda.handleProtocol(param).catch(e => {
-                    doReportError(e, param.context, null, { protocol: param });
-                    throw e;
-                });
+                const param: MyProtocolParam = $protocol.service.asTransformer('sqs').transformToParam(record);
+                const context: NextContext = param.context;
+                const callback = param.callback || '';
+                const result = await this.lambda
+                    .handleProtocol(param)
+                    .then(body => {
+                        // _log(NS, `! res[${index}] =`, $U.json(body));
+                        const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
+                        proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
+                        return proto ? $protocol.service.execute(proto) : body;
+                    })
+                    .catch(e => {
+                        doReportError(e, param.context, null, { protocol: param });
+                        throw e;
+                    });
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
                 return true;
             } else {

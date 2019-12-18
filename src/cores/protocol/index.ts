@@ -10,10 +10,9 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, EngineModule, LemonEngine } from '../../engine/';
-import { MyProtocolService } from './protocol-service';
 import { ConfigModule } from '../config';
-
-export { MyProtocolService } from './protocol-service';
+import { ProtocolService } from '../core-services';
+import { MyProtocolService } from './protocol-service';
 
 export class ProtocolModule implements EngineModule {
     private engine: LemonEngine;
@@ -23,7 +22,7 @@ export class ProtocolModule implements EngineModule {
     }
 
     //! create default services
-    public service: MyProtocolService = new MyProtocolService();
+    public service: ProtocolService = new MyProtocolService();
 
     public getModuleName = () => 'protocol';
     public async initModule(level?: number): Promise<number> {

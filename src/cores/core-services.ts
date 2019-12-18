@@ -12,7 +12,7 @@ export * from './core-types';
 
 import { NextMode, NextContext } from './core-types';
 
-export type STAGE = 'local' | 'dev' | 'prod';
+export type STAGE = '' | 'local' | 'dev' | 'prod';
 
 /** ********************************************************************************************************************
  *  Core Services
@@ -75,10 +75,30 @@ export interface CoreSnsService extends CoreServices {
  *  Protocol Services
  ** ********************************************************************************************************************/
 /**
+ * type: `ProtocolBody`
+ */
+export interface ProtocolBody {
+    [key: string]: any;
+}
+
+/**
+ * type: `CallbackParam`
+ * - if async protocol has done, result data will be 'POST' to lambda.
+ * - `param` will be attached.
+ * - result data will be `filtered` with callback's result.
+ */
+export interface CallbackParam {
+    type: string; // resource type
+    id: string; // resource id
+    cmd?: string; // (optioanl) action command
+    param?: ProtocolBody; // param to be relayed
+}
+
+/**
  * class: `ProtocolParam`
  * - common protocol parameters.
  */
-export interface ProtocolParam<TParam = { [key: string]: any }, TBody = { [key: string]: any }> {
+export interface ProtocolParam<TParam = ProtocolBody, TBody = ProtocolBody> {
     service?: 'self' | string; // target service name like `lemon-hello-api` (default package.name)
     stage?: STAGE; // target stage (default env.STAGE)
     type: string; // handler type in `lambda-web-handler`
@@ -99,8 +119,9 @@ export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventPar
      * transform param to event
      * @param uri       uri from `asProtocolURI()`
      * @param param     the calling param.
+     * @param callback  the callback URI like `api://lemon-hello-api-dev/hello`
      */
-    transformToEvent(uri: string, param: ProtocolParam): TEventParam;
+    transformToEvent(uri: string, param: ProtocolParam, callback?: string): TEventParam;
 
     /**
      * transform event data to param
@@ -115,6 +136,19 @@ export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventPar
  */
 export interface ProtocolService {
     /**
+     * from string url, transform to protocol-param.
+     * *mode* is dependent on body condition.
+     * - if body is undefined, then mode will be 'GET'
+     * - if body is not undefined, then mode will be 'POST'.
+     *
+     * @param context   the current execute context via controller.
+     * @param url       url string must start with 'lemon://' like `lemon://lemon-hello-api/hello/0`
+     * @param param     query parameter (optional)
+     * @param body      post body (optional)
+     */
+    fromURL(context: NextContext, url: string, param?: ProtocolBody, body?: ProtocolBody): ProtocolParam;
+
+    /**
      * synchronized call to target function via 'Lambda'.
      * @param param     the calling param
      */
@@ -122,15 +156,50 @@ export interface ProtocolService {
 
     /**
      * asynchronized call to target function via 'SNS'.
+     *
+     * TODO - support `callback` options @191217
+     *
      * @param param     the calling param
      * @param callback  the return target
      */
-    notify(param: ProtocolParam, callback?: ProtocolParam): Promise<string>;
+    notify(param: ProtocolParam, callback?: CallbackParam): Promise<string>;
 
     /**
-     * asynchronized call to target function via 'SNS'.
+     * asynchronized call to target function via 'SQS' (queue).
+     *
+     * TODO - support `callback` options @191217
+     *
      * @param param     the calling param
      * @param callback  the return target
      */
-    enqueue(param: ProtocolParam, callback?: ProtocolParam): Promise<string>;
+    enqueue(param: ProtocolParam, callback?: CallbackParam): Promise<string>;
+
+    /**
+     * broadcast body message via shared `SNS` Subscritions. (see `NotificationHandler`)
+     * - `.service` will be self url like `api://lemon-hello-api#1.2.3`
+     *
+     * @param context   the current execute context. (`.identity` will be relayed).
+     * @param endpoint  the SNS endpoint like `lemon-hello-out`, or full ARN.
+     * @param body      the message body to broadcast.
+     * @returns         the message-id if applicable.
+     */
+    broadcast(context: NextContext, endpoint: string, body: ProtocolBody): Promise<string>;
+
+    /**
+     * get `protocol-transformer` by name
+     * @param name      name as 'web', 'sns', 'sqs'
+     */
+    asTransformer<TEventParam = any, TLambdaEvent = TEventParam>(
+        name: 'web' | 'sns' | 'sqs',
+    ): ProtocolTransformer<TEventParam, TLambdaEvent>;
+
+    /**
+     * get the current service's protocol uri
+     *
+     * @param context   the current context.
+     * @param type      (optional) resource type
+     * @param id        (optional) resource id
+     * @param cmd       (optional) action command
+     */
+    myProtocolURI(context: NextContext, type?: string, id?: string, cmd?: string): string;
 }

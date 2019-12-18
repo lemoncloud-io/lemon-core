@@ -7,7 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-const ENV_NAME = 'MY_SNS_REGION';
+const ENV_NAME = 'MY_SNS_ENDPOINT';
 const DEF_SNS = 'lemon-hello-sns';
 
 //! override environ.
@@ -35,7 +35,7 @@ describe(`test service/sns-service.js`, () => {
     });
 
     test('check endpoint() function', async () => {
-        expect(AWSSNSService.ENV_SNS_REGION).toEqual(ENV_NAME);
+        expect(AWSSNSService.ENV_SNS_ENDPOINT).toEqual(ENV_NAME);
         expect(AWSSNSService.DEF_SNS_ENDPOINT).toEqual(DEF_SNS);
         const a0 = await SNS.endpoint(ENV_NAME);
         expect(a0).toEqual('arn:aws:sns:ap-northeast-2::hello');

@@ -113,7 +113,7 @@ export class MyConfigService implements ConfigService {
      */
     public get(key: string): string {
         const ret = this.envConfig[key];
-        const $env = this.$env;
+        const $env = this.$env || {};
         const val = ret === undefined ? $env[key] : ret;
         return val === undefined ? undefined : `${val}`;
     }
@@ -133,12 +133,12 @@ export class MyConfigService implements ConfigService {
 
     public getService(): string {
         const $pack = this.loadPackage();
-        return `${$pack.name || ''}`;
+        return `${($pack && $pack.name) || ''}`;
     }
 
     public getVersion(): string {
         const $pack = this.loadPackage();
-        return `${$pack.version || ''}`;
+        return `${($pack && $pack.version) || ''}`;
     }
 
     /**
