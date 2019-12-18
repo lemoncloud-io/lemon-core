@@ -55,6 +55,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 - [ ] use environ as default region like `ap-northeast-2`.
 - [ ] draw protocol's sequence diagram w/ `callback` mechanism.
+- [ ] on protocol, use local account name as accountId for NextContext.
 
 
 ----------------

@@ -67,6 +67,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                     .then(body => {
                         // _log(NS, `! res[${index}] =`, $U.json(body));
                         const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
+                        proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
                         return proto ? $protocol.service.execute(proto) : body;
                     })
                     .catch(e => {
