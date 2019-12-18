@@ -32,7 +32,6 @@ import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-h
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
 import $protocol from '../protocol/';
-import { loadJsonSync } from '../../tools/shared';
 
 export type ConfigService = CoreConfigService;
 
