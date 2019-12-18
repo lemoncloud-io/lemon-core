@@ -10,6 +10,20 @@
  */
 
 /**
+ * class: `CallbackData`
+ * - data types for `/callback` notification.
+ * - payload data-set to report callback.
+ */
+export interface CallbackData {
+    id?: string; // id value
+    cmd?: string; // command name
+    param?: any; // parameters
+    body?: any; // main data body
+    result?: any; // result-set
+    error?: any; // error if exception.
+}
+
+/**
  * Slack Message Format
  *
  * ```js

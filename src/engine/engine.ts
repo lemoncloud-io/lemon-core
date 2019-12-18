@@ -25,7 +25,7 @@
 import { $engine, $U, _log, _inf, _err } from './index';
 
 //! import sub-modules.
-import { SlackPostBody, MetricPostBody } from '../common/types';
+import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
 import { loadJsonSync } from '../tools/shared';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
 
@@ -37,7 +37,12 @@ type RequestContext = $lambda.APIGatewayEventRequestContext;
 //! create SNS Service
 const $sns = (arn: string): AWSSNSService => new AWSSNSService(arn);
 
-//! find ARN('lemon-hello-sns') via context information or environment.
+/**
+ * find ARN('lemon-hello-sns') via context information or environment.
+ *
+ * @param context   the current running context
+ * @param NS        namespace to log
+ */
 export const getHelloArn = (context?: Context | RequestContext | NextContext, NS?: string): string => {
     NS = NS || $U.NS('HELO');
 
@@ -68,7 +73,7 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
  *
  * @param e             Error
  * @param context       Lambda Context
- * @param event         Event Information
+ * @param event         Origin Event Object.
  * @param data          Optinal Data(body).
  */
 export const doReportError = async (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
@@ -121,7 +126,45 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
     }
 };
 
-//! report slack body via `lemon-hello-sns`.
+/**
+ * send callback data via web-hook endpoint.
+ *
+ * TODO - improve function identity.!! @191212.
+ *
+ * @param data  payload
+ */
+export const doReportCallback = async (data: CallbackData, service?: string, context?: any): Promise<string> => {
+    const NS = $U.NS('callback', 'cyan');
+    try {
+        const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
+        const stage = `${$U.env('STAGE', 'local')}`.toLowerCase();
+        const name = `${$U.env('NAME', '')}`.toLowerCase();
+        service = service || `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}/${name}-${stage}`;
+        const payload = { service, data };
+        const arn = getHelloArn(context, NS);
+        return $sns(arn)
+            .publish('', 'callback', payload) // subject should be 'callback'
+            .then((mid: string) => {
+                _inf(NS, '> callback.res =', mid);
+                return `${mid}`;
+            })
+            .catch((e: Error) => {
+                _err(NS, '! callback.err =', e);
+                return '';
+            });
+    } catch (e) {
+        _err(NS, '> reportCallback.err =', e);
+        return doReportError(e, context, null, data);
+    }
+};
+
+/**
+ * report slack message via `lemon-hello-sns`.
+ *
+ * @param channel       channel of slack
+ * @param body          slack body
+ * @param context       current running context.
+ */
 export const doReportSlack = async (channel: string, body: SlackPostBody, context?: any): Promise<string> => {
     const NS = $U.NS('RPTS');
     _log(NS, `doReportSlack()...`);
@@ -164,7 +207,14 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
     }
 };
 
-//! report metric body via `lemon-metrics-sns`.
+/**
+ * report metric-data like chart/graph to record via `lemon-metrics-sns`.
+ *
+ * @param ns        namespace like `[a-zA-Z][a-zA-Z0-9]+`
+ * @param id        id value like `[a-zA-Z0-9][a-zA-Z0-9_:\-]+`
+ * @param body      any body data
+ * @param context   current running context.
+ */
 export const doReportMetric = async (ns: string, id: string, body: MetricPostBody, context?: any): Promise<string> => {
     const NS = $U.NS('RPTM');
     //! validate parameters. (see `lemon-metrics-api`)

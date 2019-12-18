@@ -50,12 +50,20 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 [MIT](LICENSE) - (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
 
 
+----------------
+# TODO TASK #
+
+- [ ] use environ as default region like `ap-northeast-2`.
+- [ ] draw protocol's sequence diagram w/ `callback` mechanism.
+- [ ] on protocol, use local account name as accountId for NextContext.
+
 
 ----------------
 # VERSION INFO #
 
 | Version   | Description
 |--         |--
+| 2.1.0     | support `ProtocolService` for inter communication of micro-services.
 | 2.0.10    | show current name/version by `GET /`.
 | 2.0.9     | improve `Elastic6Service` + `Elastic6QueryService`.
 | 2.0.8     | improve `APIService` w/ mocks data.

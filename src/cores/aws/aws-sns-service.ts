@@ -13,7 +13,7 @@
  *  Common Headers
  ** ****************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, $U, _log, _inf, _err } from '../../engine';
+import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
 const NS = $U.NS('SNS', 'blue');
 
 import AWS from 'aws-sdk';
@@ -43,7 +43,7 @@ export class AWSSNSService implements CoreSnsService {
      * environ name of SNS KEY
      * - for self messaging.
      */
-    public static ENV_SNS_REGION = 'MY_SNS_REGION';
+    public static ENV_SNS_ENDPOINT = 'MY_SNS_ENDPOINT';
     public static DEF_SNS_ENDPOINT = 'lemon-hello-sns';
 
     private _arn: string;
@@ -66,9 +66,25 @@ export class AWSSNSService implements CoreSnsService {
      */
     public endpoint = async (target?: string) => {
         target = target || this._arn;
-        target = environ(target, AWSSNSService.ENV_SNS_REGION, AWSSNSService.DEF_SNS_ENDPOINT);
+        target = environ(target, AWSSNSService.ENV_SNS_ENDPOINT, AWSSNSService.DEF_SNS_ENDPOINT);
+        if (!target) throw new Error(`@target (or env.${AWSSNSService.ENV_SNS_ENDPOINT}) is required!`);
         if (target.startsWith('arn:aws:sns:')) return target;
         const REGION = region();
+        //! via hello-arn(see env.REPORT_ERROR_ARN), build arn.
+        try {
+            const arn: string = getHelloArn(null, NS);
+            if (arn && arn.startsWith('arn:aws:sns:')) {
+                const arns = arn.split(':');
+                arns[3] = REGION;
+                arns[5] = target;
+                return arns.join(':');
+            }
+        } catch (e) {
+            _log(NS, `! ignored.err =`, e);
+        }
+
+        // # suggested by https://groups.google.com/forum/#!topic/boto-users/QhASXlNBm40
+        // # account_id = boto.connect_iam().get_user().arn.split(':')[4]
         return this.accountID().then(_ => {
             _log(NS, '> account-id =', _);
             const arn = ['arn', 'aws', 'sns', REGION, _, target].join(':');

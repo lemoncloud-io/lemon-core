@@ -29,8 +29,9 @@ import {
 } from './../core-services';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
-import $protocol from '../protocol/';
 import { loadJsonSync } from '../../tools/shared';
+import { GETERR } from '../../common/test-helper';
+import $protocol from '../protocol/';
 
 export type ConfigService = CoreConfigService;
 
@@ -74,11 +75,11 @@ export const notfound = (body: any) => {
 };
 
 export const failure = (body: any, status?: number) => {
-    return buildResponse(status === undefined ? 503 : status, body);
+    return buildResponse(status || 503, body);
 };
 
 export const redirect = (location: any, status?: number) => {
-    const res = buildResponse(status === undefined ? 300 : status, '');
+    const res = buildResponse(status || 302, '');
     res.headers['Location'] = location; // set location.
     return res;
 };
@@ -125,6 +126,18 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         this._handlers[type] = decoder;
     }
 
+    /**
+     * check if there is handler for type.
+     * @param type      type of WEB(API)
+     */
+    public hasHandler(type: string): boolean {
+        return typeof this._handlers[type] != 'undefined';
+    }
+
+    /**
+     * registr web-controller.
+     * @param controller the web-controller.
+     */
     public addController(controller: CoreWEBController) {
         if (typeof controller !== 'object') throw new Error(`@controller (object) is required!`);
         const type = controller.type();
@@ -151,7 +164,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     }
 
     /**
-     * Default SQS Handler.
+     * Default WEB Handler.
      */
     public handle: WEBHandler = async (event, $ctx) => {
         //! API parameters.
@@ -166,7 +179,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         //! prevent error via transform.
         if (event.headers && !event.headers['x-protocol-context']) event.headers['x-protocol-context'] = $U.json($ctx);
-        const param: ProtocolParam = $protocol.service.web.transformToParam(event);
+        const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
         _log(NS, '! protocol-param =', $U.json(param));
         const TYPE = param.type;
         const MODE = param.mode;
@@ -187,11 +200,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 }
 
                 //! report error.
-                if (LambdaHandler.REPORT_ERROR) {
-                    return doReportError(e, $ctx, event).then(() => {
-                        return failure(e instanceof Error ? message : e);
-                    });
-                }
+                if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
 
                 //! common format of error.
                 if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
@@ -249,7 +258,12 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
             //! use decoder() to find target.
             if (typeof decoder == 'function') return decoder(MODE, ID, CMD);
-            else if (typeof decoder == 'object') return (decoder as CoreWEBController).decode(MODE, ID, CMD);
+            else if (typeof decoder == 'object') {
+                const func = (decoder as CoreWEBController).decode(MODE, ID, CMD);
+                if (!func) return null; // avoid 'null' error.
+                const next: NextHandler = (i, p, b, c) => func.call(decoder, i, p, b, c);
+                return next;
+            }
             return null;
         })(this._handlers[TYPE]);
 
@@ -289,7 +303,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         //! if it is protocol request via lambda, then returns valid context.
         const headers = event.headers || {};
         if (headers['x-protocol-context']) {
-            const $param = $protocol.service.web.transformToParam(event);
+            const $param = $protocol.service.asTransformer('web').transformToParam(event);
             return $param.context;
         }
 
@@ -319,21 +333,15 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             identity.cognitoPoolId = $id.cognitoIdentityPoolId;
         }
 
-        //! - build initial `source` like protocol-url of self out of initial request context.
-        const config: ConfigService = this.lambda.config;
-        const service = (config && config.getService()) || 'lemon-core';
-        const version = (config && config.getVersion()) || '0.0.0';
-        const stage = reqContext.stage || (config && config.getStage()) || '';
-        const source = `api://${reqContext.accountId}@${service}-${stage}${event.path}#${version}`; // the origin request protocol uri (must use 'api')
-        const domain = reqContext.domainName || event.headers['Host'] || event.headers['host'];
-
         //! - extract original request infor.
         const clientIp = reqContext.identity && reqContext.identity.sourceIp;
         const requestId = reqContext.requestId;
         const accountId = reqContext.accountId;
+        const domain = reqContext.domainName || event.headers['Host'] || event.headers['host'];
 
         //! save into headers and returns.
-        const context: NextContext = { ...res, identity, source, clientIp, requestId, accountId, domain };
+        const context: NextContext = { ...res, identity, clientIp, requestId, accountId, domain };
+        context.source = $protocol.service.myProtocolURI(context); // self service-uri as source
         return context;
     }
 }
