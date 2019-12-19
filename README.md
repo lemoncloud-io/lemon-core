@@ -19,12 +19,32 @@ Lemon Core Bootloader for Serverless Micro-Service
 
 Basic MicroService Architecutre with `API` + `SNS` + `SQS`.
 
-![](assets/lemon-core-ms-arch.png)
-
 - `NextHandler`: basic controller method to handle user service
 - `NextDecoder`: mapper from `httpMethod + id + cmd` to `NextHandler`
 - `NextContext`: initial requester's context with `identity`.
 
+    ![](assets/lemon-core-ms-arch.png)
+
+
+### Protocol Service
+
+- support inter-communication between micro services
+- `execute()`: synchronized call via lambda execution by `API` Handler.
+- `notifiy()`: async call by `SNS` handler w/ lambda callback.
+- `enqueue()`: async call by `SQS` handler w/ lambda callback.
+- `broadcast()`: publish message via `SNS`, and handled by `Notification` handler.
+
+    ![](assets/lemon-protocol-flow.png)
+
+    ```ts
+    import $engine, { ProtocolParam, ProtocolService, CallbackParam } from 'lemon-core';
+    // use the internal instance from $engine.
+    const service: ProtocolService = $engine.cores.protocol.service;
+    const protocol: ProtocolParam = service.fromURL(context, 'api://lemon-hello-api/hello/echo', param, body);
+    const callback: CallbackParam = { type: 'hooks', id: `${id}` };
+    // call protocol-service.
+    const queueId = await service.enqueue(protocol, callback);
+    ```
 
 ## Usage
 
@@ -56,7 +76,8 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 - [ ] use environ as default region like `ap-northeast-2`.
 - [ ] draw protocol's sequence diagram w/ `callback` mechanism.
 - [ ] on protocol, use local account name as accountId for NextContext.
-
+- [ ] notification-handler is directly subscribed to SNS like `lemon-hello-out`.
+- [ ] for protocol.enqueue(), use the optional delayed wait time.
 
 ----------------
 # VERSION INFO #
