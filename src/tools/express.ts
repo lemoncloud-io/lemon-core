@@ -27,7 +27,7 @@ import { loadJsonSync, getRunParam } from './shared';
 import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 
 import AWS from 'aws-sdk';
-import express from 'express';
+import express, { RequestHandler } from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import multer from 'multer';
@@ -92,7 +92,7 @@ export const buildExpress = (
     app.use(bodyParser.urlencoded({ extended: true }));
 
     //! middle ware
-    const middle = (req: any, res: any, next: any) => {
+    const middle: RequestHandler = (req: any, res: any, next: any) => {
         // const _err = console.error;
         //! prepare event
         const event = {
@@ -160,19 +160,38 @@ export const buildExpress = (
      ** *******************************************************************************************************************/
     //! default app.
     app.get('', (req: any, res: any) => {
-        res.status(200).send(`${NAME}/${VERS}`);
+        const $pack = loadJsonSync('package.json');
+        const name = $pack.name || 'LEMON API';
+        const version = $pack.version || '0.0.0';
+        const profile = (process && process.env['NAME']) || '';
+        const stage = (process && process.env['STAGE']) || '';
+        res.status(200).send(`${name}/${version}:${profile}-${stage}`);
     });
 
     //! handler map.
-    const handlers = (() => {
+    if (true) {
+        //! route prefix
+        const ROUTE_PREFIX = `${(options && options.prefix) || ''}`;
+
+        //! handle request to handler.
+        const next_middle = (type: string) => (req: any) => {
+            const callback = req.$callback;
+            req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
+            $web.handle(req.$event, req.$context)
+                .then(_ => callback && callback(null, _))
+                .catch(e => {
+                    _err(NS, '! exp.err =', e);
+                    callback && callback(e);
+                });
+        };
+
         //! register automatically endpont.
         const RESERVES = 'id,log,inf,err,extend,ts,dt,environ'.split(',');
         const isValidName = (name: string) => /^[a-z][a-z0-9\-_]+$/.test(name) && RESERVES.indexOf(name) < 0;
         const $map: any = $web.getHandlerDecoders();
         const keys = Object.keys($map);
-        const ROUTE_PREFIX = `${(options && options.prefix) || ''}`;
         // _inf(NS, '! express.keys =', keys);
-        return keys
+        const handlers = keys
             .filter(isValidName)
             .map(name => {
                 //! check if valid name && function.
@@ -181,31 +200,15 @@ export const buildExpress = (
                 if (typeof main !== 'function')
                     throw new Error(`.${name} should be function handler. but type=` + typeof main);
 
-                //! handle request to handler.
-                const handle_express = (type: string) => (req: any, res: any) => {
-                    const callback = req.$callback;
-                    req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
-                    $web.handle(req.$event, req.$context)
-                        .then(_ => {
-                            // _inf(NS, '! exp.res =', _);
-                            callback && callback(null, _);
-                        })
-                        .catch(e => {
-                            _err(NS, '! exp.err =', e);
-                            callback && callback(e);
-                        });
-                };
-
                 //! route pattern with `/<type>/<id>/<cmd?>`
-                app.get(`/${ROUTE_PREFIX}${type}`, middle, handle_express(type));
-                app.get(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
-                app.get(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express(type));
-                app.put(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
-                app.post(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
-                app.post(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, handle_express(type));
-                app.delete(`/${ROUTE_PREFIX}${type}/:id`, middle, handle_express(type));
+                app.get(`/${ROUTE_PREFIX}${type}`, middle, next_middle(type));
+                app.get(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
+                app.get(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
+                app.put(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
+                app.post(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
+                app.post(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
+                app.delete(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
 
-                //! print
                 const _NS = (name: string, color?: any) => $U.NS(name, color, 4, '');
                 _inf(NS, `! api[${_NS(name, 'yellow')}] is routed as ${_NS(`/${ROUTE_PREFIX}${type}`, 'cyan')}`);
                 return { name, type, main };
@@ -214,9 +217,9 @@ export const buildExpress = (
                 M[N.name] = N;
                 return M;
             }, {});
-    })();
-    // _inf(NS, '! express.handlers =', Object.keys(handlers).join(', '));
-    _inf(NS, '! express.handlers.len =', Object.keys(handlers).length);
+        // _inf(NS, '! express.handlers =', Object.keys(handlers).join(', '));
+        _inf(NS, '! express.handlers.len =', Object.keys(handlers).length);
+    }
 
     //! create server by port.
     const createServer = () => {
