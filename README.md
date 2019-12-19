@@ -36,15 +36,15 @@ Basic MicroService Architecutre with `API` + `SNS` + `SQS`.
 
     ![](assets/lemon-protocol-flow.png)
 
-    ```ts
-    import $engine, { ProtocolParam, ProtocolService, CallbackParam } from 'lemon-core';
-    // use the internal instance from $engine.
-    const service: ProtocolService = $engine.cores.protocol.service;
-    const protocol: ProtocolParam = service.fromURL(context, 'api://lemon-hello-api/hello/echo', param, body);
-    const callback: CallbackParam = { type: 'hooks', id: `${id}` };
-    // call protocol-service.
-    const queueId = await service.enqueue(protocol, callback);
-    ```
+```ts
+import $engine, { ProtocolParam, ProtocolService, CallbackParam } from 'lemon-core';
+// use the internal instance from $engine.
+const service: ProtocolService = $engine.cores.protocol.service;
+const protocol: ProtocolParam = service.fromURL(context, 'api://lemon-hello-api/hello/echo', param, body);
+const callback: CallbackParam = { type: 'hooks', id: `${id}` };
+// call protocol-service.
+const queueId = await service.enqueue(protocol, callback);
+```
 
 ## Usage
 
