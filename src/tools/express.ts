@@ -160,12 +160,14 @@ export const buildExpress = (
      ** *******************************************************************************************************************/
     //! default app.
     app.get('', (req: any, res: any) => {
+        const $env: any = (process && process.env) || {};
         const $pack = loadJsonSync('package.json');
         const name = $pack.name || 'LEMON API';
         const version = $pack.version || '0.0.0';
-        const profile = (process && process.env['NAME']) || '';
-        const stage = (process && process.env['STAGE']) || '';
-        res.status(200).send(`${name}/${version}:${profile}-${stage}`);
+        const profile = $env['NAME'] || $env['PROFILE'] || '';
+        const stage = $env['STAGE'] || '';
+        const info = profile && stage ? `${profile}-${stage}` : `${profile || stage}`;
+        res.status(200).send(`${name}/${version}${info ? ':' : ''}${info}`);
     });
 
     //! handler map.
