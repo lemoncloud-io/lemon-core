@@ -9,11 +9,13 @@ default_env: &default_env
   NAME: 'lemon'           # profile name.
   BACKBONE_API:  'http://localhost:8081' # use backbone tunneling.
 
+
 #-----------------------------------
 # test configuration.
 test:
   <<: *default_env
   STAGE: 'test'
+
 
 #-----------------------------------
 # local development configuration.
@@ -30,6 +32,7 @@ local:
 dev:
   <<: *default_env
   STAGE: 'develop'
+
 
 #-----------------------------------
 # production with AWS deploy

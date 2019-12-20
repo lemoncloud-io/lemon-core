@@ -574,7 +574,8 @@ export const createHttpWebProxy = (
                         const msg = body ? GETERR(body) : `${statusMessage || ''}`;
                         if (statusCode === 400 || statusCode === 404) {
                             const title = `${(statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'}`.toUpperCase();
-                            return reject(new Error(`${statusCode} ${title} - ${msg}`));
+                            const message = msg.startsWith('404 NOT FOUND') ? msg : `${statusCode} ${title} - ${msg}`;
+                            return reject(new Error(message));
                         }
                         statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
                         body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
