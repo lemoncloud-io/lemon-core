@@ -565,7 +565,7 @@ export const createHttpWebProxy = (
                 //! start request..
                 request(options, function(error: any, response: any, body: any) {
                     error && _err(NS, '>>>>> requested! err=', error);
-                    if (error) return reject(error);
+                    if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
                     //! detecte trouble.
                     const statusCode = response.statusCode;
                     const statusMessage = response.statusMessage;
@@ -573,8 +573,8 @@ export const createHttpWebProxy = (
                     if (statusCode !== 200 && statusCode !== 201) {
                         const msg = body ? GETERR(body) : `${statusMessage || ''}`;
                         if (statusCode === 400 || statusCode === 404) {
-                            //TODO - msg will be json format.......
-                            return reject(new Error(`${statusCode} NOT FOUND - ${msg}`));
+                            const title = `${(statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'}`.toUpperCase();
+                            return reject(new Error(`${statusCode} ${title} - ${msg}`));
                         }
                         statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
                         body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
