@@ -59,8 +59,7 @@ export const build_log = ($console: EngineConsole): EngineLogger =>
         const _ts = build_ts({ console: $console });
         let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
-            args.unshift(RESET),
-                ($console.auto_ts && args.unshift(_ts(), LEVEL_LOG)) || args.unshift(LEVEL_LOG),
+            ($console.auto_ts && args.unshift(_ts(), LEVEL_LOG + RESET)) || args.unshift(LEVEL_LOG + RESET),
                 args.unshift(BLUE);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_LOG);
         return $console.log.apply($console.thiz, args);
@@ -70,22 +69,20 @@ export const build_inf = ($console: EngineConsole): EngineLogger =>
         const _ts = build_ts({ console: $console });
         let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
-            args.push(RESET),
-                ($console.auto_ts && args.unshift(_ts(), LEVEL_INF)) || args.unshift(LEVEL_INF),
+            ($console.auto_ts && args.unshift(_ts(), LEVEL_INF + RESET)) || args.unshift(LEVEL_INF + RESET),
                 args.unshift(YELLOW);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_INF);
-        return ($console.info || $console.log).apply($console.thiz, args);
+        return $console.log.apply($console.thiz, args);
     };
 export const build_err = ($console: EngineConsole): EngineLogger =>
     function() {
         const _ts = build_ts({ console: $console });
         let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
-            args.push(RESET),
-                ($console.auto_ts && args.unshift(_ts(), LEVEL_ERR)) || args.unshift(LEVEL_ERR),
+            ($console.auto_ts && args.unshift(_ts(), LEVEL_ERR + RESET)) || args.unshift(LEVEL_ERR + RESET),
                 args.unshift(RED);
         else $console.auto_ts && args.unshift(_ts(), LEVEL_ERR);
-        return ($console.error || $console.log).apply($console.thiz, args);
+        return $console.log.apply($console.thiz, args);
     };
 /* eslint-enable @typescript-eslint/indent */
 
