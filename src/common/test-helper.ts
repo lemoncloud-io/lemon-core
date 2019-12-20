@@ -18,7 +18,8 @@
  * ```
  * @param e
  */
-export const GETERR = (e: Error) => `${e.message}`;
+export const GETERR = (e: any) =>
+    e instanceof Error ? `${e.message}` : e && typeof e == 'object' ? JSON.stringify(e) : `${e}`;
 
 /**
  * catch error as { error: string }
@@ -29,7 +30,7 @@ export const GETERR = (e: Error) => `${e.message}`;
  * ```
  * @param e
  */
-export const GETERR$ = (e: Error) => ({ error: `${e.message}` });
+export const GETERR$ = (e: any) => ({ error: GETERR(e) });
 
 /**
  * improve expect() function with projection field.

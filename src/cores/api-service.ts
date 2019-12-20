@@ -14,6 +14,10 @@
 import { $engine, _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('APIS', 'green'); // NAMESPACE TO BE PRINTED.
 
+import fs from 'fs';
+import { loadJsonSync } from '../tools/shared';
+import { GETERR } from '../common/test-helper';
+
 /**
  * API headers.
  */
@@ -565,16 +569,16 @@ export const createHttpWebProxy = (
                     //! detecte trouble.
                     const statusCode = response.statusCode;
                     const statusMessage = response.statusMessage;
-                    if (statusCode !== 200) {
-                        //! handle for not-found.
+                    //! if not in success
+                    if (statusCode !== 200 && statusCode !== 201) {
+                        const msg = body ? GETERR(body) : `${statusMessage || ''}`;
                         if (statusCode === 400 || statusCode === 404) {
-                            const msg = `${body || '404 NOT FOUND'}`;
-                            return reject(new Error(msg.startsWith('404 NOT FOUND') ? msg : `404 NOT FOUND - ${msg}`));
+                            //TODO - msg will be json format.......
+                            return reject(new Error(`${statusCode} NOT FOUND - ${msg}`));
                         }
                         statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
                         body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
-                        body = body || statusMessage;
-                        return reject(typeof body === 'string' ? new Error(body) : body);
+                        return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
                     }
                     //! try to parse body.
                     try {
@@ -600,9 +604,6 @@ export const createHttpWebProxy = (
 /** ********************************************************************************************************************
  *  MOCKS API-SERVICE
  ** ********************************************************************************************************************/
-import fs from 'fs';
-import { loadJsonSync } from '../tools/shared';
-
 /**
  * class: `MocksAPIService`
  * - use <mock>.json file in `./data/mocks/` instead of real http request.

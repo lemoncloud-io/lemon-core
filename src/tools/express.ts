@@ -109,7 +109,7 @@ export const buildExpress = (
         const context = { source: 'express' };
         const callback = (err: any, data: any) => {
             err && _err(NS, '! err@callback =', err);
-            data && _err(NS, '! res@callback =', data);
+            data && _inf(NS, `! res@callback[${(data && data.statusCode) || 0}] =`, $U.json((data && data.body) || ''));
             let contentType = null;
             if (data.headers) {
                 Object.keys(data.headers).map(k => {
