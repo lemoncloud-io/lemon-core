@@ -51,7 +51,8 @@ describe('LambdaSQSHandler', () => {
         expect2(res).toEqual(undefined);
 
         //! POST-CONDITION.
-        expect2(service.getLastResult()).toEqual([new Error('404 NOT FOUND - GET /metrics/hello/test-protocol')]);
+        // expect2(service.getLastResult()).toEqual([new Error('404 NOT FOUND - GET /metrics/hello/test-protocol')]);
+        expect2(service.getLastResult()).toEqual(['']);
         const result2 = web.result;
         expect2(result2).toEqual(null);
 
@@ -81,7 +82,7 @@ describe('LambdaSQSHandler', () => {
         expect2(res).toEqual(undefined);
 
         //! POST-CONDITION.
-        expect2(service.getLastResult()).toEqual([true]);
+        expect2(service.getLastResult()).toEqual(['']);
         const result2 = web.result;
         expect2(result2).toEqual({cmd: "test-protocol", hello: "test-protocol hello", id: "hello"});
 

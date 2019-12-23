@@ -82,8 +82,8 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
     public handle: NotificationHandler = async (event, context) => {
         _log(NS, `handle()....`);
         // _log(NS, '! event =', $U.json(event));
-        _log(NS, '! event.headers =', $U.json(event.headers));
-        _log(NS, '! context =', $U.json(context));
+        // _inf(NS, '! event.headers =', $U.json(event.headers));
+        // _inf(NS, '! context =', $U.json(context));
         _log(NS, '! path =', event.path);
         const id = `${event.path}`;
         const { param, body } = this.packNotificationParamBody(event);
@@ -99,7 +99,7 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
      */
     public async packContext(event: WEBEvent, $ctx: Context): Promise<NextContext> {
         _log(NS, `packContext()....`);
-        _log(NS, '! event =', $U.json(event));
+        // _log(NS, '! event =', $U.json(event));
         _log(NS, '! $ctx =', $U.json($ctx));
         const headers = (event && event.headers) || {};
         const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
@@ -121,7 +121,8 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
      */
     public packNotificationParamBody(event: WEBEvent): { param: NotificationParam; body: NotificationBody } {
         _log(NS, `packNotificationParam()....`);
-        _log(NS, '! event =', $U.json(event));
+        // _log(NS, '! event =', $U.json(event));
+        _inf(NS, '! event.headers =', $U.json(event.headers));
         const headers = (event && event.headers) || {};
         const $ctx: APIGatewayEventRequestContext = event && event.requestContext;
         const method = ($ctx && $ctx.httpMethod) || event.httpMethod || '';
@@ -148,8 +149,8 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
 
         //! prepare param via headers.
         const param: NotificationParam = {
-            snsMessageId: headers['x-amz-sns-message-id'],
             snsMessageType: headers['x-amz-sns-message-type'],
+            snsMessageId: headers['x-amz-sns-message-id'],
             snsTopicArn: headers['x-amz-sns-topic-arn'],
             snsSubscriptionArn: headers['x-amz-sns-subscription-arn'], // only for Notification.
         };

@@ -118,9 +118,9 @@ describe(`core/builder.ts`, () => {
         })();
         const { $engine } = instance({}, { console });
 
-        expect2($engine.log('NS', 'LOG')).toEqual(`${BLUE} 2019-11-29 22:44:24 - ${RESET} NS LOG`);
-        expect2($engine.inf('NS', 'INF')).toEqual(`${YELLOW} 2019-11-29 22:44:24 I NS INF ${RESET}`);
-        expect2($engine.err('NS', 'ERR')).toEqual(`${RED} 2019-11-29 22:44:24 E NS ERR ${RESET}`);
+        expect2($engine.log('NS', 'LOG')).toEqual(`${BLUE} 2019-11-29 22:44:24 -${RESET} NS LOG`);
+        expect2($engine.inf('NS', 'INF')).toEqual(`${YELLOW} 2019-11-29 22:44:24 I${RESET} NS INF`);
+        expect2($engine.err('NS', 'ERR')).toEqual(`${RED} 2019-11-29 22:44:24 E${RESET} NS ERR`);
 
         done();
     });
@@ -143,9 +143,9 @@ describe(`core/builder.ts`, () => {
         })();
         const { $engine } = instance({}, { console });
 
-        expect2($engine.log('NS', 'LOG')).toEqual(`${BLUE} - ${RESET} NS LOG`);
-        expect2($engine.inf('NS', 'INF')).toEqual(`${YELLOW} I NS INF ${RESET}`);
-        expect2($engine.err('NS', 'ERR')).toEqual(`${RED} E NS ERR ${RESET}`);
+        expect2($engine.log('NS', 'LOG')).toEqual(`${BLUE} -${RESET} NS LOG`);
+        expect2($engine.inf('NS', 'INF')).toEqual(`${YELLOW} I${RESET} NS INF`);
+        expect2($engine.err('NS', 'ERR')).toEqual(`${RED} E${RESET} NS ERR`);
 
         done();
     });

@@ -17,6 +17,7 @@ import { NextContext, NextHandler } from './../core-services';
 import { LambdaHandler, SNSHandler, LambdaSubHandler } from './lambda-handler';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+import { GETERR$, GETERR } from '../../common/test-helper';
 
 /**
  * class: LambdaSNSHandler
@@ -52,7 +53,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
         _log(NS, '> event =', $U.json(event));
 
         //! handle sqs record data.
-        const onSNSRecord = async (record: SNSEventRecord, index: number): Promise<string | boolean> => {
+        const onSNSRecord = async (record: SNSEventRecord, index: number): Promise<string> => {
             _log(NS, `onSNSRecord(${(record && record.EventSource) || ''}, ${index})...`);
 
             //! check if via protocol-service.
@@ -70,12 +71,9 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                         proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
                         return proto ? $protocol.service.execute(proto) : body;
                     })
-                    .catch(e => {
-                        doReportError(e, param.context, null, { protocol: param });
-                        throw e;
-                    });
+                    .catch(e => doReportError(e, param.context, null, { protocol: param }).catch(GETERR$));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
-                return true;
+                return '';
             } else {
                 //! retrieve message-attributes as `param`
                 const param = Object.keys($msg.MessageAttributes || {}).reduce(
@@ -103,10 +101,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                                 _log(NS, `>> [${i}].res =`, $U.json(_));
                                 return `${i}`;
                             })
-                            .catch((e: Error) => {
-                                doReportError(e, null, null, { i, param, body });
-                                return `ERR[${i}] - ${e.message}`;
-                            }),
+                            .catch(e => doReportError(e, null, null, { i, param, body }).catch(GETERR)),
                     ),
                 );
                 //! concont

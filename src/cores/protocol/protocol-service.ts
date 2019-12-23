@@ -411,19 +411,27 @@ export class MyProtocolService implements ProtocolService {
      *
      * @param param     the calling param
      * @param callback  the return target
+     * @param delaySeconds the delayed seconds
      * @param config    config service (for debug)
      */
-    public async enqueue(param: ProtocolParam, callback?: CallbackParam, config?: ConfigService): Promise<string> {
+    public async enqueue(
+        param: ProtocolParam,
+        callback?: CallbackParam,
+        delaySeconds?: number,
+        config?: ConfigService,
+    ): Promise<string> {
         // const _log = console.info;
         config = config || this.config;
         const service = `${param.service || config.getService() || ''}`;
         _log(NS, `enqueue(${service})..`);
         const uri = this.asProtocolURI('sqs', param, config);
         _inf(NS, `> uri[${service}] =`, uri);
+        delaySeconds = $U.N(delaySeconds, 10);
+        if (delaySeconds < 0) throw new Error(`@delaySeconds (number) should be >= 0. but ${delaySeconds}`);
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
         const params: SQS.Types.SendMessageRequest = this.sqs.transformToEvent(uri, param, cbUrl);
-        params.DelaySeconds = 10;
+        params.DelaySeconds = delaySeconds;
         const endpoint = params.QueueUrl; // https://sqs.${arr[3]}.amazonaws.com
         _inf(NS, `> endpoint[${service}] =`, uri);
 

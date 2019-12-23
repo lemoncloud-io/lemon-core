@@ -60,6 +60,29 @@ describe(`core/utilities.ts`, () => {
         done();
     });
 
+    //! test datetime()
+    test('check datetime()', async done => {
+        const { $U } = instance();
+        const date1 = '79-11-26';
+        const date2 = '19-11-26';
+        const date3 = '1978-12-01';
+        const date4 = '1978-12-01 12:34';
+        const date5 = '1978-12-01 12:34:20';
+        const date6 = '19781201';
+        const date7 = '19781201 1234';
+
+        expect2($U.dt(date3)).toEqual(new Date(1978, 11, 1, 12, 0, 0));
+        expect2($U.dt(date4)).toEqual(new Date(1978, 11, 1, 12, 34, 0));
+        expect2($U.dt(date5)).toEqual(new Date(1978, 11, 1, 12, 34, 20));
+        expect2($U.dt(date6)).toEqual(new Date(1978, 11, 1, 12, 0, 0));
+        expect2($U.dt(date7)).toEqual(new Date(1978, 11, 1, 12, 34, 0));
+
+        expect2($U.dt(date1)).toEqual(new Date(1979, 10, 26, 12, 0, 0));
+        expect2($U.dt(date2)).toEqual(new Date(2019, 10, 26, 12, 0, 0));
+
+        done();
+    });
+
     //! test cryto()
     test('check cryto()', async done => {
         const { $U } = instance();

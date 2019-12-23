@@ -18,6 +18,7 @@ import { SQSHandler, LambdaHandler, LambdaSubHandler } from './lambda-handler';
 import { NextHandler, NextContext } from './../core-services';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+import { GETERR$, GETERR } from '../../common/test-helper';
 
 /**
  * class: LambdaSQSHandler
@@ -46,15 +47,15 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
     /**
      * Default SQS Handler.
      */
-    public handle: SQSHandler = async (event, context): Promise<void> => {
+    public handle: SQSHandler = async (event): Promise<void> => {
         //! for each records.
         const records: SQSRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
         _log(NS, '> event =', $U.json(event));
 
         //! handle sqs record data.
-        const onSQSRecord = async (record: SQSRecord, index: number): Promise<string | boolean> => {
-            _log(NS, `sqsOnRecord(${(record && record.messageId) || ''}, ${index})...`);
+        const onSQSRecord = async (record: SQSRecord, index: number): Promise<string> => {
+            _log(NS, `onSQSRecord(${(record && record.messageId) || ''}, ${index})...`);
 
             //! retrieve message-attributes as `param`
             const param = Object.keys(record.messageAttributes || {}).reduce((O: any, key: string) => {
@@ -79,12 +80,9 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
                         return proto ? $protocol.service.execute(proto) : body;
                     })
-                    .catch(e => {
-                        doReportError(e, param.context, null, { protocol: param });
-                        throw e;
-                    });
+                    .catch(e => doReportError(e, param.context, null, { protocol: param }).catch(GETERR$));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
-                return true;
+                return '';
             } else {
                 //! load data as `body`
                 const body =
@@ -102,17 +100,12 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                                 _log(NS, `>> [${i}].res =`, $U.json(_));
                                 return `${i}`;
                             })
-                            .catch((e: Error) => {
-                                doReportError(e, null, null, { i, param, body });
-                                return `ERR[${i}] - ${e.message}`;
-                            }),
+                            .catch(e => doReportError(e, null, null, { i, param, body }).catch(GETERR)),
                     ),
                 );
                 //! concont
                 return res.join(',');
             }
-
-            return false;
         };
 
         //! serialize each records.

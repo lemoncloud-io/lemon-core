@@ -91,10 +91,10 @@ describe('APIService', () => {
 
         /* eslint-disable prettier/prettier */
         //! check sub-typed request.
-        expect2(await service.doGet(undefined)).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
-        expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
-        expect2(await service.doGet('0')).toEqual({ name: 'lemon' });
-        expect2(await service.doGet('99').catch(GETERR)).toEqual('404 NOT FOUND - id:99');
+        expect2(() => service.doGet(undefined)).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
+        expect2(() => service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
+        expect2(() => service.doGet('0')).toEqual({ name: 'lemon' });
+        expect2(() => service.doGet('99').catch(GETERR)).toEqual('404 NOT FOUND - id:99');
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -115,7 +115,7 @@ describe('APIService', () => {
         /* eslint-disable prettier/prettier */
         expect2(client0.hello()).toEqual(`api-client:http-web-proxy:API:localhost:8888-`);
         const ERRCON = await client0.doGet(null).catch(GETERR);
-        if (ERRCON.startsWith('connect ECONNREFUSED 127.0.0.1:8888')) return done();        //! ignore test.
+        if (ERRCON.indexOf('"ECONNREFUSED"') >= 0) return done();        //! ignore test.
         expect2(await client0.doGet(null).catch(GETERR)).toEqual('lemon-hello-api/2.0.1');  //! required to run `lemon-hello-api` as `$ npm run express`
 
         //! request with `application/json`
