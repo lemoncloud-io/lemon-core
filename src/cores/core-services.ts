@@ -150,14 +150,13 @@ export interface ProtocolService {
 
     /**
      * synchronized call to target function via 'Lambda'.
+     *
      * @param param     the calling param
      */
     execute<T>(param: ProtocolParam): Promise<T>;
 
     /**
      * asynchronized call to target function via 'SNS'.
-     *
-     * TODO - support `callback` options @191217
      *
      * @param param     the calling param
      * @param callback  the return target
@@ -167,12 +166,11 @@ export interface ProtocolService {
     /**
      * asynchronized call to target function via 'SQS' (queue).
      *
-     * TODO - support `callback` options @191217
-     *
      * @param param     the calling param
      * @param callback  the return target
+     * @param delaySeconds  (from AWS doc) The length of time, in seconds, for which to delay a specific message. Valid values: 0 to 900. Maximum: 15 minutes. Messages with a positive DelaySeconds value become available for processing after the delay period is finished. If you don't specify a value, the default value for the queue applies.   When you set FifoQueue, you can't set DelaySeconds per message. You can set this parameter only on a queue level.
      */
-    enqueue(param: ProtocolParam, callback?: CallbackParam): Promise<string>;
+    enqueue(param: ProtocolParam, callback?: CallbackParam, delaySeconds?: number): Promise<string>;
 
     /**
      * broadcast body message via shared `SNS` Subscritions. (see `NotificationHandler`)
