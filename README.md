@@ -42,13 +42,13 @@ import $engine, { ProtocolParam, ProtocolService, CallbackParam } from 'lemon-co
 const service: ProtocolService = $engine.cores.protocol.service;
 const protocol: ProtocolParam = service.fromURL(context, 'api://lemon-hello-api/hello/echo', param, body);
 const callback: CallbackParam = { type: 'hooks', id: `${id}` };
-// call protocol-service.
-const queueId = await service.enqueue(protocol, callback);
+// queue protocol in 30 seconds delayed.
+const queueId = await service.enqueue(protocol, callback, 30);
 ```
 
 ## Usage
 
-1. install `lemon-core` module (>= 2.0.1).
+1. install `lemon-core` module (>= 2.1.0).
 
 ```sh
 $ npm install lemon-core --save
@@ -73,17 +73,19 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 ----------------
 # TODO TASK #
 
-- [ ] use environ as default region like `ap-northeast-2`.
-- [ ] draw protocol's sequence diagram w/ `callback` mechanism.
+- [ ] use environ as default region like `ap-northeast-2` (or use current region).
+- [x] draw protocol's sequence diagram w/ `callback` mechanism.
 - [ ] on protocol, use local account name as accountId for NextContext.
-- [ ] notification-handler is directly subscribed to SNS like `lemon-hello-out`.
-- [ ] for protocol.enqueue(), use the optional delayed wait time.
+- [ ] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
+- [x] for protocol.enqueue(), use the optional delayed wait time.
+
 
 ----------------
 # VERSION INFO #
 
 | Version   | Description
 |--         |--
+| 2.1.1     | support `enqueue()` with delayed-seconds.
 | 2.1.0     | support `ProtocolService` for inter communication of micro-services.
 | 2.0.10    | show current name/version by `GET /`.
 | 2.0.9     | improve `Elastic6Service` + `Elastic6QueryService`.
