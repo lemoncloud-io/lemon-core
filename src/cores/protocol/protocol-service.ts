@@ -132,10 +132,10 @@ export class MyProtocolService implements ProtocolService {
      * @param config    config-service to use.
      */
     public asProtocolURI(protocol: MyProtocolType, param: ProtocolParam, config?: ConfigService): string {
+        config = config ? config : this.config;
         const context = param && param.context;
         const service = !param.service || param.service == 'self' ? this.selfService || 'self' : param.service;
         const stage: STAGE = param.stage || (config && config.getStage()) || 'local';
-        config = config ? config : this.config;
 
         // eslint-disable-next-line prettier/prettier
         const uri = MyProtocolService.buildProtocolURI(config, context, protocol, service, stage, param.type, param.id, param.cmd);
@@ -423,7 +423,8 @@ export class MyProtocolService implements ProtocolService {
         // const _log = console.info;
         config = config || this.config;
         const service = `${param.service || config.getService() || ''}`;
-        _log(NS, `enqueue(${service})..`);
+        const stage = `${param.stage || config.getStage() || ''}`;
+        _log(NS, `enqueue(${service}-${stage})..`);
         const uri = this.asProtocolURI('sqs', param, config);
         _inf(NS, `> uri[${service}] =`, uri);
         delaySeconds = $U.N(delaySeconds, 10);
