@@ -431,15 +431,15 @@ export class MyProtocolService implements ProtocolService {
         if (delaySeconds < 0) throw new Error(`@delaySeconds (number) should be >= 0. but ${delaySeconds}`);
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
-        const params: SQS.Types.SendMessageRequest = this.sqs.transformToEvent(uri, param, cbUrl);
+        const params = this.sqs.transformToEvent(uri, param, cbUrl);
         params.DelaySeconds = delaySeconds;
         const endpoint = params.QueueUrl; // https://sqs.${arr[3]}.amazonaws.com
         _inf(NS, `> endpoint[${service}] =`, uri);
 
         //! call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
-        const sns = new AWS.SQS({ region });
-        const res = await sns
+        const sqs = new AWS.SQS({ region });
+        const res = await sqs
             .sendMessage(params)
             .promise()
             .catch((e: Error) => {
