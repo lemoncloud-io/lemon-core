@@ -7,14 +7,12 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, GETERR, _it, GETERR$ } from '../common/test-helper';
-import { DynamoOption, DummyDynamoService, DynamoService } from '../cores';
-import { LambdaWEBHandler, LambdaHandler, ProtocolParam } from '../cores';
-import { DummyController } from './dummy-controller';
-import { buildEngine } from '../engine/builder';
-import { buildExpress } from '../tools/express';
 import request from 'supertest';
-import { loadJsonSync } from '../tools/shared';
+import { LambdaWEBHandler, LambdaHandler, ProtocolParam } from '../cores';
+import { buildEngine } from '../engine';
+import { buildExpress, loadJsonSync } from '../tools';
+import { expect2, GETERR } from '../common/test-helper';
+import { DummyController } from './dummy-controller';
 
 //! local `lambda-web-handler` to server dummy
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
@@ -30,12 +28,9 @@ class LambdaWEBHandlerLocal extends LambdaWEBHandler {
 }
 
 //! create instance.
-export const instance = (type: string, idName: string = 'id') => {
-    //! define dummy storage service.
-    const tableName = `dummy-${type}`;
-    const options: DynamoOption = { tableName, idName };
-    const service: DynamoService<any> = new DummyDynamoService<any>(`dummy-${type}-data.yml`, options);
-    const controller = new DummyController(type);
+export const instance = (type: string, name?: string, idName: string = 'id') => {
+    //! define dummy controller.
+    const controller = new DummyController(type, name, idName);
     //! build lambda handler.
     const $lambda = new LambdaHandler();
     const $web = new LambdaWEBHandlerLocal($lambda);
@@ -43,29 +38,32 @@ export const instance = (type: string, idName: string = 'id') => {
     //! build engine + express.app.
     const $engine = buildEngine({});
     const $express = buildExpress($engine, $web);
-    return { controller, service, $web, app: $express.app };
+    return { controller, $web, app: $express.app };
 };
 
 //! main test body.
 describe('DummyController', () => {
-    //! dummy storage service.
+    const type = 'dummy';
+    const name = 'controller';
+
+    //! dummy storage provided by dummy controller.
     it('should pass basic CRUD w/ dummy', async done => {
         //! see `dummy-controller-data.yml`
-        const { service } = instance('controller');
+        const { controller } = instance(type, name);
         /* eslint-disable prettier/prettier */
         //! check dummy data.
-        expect2(() => service.hello()).toEqual('dummy-dynamo-service:dummy-controller');
-        expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
-        expect2(await service.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'user', name: 'lemon' });
+        expect2(() => controller.hello()).toEqual(`dummy-controller:${type}/${name}`);
+        expect2(await controller.do_get('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
+        expect2(await controller.do_get('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'user', name: 'lemon' });
 
         //! basic simple CRUD test.
-        expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
-        expect2(await service.deleteItem('A0').catch(GETERR)).toEqual(null);
-        expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
-        expect2(await service.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
-        expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
-        expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
-        expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
+        expect2(await controller.do_get('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
+        expect2(await controller.do_delete('A0').catch(GETERR)).toEqual(null);
+        expect2(await controller.do_get('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
+        expect2(await controller.do_post('A0', null, { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
+        expect2(await controller.do_get('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
+        expect2(await controller.do_put('A0', null, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
+        expect2(await controller.do_get('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
         /* eslint-enable prettier/prettier */
 
         done();
@@ -73,9 +71,9 @@ describe('DummyController', () => {
 
     //! dummy contoller api.
     it('should pass basic CRUD w/ dummy-controller', async done => {
-        const { controller, app } = instance('controller');
+        const { controller, app } = instance(type, name);
         /* eslint-disable prettier/prettier */
-        expect2(() => controller.hello()).toEqual('dummy-controller:controller/controller');
+        expect2(() => controller.hello()).toEqual(`dummy-controller:${type}/${name}`);
 
         //! check basic express.app
         const $pack = loadJsonSync('package.json');
@@ -83,16 +81,16 @@ describe('DummyController', () => {
 
         //! test each CRUD of API
         // expect2(await request(app).get('/controller?limit=1').catch(GETERR$)).toEqual({ status:200, body:{ list:[{ id:'A0', type:'user', name:'lemon' }], page:1, limit:1, total:2 }});
-        expect2(await request(app).get('/controller/A0'), 'status,body').toEqual({ status:200, body:{ id:'A0', type:'user', name:'lemon' } });
+        expect2(await request(app).get(`/${type}/A0`), 'status,body').toEqual({ status:200, body:{ id:'A0', type:'user', name:'lemon' } });
 
-        expect2(await request(app).put('/controller/A0').send({ age: 1 }), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });
-        expect2(await request(app).get('/controller/A0'), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });
+        expect2(await request(app).put(`/${type}/A0`).send({ age: 1 }), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });
+        expect2(await request(app).get(`/${type}/A0`), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });
 
-        expect2(await request(app).post('/controller/A0').send({ name: '' }), 'status,body').toEqual({ status:200, body:{ id:'A0', name:'' } });
-        expect2(await request(app).get('/controller/A0'), 'status,body').toEqual({ status:200, body:{ id:'A0', name:'' } });
+        expect2(await request(app).post(`/${type}/A0`).send({ name: '' }), 'status,body').toEqual({ status:200, body:{ id:'A0', name:'' } });
+        expect2(await request(app).get(`/${type}/A0`), 'status,body').toEqual({ status:200, body:{ id:'A0', name:'' } });
 
-        expect2(await request(app).delete('/controller/A0'), 'status,body').toEqual({ status:200, body:null });
-        expect2(await request(app).get('/controller/A0'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - id:A0' });
+        expect2(await request(app).delete(`/${type}/A0`), 'status,body').toEqual({ status:200, body:null });
+        expect2(await request(app).get(`/${type}/A0`), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - id:A0' });
 
         /* eslint-enable prettier/prettier */
         done();
@@ -100,24 +98,24 @@ describe('DummyController', () => {
 
     //! dummy contoller api.
     it('should pass asFuncName()', async done => {
-        const { controller } = instance('controller');
+        const { controller } = instance(type, name);
         /* eslint-disable prettier/prettier */
-        expect2(() => controller.hello()).toEqual('dummy-controller:controller/controller');
+        expect2(() => controller.hello()).toEqual(`dummy-controller:${type}/${name}`);
 
-        expect2(controller.asFuncName('GET', '')).toEqual('get')
-        expect2(controller.asFuncName('put', '')).toEqual('put')
-        expect2(controller.asFuncName('GET', 'h')).toEqual('getH')
-        expect2(controller.asFuncName('put', 'h')).toEqual('putH')
-        expect2(controller.asFuncName('GET', 'hello')).toEqual('getHello')
-        expect2(controller.asFuncName('put', 'hello')).toEqual('putHello')
-        expect2(controller.asFuncName('GET', 'HELLO')).toEqual('getHELLO')
+        expect2(controller.asFuncName('GET', '')).toEqual('get');
+        expect2(controller.asFuncName('put', '')).toEqual('put');
+        expect2(controller.asFuncName('GET', 'h')).toEqual('getH');
+        expect2(controller.asFuncName('put', 'h')).toEqual('putH');
+        expect2(controller.asFuncName('GET', 'hello')).toEqual('getHello');
+        expect2(controller.asFuncName('put', 'hello')).toEqual('putHello');
+        expect2(controller.asFuncName('GET', 'HELLO')).toEqual('getHELLO');
 
-        expect2(controller.asFuncName('GET', 'hello', 'world')).toEqual('getHelloWorld')
-        expect2(controller.asFuncName('GET', 'hello', 'world-class')).toEqual('getHelloWorldClass')
-        expect2(controller.asFuncName('GET', 'hello', '-class')).toEqual('getHelloClass')
-        expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_')
-        expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____')
-        expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe')
+        expect2(controller.asFuncName('GET', 'hello', 'world')).toEqual('getHelloWorld');
+        expect2(controller.asFuncName('GET', 'hello', 'world-class')).toEqual('getHelloWorldClass');
+        expect2(controller.asFuncName('GET', 'hello', '-class')).toEqual('getHelloClass');
+        expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_');
+        expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____');
+        expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe');
 
         /* eslint-enable prettier/prettier */
         done();
