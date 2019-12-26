@@ -47,14 +47,14 @@ const instance = () => {
 };
 
 //! normalize dynamo properties.
-const nornamlize = (data: any): any => {
+const normalize = (data: any): any => {
     if (data === '') return null;
     if (!data) return data;
-    if (Array.isArray(data)) return data.map(nornamlize);
+    if (Array.isArray(data)) return data.map(normalize);
     if (typeof data == 'object') {
         return Object.keys(data).reduce((O: any, key) => {
             const val = data[key];
-            O[key] = nornamlize(val);
+            O[key] = normalize(val);
             return O;
         }, {});
     }
@@ -178,7 +178,7 @@ export class DynamoService<T extends GeneralItem> {
         if (sortName && item[sortName] === undefined) throw new Error(`.${sortName} is required. ${idName}:${id}`);
         delete item[idName]; // clear the saved id.
         const node: T = Object.assign({ [idName]: id }, item); // copy
-        const data = nornamlize(node);
+        const data = normalize(node);
         //! prepare payload.
         const payload = {
             TableName: tableName,
@@ -230,7 +230,7 @@ export class DynamoService<T extends GeneralItem> {
             (memo: any, value: any, key: string) => {
                 //! ignore if key
                 if (key === idName || key === sortName) return memo;
-                value = nornamlize(value);
+                value = normalize(value);
                 //! prepare update-expression.
                 const key2 = norm(key);
                 memo.ExpressionAttributeNames[`#${key2}`] = key;
