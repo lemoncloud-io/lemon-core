@@ -13,7 +13,7 @@ import { GETERR, expect2, environ } from '../common/test-helper';
 import { DynamoService, DynamoOption } from './dynamo-service';
 import { GeneralItem } from './core-types';
 import { DynamoQueryService } from './dynamo-query-service';
-import { loadDataYml } from '../tools';
+import { credentials, hasCredentials, loadDataYml } from '../tools';
 
 interface MyModel extends GeneralItem {
     id: string;
@@ -31,6 +31,10 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoQueryService', () => {
+    // Following tests cannot be run without credentials
+    credentials(environ('PROFILE'));
+    if (!hasCredentials()) return;
+
     const dataMap = new Map<string, MyModel>();
 
     beforeAll(async done => {

@@ -11,7 +11,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { GETERR, expect2, _it, environ } from '../common/test-helper';
 
-import { credentials, loadDataYml } from '../tools/';
+import { credentials, hasCredentials, loadDataYml } from '../tools/';
 import { GeneralItem } from './core-types';
 import { DynamoService, DummyDynamoService, DynamoOption } from './dynamo-service';
 
@@ -30,9 +30,6 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoService', () => {
-    //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
-
     //! dummy storage service.
     describe('DummyDynamoService', () => {
         //! load dummy storage service.
@@ -70,6 +67,10 @@ describe('DynamoService', () => {
 
     //! real DynamoDB storage service.
     describe('DynamoService (real)', () => {
+        // Following tests cannot be run without credentials
+        credentials(environ('PROFILE'));
+        if (!hasCredentials()) return;
+
         const { service, tableName } = instance();
         const dataMap = new Map<string, MyModel>();
 
@@ -85,6 +86,7 @@ describe('DynamoService', () => {
 
         it('should pass basic CRUD', async done => {
             //! check dummy data.
+            expect2(service.hello()).toEqual(`dynamo-service:${tableName}`);
             expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
             expect2(await service.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'account', name: 'lemon' });
             expect2(await service.readItem('A1'), 'id,type,name').toEqual({ id: 'A1', type: 'account', name: 'Hong' });
