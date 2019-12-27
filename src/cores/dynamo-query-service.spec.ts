@@ -16,12 +16,12 @@ import { DynamoQueryService } from './dynamo-query-service';
 import { credentials, hasCredentials, loadDataYml } from '../tools';
 
 interface MyModel extends GeneralItem {
-    id: string;
+    ID: string;
 }
 
 export const instance = () => {
     const tableName = 'DynamoTest';
-    const idName = 'id';
+    const idName = 'ID';
     const options: DynamoOption = { tableName, idName };
     const dynamo = new DynamoService<MyModel>(options);
     const dynamoQuery = new DynamoQueryService<MyModel>(options);
@@ -31,17 +31,18 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoQueryService', () => {
+    credentials(environ('PROFILE'));
     const dataMap = new Map<string, MyModel>();
 
     beforeAll(async done => {
         const { dynamo } = instance();
 
         if (hasCredentials()) {
-            const data: MyModel[] = loadDataYml('dummy-dynamo-data.yml').data;
+            const data: MyModel[] = loadDataYml('dummy-dynamo-query-data.yml').data;
             // Initialize data in table
             await data.map(async item => {
-                const saved = await dynamo.saveItem(item.id, item);
-                dataMap.set(saved.id, saved); // Store into map
+                const saved = await dynamo.saveItem(item.ID, item);
+                dataMap.set(saved.ID, saved); // Store into map
             });
         }
         done();

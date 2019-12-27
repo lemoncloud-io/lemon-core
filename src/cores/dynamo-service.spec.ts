@@ -16,11 +16,11 @@ import { GeneralItem } from './core-types';
 import { DynamoService, DummyDynamoService, DynamoOption } from './dynamo-service';
 
 interface MyModel extends GeneralItem {
-    id?: string;
+    ID?: string;
 }
 export const instance = () => {
     const tableName = 'DynamoTest';
-    const idName = 'id';
+    const idName = 'ID';
     const options: DynamoOption = { tableName, idName };
     const service: DynamoService<MyModel> = new DynamoService<MyModel>(options);
     const dummy: DummyDynamoService<MyModel> = new DummyDynamoService<MyModel>('dummy-dynamo-data.yml', options);
@@ -38,18 +38,18 @@ describe('DynamoService', () => {
         it('should pass basic CRUD', async done => {
             //! check dummy data.
             expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
-            expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
-            expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'account', name: 'lemon' });
-            expect2(await dummy.readItem('A1'), 'id,type,name').toEqual({ id: 'A1', type: 'account', name: 'Hong' });
+            expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
+            expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });
+            expect2(await dummy.readItem('A1'), 'ID,type,name').toEqual({ ID: 'A1', type: 'account', name: 'Hong' });
 
             //! basic simple CRUD test.
-            expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
+            expect2(await dummy.readItem('A0').catch(GETERR), 'ID').toEqual({ ID: 'A0' });
             expect2(await dummy.deleteItem('A0').catch(GETERR)).toEqual(null);
-            expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
-            expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null }); // empty string will be saved as null
-            expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null });
-            expect2(await dummy.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
-            expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
+            expect2(await dummy.readItem('A0').catch(GETERR), 'ID').toEqual('404 NOT FOUND - ID:A0');
+            expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null }); // empty string will be saved as null
+            expect2(await dummy.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null });
+            expect2(await dummy.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'ID').toEqual({ ID: 'A0' });
+            expect2(await dummy.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
             /* eslint-enable prettier/prettier */
             done();
         });
@@ -78,8 +78,8 @@ describe('DynamoService', () => {
             // Initialize data in the table
             const data: MyModel[] = loadDataYml('dummy-dynamo-data.yml').data;
             await data.map(async item => {
-                const saved = await service.saveItem(item.id, item);
-                dataMap.set(saved.id, saved); // Store into map
+                const saved = await service.saveItem(item.ID, item);
+                dataMap.set(saved.ID, saved); // Store into map
             });
             done();
         });
@@ -87,18 +87,18 @@ describe('DynamoService', () => {
         it('should pass basic CRUD', async done => {
             //! check dummy data.
             expect2(service.hello()).toEqual(`dynamo-service:${tableName}`);
-            expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
-            expect2(await service.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'account', name: 'lemon' });
-            expect2(await service.readItem('A1'), 'id,type,name').toEqual({ id: 'A1', type: 'account', name: 'Hong' });
+            expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
+            expect2(await service.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });
+            expect2(await service.readItem('A1').catch(GETERR), 'ID,type,name').toEqual({ ID: 'A1', type: 'account', name: 'Hong' });
 
             //! basic simple CRUD test.
-            expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
+            expect2(await service.readItem('A0').catch(GETERR), 'ID').toEqual({ ID: 'A0' });
             expect2(await service.deleteItem('A0').catch(GETERR)).toEqual(null);
-            expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
-            expect2(await service.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null }); // empty string will be saved as null
-            expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null });
-            expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
-            expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
+            expect2(await service.readItem('A0').catch(GETERR), 'ID').toEqual('404 NOT FOUND - ID:A0');
+            expect2(await service.saveItem('A0', { type: '' }).catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null }); // empty string will be saved as null
+            expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null });
+            expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'ID').toEqual({ ID: 'A0' });
+            expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
             done();
         });
 

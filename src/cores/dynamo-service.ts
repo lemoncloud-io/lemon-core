@@ -458,14 +458,16 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
     }
 
     public async readItem(id: string, sort?: string | number): Promise<T> {
+        const { idName } = this.options;
         const item: T = this.buffer[id];
-        if (item === undefined) throw new Error(`404 NOT FOUND - id:${id}`);
-        return item;
+        if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
+        return { [idName]: id, ...item };
     }
 
     public async saveItem(id: string, item: T): Promise<T> {
-        this.buffer[id] = { id, ...normalize(item) };
-        return this.buffer[id];
+        const { idName } = this.options;
+        this.buffer[id] = normalize(item);
+        return { [idName]: id, ...this.buffer[id] };
     }
 
     public async deleteItem(id: string, sort?: string | number): Promise<T> {
@@ -474,8 +476,10 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
     }
 
     public async updateItem(id: string, sort: string | number, updates: T, increments?: Incrementable): Promise<T> {
-        const org = await this.readItem(id, sort);
-        this.buffer[id] = { ...org, ...normalize(updates) };
-        return this.buffer[id];
+        const { idName } = this.options;
+        const item: T = this.buffer[id];
+        if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
+        this.buffer[id] = { ...item, ...normalize(updates) };
+        return { [idName]: id, ...this.buffer[id] };
     }
 }
