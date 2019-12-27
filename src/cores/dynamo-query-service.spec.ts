@@ -31,20 +31,19 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoQueryService', () => {
-    // Following tests cannot be run without credentials
-    credentials(environ('PROFILE'));
-    if (!hasCredentials()) return;
-
     const dataMap = new Map<string, MyModel>();
 
     beforeAll(async done => {
         const { dynamo } = instance();
-        const data: MyModel[] = loadDataYml('dummy-dynamo-data.yml').data;
-        // Initialize data in table
-        await data.map(async item => {
-            const saved = await dynamo.saveItem(item.id, item);
-            dataMap.set(saved.id, saved); // Store into map
-        });
+
+        if (hasCredentials()) {
+            const data: MyModel[] = loadDataYml('dummy-dynamo-data.yml').data;
+            // Initialize data in table
+            await data.map(async item => {
+                const saved = await dynamo.saveItem(item.id, item);
+                dataMap.set(saved.id, saved); // Store into map
+            });
+        }
         done();
     });
 
@@ -53,20 +52,24 @@ describe('DynamoQueryService', () => {
         const { dynamoQuery, options } = instance();
 
         expect2(dynamoQuery.hello()).toEqual(`dynamo-query-service:${options.tableName}`);
-        expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
-        for (let [id, item] of dataMap.entries())
-            expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
-        for (let [id, item] of dataMap.entries())
-            expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
-        // TODO: Need to add sort key query test cases
-
+        if (hasCredentials()) {
+            expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
+            for (let [id, item] of dataMap.entries())
+                expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
+            for (let [id, item] of dataMap.entries())
+                expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
+            // TODO: Need to add sort key query test cases
+        }
         done();
     });
 
     afterAll(async done => {
         const { dynamo } = instance();
-        // Cleanup table
-        await Promise.all([...dataMap.keys()].map(id => dynamo.deleteItem(id)));
+
+        if (hasCredentials()) {
+            // Cleanup table
+            await Promise.all([...dataMap.keys()].map(id => dynamo.deleteItem(id)));
+        }
         done();
     });
 });
