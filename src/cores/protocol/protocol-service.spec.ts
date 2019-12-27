@@ -10,7 +10,7 @@
  */
 import { expect2, GETERR, environ } from '../../common/test-helper';
 import { credentials } from '../../tools/';
-import { MyProtocolService } from './protocol-service';
+import { MyProtocolService, WEBProtocolTransformer, SNSProtocolTransformer, SQSProtocolTransformer } from './protocol-service';
 import { MyConfigService, ConfigService } from './../config/config-service';
 import { NextContext } from './../core-types';
 import { ProtocolParam, STAGE, CallbackParam } from './../core-services';
@@ -86,6 +86,15 @@ describe('ProtocolService', () => {
         expect2(service.hello()).toEqual('protocol-service-test:lemon-hello-api');
         expect2(config.hello()).toEqual('config-service-test:local');
         /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! transformer
+    it('should pass asTransformer()', async done => {
+        const { service } = instance();
+        expect2(service.asTransformer('web') instanceof WEBProtocolTransformer).toBe(true);
+        expect2(service.asTransformer('sns') instanceof SNSProtocolTransformer).toBe(true);
+        expect2(service.asTransformer('sqs') instanceof SQSProtocolTransformer).toBe(true);
         done();
     });
 

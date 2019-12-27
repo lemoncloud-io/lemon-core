@@ -99,6 +99,7 @@ describe('ConfigService', () => {
         expect2(config.hello()).toEqual('config-service');
         expect2(config.getService()).toEqual('lemon-core');
         expect2(config.getVersion()).toEqual('' + $pack.version);
+        expect2(['local', 'dev', 'prod']).toContain(config.getStage());
         expect2(config.get('count')).toEqual('1');                                         // must be string.
         expect2(config.get('token.issuer')).toEqual(origin.token.issuer);                  // not encrypted.
         expect2(config.get('token.secret')).toEqual(message);                              // decrypted successfully.
