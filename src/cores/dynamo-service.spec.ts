@@ -11,7 +11,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { GETERR, expect2, _it, environ } from '../common/test-helper';
 
-import { credentials } from '../tools/';
+import { credentials, loadDataYml } from '../tools/';
 import { GeneralItem } from './core-types';
 import { DynamoService, DummyDynamoService, DynamoOption } from './dynamo-service';
 
@@ -24,7 +24,7 @@ export const instance = () => {
     const options: DynamoOption = { tableName, idName };
     const service: DynamoService<MyModel> = new DynamoService<MyModel>(options);
     const dummy: DummyDynamoService<MyModel> = new DummyDynamoService<MyModel>('dummy-dynamo-data.yml', options);
-    return { service, dummy };
+    return { service, dummy, tableName };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -34,43 +34,76 @@ describe('DynamoService', () => {
     const PROFILE = credentials(environ('PROFILE'));
 
     //! dummy storage service.
-    it('should pass basic CRUD w/ dummy', async done => {
-        /* eslint-disable prettier/prettier */
+    describe('DummyDynamoService', () => {
         //! load dummy storage service.
-        const { service, dummy } = instance();
+        const { dummy, tableName } = instance();
 
-        //! check dummy data.
-        expect2(() => dummy.hello()).toEqual('dummy-dynamo-service:DynamoTest');
-        expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
-        expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'account', name: 'lemon' });
-        expect2(await dummy.readItem('A1'), 'id,type,name').toEqual({ id: 'A1', type: 'account', name: 'Hong' });
+        it('should pass basic CRUD', async done => {
+            //! check dummy data.
+            expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
+            expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
+            expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'account', name: 'lemon' });
+            expect2(await dummy.readItem('A1'), 'id,type,name').toEqual({ id: 'A1', type: 'account', name: 'Hong' });
 
-        //! basic simple CRUD test.
-        expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
-        expect2(await dummy.deleteItem('A0').catch(GETERR)).toEqual(null);
-        expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
-        expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
-        expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
-        expect2(await dummy.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
-        expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
-        /* eslint-enable prettier/prettier */
-        done();
+            //! basic simple CRUD test.
+            expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
+            expect2(await dummy.deleteItem('A0').catch(GETERR)).toEqual(null);
+            expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
+            expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
+            expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
+            expect2(await dummy.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
+            expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
+            /* eslint-enable prettier/prettier */
+            done();
+        });
+
+        it('should pass simple list w/ dummy', async done => {
+            //! check dummy data.
+            expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
+            expect2(await dummy.listItems(), '!list').toEqual({ page: 1, limit: 2, total: 3 });
+            expect2(await dummy.listItems(1, 1), '!list').toEqual({ page: 1, limit: 1, total: 3 });
+            expect2(await dummy.listItems(2, 2), '!list').toEqual({ page: 2, limit: 2, total: 3 });
+            /* eslint-enable prettier/prettier */
+            done();
+        });
     });
 
-    //! dummy storage service.
-    it('should pass simple list w/ dummy', async done => {
-        /* eslint-disable prettier/prettier */
-        //! load dummy storage service.
-        const { dummy } = instance();
+    //! real DynamoDB storage service.
+    describe('DynamoService (real)', () => {
+        const { service, tableName } = instance();
+        const dataMap = new Map<string, MyModel>();
 
-        //! check dummy data.
-        expect2(() => dummy.hello()).toEqual('dummy-dynamo-service:DynamoTest');
+        beforeAll(async done => {
+            // Initialize data in the table
+            const data: MyModel[] = loadDataYml('dummy-dynamo-data.yml').data;
+            await data.map(async item => {
+                const saved = await service.saveItem(item.id, item);
+                dataMap.set(saved.id, saved); // Store into map
+            });
+            done();
+        });
 
-        expect2(await dummy.listItems(),'!list').toEqual({ page:1, limit:2, total:3 });
-        expect2(await dummy.listItems(1,1)).toEqual({ page:1, limit:1, total:3, list:[{ id: 'A0', type: 'account', name: 'lemon' }] });
-        expect2(await dummy.listItems(2,2)).toEqual({ page:2, limit:2, total:3, list:[{ id: 'A2', type: 'account', name: 'last' }] });
+        it('should pass basic CRUD', async done => {
+            //! check dummy data.
+            expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
+            expect2(await service.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'account', name: 'lemon' });
+            expect2(await service.readItem('A1'), 'id,type,name').toEqual({ id: 'A1', type: 'account', name: 'Hong' });
 
-        /* eslint-enable prettier/prettier */
-        done();
+            //! basic simple CRUD test.
+            expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
+            expect2(await service.deleteItem('A0').catch(GETERR)).toEqual(null);
+            expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
+            expect2(await service.saveItem('A0', { type: 'company' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'company' });
+            expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'company' });
+            expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
+            expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
+            done();
+        });
+
+        afterAll(async done => {
+            // Cleanup the table
+            await Promise.all([...dataMap.keys()].map(id => service.deleteItem(id)));
+            done();
+        });
     });
 });
