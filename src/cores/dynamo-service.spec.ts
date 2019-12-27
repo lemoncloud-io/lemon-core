@@ -49,8 +49,8 @@ describe('DynamoService', () => {
             expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
             expect2(await dummy.deleteItem('A0').catch(GETERR)).toEqual(null);
             expect2(await dummy.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
-            expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
-            expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
+            expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null }); // empty string will be saved as null
+            expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null });
             expect2(await dummy.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
             expect2(await dummy.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
             /* eslint-enable prettier/prettier */
@@ -93,8 +93,8 @@ describe('DynamoService', () => {
             expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
             expect2(await service.deleteItem('A0').catch(GETERR)).toEqual(null);
             expect2(await service.readItem('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
-            expect2(await service.saveItem('A0', { type: 'company' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'company' });
-            expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'company' });
+            expect2(await service.saveItem('A0', { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null }); // empty string will be saved as null
+            expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null });
             expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
             expect2(await service.readItem('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
             done();

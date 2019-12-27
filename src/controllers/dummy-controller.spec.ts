@@ -60,8 +60,8 @@ describe('DummyController', () => {
         expect2(await controller.do_get('A0').catch(GETERR), 'id').toEqual({ id: 'A0' });
         expect2(await controller.do_delete('A0').catch(GETERR)).toEqual(null);
         expect2(await controller.do_get('A0').catch(GETERR), 'id').toEqual('404 NOT FOUND - id:A0');
-        expect2(await controller.do_post('A0', null, { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
-        expect2(await controller.do_get('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: '' });
+        expect2(await controller.do_post('A0', null, { type: '' }).catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null }); // empty string will be saved as null
+        expect2(await controller.do_get('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: null });
         expect2(await controller.do_put('A0', null, { type: 'account' }).catch(GETERR), 'id').toEqual({ id: 'A0' });
         expect2(await controller.do_get('A0').catch(GETERR), 'id,type').toEqual({ id: 'A0', type: 'account' });
         /* eslint-enable prettier/prettier */
@@ -86,8 +86,8 @@ describe('DummyController', () => {
         expect2(await request(app).put(`/${type}/A0`).send({ age: 1 }), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });
         expect2(await request(app).get(`/${type}/A0`), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });
 
-        expect2(await request(app).post(`/${type}/A0`).send({ name: '' }), 'status,body').toEqual({ status:200, body:{ id:'A0', name:'' } });
-        expect2(await request(app).get(`/${type}/A0`), 'status,body').toEqual({ status:200, body:{ id:'A0', name:'' } });
+        expect2(await request(app).post(`/${type}/A0`).send({ name: '' }), 'status,body').toEqual({ status:200, body:{ id:'A0', name:null } }); // empty string will be saved as null
+        expect2(await request(app).get(`/${type}/A0`), 'status,body').toEqual({ status:200, body:{ id:'A0', name:null } });
 
         expect2(await request(app).delete(`/${type}/A0`), 'status,body').toEqual({ status:200, body:null });
         expect2(await request(app).get(`/${type}/A0`), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - id:A0' });

@@ -349,7 +349,7 @@ export class DynamoService<T extends GeneralItem> {
             .promise()
             .then(res => {
                 _log(NS, '> saveItem.res =', $U.json(res));
-                return { id, ...item };
+                return payload.Item;
             })
             .catch((e: Error) => {
                 if (`${e.message}` == 'Requested resource not found')
@@ -464,9 +464,8 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
     }
 
     public async saveItem(id: string, item: T): Promise<T> {
-        const { idName } = this.options;
-        this.buffer[id] = { id, ...item };
-        return { [idName]: id, ...item };
+        this.buffer[id] = { id, ...normalize(item) };
+        return this.buffer[id];
     }
 
     public async deleteItem(id: string, sort?: string | number): Promise<T> {
@@ -476,8 +475,7 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
 
     public async updateItem(id: string, sort: string | number, updates: T, increments?: Incrementable): Promise<T> {
         const org = await this.readItem(id, sort);
-        const item = { ...org, ...updates };
-        this.buffer[id] = item;
-        return item;
+        this.buffer[id] = { ...org, ...normalize(updates) };
+        return this.buffer[id];
     }
 }
