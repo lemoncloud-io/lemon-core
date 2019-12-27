@@ -72,6 +72,11 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         this.options = options;
     }
 
+    /**
+     * say hello of identity.
+     */
+    public hello = () => `dynamo-query-service:${this.options.tableName}`;
+
     public async queryAll(pkey: string, limit?: number, isDesc?: boolean): Promise<DynamoQueryResult<T>> {
         return this.queryRangeBy(pkey, -1, -1, limit, null, isDesc);
     }
