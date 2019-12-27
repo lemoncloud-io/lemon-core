@@ -47,14 +47,14 @@ const instance = () => {
 };
 
 //! normalize dynamo properties.
-const nornamlize = (data: any): any => {
+const normalize = (data: any): any => {
     if (data === '') return null;
     if (!data) return data;
-    if (Array.isArray(data)) return data.map(nornamlize);
+    if (Array.isArray(data)) return data.map(normalize);
     if (typeof data == 'object') {
         return Object.keys(data).reduce((O: any, key) => {
             const val = data[key];
-            O[key] = nornamlize(val);
+            O[key] = normalize(val);
             return O;
         }, {});
     }
@@ -178,7 +178,7 @@ export class DynamoService<T extends GeneralItem> {
         if (sortName && item[sortName] === undefined) throw new Error(`.${sortName} is required. ${idName}:${id}`);
         delete item[idName]; // clear the saved id.
         const node: T = Object.assign({ [idName]: id }, item); // copy
-        const data = nornamlize(node);
+        const data = normalize(node);
         //! prepare payload.
         const payload = {
             TableName: tableName,
@@ -230,7 +230,7 @@ export class DynamoService<T extends GeneralItem> {
             (memo: any, value: any, key: string) => {
                 //! ignore if key
                 if (key === idName || key === sortName) return memo;
-                value = nornamlize(value);
+                value = normalize(value);
                 //! prepare update-expression.
                 const key2 = norm(key);
                 memo.ExpressionAttributeNames[`#${key2}`] = key;
@@ -349,7 +349,7 @@ export class DynamoService<T extends GeneralItem> {
             .promise()
             .then(res => {
                 _log(NS, '> saveItem.res =', $U.json(res));
-                return { id, ...item };
+                return payload.Item;
             })
             .catch((e: Error) => {
                 if (`${e.message}` == 'Requested resource not found')
@@ -458,15 +458,16 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
     }
 
     public async readItem(id: string, sort?: string | number): Promise<T> {
+        const { idName } = this.options;
         const item: T = this.buffer[id];
-        if (item === undefined) throw new Error(`404 NOT FOUND - id:${id}`);
-        return item;
+        if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
+        return { [idName]: id, ...item };
     }
 
     public async saveItem(id: string, item: T): Promise<T> {
         const { idName } = this.options;
-        this.buffer[id] = { id, ...item };
-        return { [idName]: id, ...item };
+        this.buffer[id] = normalize(item);
+        return { [idName]: id, ...this.buffer[id] };
     }
 
     public async deleteItem(id: string, sort?: string | number): Promise<T> {
@@ -475,9 +476,10 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
     }
 
     public async updateItem(id: string, sort: string | number, updates: T, increments?: Incrementable): Promise<T> {
-        const org = await this.readItem(id, sort);
-        const item = { ...org, ...updates };
-        this.buffer[id] = item;
-        return item;
+        const { idName } = this.options;
+        const item: T = this.buffer[id];
+        if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
+        this.buffer[id] = { ...item, ...normalize(updates) };
+        return { [idName]: id, ...this.buffer[id] };
     }
 }

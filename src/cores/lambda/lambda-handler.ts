@@ -149,7 +149,7 @@ export class LambdaHandler {
             //! via HTTP/HTTPS SNS
             return 'notification';
         } else if (event.requestContext && event.pathParameters !== undefined) {
-            //! via AgiGateway
+            //! via ApiGateway
             return 'web';
         } else if (event.requestContext && event.requestContext.eventType !== undefined) {
             //! via WEB-SOCKET from ApiGateway

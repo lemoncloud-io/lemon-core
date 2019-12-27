@@ -11,7 +11,7 @@
 import { expect2, environ } from '../../common/test-helper';
 
 import { credentials } from '../../tools/';
-import { AWSKMSService } from './../aws/aws-kms-service';
+import { AWSKMSService } from './aws-kms-service';
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.

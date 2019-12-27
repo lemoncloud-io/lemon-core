@@ -7,14 +7,13 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import request from 'supertest';
+import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
+import { ProtocolParam, NextHandler } from '../cores';
+import { buildEngine } from '../engine';
+import { buildExpress, loadJsonSync } from '../tools';
 import { expect2, GETERR$ } from '../common/test-helper';
 import { GeneralController } from './general-controller';
-import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
-import { ProtocolParam, NextHandler } from '../cores/core-services';
-import buildEngine from '../engine/builder';
-import { buildExpress } from '../tools/express';
-import { loadJsonSync } from '../tools/shared';
-import request from 'supertest';
 
 //! local `lambda-web-handler` to server dummy
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
@@ -58,8 +57,8 @@ export const instance = (type: string) => {
 };
 
 //! main test body.
-describe('DummyController', () => {
-    //! dummy contoller api.
+describe('GeneralController', () => {
+    //! general contoller api.
     it('should pass asFuncName()', async done => {
         const { controller } = instance('hello');
         const { controller: controller2 } = instance(null);
@@ -67,33 +66,34 @@ describe('DummyController', () => {
         expect2(() => controller.hello()).toEqual('general-controller:hello');
         expect2(() => controller2.hello()).toEqual('general-controller:');
 
-        expect2(controller.asFuncName('GET', null)).toEqual('get')
-        expect2(controller.asFuncName('GET', '')).toEqual('get')
-        expect2(controller.asFuncName('put', '')).toEqual('put')
-        expect2(controller.asFuncName('GET', 'h')).toEqual('getH')
-        expect2(controller.asFuncName('put', 'h')).toEqual('putH')
-        expect2(controller.asFuncName('GET', 'hello')).toEqual('getHello')
-        expect2(controller.asFuncName('put', 'hello')).toEqual('putHello')
-        expect2(controller.asFuncName('GET', 'HELLO')).toEqual('getHELLO')
+        expect2(controller.asFuncName('LIST', 'Hello')).toEqual('listHello');
+        expect2(controller.asFuncName('GET', null)).toEqual('get');
+        expect2(controller.asFuncName('GET', '')).toEqual('get');
+        expect2(controller.asFuncName('put', '')).toEqual('put');
+        expect2(controller.asFuncName('GET', 'h')).toEqual('getH');
+        expect2(controller.asFuncName('put', 'h')).toEqual('putH');
+        expect2(controller.asFuncName('GET', 'hello')).toEqual('getHello');
+        expect2(controller.asFuncName('put', 'hello')).toEqual('putHello');
+        expect2(controller.asFuncName('GET', 'HELLO')).toEqual('getHELLO');
 
-        expect2(controller.asFuncName('', 'hello')).toEqual('doHello')
-        expect2(controller.asFuncName(null, 'hello')).toEqual('doHello')
-        expect2(controller2.asFuncName('', 'hello')).toEqual('doHello')
-        expect2(controller2.asFuncName(null, 'hello')).toEqual('doHello')
+        expect2(controller.asFuncName('', 'hello')).toEqual('doHello');
+        expect2(controller.asFuncName(null, 'hello')).toEqual('doHello');
+        expect2(controller2.asFuncName('', 'hello')).toEqual('doHello');
+        expect2(controller2.asFuncName(null, 'hello')).toEqual('doHello');
 
-        expect2(controller.asFuncName('GET', 'hello', 'world')).toEqual('getHelloWorld')
-        expect2(controller.asFuncName('GET', 'hello', 'world-class')).toEqual('getHelloWorldClass')
-        expect2(controller.asFuncName('GET', 'hello', '-class')).toEqual('getHelloClass')
-        expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_')
-        expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____')
-        expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe')
+        expect2(controller.asFuncName('GET', 'hello', 'world')).toEqual('getHelloWorld');
+        expect2(controller.asFuncName('GET', 'hello', 'world-class')).toEqual('getHelloWorldClass');
+        expect2(controller.asFuncName('GET', 'hello', '-class')).toEqual('getHelloClass');
+        expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_');
+        expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____');
+        expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe');
 
         /* eslint-enable prettier/prettier */
         done();
     });
 
-    //! dummy contoller api.
-    it('should pass basic CRUD w/ dummy-controller', async done => {
+    //! general contoller api.
+    it('should pass basic CRUD w/ general-controller', async done => {
         const { controller, app } = instance('hello');
         /* eslint-disable prettier/prettier */
         expect2(() => controller.hello()).toEqual('general-controller:hello');

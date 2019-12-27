@@ -10,8 +10,8 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, $_ } from '../engine/';
-import { NextMode } from '../cores/core-types';
-import { CoreWEBController } from '../cores/lambda/lambda-web-handler';
+import { NextMode } from '../cores';
+import { CoreWEBController } from '../cores/lambda';
 
 /**
  * class: `GeneralController`.
@@ -42,7 +42,7 @@ export class GeneralController implements CoreWEBController {
 
     /**
      * decode to target `next-handler`
-     * - use pattern `do_<mode>_<cmd?>`
+     * - use pattern `<mode><type?><cmd?>`
      */
     public decode(mode: NextMode, id: string, cmd: string) {
         const funcName = this.asFuncName(mode, this.type(), cmd);
