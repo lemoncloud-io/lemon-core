@@ -74,7 +74,7 @@ export interface CoreModel<ModelType extends string> extends StorageModel, Inter
     /**
      * meta the json stringified string.
      */
-    meta?: string;
+    meta?: string | object;
     /**
      * created timestamp
      */
