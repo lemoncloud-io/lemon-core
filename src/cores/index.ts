@@ -23,6 +23,7 @@ export * from './dynamo-query-service';
 export * from './elastic6-service';
 export * from './elastic6-query-service';
 export * from './storage-service';
+export * from './proxy-storage-service';
 
 //! import default with named.
 import aws from './aws/';
