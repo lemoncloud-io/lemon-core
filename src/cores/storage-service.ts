@@ -10,7 +10,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_ } from '../engine/';
+import { _log, _inf, _err, $U } from '../engine/';
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -323,7 +323,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         if (!id) throw new Error('@id is required!');
         if (!item) throw new Error('@item is required!');
         this.buffer[id] = item;
-        return item;
+        return Object.assign({ [this.idName]: id }, item);
     }
 
     public async update(id: string, item: T): Promise<T> {
