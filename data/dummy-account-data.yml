@@ -1,15 +1,11 @@
 # dummy data for ticketing internal test!
 data:
-  - ID: A0
+  - id: A0
     type: account
     name: lemon
 
-  - ID: A1
+  - id: A1
     type: account
     name: Hong
     last: 0
     balance: 1200
-
-  - ID: A2
-    type: account
-    name: last

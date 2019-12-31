@@ -30,7 +30,9 @@ describe('StorageService', () => {
         const $account = $storage as DummyStorageService<AccountModel>;
         /* eslint-disable prettier/prettier */
         expect2(() => $account.hello()).toEqual('dummy-storage-service:memory/id');
+
         expect(await $account.read('A00000')).toEqual({ id: 'A00000', type: 'account' });
+        expect(await $account.save('A00000', { type:'account', name:'ho' })).toEqual({ id:'A00000', type:'account', name:'ho' });
         expect(await $account.update('A00000', { stereo:'lemon' })).toEqual({ id: 'A00000', stereo:'lemon' });
         expect(await $account.increment('A00000', { slot:1 })).toEqual({ id: 'A00000', slot:1 });
         expect(await $account.increment('A00000', { slot:-2 })).toEqual({ id: 'A00000', slot:-1 });
@@ -70,7 +72,9 @@ describe('StorageService', () => {
         const $account = $storage as DummyStorageService<AccountModel>;
         /* eslint-disable prettier/prettier */
         expect2(() => $account.hello()).toEqual('dummy-storage-service:memory2/_id');
+
         expect(await $account.read('A00000')).toEqual({ _id: 'A00000', id: 'A00000', type: 'account' });
+        expect(await $account.save('A00000', { type:'account', name:'ho' })).toEqual({ _id:'A00000', type:'account', name:'ho' });
         expect(await $account.update('A00000', { stereo:'lemon' })).toEqual({ _id: 'A00000', stereo:'lemon' });
         expect(await $account.increment('A00000', { slot:1 })).toEqual({ _id: 'A00000', slot:1 });
         expect(await $account.increment('A00000', { slot:-2 })).toEqual({ _id: 'A00000', slot:-1 });

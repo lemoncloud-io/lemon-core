@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,8 +17,8 @@
     "test": "LS=1 jest --config=jest.config.json",
     "test.lemon": "PROFILE=lemon LS=1 jest --config=jest.config.json",
     "test:dev": "LS=1 jest --config=jest.config.json --watchAll",
+    "!test:watch": "---- custom test with profile -----",
     "test:watch": "LS=1 jest --config=jest.config.json --watchAll",
-    "!test:watch.": "---- custom test with profile -----",
     "test:watch.lemon": "PROFILE=lemon LS=1 jest --config=jest.config.json --watchAll",
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",

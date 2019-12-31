@@ -239,7 +239,7 @@ export const buildExpress = (
                 const addr: any = server.address();
                 const port = $U.NS(`${addr && addr.port}`, 'yellow').split(':')[0];
                 _log(NS, `Server[${process.env.NAME}:${process.env.STAGE}] is listening on Port:${port}`);
-                //TODO - proper way to initialize.
+                //TODO - improve way to initialize $engine.
                 $engine.initialize();
             })
             .on('error', (e: any) => {

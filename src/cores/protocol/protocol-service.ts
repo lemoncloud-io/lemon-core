@@ -132,10 +132,10 @@ export class MyProtocolService implements ProtocolService {
      * @param config    config-service to use.
      */
     public asProtocolURI(protocol: MyProtocolType, param: ProtocolParam, config?: ConfigService): string {
+        config = config ? config : this.config;
         const context = param && param.context;
         const service = !param.service || param.service == 'self' ? this.selfService || 'self' : param.service;
         const stage: STAGE = param.stage || (config && config.getStage()) || 'local';
-        config = config ? config : this.config;
 
         // eslint-disable-next-line prettier/prettier
         const uri = MyProtocolService.buildProtocolURI(config, context, protocol, service, stage, param.type, param.id, param.cmd);
@@ -423,22 +423,23 @@ export class MyProtocolService implements ProtocolService {
         // const _log = console.info;
         config = config || this.config;
         const service = `${param.service || config.getService() || ''}`;
-        _log(NS, `enqueue(${service})..`);
+        const stage = `${param.stage || config.getStage() || ''}`;
+        _log(NS, `enqueue(${service}-${stage})..`);
         const uri = this.asProtocolURI('sqs', param, config);
         _inf(NS, `> uri[${service}] =`, uri);
         delaySeconds = $U.N(delaySeconds, 10);
         if (delaySeconds < 0) throw new Error(`@delaySeconds (number) should be >= 0. but ${delaySeconds}`);
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
-        const params: SQS.Types.SendMessageRequest = this.sqs.transformToEvent(uri, param, cbUrl);
+        const params = this.sqs.transformToEvent(uri, param, cbUrl);
         params.DelaySeconds = delaySeconds;
         const endpoint = params.QueueUrl; // https://sqs.${arr[3]}.amazonaws.com
         _inf(NS, `> endpoint[${service}] =`, uri);
 
         //! call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
-        const sns = new AWS.SQS({ region });
-        const res = await sns
+        const sqs = new AWS.SQS({ region });
+        const res = await sqs
             .sendMessage(params)
             .promise()
             .catch((e: Error) => {

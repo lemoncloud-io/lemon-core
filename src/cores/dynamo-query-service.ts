@@ -72,6 +72,11 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         this.options = options;
     }
 
+    /**
+     * say hello of identity.
+     */
+    public hello = () => `dynamo-query-service:${this.options.tableName}`;
+
     public async queryAll(pkey: string, limit?: number, isDesc?: boolean): Promise<DynamoQueryResult<T>> {
         return this.queryRangeBy(pkey, -1, -1, limit, null, isDesc);
     }
@@ -110,18 +115,19 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         // _log(NS, '> query =', query);
 
         //! build query with builder.
-        let thiz = query.where(sortName);
-        thiz = from !== -1 && to !== -1 ? thiz.between(from, to) : thiz.gte(0);
-        thiz = isDesc ? thiz.descending() : thiz.ascending();
-        if (limit !== undefined) thiz = thiz.limit(limit);
-        thiz.addKeyCondition(thiz.buildKey());
-        // eslint-disable-next-line prettier/prettier
+        if (sortName) {
+            const keyCondition = query.where(sortName);
+            from !== -1 && to !== -1 ? keyCondition.between(from, to) : keyCondition.gte(0);
+        }
+        isDesc ? query.descending() : query.ascending();
+        if (limit !== undefined) query.limit(limit);
+        query.addKeyCondition(query.buildKey());
         if (last) {
-            thiz.startKey({ [idName]: pkey, [sortName]: last });
+            query.startKey(pkey, last);
         }
 
         //TODO - replace '@' prefix of properties.
-        const payload = thiz.buildRequest();
+        const payload = query.buildRequest();
         const filter = (N: any) =>
             Object.keys(N).reduce((O: any, key: string) => {
                 const val = N[key];

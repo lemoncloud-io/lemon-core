@@ -85,6 +85,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.2     | support `ProxyStorageService` for shared common storage.
 | 2.1.1     | support `enqueue()` with delayed-seconds.
 | 2.1.0     | support `ProtocolService` for inter communication of micro-services.
 | 2.0.10    | show current name/version by `GET /`.

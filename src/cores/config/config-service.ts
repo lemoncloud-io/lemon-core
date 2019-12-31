@@ -17,8 +17,8 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U } from '../../engine/';
-const NS = $U.NS('CFGS', 'yellow'); // NAMESPACE TO BE PRINTED.
+import { _log, _inf, _err, $U } from '../../engine/';
+const NS = $U.NS('CFGS', 'red'); // NAMESPACE TO BE PRINTED.
 
 import { STAGE, CoreKmsService, CoreConfigService } from './../core-services';
 import { loadJsonSync } from '../../tools/shared';
@@ -157,7 +157,7 @@ export class MyConfigService implements ConfigService {
      */
     public async init(): Promise<ConfigService> {
         // const _log = console.log;
-        _log(NS, `load()...`);
+        // _log(NS, `init()...`);
         const base = this.base;
         const $env: any = base || process.env || {};
         this.$env = $env; // save as default environ.
@@ -182,7 +182,7 @@ export class MyConfigService implements ConfigService {
                         _log(NS, `ERR@${key} =`, e);
                         return `ERROR - ${e.message || $U.json(e)}`;
                     });
-                    _log(NS, `> config[${key}] :=`, val2.substring(0, 10), val2.length > 10 ? '...' : '');
+                    _log(NS, `> config[${key}] :=`, val2.substring(0, 12), val2.length > 12 ? '...' : '');
                     return { key, val: val2 };
                 }
                 return { key, val };
@@ -198,7 +198,7 @@ export class MyConfigService implements ConfigService {
         }, {});
         // _log(NS, '>> envConfig=', this.envConfig);
         // _log(NS, '>> envOrigin=', this.$env);
-        _inf(NS, '>> loaded... config.len=', list2.length);
+        _inf(NS, '>> inited... config.len=', list2.length);
 
         //! returns this.
         return this;

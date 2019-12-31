@@ -90,7 +90,7 @@ export interface ProtocolBody {
 export interface CallbackParam {
     type: string; // resource type
     id: string; // resource id
-    cmd?: string; // (optioanl) action command
+    cmd?: string; // (optional) action command
     param?: ProtocolBody; // param to be relayed
 }
 
@@ -125,7 +125,7 @@ export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventPar
 
     /**
      * transform event data to param
-     * @param event     the lambda compartible event data.
+     * @param event     the lambda compatible event data.
      */
     transformToParam(event: TLambdaEvent): ProtocolParam;
 }
@@ -156,7 +156,7 @@ export interface ProtocolService {
     execute<T>(param: ProtocolParam): Promise<T>;
 
     /**
-     * asynchronized call to target function via 'SNS'.
+     * asynchronous call to target function via 'SNS'.
      *
      * @param param     the calling param
      * @param callback  the return target
@@ -164,7 +164,7 @@ export interface ProtocolService {
     notify(param: ProtocolParam, callback?: CallbackParam): Promise<string>;
 
     /**
-     * asynchronized call to target function via 'SQS' (queue).
+     * asynchronous call to target function via 'SQS' (queue).
      *
      * @param param     the calling param
      * @param callback  the return target
@@ -173,7 +173,7 @@ export interface ProtocolService {
     enqueue(param: ProtocolParam, callback?: CallbackParam, delaySeconds?: number): Promise<string>;
 
     /**
-     * broadcast body message via shared `SNS` Subscritions. (see `NotificationHandler`)
+     * broadcast body message via shared `SNS` subscriptions. (see `NotificationHandler`)
      * - `.service` will be self url like `api://lemon-hello-api#1.2.3`
      *
      * @param context   the current execute context. (`.identity` will be relayed).

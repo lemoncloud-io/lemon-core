@@ -81,7 +81,7 @@ export class AWSKMSService implements CoreKmsService {
      */
     public encrypt = async (message: string): Promise<string> => {
         const keyId = this.keyId();
-        _inf(NS, `encrypt(${keyId})..`);
+        _inf(NS, `encrypt(${keyId}, ${message.substring(0, 10)}...)..`);
         const KeyId = keyId;
         const params = {
             KeyId,
@@ -102,7 +102,7 @@ export class AWSKMSService implements CoreKmsService {
      * @param {*} encryptedSecret
      */
     public decrypt = async (encryptedSecret: string): Promise<string> => {
-        _inf(NS, `decrypt()..`);
+        _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
         const CiphertextBlob =
             typeof encryptedSecret == 'string'
                 ? isBase64(encryptedSecret)
@@ -114,7 +114,7 @@ export class AWSKMSService implements CoreKmsService {
         const data: any = await instance()
             .decrypt(params)
             .promise();
-        _log(NS, '> data.type =', typeof data);
+        // _log(NS, '> data.type =', typeof data);
         return data && data.Plaintext ? data.Plaintext.toString() : '';
     };
 

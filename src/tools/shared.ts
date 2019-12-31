@@ -60,6 +60,11 @@ export const credentials = (profile: string): string => {
     return `${profile}`;
 };
 
+//! return whether AWS credentials set
+export const hasCredentials = (): boolean => {
+    return !!AWS.config.credentials;
+};
+
 //! load yml data via './data/<file>.yml'
 export const loadDataYml = (file: string, folder?: string) => {
     folder = folder || 'data';
