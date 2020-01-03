@@ -295,6 +295,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
         if (!event) return null;
         _log(NS, `packContext()..`);
+        _log(NS, `> reqContext=`, $U.json(reqContext));
 
         //! prepare the next-context.
         const res: NextContext = { identity: null };
@@ -324,20 +325,21 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             return {};
         });
 
-        //TODO - translate cognito authentication to NextIdentity
-        if (reqContext.identity && !reqContext.identity.cognitoIdentityPoolId) {
+        //! translate cognito authentication to NextIdentity.
+        if (reqContext.identity && reqContext.identity.cognitoIdentityPoolId !== undefined) {
             const $id = reqContext.identity;
-            _inf(NS, '! identity.cognito :=', JSON.stringify(identity));
-            identity.cognitoId = $id.cognitoIdentityId;
-            identity.accountId = $id.accountId;
-            identity.cognitoPoolId = $id.cognitoIdentityPoolId;
+            _inf(NS, '! identity :=', $U.json(identity));
+            identity.cognitoPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
+            identity.cognitoId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
+            identity.accountId = $id.accountId; // acount-id should be same as context.accountId
+            identity.userAgent = $id.userAgent; // user-agent string.
         }
 
         //! - extract original request infor.
-        const clientIp = reqContext.identity && reqContext.identity.sourceIp;
-        const requestId = reqContext.requestId;
-        const accountId = reqContext.accountId;
-        const domain = reqContext.domainName || event.headers['Host'] || event.headers['host'];
+        const clientIp = `${(reqContext.identity && reqContext.identity.sourceIp) || ''}`;
+        const requestId = `${reqContext.requestId || ''}`;
+        const accountId = `${reqContext.accountId || ''}`;
+        const domain = `${reqContext.domainName || event.headers['Host'] || event.headers['host'] || ''}`;
 
         //! save into headers and returns.
         const context: NextContext = { ...res, identity, clientIp, requestId, accountId, domain };

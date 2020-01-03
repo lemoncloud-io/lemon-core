@@ -181,7 +181,7 @@ describe('LambdaWEBHandler', () => {
         expect2(body.id, '').toEqual('!');
         expect2(body.param, '').toEqual({ ts:'1574150700000' });
         expect2(body.body, '').toEqual(null);
-        expect2(body.context, 'identity').toEqual({ identity:{ sid:'', uid:'guest', accountId:null, cognitoId:null, cognitoPoolId:null } });
+        expect2(body.context, 'identity').toEqual({ identity:{ sid:'', uid:'guest', accountId:null, cognitoId:null, cognitoPoolId:null, userAgent: 'HTTPie/1.0.2' } });
         /* eslint-enable prettier/prettier */
         done();
     });
