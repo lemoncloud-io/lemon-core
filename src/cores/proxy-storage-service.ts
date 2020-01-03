@@ -124,13 +124,13 @@ export class GeneralKeyMaker<ModelType extends string> implements CoreKeyMakeabl
         this.NS = ns;
         this.DELIMITER = delimiter;
     }
-    public asKey$ = (type: ModelType, id: string) => {
+    public asKey$(type: ModelType, id: string) {
         if (!id) throw new Error('@id (model-id) is required!');
         const ns = `${this.NS || ''}`;
         const _id = [ns, `${type || ''}`, id].map(_ => _.replace(/[:]/gi, '-')).join(this.DELIMITER);
         const res = { ns, id, type, _id };
         return res;
-    };
+    }
 }
 
 /**
