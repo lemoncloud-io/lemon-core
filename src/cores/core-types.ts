@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version
+ * @date        2020-01-03 support cognito-identity
  *
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -40,36 +41,124 @@ export type NextMode = 'LIST' | 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
  * - possible to query user's detail via OAuth Resource Server.
  */
 export interface NextIdentity {
-    sid: string; // site-id (like domain group)
-    uid: string; // user-id (user unique-id)
-    gid: string; // group-id (group id)
-    roles: string[]; // roles  (like `user`, `admin`, `super`)
+    /**
+     * site-id (like domain group)
+     */
+    sid: string;
+    /**
+     * user-id (user unique-id)
+     */
+    uid: string;
+    /**
+     * group-id (group id)
+     */
+    gid: string;
+    /**
+     * roles  (like `user`, `admin`, `super`)
+     */
+    roles: string[];
 }
 
 /**
  * class: `NextIdentityCognito`
- * - extended infor w/ cognito
+ * - extended information w/ cognito identity.
  */
 export interface NextIdentityCognito extends NextIdentity {
+    /**
+     * account-id of AWS Credential
+     */
     accountId: string;
-    cognitoId: string;
-    cognitoPoolId: string;
+    /**
+     * identity-id of cognito.
+     */
+    identityId: string;
+    /**
+     * identity-pool-id of cognito
+     */
+    identityPoolId: string;
+    /**
+     * authenticated provider of cognito like 'oauth.lemoncloud.io,oauth.lemoncloud.io:ap-northeast-2:618ce9d2-1234-2345-4567-e248ea51425e:kakao_00000'
+     */
+    identityProvider?: string;
+    /**
+     * user-agent string like 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4)'
+     */
+    userAgent?: string;
+}
+
+/**
+ * class: `NextIdentityAcess`
+ * - extended information w/ site + account access information.
+ */
+export interface NextIdentityAccess extends NextIdentity {
+    /**
+     * site-information for domain
+     */
+    Site?: {
+        stereo?: string;
+        name?: string;
+        domain?: string;
+    };
+    /**
+     * user-information for active user.
+     */
+    User?: {
+        name?: string;
+        nick?: string;
+        email?: string;
+    };
+    /**
+     * group-information for groups.
+     */
+    Group?: {
+        name?: string;
+        roles?: string[];
+    };
+    /**
+     * login account-information.
+     */
+    Account?: {
+        id?: string;
+        stereo?: string;
+        socialId?: string;
+        identityId?: string;
+        loginId?: string;
+    };
 }
 
 /**
  * class: `NextContext`
  * - information of caller's context.
- *
- * //TODO - define more in order to pass calling flow.
  */
 export interface NextContext<T extends NextIdentity = NextIdentity> {
-    identity?: T; // user identity after authentication.
-    source?: string; // origin event source. can be 'express' if `npm run express.local`.
-    clientIp?: string; // ip-address of source client.
-    requestId?: string; // id of request to keep track of timing infor w/ `metrics`
-    accountId?: string; // id of account of initial request. (ex: `085403634746` for lemon profile)
-    domain?: string; // domain name of request.
-    depth?: number; // calling depth for every handler. ( automatically increased from lambda-handler )
+    /**
+     * user identity after authentication.
+     */
+    identity?: T;
+    /**
+     * origin event source. can be 'express' if `npm run express.local`.
+     */
+    source?: string;
+    /**
+     * ip-address of source client.
+     */
+    clientIp?: string;
+    /**
+     * id of request to keep track of timing infor w/ `metrics`
+     */
+    requestId?: string;
+    /**
+     * id of account of initial request. (ex: `085403634746` for lemon profile)
+     */
+    accountId?: string;
+    /**
+     * domain name of request.
+     */
+    domain?: string;
+    /**
+     * calling depth for every handler. ( automatically increased from lambda-handler )
+     */
+    depth?: number;
 }
 
 /**
