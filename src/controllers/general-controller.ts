@@ -5,12 +5,13 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-12-16 initial version
+ * @date        2020-01-06 support `GeneralWEBController` w/ `asNextIdentityAccess()`
  *
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../engine/';
-import { NextMode } from '../cores';
+import { _log, _inf, _err } from '../engine/';
+import { NextMode, NextContext, NextIdentityAccess, ProtocolService, ProtocolParam } from '../cores';
 import { CoreWEBController } from '../cores/lambda';
 
 /**
@@ -62,5 +63,52 @@ export class GeneralController implements CoreWEBController {
         mode = `${mode || 'do'}`.toLowerCase();
         cmd = camelCased(upper1st(`${cmd || ''}`.toLowerCase()));
         return `${mode}${type}${cmd}`.replace(/-/g, '_');
+    }
+}
+
+//! import cores.
+import $cores from '../cores/';
+
+/**
+ * class: `GeneralWEBController`
+ * - support additional helper functions for web-controller.
+ */
+export class GeneralWEBController extends GeneralController {
+    /**
+     * default constructor()
+     */
+    public constructor(type: string) {
+        super(type);
+    }
+
+    /**
+     * name of this resource.
+     */
+    public hello = () => `general-web-controller:${this.type()}`;
+
+    /**
+     * translate to `NextIdentityAccess` from origin NextContext
+     *
+     * @param context   the requested NextContext
+     */
+    public async asNextIdentityAccess(context: NextContext): Promise<NextIdentityAccess> {
+        //! ignore if .identity is already populated.
+        if (context && context.identity) {
+            const $old: NextIdentityAccess = context.identity as NextIdentityAccess;
+            if ($old.Site !== undefined) return $old;
+        }
+
+        //! call service via protocol
+        const proto: ProtocolService = $cores.protocol.service;
+        //TODO - use env to configure `lemon-accounts-api` service @200106
+        const param: ProtocolParam = proto.fromURL(context, 'api://lemon-accounts-api/oauth/0/pack-context', {}, {});
+        const result = await proto.execute(param);
+        const res: NextIdentityAccess = result as NextIdentityAccess;
+
+        //! overwrite the origin context with this identity.
+        if (context) context.identity = res;
+
+        //! returns;
+        return res;
     }
 }
