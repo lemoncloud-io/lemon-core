@@ -71,19 +71,59 @@ export interface NextIdentityCognito extends NextIdentity {
     /**
      * identity-id of cognito.
      */
-    cognitoId: string;
+    identityId: string;
     /**
      * identity-pool-id of cognito
      */
-    cognitoPoolId: string;
+    identityPoolId: string;
     /**
      * authenticated provider of cognito like 'oauth.lemoncloud.io,oauth.lemoncloud.io:ap-northeast-2:618ce9d2-1234-2345-4567-e248ea51425e:kakao_00000'
      */
-    cognitoProvider?: string;
+    identityProvider?: string;
     /**
      * user-agent string like 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4)'
      */
     userAgent?: string;
+}
+
+/**
+ * class: `NextIdentityAcess`
+ * - extended information w/ site + account access information.
+ */
+export interface NextIdentityAccess extends NextIdentity {
+    /**
+     * site-information for domain
+     */
+    Site?: {
+        stereo?: string;
+        name?: string;
+        domain?: string;
+    };
+    /**
+     * user-information for active user.
+     */
+    User?: {
+        name?: string;
+        nick?: string;
+        email?: string;
+    };
+    /**
+     * group-information for groups.
+     */
+    Group?: {
+        name?: string;
+        roles?: string[];
+    };
+    /**
+     * login account-information.
+     */
+    Account?: {
+        id?: string;
+        stereo?: string;
+        socialId?: string;
+        identityId?: string;
+        loginId?: string;
+    };
 }
 
 /**

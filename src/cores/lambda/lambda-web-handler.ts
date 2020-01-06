@@ -329,8 +329,9 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         if (reqContext.identity && reqContext.identity.cognitoIdentityPoolId !== undefined) {
             const $id = reqContext.identity;
             _inf(NS, '! identity :=', $U.json(identity));
-            identity.cognitoPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
-            identity.cognitoId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
+            identity.identityProvider = $id.cognitoAuthenticationProvider;
+            identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
+            identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
             identity.accountId = $id.accountId; // acount-id should be same as context.accountId
             identity.userAgent = $id.userAgent; // user-agent string.
         }
