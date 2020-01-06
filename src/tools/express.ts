@@ -25,6 +25,7 @@
 import { LemonEngine } from '../engine/';
 import { loadJsonSync, getRunParam } from './shared';
 import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
+import { NextContext } from '../cores';
 
 import AWS from 'aws-sdk';
 import express, { RequestHandler } from 'express';
@@ -93,8 +94,10 @@ export const buildExpress = (
 
     //! middle ware
     const middle: RequestHandler = (req: any, res: any, next: any) => {
+        // _log(NS, `! req =`, req);
         // const _err = console.error;
         //! prepare event
+        const host = `${req.headers['host'] || ''}`.split(':')[0];
         const event = {
             path: req.path,
             queryStringParameters: req.query || {},
@@ -104,9 +107,12 @@ export const buildExpress = (
             url: req.url,
             headers: req.headers,
             body: req.body,
-            requestContext: { source: 'express' },
+            requestContext: {
+                source: 'express',
+                domainName: host,
+            },
         };
-        const context = { source: 'express' };
+        const context: NextContext = { source: 'express', domain: host };
         const callback = (err: any, data: any) => {
             err && _err(NS, '! err@callback =', err);
             data && _inf(NS, `! res@callback[${(data && data.statusCode) || 0}] =`, $U.json((data && data.body) || ''));
