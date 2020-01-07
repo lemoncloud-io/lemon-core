@@ -188,9 +188,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         //! call next.. (it will return result or promised)
         return this.handleProtocol(param, event)
-            .then(_ => {
-                return success(_);
-            })
+            .then(_ => success(_))
             .catch((e: any) => {
                 _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].err =`, e instanceof Error ? e : $U.json(e));
                 const message = `${e.message || e.reason || $U.json(e)}`;
@@ -198,9 +196,6 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 if (message.startsWith('404 NOT FOUND')) {
                     return notfound(message);
                 }
-
-                //! report error.
-                if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
 
                 //! common format of error.
                 if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
@@ -210,10 +205,14 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                         const loc = message.substring(message.indexOf(' - ') + 3).trim();
                         if (loc) return redirect(loc, status);
                     }
+
+                    //! report error and returns
+                    if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
                     return failure(message, status);
                 }
 
-                //! send failure.
+                //! report error and returns
+                if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
                 return failure(e instanceof Error ? message : e);
             });
     };
