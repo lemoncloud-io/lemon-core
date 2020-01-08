@@ -197,6 +197,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             body: { ...item, [idName]: id },
             // versionType: 'force',
         };
+        if (idName == '_id') delete params.body[idName]; // `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
