@@ -152,8 +152,10 @@ export interface ProtocolService {
      * synchronized call to target function via 'Lambda'.
      *
      * @param param     the calling param
+     * @param config    (optional) custom config
+     * @param uri       (optional) custom uri to provide.
      */
-    execute<T>(param: ProtocolParam): Promise<T>;
+    execute<T>(param: ProtocolParam, config?: CoreConfigService, uri?: string): Promise<T>;
 
     /**
      * asynchronous call to target function via 'SNS'.

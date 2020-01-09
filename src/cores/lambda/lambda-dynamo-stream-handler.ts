@@ -26,10 +26,22 @@ export interface DynamoStreamParam {
     tableName?: string;
 }
 export interface DynamoStreamBody<T = any> {
-    keys?: T; // only for keys
-    diff: T; // different set between old & new
-    prev: T; // previous node set.
-    node: T; // current node set.
+    /**
+     * only for keys
+     */
+    keys?: T;
+    /**
+     * fields to have different between old & new
+     */
+    diff: string[];
+    /**
+     * previous node with only in diff
+     */
+    prev: T;
+    /**
+     * the latest node set.
+     */
+    node: T;
 }
 export type DynamoStreamNextHandler<T = any> = NextHandler<DynamoStreamParam, void, DynamoStreamBody<T>>;
 
@@ -85,7 +97,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                     const $old = dynamodb.OldImage ? toJavascript(dynamodb.OldImage, null) : null;
 
                     //! 이제 변경된 데이터를 추적해서, 이후 처리 지원. (update 는 호출만되어도 이벤트가 발생하게 됨)
-                    const diff = eventName === 'MODIFY' ? $U.diff($old, $new) : {};
+                    const diff = eventName === 'MODIFY' ? $U.diff($old, $new) : [];
                     const prev = $_.reduce(
                         diff,
                         (node: any, key: any) => {
@@ -124,7 +136,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
     public static createSyncToElastic6<T extends Elastic6Item>(
         options: DynamoOption,
         service: Elastic6Service<T>,
-        filter?: (id: string, item: T, diff?: T, prev?: T) => boolean,
+        filter?: (id: string, item: T, diff?: string[], prev?: T) => boolean,
     ): DynamoStreamNextHandler {
         // const _log = console.log;
         const handler: DynamoStreamNextHandler = async (id, param, body, $ctx) => {

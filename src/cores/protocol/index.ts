@@ -22,7 +22,7 @@ export class ProtocolModule implements EngineModule {
     }
 
     //! create default services
-    public service: ProtocolService = new MyProtocolService();
+    public readonly service: ProtocolService = new MyProtocolService();
 
     public getModuleName = () => 'protocol';
     public async initModule(level?: number): Promise<number> {

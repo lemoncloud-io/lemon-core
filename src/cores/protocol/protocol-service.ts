@@ -308,12 +308,15 @@ export class MyProtocolService implements ProtocolService {
      *
      * @param param     the calling param
      * @param config    config service (for debug)
+     * @param uri       (optional) if useing custom uri.
      */
-    public async execute<T>(param: ProtocolParam, config?: ConfigService): Promise<T> {
+    public async execute<T>(param: ProtocolParam, config?: ConfigService, uri?: string): Promise<T> {
         // const _log = console.info;
         config = config || this.config;
         _log(NS, `execute(${param.service || ''})..`);
-        const uri = this.asProtocolURI('web', param, config);
+
+        //! execute via lambda call.
+        uri = uri || this.asProtocolURI('web', param, config);
         _inf(NS, `> uri =`, uri);
 
         // const url = new URL(uri);
@@ -330,14 +333,15 @@ export class MyProtocolService implements ProtocolService {
         // _log(NS, `> params =`, $U.json(params));
 
         //! call lambda.
-        const region = 'ap-northeast-2';
+        const region = 'ap-northeast-2'; //TODO - optimize of aws region....
         const lambda = new AWS.Lambda({ region });
         const response = await lambda
             .invoke(params)
             .promise()
             .catch((e: Error) => {
                 _err(NS, `! execute[${param.service || ''}].err =`, typeof e, e);
-                return this.doReportError(e, param.context, null, { protocol: uri, param });
+                // return this.doReportError(e, param.context, null, { protocol: uri, param });
+                throw e;
             })
             .then((data: Lambda.Types.InvocationResponse) => {
                 _log(NS, `! execute[${param.service || ''}].res =`, $U.json(data));
@@ -431,10 +435,11 @@ export class MyProtocolService implements ProtocolService {
         if (delaySeconds < 0) throw new Error(`@delaySeconds (number) should be >= 0. but ${delaySeconds}`);
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
+        _inf(NS, `> callback[${service}] =`, cbUrl);
         const params = this.sqs.transformToEvent(uri, param, cbUrl);
         params.DelaySeconds = delaySeconds;
         const endpoint = params.QueueUrl; // https://sqs.${arr[3]}.amazonaws.com
-        _inf(NS, `> endpoint[${service}] =`, uri);
+        _inf(NS, `> endpoint[${service}] =`, endpoint);
 
         //! call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
@@ -669,16 +674,17 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
 
         //! validate message
         if (Subject != 'x-protocol-service') throw new Error(`.Subject[${Subject}] is not valid protocol.`);
-        const accountId: string =
-            MessageAttributes && MessageAttributes['accountId'] && MessageAttributes['accountId'].Value;
-        const requestId: string =
-            MessageAttributes && MessageAttributes['requestId'] && MessageAttributes['requestId'].Value;
-        const callback: string =
-            MessageAttributes && MessageAttributes['callback'] && MessageAttributes['callback'].Value;
+        const _str = (name: string): string =>
+            MessageAttributes ? `${(MessageAttributes[name] && MessageAttributes[name].Value) || ''}` : '';
+        const accountId: string = _str('accountId');
+        const requestId: string = _str('requestId');
+        const callback: string = _str('callback');
 
         //! validate values.
-        if (accountId != context.accountId) throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
-        if (requestId != context.requestId) throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+        if (accountId != `${context.accountId || ''}`)
+            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
+        if (requestId != `${context.requestId || ''}`)
+            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
 
         //! returns.
         const res: MyProtocolParam = param;
@@ -717,10 +723,13 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
             MessageBody: $U.json(param),
             MessageAttributes: {
                 Subject: { DataType: 'String', StringValue: 'x-protocol-service' }, //NOTE! - should use 'Subject' in here.
-                accountId: { DataType: 'String', StringValue: accountId },
-                requestId: { DataType: 'String', StringValue: requestId },
+                // accountId: { DataType: 'String', StringValue: accountId },
+                // requestId: { DataType: 'String', StringValue: requestId },
             },
         };
+        //! StringValue can not be empty
+        if (accountId) res.MessageAttributes['accountId'] = { DataType: 'String', StringValue: accountId };
+        if (requestId) res.MessageAttributes['requestId'] = { DataType: 'String', StringValue: requestId };
         //! append callback-url in attributes (WARN! string length limit)
         if (callback) res.MessageAttributes['callback'] = { DataType: 'String', StringValue: callback };
         return res;
@@ -741,14 +750,16 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
 
         //! validate message
         if (subject != 'x-protocol-service') throw new Error(`.subject[${subject}] is not valid protocol.`);
-        const accountId: string = messageAttributes['accountId'] && messageAttributes['accountId'].stringValue;
-        const requestId: string = messageAttributes['requestId'] && messageAttributes['requestId'].stringValue;
-        const callback: string = messageAttributes['callback'] && messageAttributes['callback'].stringValue;
+        const _str = (name: string): string =>
+            messageAttributes ? `${(messageAttributes[name] && messageAttributes[name].stringValue) || ''}` : '';
+        const accountId = _str('accountId');
+        const requestId = _str('requestId');
+        const callback = _str('callback');
 
         //! validate values.
-        if (context && accountId != context.accountId)
+        if (context && accountId != `${context.accountId || ''}`)
             throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
-        if (context && requestId != context.requestId)
+        if (context && requestId != `${context.requestId || ''}`)
             throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
 
         //! returns.

@@ -178,6 +178,10 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
 
         //TODO - accept only primitive types of field @191228.
 
+        //NOTE! - should not update the core field in save()
+        delete model.lock;
+        delete model.next;
+
         //! load the meta data...
         const $meta = (() => {
             if (model.meta !== undefined && !model.meta) return {};

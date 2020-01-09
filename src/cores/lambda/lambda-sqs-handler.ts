@@ -52,6 +52,9 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
         const records: SQSRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
         _log(NS, '> event =', $U.json(event));
+        const $doReportError: (...a: any) => Promise<any> = LambdaSQSHandler.REPORT_ERROR
+            ? doReportError
+            : async () => {};
 
         //! handle sqs record data.
         const onSQSRecord = async (record: SQSRecord, index: number): Promise<string> => {
@@ -76,11 +79,25 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                     .handleProtocol(param)
                     .then(body => {
                         // _log(NS, `! res[${index}] =`, $U.json(body));
+                        callback && _log(NS, `> callback[${index}] =`, callback); // ex) api://lemon-queue-api-dev/batch/test11/callback#2.2.1
+                        context && _log(NS, `> context[${index}] =`, $U.json(context)); // ex) {"source":"express","domain":"localhost"}
+                        //! report call back.
                         const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
                         proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
+                        _log(NS, `> config.service =`, this.lambda.config.getService());
+                        //! check if service is in same..
+                        if (proto && proto.service == this.lambda.config.getService()) {
+                            proto.context.depth = $U.N(proto.context.depth, 1) + 1;
+                            proto.body = body;
+                            _log(NS, `! body[${index}] =`, $U.json(body));
+                            return this.lambda.handleProtocol(proto).then(body => {
+                                _log(NS, `>> body[${index}].callback =`, $U.json(body));
+                            });
+                        }
+                        //! call the remote service if callback.
                         return proto ? $protocol.service.execute(proto) : body;
                     })
-                    .catch(e => doReportError(e, param.context, null, { protocol: param }).catch(GETERR$));
+                    .catch(e => $doReportError(e, param.context, null, { protocol: param }).catch(GETERR$));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
                 return '';
             } else {
@@ -100,7 +117,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                                 _log(NS, `>> [${i}].res =`, $U.json(_));
                                 return `${i}`;
                             })
-                            .catch(e => doReportError(e, null, null, { i, param, body }).catch(GETERR)),
+                            .catch(e => $doReportError(e, null, null, { i, param, body }).catch(GETERR)),
                     ),
                 );
                 //! concont
@@ -109,7 +126,12 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
         };
 
         //! serialize each records.
-        this.$lastResult = await do_parrallel(records, onSQSRecord, 1);
+        this.$lastResult = await do_parrallel(
+            records,
+            (record, i) =>
+                onSQSRecord(record, i).catch(e => $doReportError(e, null, null, { record, i }).catch(GETERR)),
+            1,
+        );
 
         //! returns void.
         return;
