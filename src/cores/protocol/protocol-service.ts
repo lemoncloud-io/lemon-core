@@ -308,14 +308,15 @@ export class MyProtocolService implements ProtocolService {
      *
      * @param param     the calling param
      * @param config    config service (for debug)
+     * @param uri       (optional) if useing custom uri.
      */
-    public async execute<T>(param: ProtocolParam, config?: ConfigService): Promise<T> {
+    public async execute<T>(param: ProtocolParam, config?: ConfigService, uri?: string): Promise<T> {
         // const _log = console.info;
         config = config || this.config;
         _log(NS, `execute(${param.service || ''})..`);
 
         //! execute via lambda call.
-        const uri = this.asProtocolURI('web', param, config);
+        uri = uri || this.asProtocolURI('web', param, config);
         _inf(NS, `> uri =`, uri);
 
         // const url = new URL(uri);
@@ -339,7 +340,8 @@ export class MyProtocolService implements ProtocolService {
             .promise()
             .catch((e: Error) => {
                 _err(NS, `! execute[${param.service || ''}].err =`, typeof e, e);
-                return this.doReportError(e, param.context, null, { protocol: uri, param });
+                // return this.doReportError(e, param.context, null, { protocol: uri, param });
+                throw e;
             })
             .then((data: Lambda.Types.InvocationResponse) => {
                 _log(NS, `! execute[${param.service || ''}].res =`, $U.json(data));
