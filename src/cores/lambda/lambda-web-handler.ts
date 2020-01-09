@@ -28,7 +28,7 @@ import {
     CoreConfigService,
 } from './../core-services';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
-import { LambdaHandler, WEBHandler, Context, LambdaSubHandler } from './lambda-handler';
+import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
 import $protocol from '../protocol/';
@@ -178,24 +178,23 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         _log(NS, '! $param =', $U.json($param));
 
         //! prevent error via transform.
-        if (event.headers && !event.headers['x-protocol-context']) event.headers['x-protocol-context'] = $U.json($ctx);
-        const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
-        _log(NS, '! protocol-param =', $U.json(param));
-        const TYPE = param.type;
-        const MODE = param.mode;
-        const ID = param.id;
-        const CMD = param.cmd;
-
-        //! call next.. (it will return result or promised)
-        return this.handleProtocol(param, event)
+        const promised = async (event: WEBEvent) => {
+            //! transform to protocol-context.
+            if (event.headers && !event.headers['x-protocol-context'])
+                event.headers['x-protocol-context'] = $U.json($ctx);
+            const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
+            _log(NS, '! protocol-param =', $U.json(param));
+            return { event, param };
+        };
+        //! start promised..
+        return promised(event)
+            .then(({ param, event }) => this.handleProtocol(param, event))
             .then(_ => success(_))
             .catch((e: any) => {
-                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].err =`, e instanceof Error ? e : $U.json(e));
+                _err(NS, `! err =`, e instanceof Error ? e : $U.json(e));
                 const message = `${e.message || e.reason || $U.json(e)}`;
-                _err(NS, `! ${MODE}[/${TYPE}/${ID}/${CMD}].msg =`, message);
-                if (message.startsWith('404 NOT FOUND')) {
-                    return notfound(message);
-                }
+                if (message.startsWith('404 NOT FOUND')) return notfound(message);
+                _err(NS, `! err.msg =`, message);
 
                 //! common format of error.
                 if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
