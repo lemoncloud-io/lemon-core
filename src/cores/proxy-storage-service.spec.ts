@@ -20,6 +20,7 @@ import {
     CORE_FIELDS,
     CoreKeyMakeable,
     CoreModelFilterable,
+    UniqueFieldManager,
 } from './proxy-storage-service';
 import { credentials } from '../tools/shared';
 
@@ -35,7 +36,9 @@ class MyService extends GeneralKeyMaker<MyType> {
     public constructor() {
         super('TT', ':');
     }
+    public hello = () => `my-test-service:${this.NS}`;
 }
+
 //! sample to filter model
 class MyModelFilter extends GeneralModelFilter<MyModel, MyType> {
     public constructor() {
@@ -257,4 +260,100 @@ describe('ProxyStorageService', () => {
 
     //! test w/ dynamo service.
     it('should pass service w/ dynamo-storage', build_test_scenario_by_type('dynamo'));
+
+    //! dummy storage service.
+    it('should pass UniqueFieldManager', async done => {
+        //! make instance..
+        const prepare = async (type: 'dummy' = 'dummy') => {
+            /* eslint-disable prettier/prettier */
+            const { service, storage: $storage } = instance(type == 'dummy' ? 'dummy-account-data.yml' : 'TestCoreTable');
+
+            expect2(service.hello()).toEqual('my-test-service:TT');
+            expect2($storage.hello()).toEqual('proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
+
+            const $test = $storage.makeTypedStorageService('test');
+            expect2(await $test.read('A00000').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:A00000'); //TODO - imporove dummy-storage to support typed manager.
+
+            const storage = $test;
+            const $unique = new UniqueFieldManager($test);
+            expect2($unique.hello()).toEqual('unique-field-manager:test/name:typed-storage-service:test/proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
+
+            //! make 'aaa', no lookup
+            expect2(await storage.save('aaa', { name:'AAA' }), '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'aaa', name:'AAA', deletedAt:0 });
+            expect2(await storage.save('bbb', { name:'BBB' }), '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'bbb', name:'BBB', deletedAt:0 });
+            expect2(await storage.read('aaa'),                 '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'aaa', name:'AAA', deletedAt:0 });
+            expect2(await storage.read('bbb'),                 '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'bbb', name:'BBB', deletedAt:0 });
+
+            const ID_AAA = $unique.asLookupId('aaa');
+            const ID_BBB = $unique.asLookupId('bbb');
+            expect2(await storage.read(ID_AAA).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:#test/aaa');
+            expect2(await storage.read(ID_BBB).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:#test/bbb');
+            return { service, storage, $unique };
+            /* eslint-enable prettier/prettier */
+        };
+
+        /* eslint-disable prettier/prettier */
+        if (1) {
+            const { storage, $unique } = await prepare();
+
+            //! findOrCreate() w/o $creates
+            expect2(await $unique.findOrCreate('AAA').catch(GETERR)).toEqual('404 NOT FOUND - test:name/AAA');
+            expect2(await $unique.findOrCreate('AAA', {}).catch(GETERR), 'id,type,name').toEqual({ id:'1000001', type:'test', name:'AAA' });
+            expect2(await $unique.findOrCreate('AAA', {}).catch(GETERR), 'id,type,name').toEqual({ id:'1000001', type:'test', name:'AAA' });
+            expect2(await storage.delete('1000001', true).catch(GETERR), 'id,type,name').toEqual({ id:'1000001', type:'test', name:'AAA' });
+            expect2(await storage.delete('1000001', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:1000001');
+            expect2(await $unique.findOrCreate('AAA').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:1000001');
+
+            //! findOrCreate() w/ $creates(id=XYZ)
+            expect2(await $unique.findOrCreate('BBB').catch(GETERR)).toEqual('404 NOT FOUND - test:name/BBB');
+            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (BBB) is not same as (AAA)!');
+            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
+            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
+            expect2(await storage.delete('XYZ', true).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
+            expect2(await storage.delete('XYZ', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:XYZ');
+            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
+
+            //! findOrCreate() w/ $creates(id=)
+            expect2(await $unique.findOrCreate('CCC').catch(GETERR)).toEqual('404 NOT FOUND - test:name/CCC');
+            expect2(await $unique.findOrCreate('CCC', { id:'', name:'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (CCC) is not same as (AAA)!');
+            expect2(await $unique.findOrCreate('CCC', { id:'', name:'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
+            expect2(await $unique.findOrCreate('CCC', { id:'', name:'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
+            expect2(await storage.delete('1000002', true).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
+            expect2(await storage.delete('1000002', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:1000002');
+            expect2(await $unique.findOrCreate('CCC', { id:'', name:'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
+
+            //! findOrCreate() w/ $creates()
+            expect2(await $unique.findOrCreate('DDD').catch(GETERR)).toEqual('404 NOT FOUND - test:name/DDD');
+            expect2(await $unique.findOrCreate('DDD', { name:'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (DDD) is not same as (AAA)!');
+            expect2(await $unique.findOrCreate('DDD', { name:'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
+            expect2(await $unique.findOrCreate('DDD', { name:'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
+            expect2(await storage.delete('1000003', true).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
+            expect2(await storage.delete('1000003', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:1000003');
+            expect2(await $unique.findOrCreate('DDD', { name:'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
+        }
+
+        if (1) {
+            const { storage, $unique } = await prepare();
+
+            const aaa = await storage.read('aaa');
+            const bbb = await storage.read('bbb');
+
+            //! updateLookup() w/o value
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#test/AAA');
+            expect2(await $unique.updateLookup(aaa).catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'AAA' });
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/AAA', type:'test', stereo:'#', meta:'aaa' });
+
+            //! try to change name to 'BBB'
+            expect2(await $unique.updateLookup({ ...aaa }, 'BBB').catch(GETERR), 'id,type,name').toEqual('@name (BBB) is not same as (AAA)!');                              // change to 'BBB' w/o changing model.
+            expect2(await $unique.updateLookup({ ...aaa, name:'BBB' }, 'BBB').catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'AAA' });                // change to 'BBB' w/o changing model.
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/AAA', type:'test', stereo:'#', meta:'aaa' });   // occupied
+            expect2(await storage.read($unique.asLookupId('BBB')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/BBB', type:'test', stereo:'#', meta:'aaa' });   // newly created..
+
+            //! try to update another to 'bbb'
+            expect2(await $unique.updateLookup({ ...bbb }, 'BBB').catch(GETERR), 'id,type,name').toEqual('400 DUPLICATED NAME - name[BBB] is duplicated to test[aaa]');     // change to 'BBB' w/o changing model.
+        }
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
 });
