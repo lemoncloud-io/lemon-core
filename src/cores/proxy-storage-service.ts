@@ -116,6 +116,7 @@ export interface CoreModelFilterable<T> {
     afterRead: CoreModelFilter<T>;
     beforeSave: CoreModelFilter<T>;
     afterSave: CoreModelFilter<T>;
+    afterUpdate: CoreModelFilter<T>;
 }
 
 /**
@@ -246,14 +247,22 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
     }
 
     /**
-     * called after updating the model.
+     * called after saving the model.
      * - parse `.meta` back to json object.
      *
-     * @param model
-     * @param origin
+     * @param model     the saved model
+     * @param origin    the origin model.
      */
     public afterSave(model: T, origin?: T) {
         return this.afterRead(model, origin);
+    }
+
+    /**
+     * called after updating the model.
+     * @param model     the updated model
+     */
+    public afterUpdate(model: T) {
+        return this.afterRead(model, null);
     }
 
     /**
@@ -478,7 +487,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public async doUpdate(type: ModelType, id: string, node: T) {
         const $key = this.service.asKey$(type, id);
         const { updatedAt } = this.asTime();
-        return this.update($key._id, { ...node, updatedAt });
+        const model = await this.update($key._id, { ...node, updatedAt });
+        //! make sure it has `_id`
+        model._id = $key._id; //! make sure `_id`
+        const res = this.filters.afterUpdate(model);
+        return res;
     }
 
     /**
