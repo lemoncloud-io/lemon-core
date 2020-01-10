@@ -21,13 +21,15 @@ import {
     CoreKeyMakeable,
     CoreModelFilterable,
     UniqueFieldManager,
+    ModelUtil,
 } from './proxy-storage-service';
 import { credentials } from '../tools/shared';
 
 //-------------------------
 //! internal definitions
-type MyType = '' | 'test';
-interface MyModel extends CoreModel<MyType> {
+export type MyType = '' | 'test';
+
+export interface MyModel extends CoreModel<MyType> {
     name?: string;
     count?: number;
 }
@@ -74,10 +76,10 @@ class MyStorage extends ProxyStorageService<MyModel, MyType> {
 
 //-------------------------
 //! create service instance.
-export const instance = (table?: string) => {
+export const instance = (table?: string, time?: number) => {
     const service = new MyService();
     const filters = new MyModelFilter();
-    const current = new Date().getTime();
+    const current = time || new Date().getTime();
     const storage: ProxyStorageService<MyModel, MyType> = new MyStorage(
         service,
         ProxyStorageService.makeStorageService(table, FIELDS),
@@ -261,6 +263,41 @@ describe('ProxyStorageService', () => {
     //! test w/ dynamo service.
     it('should pass service w/ dynamo-storage', build_test_scenario_by_type('dynamo'));
 
+    //! test ModelUtil.
+    it('should pass ModelUtil functions', async done => {
+        //! test pop();
+        const data: any = { a: 1, c: '2' };
+        expect2(() => Object.keys(data)).toEqual(['a', 'c']);
+        expect2(() => data.pop('a')).toEqual('data.pop is not a function');
+
+        const data2: any = ModelUtil.buildPop({ ...data }, '$pop');
+        expect2(() => Object.keys(data2)).toEqual(['a', 'c', '$pop']);
+        expect2(() => ModelUtil.buildPop(data2, '$pop')).toEqual('.[$pop] is duplicated!');
+        expect2(() => data2.$pop('a')).toEqual(1);
+        expect2(() => Object.keys(data2)).toEqual(['c', '$pop']);
+        expect2(() => data2.$pop('c')).toEqual('2');
+        expect2(() => data2.$pop('c')).toEqual(undefined);
+        expect2(() => data2.$pop('c', 1)).toEqual(1);
+        expect2(() => data2.$pop('c', 'x')).toEqual('x');
+        expect2(() => Object.keys(data2)).toEqual(['$pop']);
+        expect2(() => data2.$pop()).toEqual({});
+        expect2(() => Object.keys(data2)).toEqual([]);
+        expect2(() => data2.$pop()).toEqual('data2.$pop is not a function');
+
+        const data3: any = ModelUtil.buildPop({ ...data }, 'pop');
+        expect2(() => Object.keys(data3)).toEqual(['a', 'c', 'pop']);
+        expect2(() => data3.$pop('a')).toEqual('data3.$pop is not a function');
+        expect2(() => data3.pop('a')).toEqual(1);
+        expect2(() => Object.keys(data3)).toEqual(['c', 'pop']);
+        expect2(() => data3.pop('c')).toEqual('2');
+        expect2(() => Object.keys(data3)).toEqual(['pop']);
+        expect2(() => data3.pop()).toEqual({});
+        expect2(() => Object.keys(data3)).toEqual([]);
+        expect2(() => data3.pop()).toEqual('data3.pop is not a function');
+
+        done();
+    });
+
     //! dummy storage service.
     it('should pass UniqueFieldManager', async done => {
         //! make instance..
@@ -345,7 +382,7 @@ describe('ProxyStorageService', () => {
 
             //! try to change name to 'BBB'
             expect2(await $unique.updateLookup({ ...aaa }, 'BBB').catch(GETERR), 'id,type,name').toEqual('@name (BBB) is not same as (AAA)!');                              // change to 'BBB' w/o changing model.
-            expect2(await $unique.updateLookup({ ...aaa, name:'BBB' }, 'BBB').catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'AAA' });                // change to 'BBB' w/o changing model.
+            expect2(await $unique.updateLookup({ ...aaa, name:'BBB' }, 'BBB').catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'BBB' });                // change to 'BBB' w/o changing model.
             expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/AAA', type:'test', stereo:'#', meta:'aaa' });   // occupied
             expect2(await storage.read($unique.asLookupId('BBB')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/BBB', type:'test', stereo:'#', meta:'aaa' });   // newly created..
 
