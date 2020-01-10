@@ -15,9 +15,8 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine/';
 import { GeneralWEBController } from './general-controller';
+import { NextHandler, Elastic6SimpleQueriable } from '../cores/core-types';
 import { CoreModel, TypedStorageService, UniqueFieldManager } from '../cores/proxy-storage-service';
-import { Elastic6QueryService } from '../cores/elastic6-query-service';
-import { NextHandler } from '../cores/core-types';
 
 /**
  * class: `APIController`
@@ -29,7 +28,7 @@ export class GeneralAPIController<
 > extends GeneralWEBController {
     public readonly NS: string;
     protected storage: T;
-    protected search: Elastic6QueryService<any>;
+    protected search: Elastic6SimpleQueriable<any>;
     protected unique: UniqueFieldManager<CoreModel<ModelType>, ModelType>;
 
     /**
@@ -39,7 +38,7 @@ export class GeneralAPIController<
      * @param search    search-service
      * @param uniqueField (optional) field in unique to lookup the origin id.
      */
-    public constructor(type: string, storage: T, search: Elastic6QueryService<any>, uniqueField?: string) {
+    public constructor(type: string, storage: T, search: Elastic6SimpleQueriable<any>, uniqueField?: string) {
         super(type);
         this.NS = $U.NS(`*${type}`, 'yellow'); // NAMESPACE TO BE PRINTED.
         this.storage = storage;
@@ -73,6 +72,7 @@ export class GeneralAPIController<
         //! base filter masking.
         param.type = this.type();
         param.deletedAt = 0;
+        if (this.unique) param.stereo = '!#'; //! `.stereo` is not like '#'
         //! call search.
         return this.search.searchSimple(param);
     };

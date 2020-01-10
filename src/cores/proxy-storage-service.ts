@@ -16,6 +16,9 @@ import { StorageService, StorageModel } from './storage-service';
 import { DummyStorageService, DynamoStorageService } from './storage-service';
 import { NUL404 } from '../common/test-helper';
 
+import { Elastic6SimpleQueriable } from './core-types';
+import { GeneralAPIController } from '../controllers/general-api-controller';
+
 /**
  * class: `CoreKeyMakeable`
  * - make internal key by type + id.
@@ -710,6 +713,12 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      */
     public makeUniqueFieldManager = (field: string): UniqueFieldManager<T, ModelType> =>
         new UniqueFieldManager(this, field);
+
+    /**
+     * make `GeneralAPIController` for REST API w/ supporting basic CRUD
+     */
+    public makeGeneralAPIController = (search?: Elastic6SimpleQueriable<any>, uniqueField?: string) =>
+        new GeneralAPIController(this.type, this, search, uniqueField);
 }
 
 /**
