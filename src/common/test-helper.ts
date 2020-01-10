@@ -33,6 +33,15 @@ export const GETERR = (e: any) =>
 export const GETERR$ = (e: any) => ({ error: GETERR(e) });
 
 /**
+ * return null if 404 not found.
+ * @param e error
+ */
+export const NUL404 = (e: Error) => {
+    if (`${e.message}`.startsWith('404 NOT FOUND')) return null as any;
+    throw e;
+};
+
+/**
  * improve expect() function with projection field.
  *
  * @param test      function or data.
