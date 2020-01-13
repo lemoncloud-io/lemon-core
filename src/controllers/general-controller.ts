@@ -11,8 +11,9 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err } from '../engine/';
-import { NextMode, NextContext, NextIdentityAccess, ProtocolService, ProtocolParam } from '../cores';
+import { NextMode, NextContext, NextIdentityAccess, ProtocolService, ProtocolParam, NextHandler } from '../cores/';
 import { CoreWEBController } from '../cores/lambda';
+import $protocols from '../cores/protocol/';
 
 /**
  * class: `GeneralController`.
@@ -66,25 +67,46 @@ export class GeneralController implements CoreWEBController {
     }
 }
 
-//! import cores.
-import $cores from '../cores/';
-
 /**
  * class: `GeneralWEBController`
  * - support additional helper functions for web-controller.
  */
 export class GeneralWEBController extends GeneralController {
     /**
-     * default constructor()
+     * the base controller to bypass.
      */
-    public constructor(type: string) {
+    public readonly base: CoreWEBController;
+
+    /**
+     * default constructor()
+     *
+     * @param type  type of this controller.
+     * @param base  the base controller to bypass.
+     */
+    public constructor(type: string, base?: CoreWEBController) {
         super(type);
+        this.base = base;
     }
 
     /**
      * name of this resource.
      */
-    public hello = () => `general-web-controller:${this.type()}`;
+    public hello = () => `general-web-controller:${this.type()}${this.base ? '/' + this.base.hello() : ''}`;
+
+    /**
+     * decode func from self to base.
+     */
+    public decode(mode: NextMode, id: string, cmd: string) {
+        //! find handler from self
+        const ret = super.decode(mode, id, cmd);
+        //! if not found, then find via base.
+        if (!ret && this.base) {
+            const handler = this.base.decode(mode, id, cmd);
+            const builder = (thiz: any, func: NextHandler): NextHandler => (i, p, b, c) => func.call(thiz, i, p, b, c);
+            return typeof handler == 'function' ? builder(this.base, handler) : null;
+        }
+        return ret;
+    }
 
     /**
      * translate to `NextIdentityAccess` from origin NextContext
@@ -99,7 +121,8 @@ export class GeneralWEBController extends GeneralController {
         }
 
         //! call service via protocol
-        const proto: ProtocolService = $cores.protocol.service;
+        // const proto: ProtocolService = $cores.protocol.service;
+        const proto: ProtocolService = $protocols.service;
         //TODO - use env to configure `lemon-accounts-api` service @200106
         const param: ProtocolParam = proto.fromURL(context, 'api://lemon-accounts-api/oauth/0/pack-context', {}, {});
         const result = await proto.execute(param);

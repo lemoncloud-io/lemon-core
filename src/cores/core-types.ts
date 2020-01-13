@@ -177,3 +177,58 @@ export type NextHandler<TParam = any, TResult = any, TBody = any> = (
  * Decode `NextHandler` by mode + id + cmd.
  */
 export type NextDecoder<TMode = NextMode> = (mode: TMode, id?: string, cmd?: string) => NextHandler;
+
+/** ********************************************************************************************************************
+ *  Services Interfaces
+ ** ********************************************************************************************************************/
+
+/**
+ * class: QueryResult
+ * - result information of query.
+ */
+export interface QueryResult<T> {
+    // list of data
+    list: T[];
+    // number of data
+    total?: number;
+    // current page
+    page?: number;
+    // limit of list.
+    limit?: number;
+}
+/**
+ * class: `SimpleSearchParam`
+ * - simplified search param with json object.
+ */
+export interface SimpleSearchParam extends GeneralItem {
+    $query?: string | any; // low query object.
+    $limit?: number; // limit
+    $page?: number; // page
+    $Q?: string; // simple inline query
+    $A?: string; // aggregation.
+    $O?: string; // ordering.
+    $H?: string; // highlight.
+    $source?: string; // returned source fields set. '*', 'obj.*', '!abc'
+    $exist?: string; // check if exists
+    $exists?: string; // check if exists
+}
+
+/**
+ * feature: `DynamoSimpleQueriable`
+ * - simple query capable class.
+ */
+export interface Elastic6SimpleQueriable<T extends GeneralItem> {
+    /**
+     * simple range query by `partition-key` w/ limit.
+     *
+     * @param id        value of id
+     */
+    queryAll(id: string, limit?: number, isDesc?: boolean): Promise<QueryResult<T>>;
+
+    /**
+     * search in simplemode
+     *
+     * @param param     SimpleSearchParam
+     */
+    searchSimple(param: SimpleSearchParam): Promise<QueryResult<T>>;
+}
