@@ -10,3 +10,4 @@
  */
 export * from './dummy-controller';
 export * from './general-controller';
+export * from './general-api-controller';
