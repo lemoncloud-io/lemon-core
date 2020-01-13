@@ -14,6 +14,7 @@
  ** ********************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine/';
+import { NUL404 } from '../common/test-helper';
 import { GeneralWEBController } from './general-controller';
 import { NextHandler, Elastic6SimpleQueriable } from '../cores/core-types';
 import { CoreModel, TypedStorageService, UniqueFieldManager } from '../cores/proxy-storage-service';
@@ -65,16 +66,25 @@ export class GeneralAPIController<
 
     /**
      * search node
+     *
      */
     public listBase: NextHandler = async (id, param, body, context) => {
         _log(this.NS, `! listBase(${id})..`);
         param = param || {};
+
+        //! translate page + ipp => page & limit.
+        const $page = $U.N(param.page, 0);
+        const $limit = $U.N(param.limit, $U.N(param.ipp, 12)); // compartible for ipp
+        const $param = { ...param, $page, $limit, page: undefined, ipp: undefined, limit: undefined }; // clear paging param.
+        $param.$O = $param.$O || 'id.keyword'; // order by id
+
         //! base filter masking.
-        param.type = this.type();
-        param.deletedAt = 0;
-        if (this.unique) param.stereo = '!#'; //! `.stereo` is not like '#'
+        if (param.type === undefined) $param.type = this.type();
+        if (param.deletedAt === undefined) $param.deletedAt = 0;
+        if (this.unique && param.stereo === undefined) $param['!stereo'] = '#'; //! `.stereo` is not like '#'
+
         //! call search.
-        return this.search.searchSimple(param);
+        return this.search.searchSimple($param);
     };
 
     /**
@@ -132,7 +142,15 @@ export class GeneralAPIController<
     public deleteBase: NextHandler = async (id, param, body, context) => {
         _log(this.NS, `! deleteBase(${id})..`);
         param = param || {};
-        const destroy = $U.N(param.destroy, param.destroy === '' ? 1 : 0);
-        return this.storage.delete(id, !!destroy);
+        const destroy = $U.N(param.destroy, param.destroy === '' ? 1 : 0) ? true : false;
+        //! destroy for lookup-id (TBD - need to destory lookup-key really?)
+        const field = this.unique ? this.unique.field : '';
+        if (destroy && this.unique) {
+            const $org = await this.storage.read(id).catch(NUL404);
+            const old = $org ? ($org as any)[field] : '';
+            if (old) await this.storage.delete(this.unique.asLookupId(old), destroy);
+        }
+        //! destroy key...
+        return this.storage.delete(id, destroy);
     };
 }

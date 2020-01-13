@@ -121,16 +121,19 @@ describe('GeneralController', () => {
         // expect2(await request(app).put('/test/bbb').send({ name:'BBB' }), 'status,text,body').toEqual({ status:400, text:'400 DUPLICATED NAME - name[AAA] is duplicated to test[1000001]', body:{} });
         expect2((await request(app).put('/test/bbb').send({ name:'BBB' })).body, 'id,type,name').toEqual({ id:'bbb', type:'test', name:'BBB' });
         expect2(await storage.read('bbb').catch(GETERR), 'id,type,name').toEqual({ id:'bbb', type:'test', name:'BBB' });
+        expect2(await storage.read('#test/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/BBB', type:'test', stereo:'#', meta:'bbb' });     // lookup-data
 
         //! try to delete w/o destroy
         // expect2(await request(app).delete('/test/bbb'), 'status,text,body').toEqual({ status:400, text:'400 DUPLICATED NAME - name[AAA] is duplicated to test[1000001]', body:{} });
         expect2((await request(app).delete('/test/bbb')).body.deletedAt > 0).toEqual(true);
         expect2(await storage.read('bbb').catch(GETERR), 'id,type,name').toEqual({ id:'bbb', type:'test', name:'BBB' });
         expect2((await storage.read('bbb').catch(GETERR) as any).deletedAt > 0).toEqual(true);
+        expect2(await storage.read('#test/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/BBB', type:'test', stereo:'#', meta:'bbb' });     // lookup-data (remained)
 
         //! try to delete w/ destroy
         expect2((await request(app).delete('/test/bbb?destroy')).body.deletedAt > 0).toEqual(true);
         expect2(await storage.read('bbb').catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:bbb');
+        expect2(await storage.read('#test/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#test/BBB');                     // lookup-data (deleted)
 
         /* eslint-enable prettier/prettier */
         done();
@@ -198,16 +201,20 @@ describe('GeneralController', () => {
         // expect2(await request(app).put('/test/bbb').send({ name:'BBB' }), 'status,text,body').toEqual({ status:400, text:'400 DUPLICATED NAME - name[AAA] is duplicated to test[1000001]', body:{} });
         expect2((await request(app).put('/test/bbb').send({ name:'BBB' })).body, 'id,type,name').toEqual({ id:'bbb', type:undefined, name:'BBB' });
         expect2(await storage.read('bbb').catch(GETERR), 'id,type,name').toEqual({ id:'bbb', type:'test', name:'BBB' })
+        expect2(await storage.read('#test/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#test/BBB');                     // lookup-data (no exists)
 
         //! try to delete w/o destroy
         // expect2(await request(app).delete('/test/bbb'), 'status,text,body').toEqual({ status:400, text:'400 DUPLICATED NAME - name[AAA] is duplicated to test[1000001]', body:{} });
         expect2((await request(app).delete('/test/bbb')).body.deletedAt > 0).toEqual(true);
         expect2(await storage.read('bbb').catch(GETERR), 'id,type,name').toEqual({ id:'bbb', type:'test', name:'BBB' });
         expect2((await storage.read('bbb').catch(GETERR) as any).deletedAt > 0).toEqual(true);
+        expect2(await storage.read('#test/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#test/BBB');                     // lookup-data (no exists)
 
         //! try to delete w/ destroy
         expect2((await request(app).delete('/test/bbb?destroy')).body.deletedAt > 0).toEqual(true);
         expect2(await storage.read('bbb').catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:bbb');
+        expect2(await storage.read('bbb').catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:bbb');
+        expect2(await storage.read('#test/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#test/BBB');                     // lookup-data (no exists)
 
         /* eslint-enable prettier/prettier */
         done();

@@ -211,16 +211,20 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     });
                 } else {
                     //! escape if there is ' ' except like '(a AND B)'
-                    if (val && typeof val === 'string') {
+                    if (val === '') {
+                        val = '"' + val + '"';
+                    } else if (val && typeof val === 'string') {
                         if (val.startsWith('(') && val.endsWith(')')) {
                             // nop
                         } else if (
-                            val.indexOf(' ') > 0 ||
-                            val.indexOf('\n') > 0 ||
-                            val.indexOf(':') > 0 ||
-                            val.indexOf('^') > 0
+                            val.indexOf(' ') >= 0 ||
+                            val.indexOf('\n') >= 0 ||
+                            val.indexOf(':') >= 0 ||
+                            val.indexOf('\\') >= 0 ||
+                            val.indexOf('#') >= 0 ||
+                            val.indexOf('^') >= 0
                         ) {
-                            val = val.replace(/([\"\'])/gi, '\\$1');
+                            val = val.replace(/([\"\'])/gi, '\\$1'); // replace '"' -> '\"'
                             val = '"' + val + '"';
                         } else if (val.indexOf(',') > 0) {
                             val = val.split(',').map(s => {
@@ -250,7 +254,8 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     } else if (val === undefined) {
                         //! nop
                     } else if (val && Array.isArray(val)) {
-                        list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
+                        // list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
+                        list.push(`${key}:` + '(' + val.map(val => `${val}`).join(' OR ') + ')');
                     } else {
                         list.push(`${key}:${val}`);
                     }
