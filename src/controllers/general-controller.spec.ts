@@ -12,7 +12,7 @@ import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
 import { ProtocolParam, NextHandler } from '../cores';
 import { buildEngine } from '../engine';
 import { buildExpress, loadJsonSync } from '../tools';
-import { expect2, GETERR$ } from '../common/test-helper';
+import { expect2 } from '../common/test-helper';
 import { GeneralController, GeneralWEBController } from './general-controller';
 
 //! local `lambda-web-handler` to server dummy
@@ -113,8 +113,8 @@ describe('GeneralController', () => {
         expect2(await request(app).get('/hello/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()`
         expect2(await request(app).get('/hello/bb/lemon'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'lemon-bb' } });     // via `getHelloLemon()`
 
-        expect2(await request(app).get('/hello/aa').catch(GETERR$), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa' });
-        expect2(await request(app).get('/hello/aa/some').catch(GETERR$), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa/some' });
+        expect2(await request(app).get('/hello/aa'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa' });
+        expect2(await request(app).get('/hello/aa/some'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa/some' });
 
         expect2(await request(app).get('/hello3/aa/world'), 'status,text,body').toEqual({ status:404, body:{ }, text:'404 NOT FOUND - GET /hello3/aa/world' });
         expect2(await request(app).get('/hello3/bb/lemon'), 'status,text,body').toEqual({ status:404, body:{ }, text:'404 NOT FOUND - GET /hello3/bb/lemon' });
@@ -138,8 +138,8 @@ describe('GeneralController', () => {
         expect2(await request(app).get('/hello/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()`
         expect2(await request(app).get('/hello/bb/lemon'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'lemon-bb' } });     // via `getHelloLemon()`
 
-        expect2(await request(app).get('/hello/aa').catch(GETERR$), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa' });
-        expect2(await request(app).get('/hello/aa/some').catch(GETERR$), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa/some' });
+        expect2(await request(app).get('/hello/aa'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa' });
+        expect2(await request(app).get('/hello/aa/some'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa/some' });
 
         expect2(await request(app).get('/hello3/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()` from .base
         expect2(await request(app).get('/hello3/bb/lemon'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'lemon-bb' } });     // via `getHelloLemon()` from .base
