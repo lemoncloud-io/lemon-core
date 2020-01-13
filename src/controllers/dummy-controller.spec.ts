@@ -53,6 +53,8 @@ describe('DummyController', () => {
         /* eslint-disable prettier/prettier */
         //! check dummy data.
         expect2(() => controller.hello()).toEqual(`dummy-controller:${type}/${name}`);
+        expect2(await controller.do_list('', { limit: 0 }).catch(GETERR)).toEqual({ limit:0, list:[], page:1, total: 2 });
+
         expect2(await controller.do_get('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
         expect2(await controller.do_get('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'user', name: 'lemon' });
 
@@ -80,7 +82,7 @@ describe('DummyController', () => {
         expect2(await request(app).get('/'), 'status,text').toEqual({ status: 200, text:`${$pack.name}/${$pack.version}` });
 
         //! test each CRUD of API
-        // expect2(await request(app).get('/controller?limit=1').catch(GETERR$)).toEqual({ status:200, body:{ list:[{ id:'A0', type:'user', name:'lemon' }], page:1, limit:1, total:2 }});
+        expect2(await request(app).get(`/${type}?limit=0`), 'status,body').toEqual({ status:200, body:{ limit:0, list:[], page:1, total: 2 } });
         expect2(await request(app).get(`/${type}/A0`), 'status,body').toEqual({ status:200, body:{ id:'A0', type:'user', name:'lemon' } });
 
         expect2(await request(app).put(`/${type}/A0`).send({ age: 1 }), 'status,body').toEqual({ status:200, body:{ id:'A0', age:1, type:'user', name:'lemon' } });

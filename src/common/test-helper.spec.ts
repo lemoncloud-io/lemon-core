@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, marshal, Filter, _it, environ, waited } from './test-helper';
+import { expect2, marshal, Filter, _it, environ, waited, GETERR, GETERR$, NUL404 } from './test-helper';
 
 //! main test body.
 describe('TestHelper', () => {
@@ -43,6 +43,29 @@ describe('TestHelper', () => {
         expect2(environ('LS')).toEqual(process.env['LS']);
         expect2(environ('ABC')).toEqual('');
         expect2(environ('ABC', 'abc')).toEqual('abc');
+        done();
+    });
+
+    //! test _it()
+    it('should helper functions', async done => {
+        const read = async (id: '' | '0' | '1'): Promise<any> => {
+            if (!id) throw new Error('@a (string) is required!');
+            if (id == '0') throw new Error(`404 NOT FOUND - id:${id}`);
+            return { id };
+        };
+
+        expect2(await read('').catch(GETERR)).toEqual('@a (string) is required!');
+        expect2(await read('0').catch(GETERR)).toEqual('404 NOT FOUND - id:0');
+        expect2(await read('1').catch(GETERR)).toEqual({ id: '1' });
+
+        expect2(await read('').catch(GETERR$)).toEqual({ error: '@a (string) is required!' });
+        expect2(await read('0').catch(GETERR$)).toEqual({ error: '404 NOT FOUND - id:0' });
+        expect2(await read('1').catch(GETERR$)).toEqual({ id: '1' });
+
+        expect2(() => read('').catch(NUL404)).toEqual('@a (string) is required!');
+        expect2(() => read('0').catch(NUL404)).toEqual(null);
+        expect2(() => read('1').catch(NUL404)).toEqual({ id: '1' });
+
         done();
     });
 

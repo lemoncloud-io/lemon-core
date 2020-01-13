@@ -14,6 +14,10 @@ const NS = $U.NS('PSTR', 'blue'); // NAMESPACE TO BE PRINTED.
 
 import { StorageService, StorageModel } from './storage-service';
 import { DummyStorageService, DynamoStorageService } from './storage-service';
+import { NUL404 } from '../common/test-helper';
+
+import { Elastic6SimpleQueriable } from './core-types';
+import { GeneralAPIController } from '../controllers/general-api-controller';
 
 /**
  * class: `CoreKeyMakeable`
@@ -51,6 +55,10 @@ export interface CoreModel<ModelType extends string> extends StorageModel, Inter
      * type of model
      */
     type?: ModelType;
+    /**
+     * stereo: stereo-type in common type.
+     */
+    stereo?: string;
     /**
      * site-id
      */
@@ -111,6 +119,26 @@ export interface CoreModelFilterable<T> {
     afterRead: CoreModelFilter<T>;
     beforeSave: CoreModelFilter<T>;
     afterSave: CoreModelFilter<T>;
+    beforeUpdate: CoreModelFilter<T>;
+    afterUpdate: CoreModelFilter<T>;
+}
+
+/**
+ * class: `StorageMakeable`
+ * - makeable of `TypedStorageService`
+ */
+export interface StorageMakeable<T extends CoreModel<ModelType>, ModelType extends string> {
+    /**
+     * create storage-service w/ fields list.
+     * @param type      type of model
+     * @param fields    list of field (properties)
+     * @param filter    filter of model.
+     */
+    makeStorageService(
+        type: ModelType,
+        fields: string[],
+        filter: CoreModelFilterable<T>,
+    ): TypedStorageService<T, ModelType>;
 }
 
 /**
@@ -152,6 +180,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
      * parse `.meta` to json
      * @param model     the current model
      */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public afterRead(model: T, origin?: T): T {
         _log(NS, `filter.afterRead(${model._id || ''})....`);
         if (!model.meta) return model;
@@ -241,19 +270,36 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
     }
 
     /**
-     * called after updating the model.
+     * called after saving the model.
      * - parse `.meta` back to json object.
      *
-     * @param model
-     * @param origin
+     * @param model     the saved model
+     * @param origin    the origin model.
      */
     public afterSave(model: T, origin?: T) {
         return this.afterRead(model, origin);
     }
 
     /**
+     * called after updating the model.
+     * @param model     the updated model
+     */
+    public beforeUpdate(model: T) {
+        return model;
+    }
+
+    /**
+     * called after updating the model.
+     * @param model     the updated model
+     */
+    public afterUpdate(model: T) {
+        return this.afterRead(model, null);
+    }
+
+    /**
      * override this `onBeforeSave()` in sub-class.
      */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public onBeforeSave(model: T, origin: T): T {
         //TODO - override this function.
         //! conversion data-type.
@@ -472,8 +518,13 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      */
     public async doUpdate(type: ModelType, id: string, node: T) {
         const $key = this.service.asKey$(type, id);
+        const node2 = this.filters.beforeUpdate({ ...node, _id: $key._id });
+        delete node2['_id'];
         const { updatedAt } = this.asTime();
-        return this.update($key._id, { ...node, updatedAt });
+        const model = await this.update($key._id, { ...node2, updatedAt });
+        //! make sure it has `_id`
+        model._id = $key._id; //! make sure `_id`
+        return this.filters.afterUpdate(model);
     }
 
     /**
@@ -485,7 +536,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public async doIncrement(type: ModelType, id: string, $inc: T, $up: T) {
         const $key = this.service.asKey$(type, id);
         const { updatedAt } = this.asTime();
-        return this.increment($key._id, { ...$inc }, { ...$up, updatedAt });
+        const model = await this.increment($key._id, { ...$inc }, { ...$up, updatedAt });
+        //! make sure it has `_id`
+        model._id = $key._id; //! make sure `_id`
+        return this.filters.afterUpdate(model);
     }
 
     /**
@@ -527,7 +581,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             $org === null
                 ? { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 }
                 : { ...$ups, updatedAt };
-        const res: T = await this.storage.update($key._id, $save as T);
+        const res: T = await ($org ? this.storage.update($key._id, $save as T) : this.storage.save($key._id, $save));
         return this.filters.afterSave(res, $org);
     }
 
@@ -649,7 +703,178 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
         this.storage.doIncrement(this.type, `${id || ''}`, model, $update);
     public delete = (id: string | number, destroy?: boolean): Promise<T> =>
         this.storage.doDelete(this.type, `${id || ''}`, destroy === undefined ? true : destroy) as Promise<T>;
-    public save = (id: string | number, model: T): Promise<T> => this.storage.doSave(this.type, `${id || ''}`, model);
+    public save = (id: string | number, model: T, $create?: T): Promise<T> =>
+        this.storage.doSave(this.type, `${id || ''}`, model, $create);
     public lock = (id: string | number, tick?: number) => this.storage.doLock(this.type, `${id || ''}`, tick);
     public release = (id: string | number) => this.storage.doRelease(this.type, `${id || ''}`);
+
+    /**
+     * make `UniqueFieldManager` for field.
+     */
+    public makeUniqueFieldManager = (field: string): UniqueFieldManager<T, ModelType> =>
+        new UniqueFieldManager(this, field);
+
+    /**
+     * make `GeneralAPIController` for REST API w/ supporting basic CRUD
+     */
+    public makeGeneralAPIController = (search?: Elastic6SimpleQueriable<any>, uniqueField?: string) =>
+        new GeneralAPIController(this.type, this, search, uniqueField);
+}
+
+/**
+ * class: `ModelUtil`
+ * - Helper functions for model.
+ */
+export class ModelUtil {
+    public static selfRead = <T>(self: any, key: string, defValue?: T): T => {
+        const value = self[key];
+        return value === undefined ? defValue : value;
+    };
+    public static selfPop = <T>(self: any, key: string, defValue?: T): T => {
+        const value = ModelUtil.selfRead(self, key, defValue);
+        delete (self as any)[key];
+        return value;
+    };
+    /**
+     * attach `.pop()` method to object.
+     *
+     * ```js
+     * const data = CoreModelUtil.buildPop({'a':1});
+     * assert( 1 === data.pop('a) );
+     * const final = data.pop();
+     * assert( final == data );
+     */
+    public static buildPop = (thiz: any, popName: string = 'pop') => {
+        if (!thiz) throw new Error('@thiz (object) is required!');
+        if (typeof thiz[popName] != 'undefined') throw new Error(`.[${popName}] is duplicated!`);
+        thiz[popName] = function<T>(key: string, defValue?: T): T {
+            if (!key) {
+                //! clear pop() if key is null.
+                delete (this as any)[popName];
+                return this;
+            } else {
+                return ModelUtil.selfPop(this, key, defValue);
+            }
+        };
+        return thiz;
+    };
+}
+
+/**
+ * class: `UniqueFieldManager`
+ * - support `.{field}` is unique in typed-storage-service.
+ * - make lookup data entry to save the reverse mapping to origin id.
+ * - set `.stereo` as '#' to mark as lookup. (to filter out from Elastic.search())
+ * - set `.id` as `#{field}/{name}` or `#{name}`.
+ * - set `.meta` as origin id.
+ */
+export class UniqueFieldManager<T extends CoreModel<ModelType>, ModelType extends string> {
+    public readonly type: ModelType;
+    public readonly field: string;
+    public readonly storage: TypedStorageService<T, ModelType>;
+    public constructor(storage: TypedStorageService<T, ModelType>, field: string = 'name') {
+        this.type = storage.type;
+        this.storage = storage;
+        this.field = field;
+    }
+
+    public hello = (): string => `unique-field-manager:${this.type}/${this.field}:${this.storage.hello()}`;
+
+    /**
+     * validate value format
+     * - just check empty string.
+     * @param value unique value in same type+field.
+     */
+    public validate(value: string): boolean {
+        const name2 = `${value || ''}`.trim();
+        return name2 && value == name2 ? true : false;
+    }
+
+    /**
+     * convert to internal id by value
+     * @param value unique value in same type group.
+     */
+    public asLookupId(value: string): string {
+        return `#${this.type || ''}/${value || ''}`;
+    }
+
+    /**
+     * lookup model by value
+     * - use `.meta` property to link with the origin.
+     * - mark `.stereo` as to '#' to distinguish normal.
+     *
+     * @param value unique value in same type group.
+     * @param $creates (optional) create-set if not found.
+     */
+    public async findOrCreate(value: string, $creates?: T): Promise<T> {
+        if (!value || typeof value != 'string') throw new Error(`@${this.field} (string) is required!`);
+        if (!this.validate(value)) throw new Error(`@${this.field} (${value || ''}) is not valid!`);
+        const ID = this.asLookupId(value);
+        const field = `${this.field}`;
+        if (!$creates) {
+            // STEP.1 read the origin name map
+            const $map: T = await this.storage.read(ID).catch(NUL404);
+            const rid = $map && $map.meta;
+            if (!rid) throw new Error(`404 NOT FOUND - ${this.type}:${field}/${value}`);
+
+            // STEP.2 read the target node by stereo key.
+            const model: T = await this.storage.read(rid);
+            return model as T;
+        } else {
+            // STEP.0 validate if value is same
+            const $any: any = $creates || {};
+            if ($any[field] !== undefined && $any[field] !== value)
+                throw new Error(`@${this.field} (${value}) is not same as (${$any[field]})!`);
+
+            // STEP.1 read the origin value map
+            const $new: CoreModel<string> = { stereo: '#', meta: `${$creates.id || ''}`, [field]: value };
+            const $map: T = await this.storage.readOrCreate(ID, $new as T);
+            const rid = ($map && $map.meta) || $creates.id;
+            //! check if already saved, and id is differ.
+            if ($any['id'] && $any['id'] != rid) throw new Error(`@id (${rid}) is not same as (${$any['id']})`);
+
+            // STEP.2 read the target node or create.
+            const $temp: T = { ...$creates, [field]: value };
+            const model: T = rid ? await this.storage.readOrCreate(rid, $temp) : await this.storage.insert($temp);
+            (model as any)[field] = value;
+
+            // STEP.3 update lookup key.
+            const newId = `${rid || model.id || ''}`;
+            if ($map.meta != newId) {
+                const $upt: CoreModel<string> = { meta: newId };
+                await this.storage.update(ID, $upt as T);
+                $map.meta = newId;
+            }
+
+            //! returns.
+            return model as T;
+        }
+    }
+
+    /**
+     * update lookup table (or create)
+     *
+     * @param model target model
+     * @param value (optional) new value of model.
+     */
+    public async updateLookup(model: T, value?: string): Promise<T> {
+        value = value || (model as any)[this.field];
+        if (!this.validate(value)) throw new Error(`@${this.field} (${value || ''}) is not valid!`);
+        const ID = this.asLookupId(value);
+        const field = `${this.field}`;
+        // STEP.0 validate if value has changed
+        const $any: any = model;
+        if ($any[field] && $any[field] !== value)
+            throw new Error(`@${this.field} (${value}) is not same as (${$any[field]})!`);
+
+        // STEP.1 check if value is duplicated.
+        const $org: T = await this.storage.read(ID).catch(NUL404);
+        const rid = $org && $org.meta;
+        if ($org && rid != model.id)
+            throw new Error(`400 DUPLICATED NAME - ${field}[${value}] is duplicated to ${this.type}[${rid}]`);
+
+        // STEP.2 save the name mapping.
+        const $new: T = { ...model, [field]: value, id: model.id };
+        return await this.findOrCreate(value, $new as T);
+    }
 }
