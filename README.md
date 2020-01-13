@@ -85,6 +85,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.5     | support `GeneralAPIController` along w/ `UniqueFieldManager`.
 | 2.1.4     | optimized `ProtocolService` w/ callback.
 | 2.1.3     | support `asNextIdentityAccess()` for access indentity.
 | 2.1.2     | support `ProxyStorageService` for shared common storage.
