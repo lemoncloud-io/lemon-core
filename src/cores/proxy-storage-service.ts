@@ -553,15 +553,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param $create   (optional) initial creation model.
      */
     public async doSave(type: ModelType, id: string, node: T, $create?: T) {
-        //! read origin with safe creation.
+        //! read origin model w/o error.
         const $org: T = (await this.doRead(type, id, null).catch(e => {
-            if (`${e.message}`.startsWith('404 NOT FOUND') && $create === undefined) return null; // mark null to create later.
+            if (`${e.message}`.startsWith('404 NOT FOUND')) return null; // mark null to create later.
             throw e;
         })) as T;
 
         //! if `$create` is undefined, create it with default $key.
         const $key: T = this.service.asKey$(type, id) as T;
-        $create = $create === undefined ? { ...$key } : $create;
         const model: T = { ...node }; // copy from param.
         model._id = $key._id; //! make sure the internal id
 

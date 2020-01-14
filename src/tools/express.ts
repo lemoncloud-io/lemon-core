@@ -166,14 +166,16 @@ export const buildExpress = (
      ** *******************************************************************************************************************/
     //! default app.
     app.get('', (req: any, res: any) => {
-        const $env: any = (process && process.env) || {};
+        //WARN! - must be matched with the `LambdaWEBHandler.handleProtocol()`.
         const $pack = loadJsonSync('package.json');
         const name = $pack.name || 'LEMON API';
         const version = $pack.version || '0.0.0';
-        const profile = $env['NAME'] || $env['PROFILE'] || '';
-        const stage = $env['STAGE'] || '';
-        const info = profile && stage ? `${profile}-${stage}` : `${profile || stage}`;
-        res.status(200).send(`${name}/${version}${info ? ':' : ''}${info}`);
+        // const $env: any = (process && process.env) || {};
+        // const profile = $env['NAME'] || $env['PROFILE'] || '';
+        // const stage = $env['STAGE'] || '';
+        // const info = profile && stage ? `${profile}-${stage}` : `${profile || stage}`;
+        // res.status(200).send(`${name}/${version}${info ? ':' : ''}${info}`);
+        res.status(200).send(`${name}/${version}`);
     });
 
     //! handler map.
