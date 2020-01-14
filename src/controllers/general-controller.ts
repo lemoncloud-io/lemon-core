@@ -49,7 +49,14 @@ export class GeneralController implements CoreWEBController {
     public decode(mode: NextMode, id: string, cmd: string) {
         const funcName = this.asFuncName(mode, this.type(), cmd);
         const handler = (this as any)[funcName];
-        return typeof handler == 'function' ? handler : null;
+        const find1 = typeof handler == 'function' ? handler : null;
+        if (!find1) {
+            const funcName = this.asFuncNameByDo(mode, this.type(), cmd);
+            const handler = (this as any)[funcName];
+            const find2 = typeof handler == 'function' ? handler : null;
+            return find2;
+        }
+        return find1;
     }
 
     /**
@@ -64,6 +71,22 @@ export class GeneralController implements CoreWEBController {
         mode = `${mode || 'do'}`.toLowerCase();
         cmd = camelCased(upper1st(`${cmd || ''}`.toLowerCase()));
         return `${mode}${type}${cmd}`.replace(/-/g, '_');
+    }
+
+    /**
+     * translate to camel styled function name like `doGetHello()`
+     *
+     * ex: GET / -> doList
+     * ex: GET /0/hi -> doGetHi
+     * ex: POST /0/say-me -> doPostSayMe
+     */
+    public asFuncNameByDo(mode: string, type?: string, cmd?: string) {
+        const upper1st = (s: string) => (s && s.length > 0 ? s[0].toUpperCase() + s.substring(1) : s);
+        const camelCased = (s: string) => s.replace(/-([a-z])/g, g => g[1].toUpperCase());
+        mode = `${mode || type || 'get'}`.toLowerCase();
+        mode = camelCased(upper1st(`${mode || ''}`));
+        cmd = camelCased(upper1st(`${cmd || ''}`.toLowerCase()));
+        return `do${mode}${cmd}`.replace(/-/g, '_');
     }
 }
 
