@@ -42,12 +42,22 @@ class GeneralControllerLocal extends GeneralController {
     };
 }
 
+class GeneralControllerLocal2 extends GeneralControllerLocal {
+    public constructor(type: string) {
+        super(type);
+    }
+    public doGetLemonPie: NextHandler = async (id: string) => {
+        const type = this.type();
+        return { hello: `lemon-pie:${id}`, type };
+    };
+}
+
 //! create instance.
 export const instance = (type: string, useProxy: boolean = false) => {
     const $lambda = new LambdaHandler();
     const $web = new LambdaWEBHandlerLocal($lambda);
     const controller = new GeneralControllerLocal(type);
-    const controller2 = new GeneralController(type + '2');
+    const controller2 = new GeneralControllerLocal2(type + '2');
     const controller3 = new GeneralWEBController(type + '3', useProxy ? controller : null); // use proxy pattern.
     $web.addController(controller);
     $web.addController(controller2);
@@ -87,11 +97,48 @@ describe('GeneralController', () => {
         expect2(controller0.asFuncName(null, 'hello')).toEqual('doHello');
 
         expect2(controller.asFuncName('GET', 'hello', 'world')).toEqual('getHelloWorld');
-        expect2(controller.asFuncName('GET', 'hello', 'world-class')).toEqual('getHelloWorldClass');
+        expect2(controller.asFuncName('POST', 'hello', 'world-class')).toEqual('postHelloWorldClass');
         expect2(controller.asFuncName('GET', 'hello', '-class')).toEqual('getHelloClass');
-        expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_');
+        expect2(controller.asFuncName('PUT', 'hello', '-')).toEqual('putHello_');
         expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____');
         expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe');
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! general contoller api.
+    it('should pass asFuncNameByDo()', async done => {
+        const { controller, controller2, controller3 } = instance('hello');
+        const { controller: controller0 } = instance(null);
+
+        /* eslint-disable prettier/prettier */
+        expect2(() => controller.hello()).toEqual('general-controller:hello');
+        expect2(() => controller0.hello()).toEqual('general-controller:');
+        expect2(() => controller2.hello()).toEqual('general-controller:hello2');
+        expect2(() => controller3.hello()).toEqual('general-web-controller:hello3');
+
+        expect2(controller.asFuncNameByDo('LIST', 'Hello')).toEqual('doList');
+        expect2(controller.asFuncNameByDo('GET', null)).toEqual('doGet');
+        expect2(controller.asFuncNameByDo('GET', '')).toEqual('doGet');
+        expect2(controller.asFuncNameByDo('put', '')).toEqual('doPut');
+        expect2(controller.asFuncNameByDo('GET', 'h')).toEqual('doGet');
+        expect2(controller.asFuncNameByDo('put', 'h')).toEqual('doPut');
+        expect2(controller.asFuncNameByDo('GET', 'hello')).toEqual('doGet');
+        expect2(controller.asFuncNameByDo('put', 'hello')).toEqual('doPut');
+        expect2(controller.asFuncNameByDo('GET', 'HELLO')).toEqual('doGet');
+
+        expect2(controller.asFuncNameByDo('', 'hello')).toEqual('doHello');
+        expect2(controller.asFuncNameByDo(null, 'hello')).toEqual('doHello');
+        expect2(controller0.asFuncNameByDo('', 'hello')).toEqual('doHello');
+        expect2(controller0.asFuncNameByDo(null, 'hello')).toEqual('doHello');
+
+        expect2(controller.asFuncNameByDo('GET', 'hello', 'world')).toEqual('doGetWorld');
+        expect2(controller.asFuncNameByDo('POST', 'hello', 'world-class')).toEqual('doPostWorldClass');
+        expect2(controller.asFuncNameByDo('GET', 'hello', '-class')).toEqual('doGetClass');
+        expect2(controller.asFuncNameByDo('PUT', 'hello', '-')).toEqual('doPut_');
+        expect2(controller.asFuncNameByDo('GET', 'hello', '-_--')).toEqual('doGet____');
+        expect2(controller.asFuncNameByDo('GET', 'hello', '-Me')).toEqual('doGetMe');
 
         /* eslint-enable prettier/prettier */
         done();
@@ -112,9 +159,13 @@ describe('GeneralController', () => {
         //! each function mapping.
         expect2(await request(app).get('/hello/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()`
         expect2(await request(app).get('/hello/bb/lemon'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'lemon-bb' } });     // via `getHelloLemon()`
+        expect2(await request(app).get('/hello/bb/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-bb' } });     // via `getHelloWorld()` @hello
+        expect2(await request(app).get('/hello/bb/lemon-pie'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/bb/lemon-pie' });
 
-        expect2(await request(app).get('/hello/aa'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa' });
-        expect2(await request(app).get('/hello/aa/some'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa/some' });
+        expect2(await request(app).get('/hello2/aa'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello2/aa' });
+        expect2(await request(app).get('/hello2/aa/some'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello2/aa/some' });
+        expect2(await request(app).get('/hello2/bb/world'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello2/bb/world' });        // nor `getHelloWorld()` @hello
+        expect2(await request(app).get('/hello2/bb/lemon-pie'), 'status,body').toEqual({ status:200, body:{ type:'hello2', hello:'lemon-pie:bb' } });   // via `doGetLemonPie()` @hello2
 
         expect2(await request(app).get('/hello3/aa/world'), 'status,text,body').toEqual({ status:404, body:{ }, text:'404 NOT FOUND - GET /hello3/aa/world' });
         expect2(await request(app).get('/hello3/bb/lemon'), 'status,text,body').toEqual({ status:404, body:{ }, text:'404 NOT FOUND - GET /hello3/bb/lemon' });
@@ -137,9 +188,13 @@ describe('GeneralController', () => {
         //! each function mapping.
         expect2(await request(app).get('/hello/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()`
         expect2(await request(app).get('/hello/bb/lemon'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'lemon-bb' } });     // via `getHelloLemon()`
+        expect2(await request(app).get('/hello/bb/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-bb' } });     // via `getHelloWorld()` @hello
+        expect2(await request(app).get('/hello/bb/lemon-pie'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/bb/lemon-pie' });
 
-        expect2(await request(app).get('/hello/aa'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa' });
-        expect2(await request(app).get('/hello/aa/some'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello/aa/some' });
+        expect2(await request(app).get('/hello2/aa'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello2/aa' });
+        expect2(await request(app).get('/hello2/aa/some'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello2/aa/some' });
+        expect2(await request(app).get('/hello2/bb/world'), 'status,text').toEqual({ status:404, text:'404 NOT FOUND - GET /hello2/bb/world' });        // nor `getHelloWorld()` @hello
+        expect2(await request(app).get('/hello2/bb/lemon-pie'), 'status,body').toEqual({ status:200, body:{ type:'hello2', hello:'lemon-pie:bb' } });   // via `doGetLemonPie()` @hello2
 
         expect2(await request(app).get('/hello3/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()` from .base
         expect2(await request(app).get('/hello3/bb/lemon'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'lemon-bb' } });     // via `getHelloLemon()` from .base
