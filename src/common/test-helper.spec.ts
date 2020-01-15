@@ -102,8 +102,8 @@ describe('TestHelper', () => {
             expect2(target).toEqual({ a:[3,{b:5}] });
             expect2(marshal(target, defFilter)).toEqual([ 'a.0=3', 'a.1.b=5' ]);
         }
-
         /* eslint-enable prettier/prettier */
+
         done();
     });
 
@@ -113,6 +113,52 @@ describe('TestHelper', () => {
         expect2(await waited()).toEqual(undefined);
         const t2 = new Date().getTime();
         expect2(t2 - t1 >= 200).toEqual(true);
+        done();
+    });
+
+    //! test fially()
+    it('should pass fianlly()', async done => {
+        const $next = { next: 1 };
+        const func = async (name: string, fx?: any, fin?: any) => {
+            const node: any = { name };
+            return Promise.resolve(node)
+                .then(_ => ({ ..._, i: 1 }))
+                .then(_ => (fx ? fx(_) : _))
+                .then(_ => ({ ..._, i: 2 }))
+                .catch(e => ({ ...node, error: GETERR(e) }))
+                .finally(() => {
+                    node.name = 'final';
+                    node.next = $next.next++;
+                    return fin ? fin(node) : node;
+                });
+        };
+
+        const errs = (_: any) => {
+            throw new Error(`err@mid - ${(_ && _.name) || ''}`);
+        };
+        const fins = (_: any) => {
+            throw new Error(`err@fin - ${(_ && _.name) || ''}`);
+        };
+        const echo = (_: any) => {
+            return _;
+        };
+
+        /* eslint-disable prettier/prettier */
+        expect2($next).toEqual({ next: 1 });
+        expect2(await func('hello').catch(GETERR)).toEqual({ name: 'hello', i: 2 });
+        expect2($next).toEqual({ next: 2 });
+        expect2(await func('hello', errs).catch(GETERR)).toEqual({ name: 'hello', i: undefined, error: 'err@mid - hello' });
+        expect2($next).toEqual({ next: 3 });
+        expect2(await func('hello', errs, fins).catch(GETERR)).toEqual('err@fin - final');                                          //! throw from finally
+        expect2($next).toEqual({ next: 4 });
+        expect2(await func('hello', null, fins).catch(GETERR)).toEqual('err@fin - final');
+        expect2($next).toEqual({ next: 5 });
+        expect2(await func('hello', errs, echo).catch(GETERR)).toEqual({ name: 'hello', i: undefined, error: 'err@mid - hello' });
+        expect2($next).toEqual({ next: 6 });
+        expect2(await func('hello', null, echo).catch(GETERR)).toEqual({ name: 'hello', i: 2 });
+        expect2($next).toEqual({ next: 7 });
+        /* eslint-enable prettier/prettier */
+
         done();
     });
 });

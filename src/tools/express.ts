@@ -33,6 +33,7 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import multer from 'multer';
 import http from 'http';
+import * as requestIp from 'request-ip';
 
 //! create Server Instance.
 //NOTE - avoid external reference of type.
@@ -89,15 +90,22 @@ export const buildExpress = (
     const uploader = multer({ dest: '../tmp/' });
 
     app.use(cors());
-    app.use(bodyParser.json({ limit: '10mb' })); //default limit 100kb
+    app.use(bodyParser.json({ limit: '10mb' })); // default limit 10mb
     app.use(bodyParser.urlencoded({ extended: true }));
+    // app.use(requestIp.mw());
+    // app.use(requestIp.mw());
 
     //! middle ware
     const middle: RequestHandler = (req: any, res: any, next: any) => {
         // _log(NS, `! req =`, req);
         // const _err = console.error;
-        //! prepare event
+        //! prepare event compartible with API-Gateway Event.
         const host = `${req.headers['host'] || ''}`.split(':')[0];
+        const accountId = $engine.environ('USER', $engine.environ('LOGNAME', ''));
+        const msec = new Date().getMilliseconds() % 1000;
+        const requestId = `${$U.ts()}.${msec < 10 ? '00' : msec < 100 ? '0' : ''}${msec}`;
+        const clientIp = typeof req.clientIp == 'string' ? req.clientIp : ''; //NOTE! - use `request-ip`
+        const sourceIp = clientIp || `${requestIp.getClientIp(req as any) || ''}`;
         const event = {
             path: req.path,
             queryStringParameters: req.query || {},
@@ -110,8 +118,15 @@ export const buildExpress = (
             requestContext: {
                 source: 'express',
                 domainName: host,
+                accountId,
+                requestId,
+                stage: $engine.environ('STAGE', ''),
+                identity: {
+                    sourceIp,
+                },
             },
         };
+        _log(NS, `! req-ctx =`, $U.json(event.requestContext));
         const context: NextContext = { source: 'express', domain: host };
         const callback = (err: any, data: any) => {
             err && _err(NS, '! err@callback =', err);
@@ -184,10 +199,12 @@ export const buildExpress = (
         const ROUTE_PREFIX = `${(options && options.prefix) || ''}`;
 
         //! handle request to handler.
-        const next_middle = (type: string) => (req: any) => {
+        const next_middle = (type: string) => (req: any): Promise<void> => {
             const callback = req.$callback;
             req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
-            $web.handle(req.$event, req.$context)
+            return $web
+                .packContext(req.$event, req.$context)
+                .then(context => $web.handle(req.$event, context))
                 .then(_ => callback && callback(null, _))
                 .catch(e => {
                     _err(NS, '! exp.err =', e);
@@ -215,9 +232,13 @@ export const buildExpress = (
                 app.get(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
                 app.get(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
                 app.put(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
+                app.put(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
+                app.patch(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
+                app.patch(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
                 app.post(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
                 app.post(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
                 app.delete(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
+                app.delete(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
 
                 const _NS = (name: string, color?: any) => $U.NS(name, color, 4, '');
                 _inf(NS, `! api[${_NS(name, 'yellow')}] is routed as ${_NS(`/${ROUTE_PREFIX}${type}`, 'cyan')}`);

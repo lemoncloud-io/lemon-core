@@ -391,7 +391,8 @@ export class MyProtocolService implements ProtocolService {
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
         const params: SNS.Types.PublishInput = this.sns.transformToEvent(uri, param, cbUrl);
         const arn = params.TopicArn; // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
-        _inf(NS, `> arn[${service}] =`, arn);
+        // _inf(NS, `> arn[${service}] =`, arn);
+        _inf(NS, `> payload[${arn}] =`, $U.json(params));
 
         //! call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
@@ -439,7 +440,8 @@ export class MyProtocolService implements ProtocolService {
         const params = this.sqs.transformToEvent(uri, param, cbUrl);
         params.DelaySeconds = delaySeconds;
         const endpoint = params.QueueUrl; // https://sqs.${arr[3]}.amazonaws.com
-        _inf(NS, `> endpoint[${service}] =`, endpoint);
+        // _inf(NS, `> endpoint[${service}] =`, endpoint);
+        _inf(NS, `> payload[${endpoint}] =`, $U.json(params));
 
         //! call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
@@ -651,11 +653,14 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
             Message: JSON.stringify({ default: $U.json(param) }),
             // Message: JSON.stringify({ default: param }),
             MessageAttributes: {
-                accountId: { DataType: 'String', StringValue: accountId },
-                requestId: { DataType: 'String', StringValue: requestId },
+                // accountId: { DataType: 'String', StringValue: accountId },
+                // requestId: { DataType: 'String', StringValue: requestId },
             },
             MessageStructure: 'json',
         };
+        //! StringValue can not be empty
+        if (accountId) res.MessageAttributes['accountId'] = { DataType: 'String', StringValue: accountId };
+        if (requestId) res.MessageAttributes['requestId'] = { DataType: 'String', StringValue: requestId };
         //! append callback-url in attributes (WARN! string length limit)
         if (callback) res.MessageAttributes['callback'] = { DataType: 'String', StringValue: callback };
         return res;
