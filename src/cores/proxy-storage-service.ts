@@ -673,7 +673,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
 
 /**
  * class: `TypedStorageService`
- * - wrap id with type + id automatically.
+ * - wrap id with type + id.
  */
 // eslint-disable-next-line prettier/prettier
 export class TypedStorageService<T extends CoreModel<ModelType>, ModelType extends string> implements StorageService<T> {
@@ -683,9 +683,53 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
         this.storage = service;
         this.type = type;
     }
+
+    /**
+     * show self service name
+     */
     public hello = () => `typed-storage-service:${this.type}/${this.storage.hello()}`;
+
+    /**
+     * get next auto-sequence id in number like `1000003`.
+     */
     public nextId = (): Promise<number> => this.storage.nextSeq(this.type);
+
+    /**
+     * get uuid like `d01764cd-9ef2-41e2-9e88-68e79555c979`
+     */
     public nextUuid = (): Promise<string> => this.storage.nextUuid(this.type);
+
+    /**
+     * read model by key + id with optional auto creation.
+     * - throws '404 NOT FOUND' if not found.
+     *
+     * @param id        node-id
+     */
+    public read = (id: string | number): Promise<T> => this.storage.doRead(this.type, `${id || ''}`);
+
+    /**
+     * read model by key + id with optional auto creation.
+     *
+     * @param id        node-id
+     * @param model     initial model if not exist. (or throw 404 error)
+     */
+    public readOrCreate = (id: string | number, model: T): Promise<T> =>
+        this.storage.doRead(this.type, `${id || ''}`, model);
+
+    /**
+     * update model (or it will create automatically)
+     *
+     * @param id        node-id
+     * @param model     model to update
+     */
+    public update = (id: string | number, model: T): Promise<T> =>
+        this.storage.doUpdate(this.type, `${id || ''}`, model) as Promise<T>;
+
+    /**
+     * insert model w/ auto generated id
+     *
+     * @param model     model to insert
+     */
     public insert = async (node: T): Promise<T> => {
         return this.nextId().then(_ => {
             const id = `${_}`;
@@ -693,18 +737,57 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
             return this.readOrCreate(id, { ...node, id }) as Promise<T>;
         });
     };
-    public readOrCreate = (id: string | number, model: T): Promise<T> =>
-        this.storage.doRead(this.type, `${id || ''}`, model);
-    public read = (id: string | number): Promise<T> => this.storage.doRead(this.type, `${id || ''}`);
-    public update = (id: string | number, node: T): Promise<T> =>
-        this.storage.doUpdate(this.type, `${id || ''}`, node) as Promise<T>;
-    public increment = (id: string | number, model: T, $update?: T): Promise<T> =>
-        this.storage.doIncrement(this.type, `${id || ''}`, model, $update);
+
+    /**
+     * update model (or it will create automatically)
+     *
+     * ```ts
+     * //before: { count: 1 };
+     * const res = await storage.increment(1, { count: 2 }, { total: 2 });
+     * //after : { count: 3, total: 2 }
+     * ```
+     *
+     * @param id            node-id
+     * @param $increments   model only with numbers
+     */
+    public increment = (id: string | number, $increments: T, $update?: T): Promise<T> =>
+        this.storage.doIncrement(this.type, `${id || ''}`, $increments, $update);
+
+    /**
+     * delete model by id.
+     *
+     * @param id        node-id
+     * @param destroy   flag to destroy (real delete)
+     */
     public delete = (id: string | number, destroy?: boolean): Promise<T> =>
         this.storage.doDelete(this.type, `${id || ''}`, destroy === undefined ? true : destroy) as Promise<T>;
+
+    /**
+     * save model by checking origin node.
+     * - use `doSave()` rather than `doUpdate()` for both create & update.
+     * - if `$create` is null, throw 404 error it if not found.
+     *
+     * @param id        node-id
+     * @param node      node to save (or update)
+     * @param $create   (optional) initial creation model.
+     */
     public save = (id: string | number, model: T, $create?: T): Promise<T> =>
         this.storage.doSave(this.type, `${id || ''}`, model, $create);
+
+    /**
+     * lock data-entry by type+id w/ limited time tick
+     * - WARN! must release lock by `doRelease()`
+     *
+     * @param id    model-id
+     * @param tick  tick to wait (in seconds, default 30 sec)
+     */
     public lock = (id: string | number, tick?: number) => this.storage.doLock(this.type, `${id || ''}`, tick);
+
+    /**
+     * release lock by resetting lock = 0.
+     *
+     * @param id    model-id
+     */
     public release = (id: string | number) => this.storage.doRelease(this.type, `${id || ''}`);
 
     /**
