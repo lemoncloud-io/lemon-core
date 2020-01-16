@@ -398,7 +398,8 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     /**
      * update by _id
      */
-    public update = (_id: string, model: T): Promise<T> => this.storage.update(_id, model) as Promise<T>;
+    public update = (_id: string, model: T, incrementals?: T): Promise<T> =>
+        this.storage.update(_id, model, incrementals) as Promise<T>;
 
     /**
      * increment by _id
@@ -515,13 +516,15 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * @param type      model-type
      * @param id        node-id
+     * @param node      model
+     * @param incrementals (optional) fields to increment
      */
-    public async doUpdate(type: ModelType, id: string, node: T) {
+    public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T) {
         const $key = this.service.asKey$(type, id);
         const node2 = this.filters.beforeUpdate({ ...node, _id: $key._id });
         delete node2['_id'];
         const { updatedAt } = this.asTime();
-        const model = await this.update($key._id, { ...node2, updatedAt });
+        const model = await this.update($key._id, { ...node2, updatedAt }, incrementals);
         //! make sure it has `_id`
         model._id = $key._id; //! make sure `_id`
         return this.filters.afterUpdate(model);
@@ -550,7 +553,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param type      model-type
      * @param id        node-id
      * @param node      node to save (or update)
-     * @param $create   (optional) initial creation model.
+     * @param $create   (optional) initial creation model if not found.
      */
     public async doSave(type: ModelType, id: string, node: T, $create?: T) {
         //! read origin model w/o error.
@@ -721,9 +724,10 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * @param id        node-id
      * @param model     model to update
+     * @param incrementals (optional) fields to increment.
      */
-    public update = (id: string | number, model: T): Promise<T> =>
-        this.storage.doUpdate(this.type, `${id || ''}`, model) as Promise<T>;
+    public update = (id: string | number, model: T, incrementals?: T): Promise<T> =>
+        this.storage.doUpdate(this.type, `${id || ''}`, model, incrementals) as Promise<T>;
 
     /**
      * insert model w/ auto generated id

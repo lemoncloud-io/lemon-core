@@ -74,8 +74,9 @@ export interface StorageService<T extends StorageModel> {
      *
      * @param id        unique-id
      * @param model     data
+     * @param incrementals (optional) incrementals like `count = count + 1`
      */
-    update(id: string, model: T): Promise<T>;
+    update(id: string, model: T, incrementals?: T): Promise<T>;
 
     /**
      * increment number attribute (or overwrite string field)
@@ -191,15 +192,24 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      *
      * @param id        id
      * @param model     attributes to update
+     * @param incrementals (optional) attributes to increment
      */
-    public async update(id: string, model: T): Promise<T> {
+    public async update(id: string, model: T, incrementals?: T): Promise<T> {
         const fields = this._fields || [];
         const data: MyGeneral = fields.reduce((N: any, key) => {
             const val = (model as any)[key];
             if (val !== undefined) N[key] = val;
             return N;
         }, {});
-        const ret: any = await this.$dynamo.updateItem(id, undefined, data, null);
+        /* eslint-disable prettier/prettier */
+        const increments: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
+            const val = (incrementals as any)[key];
+            if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
+            M[key] = val;
+            return M;
+        }, {});
+        /* eslint-enable prettier/prettier */
+        const ret: any = await this.$dynamo.updateItem(id, undefined, data, increments);
         return ret as T;
     }
 
@@ -229,7 +239,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
                 const org = ($org as any)[key];
                 //! check type matched!
                 if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
-                    throw new Error('number is required at key:' + key);
+                    throw new Error(`.${key} (${val}) should be number!`);
                 //! if not exists, update it.
                 if (org === undefined) $U[key] = val;
                 else if (typeof val !== 'number') $U[key] = val;
@@ -326,13 +336,22 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         return Object.assign({ [this.idName]: id }, item);
     }
 
-    public async update(id: string, item: T): Promise<T> {
+    public async update(id: string, item: T, incrementals?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
         if (!item) throw new Error('@item is required!');
         const $org = await this.readSafe(id);
         const $new = Object.assign($org, item);
+        /* eslint-disable prettier/prettier */
+        const incremented: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
+            const val = (incrementals as any)[key];
+            if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
+            M[key] = $U.N(($new as any)[key], 0) + val;
+            return M;
+        }, {});
+        if (incremented) Object.assign($new, incremented);
+        /* eslint-enable prettier/prettier */
         await this.save(id, $new);
-        return Object.assign({ [this.idName]: id }, item);
+        return Object.assign({ [this.idName]: id }, { ...item, ...incremented });
     }
 
     public async increment(id: string, item: T, $update?: T): Promise<T> {
@@ -349,7 +368,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
                     N[key] = upt;
                 } else if (val !== undefined) {
                     if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
-                        throw new Error('number is required at key:' + key);
+                        throw new Error(`.${key} (${val}) should be number!`);
                     if (typeof val !== 'number') {
                         N[key] = val;
                     } else {
