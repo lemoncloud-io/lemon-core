@@ -591,11 +591,18 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * lock data-entry by type+id w/ limited time tick
      * - WARN! must release lock by `doRelease()`
      *
-     * @param type  model-type
-     * @param id    model-id
-     * @param tick  tick to wait (in seconds)
+     * `total-waited-time = tick * interval (msec)`
+     *
+     * @param type      model-type
+     * @param id        model-id
+     * @param tick      tick count to wait.
+     * @param interval  timeout interval per each tick (in msec, default 1000 = 1sec)
      */
-    public async doLock(type: ModelType, id: string, tick: number = 30): Promise<boolean> {
+    public async doLock(type: ModelType, id: string, tick?: number, interval?: number): Promise<boolean> {
+        tick = $U.N(tick, 30);
+        interval = $U.N(interval, 1000);
+        if (typeof tick != 'number' || tick < 0) throw new Error(`@tick (${tick}) is not valid!`);
+        if (typeof interval != 'number' || interval < 1) throw new Error(`@interval (${interval}) is not valid!`);
         const _id = this.asKey(type, id);
         const thiz = this;
         //! wait some time.
@@ -606,19 +613,20 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                 }, timeout);
             });
         //! recursive to wait lock()
-        const waitLock = async (tick: number): Promise<boolean> => {
+        const waitLock = async (tick: number, interval: number): Promise<boolean> => {
             const $up = { lock: 1 };
             const $t2 = await thiz.storage.increment(_id, $up as T);
             const lock = $U.N($t2.lock, 1);
             _log(NS, `! waitLock(${_id}, ${tick}). lock =`, lock);
-            if (lock != 1 && tick > 0) {
-                return wait(1000).then(() => waitLock(tick - 1));
-            } else if (lock != 1) {
+            if (lock == 1) {
+                return true;
+            } else if (tick > 0 && lock > 1) {
+                return wait(interval).then(() => waitLock(tick - 1, interval));
+            } else {
                 throw new Error(`500 FAILED TO LOCK - model[${_id}].lock = ${lock}`);
             }
-            return true;
         };
-        return waitLock(tick);
+        return waitLock(tick, interval);
     }
 
     /**
@@ -780,12 +788,16 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
 
     /**
      * lock data-entry by type+id w/ limited time tick
-     * - WARN! must release lock by `doRelease()`
+     * - WARN! must release lock by `release(id)`
+     *
+     * `total-waited-time = tick * interval (msec)`
      *
      * @param id    model-id
-     * @param tick  tick to wait (in seconds, default 30 sec)
+     * @param tick      tick count to wait.
+     * @param interval  timeout interval per each tick (in msec, default 1000 = 1sec)
      */
-    public lock = (id: string | number, tick?: number) => this.storage.doLock(this.type, `${id || ''}`, tick);
+    public lock = (id: string | number, tick?: number, interval?: number) =>
+        this.storage.doLock(this.type, `${id || ''}`, tick, interval);
 
     /**
      * release lock by resetting lock = 0.
