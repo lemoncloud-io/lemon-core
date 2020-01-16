@@ -573,8 +573,8 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         model._id = $key._id; //! make sure the internal id
 
         //! apply filter.
-        const $ups = this.filters.beforeSave(model, $org);
-        _log(NS, `> updates[${type}/${id}] =`, $U.json($ups));
+        const $ups = this.filters.beforeSave(model, $org); //! `$org` should be null if create.
+        _log(NS, `> ${type}[${id}].update =`, $U.json($ups));
 
         //! if null, then nothing to update.
         if (!$ups) {
@@ -587,11 +587,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         if ($org) {
             const $save = { ...$ups, updatedAt };
             const res = await this.doUpdate(type, id, $save);
-            return this.filters.afterSave(res, $org);
+            return this.filters.afterSave(res, $org); //! `$org` should be valid if update.
         } else {
             const $save = { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 };
             const res = await this.storage.save($key._id, $save);
-            return this.filters.afterSave(res, $org);
+            return this.filters.afterSave(res, null); //! `$org` should be null if create.
         }
     }
 
@@ -613,7 +613,8 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         if (typeof interval != 'number' || interval < 1) throw new Error(`@interval (${interval}) is not valid!`);
         const $key = this.service.asKey$(type, `${id}`);
         const _id = $key ? $key._id : this.asKey(type, id);
-        // const $org = await this.storage.readOrCreate(_id, { lock: 0, ...$key } as any); //! make sure lock field.
+        //! WARN! DO NOT MAKE ANY MODEL CREATION IN HERE.
+        // const $org = await this.storage.readOrCreate(_id, { lock: 0, ...$key } as any);
         // _log(NS, `> $org[${type}/${id}].lock =`, $org.lock);
         const thiz = this;
         //! wait some time.
