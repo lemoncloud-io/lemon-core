@@ -332,37 +332,62 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
     public async save(id: string, item: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
         if (!item) throw new Error('@item is required!');
+        if (item && typeof (item as any).lock == 'number') this.$locks[id] = (item as any).lock;
         this.buffer[id] = item;
         return Object.assign({ [this.idName]: id }, item);
     }
 
-    public async update(id: string, item: T, incrementals?: T): Promise<T> {
+    private $locks: any = {}; //! only for lock.
+    public async update(id: string, item: T, $inc?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
         if (!item) throw new Error('@item is required!');
+        //! atomic operation for `.lock`
+        const lock = (() => {
+            let lock = 0;
+            if (item && typeof (item as any).lock == 'number') this.$locks[id] = lock = (item as any).lock;
+            if ($inc && typeof ($inc as any).lock == 'number')
+                this.$locks[id] = lock = ($inc as any).lock + $U.N(this.$locks[id], 0);
+            return lock;
+        })();
         const $org = await this.readSafe(id);
         const $new = Object.assign($org, item);
         /* eslint-disable prettier/prettier */
-        const incremented: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
-            const val = (incrementals as any)[key];
-            if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
-            M[key] = $U.N(($new as any)[key], 0) + val;
+        const incremented: Incrementable = !$inc ? null : Object.keys($inc).reduce((M: Incrementable, key) => {
+            const val = ($inc as any)[key];
+            if (typeof val !== 'number')
+                throw new Error(`.${key} (${val}) should be number!`);
+            if (key == 'lock') {
+                M[key] = lock;
+            } else {
+                M[key] = $U.N(($new as any)[key], 0) + val;
+            }
             return M;
         }, {});
         if (incremented) Object.assign($new, incremented);
         /* eslint-enable prettier/prettier */
         await this.save(id, $new);
-        return Object.assign({ [this.idName]: id }, { ...item, ...incremented });
+        const $set = { ...item, ...incremented };
+        if (typeof $set.lock == 'number') ($set as any).lock = lock;
+        return Object.assign({ [this.idName]: id }, $set);
     }
 
-    public async increment(id: string, item: T, $update?: T): Promise<T> {
+    public async increment(id: string, $inc: T, $upt?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
-        if (!item && !$update) throw new Error('@item is required!');
+        if (!$inc && !$upt) throw new Error('@item is required!');
+        //! atomic operation for `.lock`
+        const lock = (() => {
+            let lock = 0;
+            if ($upt && typeof ($upt as any).lock == 'number') this.$locks[id] = lock = ($upt as any).lock;
+            if ($inc && typeof ($inc as any).lock == 'number')
+                this.$locks[id] = lock = ($inc as any).lock + $U.N(this.$locks[id], 0);
+            return lock;
+        })();
         const $org: any = await this.readSafe(id);
-        const $U = Object.keys(item)
-            .concat(Object.keys($update || {}))
+        const $set = Object.keys($inc)
+            .concat(Object.keys($upt || {}))
             .reduce((N: any, key: string) => {
-                const val = item ? (item as any)[key] : undefined;
-                const upt = $update ? ($update as any)[key] : undefined;
+                const val = $inc ? ($inc as any)[key] : undefined;
+                const upt = $upt ? ($upt as any)[key] : undefined;
                 const org = $org[key];
                 if (upt !== undefined) {
                     N[key] = upt;
@@ -371,6 +396,9 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
                         throw new Error(`.${key} (${val}) should be number!`);
                     if (typeof val !== 'number') {
                         N[key] = val;
+                    } else if (key == 'lock') {
+                        N[key] = lock;
+                        $org[key] = lock;
                     } else {
                         N[key] = (org === undefined ? 0 : org) + val;
                         $org[key] = (org === undefined ? 0 : org) + val;
@@ -378,13 +406,15 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
                 }
                 return N;
             }, {});
-        await this.save(id, Object.assign($org, $U));
-        return Object.assign({ [this.idName]: id }, $U);
+        if (typeof $set.lock == 'number') $set.lock = lock;
+        await this.save(id, Object.assign($org, $set));
+        return Object.assign({ [this.idName]: id }, $set);
     }
 
     public async delete(id: string): Promise<T> {
         const $org = await this.read(id);
         delete this.buffer[id];
+        delete this.$locks[id];
         return $org;
     }
 }

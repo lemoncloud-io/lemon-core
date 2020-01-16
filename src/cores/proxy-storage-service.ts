@@ -612,11 +612,15 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                     resolve(timeout);
                 }, timeout);
             });
+        const incLock = (lock: number): Promise<number> => {
+            const $up = { lock };
+            return thiz.storage.increment(_id, $up as T).then($t2 => {
+                return $U.N($t2.lock, 1);
+            });
+        };
         //! recursive to wait lock()
         const waitLock = async (tick: number, interval: number): Promise<boolean> => {
-            const $up = { lock: 1 };
-            const $t2 = await thiz.storage.increment(_id, $up as T);
-            const lock = $U.N($t2.lock, 1);
+            const lock = await incLock(1);
             _log(NS, `! waitLock(${_id}, ${tick}). lock =`, lock);
             if (lock == 1) {
                 return true;
