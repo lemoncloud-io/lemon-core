@@ -623,7 +623,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             } else if (tick > 0 && lock > 1) {
                 return wait(interval).then(() => waitLock(tick - 1, interval));
             } else {
-                throw new Error(`500 FAILED TO LOCK - model[${_id}].lock = ${lock}`);
+                throw new Error(`400 TIMEOUT - model[${_id}].lock = ${lock}`);
             }
         };
         return waitLock(tick, interval);
@@ -792,7 +792,7 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * `total-waited-time = tick * interval (msec)`
      *
-     * @param id    model-id
+     * @param id        model-id to lock
      * @param tick      tick count to wait.
      * @param interval  timeout interval per each tick (in msec, default 1000 = 1sec)
      */
@@ -801,10 +801,40 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
 
     /**
      * release lock by resetting lock = 0.
-     *
      * @param id    model-id
      */
     public release = (id: string | number) => this.storage.doRelease(this.type, `${id || ''}`);
+
+    /**
+     * using `lock()`, guard func with auto lock & release.
+     *
+     * ```ts
+     * const res = await storage.guard(async ()=>{
+     *  return 'abc';
+     * });
+     * // res === 'abc'
+     * ```
+     */
+    public guard = async <T>(id: string | number, handler: () => Promise<T> | T, tick?: number, interval?: number) => {
+        let locked = false;
+        return this.lock(id, tick, interval)
+            .then((_: boolean) => {
+                locked = _;
+                try {
+                    return handler();
+                } catch (e) {
+                    return Promise.reject(e);
+                }
+            })
+            .then((_: any) => {
+                if (locked) return this.release(id).then(() => _);
+                return _;
+            })
+            .catch((e: Error) => {
+                if (locked) return this.release(id).then(() => Promise.reject(e));
+                throw e;
+            });
+    };
 
     /**
      * make `UniqueFieldManager` for field.

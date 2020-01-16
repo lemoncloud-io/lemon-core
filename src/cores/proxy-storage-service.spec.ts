@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U } from '../engine';
+import { $U, do_parrallel } from '../engine';
 import { expect2, GETERR, environ } from '../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageService } from './storage-service';
 import {
@@ -206,8 +206,54 @@ describe('ProxyStorageService', () => {
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });       // lock := 0
             expect2(await $test.update(id, { lock: 2 }).catch(GETERR)).toEqual({ _id, lock:2, updatedAt });
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:2, updatedAt });
-            expect2(await $test.lock(id, 1, 250).catch(GETERR)).toEqual('500 FAILED TO LOCK - model[TT:test:a01].lock = 4'); // 2 cycle waiting.
-            expect2(await $test.lock(id, 0, 500).catch(GETERR)).toEqual('500 FAILED TO LOCK - model[TT:test:a01].lock = 5'); // 1 cycle waiting.
+            expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 4'); // +2 cycle waiting.
+            expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +1 cycle waiting.
+        }
+
+        //! test guard() with async function.
+        if (1) {
+            const id = 'a01';
+            const $key = service.asKey$('test', id);
+            const _id = $key._id;
+            expect2(await $test.update(id, { lock: 5 }).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });                 // rest lock := 5
+            const func = (i: number) => async () => {
+                if (i <= 0) throw new Error(`@i (${i}) should be > 0!`)
+                return { i }
+            }
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 6'); // +1 cycle waiting.
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:6, updatedAt });
+            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });                 // reset lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                                 // success
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(-1), 0, 10).catch(GETERR)).toEqual('@i (-1) should be > 0!');                // error in func().
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+        }
+
+        //! test guard() with normal function.
+        if (1) {
+            const id = 'a01';
+            const $key = service.asKey$('test', id);
+            const _id = $key._id;
+            expect2(await $test.update(id, { lock: 5 }).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });                 // rest lock := 5
+            const func = (i: number) => () => {
+                if (i <= 0) throw new Error(`@i (${i}) should be > 0!`)
+                return { i }
+            }
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 6'); // +1 cycle waiting.
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:6, updatedAt });
+            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });                 // reset lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                                 // success
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(-1), 0, 10).catch(GETERR)).toEqual('@i (-1) should be > 0!');                // error in func().
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+
+            //! in parrallel........
+            const list = [1,-1,2,0,5,3];
+            const expected = list.map(i => i <= 0 ? `@i (${i}) should be > 0!` : { i });
+            expect2(await do_parrallel(list, (i) => $test.guard(id, func(i), 100, 10).catch(GETERR))).toEqual(expected);
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
         }
 
         //! basic CRUD.
