@@ -603,7 +603,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         interval = $U.N(interval, 1000);
         if (typeof tick != 'number' || tick < 0) throw new Error(`@tick (${tick}) is not valid!`);
         if (typeof interval != 'number' || interval < 1) throw new Error(`@interval (${interval}) is not valid!`);
-        const _id = this.asKey(type, id);
+        const $key = this.service.asKey$(type, `${id}`);
+        const _id = $key ? $key._id : this.asKey(type, id);
+        // const $org = await this.storage.readOrCreate(_id, { lock: 0, ...$key } as any); //! make sure lock field.
+        // _log(NS, `> $org[${type}/${id}].lock =`, $org.lock);
         const thiz = this;
         //! wait some time.
         const wait = async (timeout: number) =>
@@ -613,23 +616,25 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                 }, timeout);
             });
         const incLock = (lock: number): Promise<number> => {
-            const $up = { lock };
-            return thiz.storage.increment(_id, $up as T).then($t2 => {
+            const $up = {};
+            const $in = { lock };
+            return thiz.storage.update(_id, $up as T, $in as T).then($t2 => {
                 return $U.N($t2.lock, 1);
             });
         };
         //! recursive to wait lock()
-        const waitLock = async (tick: number, interval: number): Promise<boolean> => {
-            const lock = await incLock(1);
-            _log(NS, `! waitLock(${_id}, ${tick}). lock =`, lock);
-            if (lock == 1) {
+        const waitLock = async (ttl: number, int: number): Promise<boolean> => {
+            const lock = await incLock(ttl > 0 ? 1 : 0);
+            _log(NS, `! waitLock(${_id}, ${ttl}). lock =`, lock);
+            if (lock == 1 || lock == 0) {
                 return true;
-            } else if (tick > 0 && lock > 1) {
-                return wait(interval).then(() => waitLock(tick - 1, interval));
+            } else if (ttl > 0 && lock > 1) {
+                return wait(int).then(() => waitLock(ttl - 1, int));
             } else {
                 throw new Error(`400 TIMEOUT - model[${_id}].lock = ${lock}`);
             }
         };
+        // return wait((Math.random() * 20) / 20).then(() => waitLock(tick, interval));
         return waitLock(tick, interval);
     }
 

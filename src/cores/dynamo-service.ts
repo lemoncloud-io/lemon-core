@@ -257,7 +257,8 @@ export class DynamoService<T extends GeneralItem> {
                 (memo: any, value: any, key: string) => {
                     memo.ExpressionAttributeNames[`#${key}`] = key;
                     memo.ExpressionAttributeValues[`:${key}`] = value;
-                    memo.UpdateExpression.push(`#${key} = #${key} + :${key}`);
+                    memo.ExpressionAttributeValues[`:${key}0`] = 0;
+                    memo.UpdateExpression.push(`#${key} = if_not_exists(#${key}, :${key}0) + :${key}`);
                     // _log(NS, '>> ' + `#${key} = #${key} + :${value}`);
                     return memo;
                 },

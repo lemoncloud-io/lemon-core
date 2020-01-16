@@ -201,26 +201,33 @@ describe('ProxyStorageService', () => {
             expect2(await $test.lock(0, 1).catch(GETERR)).toEqual('@id (model-id) is required!');
             expect2(await $test.lock(id, -1).catch(GETERR)).toEqual('@tick (-1) is not valid!');
             expect2(await $test.lock(id, 1, 0).catch(GETERR)).toEqual('@interval (0) is not valid!');
-            expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual(true);                                       // lock=0 triggers 1 cycle
+            expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual(true);                                       // lock := 0
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });                   // AUTO CREATED!!!
+            expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual(true);                                       // lock := 1
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:1, name:undefined });                   // AUTO CREATED!!!
-            expect2(await $test.lock(id, 2, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 4');
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:4, name:undefined });                   // AUTO CREATED!!!
+            expect2(await $test.lock(id, 2, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 3');// lock := 1 + 2
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:3, name:undefined });                   // AUTO CREATED!!!
+
             expect2(await $test.release(id).catch(GETERR)).toEqual(true);
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });                   // RESET .lock
             expect2(await $test.release(0).catch(GETERR)).toEqual('@id (model-id) is required!');
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });                   // lock := 0
             expect2(await $test.update(id, { lock: 2 }).catch(GETERR)).toEqual({ _id, lock:2, updatedAt });
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:2, updatedAt });
-            expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 4'); // +2 cycle waiting.
-            expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +1 cycle waiting.
+            expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 3'); // +1 tick
+            expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 3'); // +0 tick
 
             //! test total lock count
             expect2(await $test.delete(id).catch(GETERR), '_id').toEqual({ _id });
             expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);        // BE SURE 404
-            expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);        // BE SURE 404
 
-            expect2(await do_parrallel([1,2,3,4,5],(i => $test.lock(id, i, 5).catch(GETERR).then(()=>i)))).toEqual([1,2,3,4,5]);
-            expect2(await $test.read(id).catch(GETERR), 'lock').toEqual({ lock:((1+5)*5/2 + 4) });
+            //! use in parrallel.
+            if (type == 'dummy')
+            {
+                expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);        // BE SURE 404
+                expect2(await do_parrallel([1,2,3,4],(i => $test.lock(id, i, 5).catch(GETERR).then(()=>i)))).toEqual([1,2,3,4]);
+                expect2(await $test.read(id).catch(GETERR), 'lock').toEqual({ lock:((1+4)*4/2) });        // WARN! it may be fail with dynamo
+            }
         }
 
         //! test guard() with async function.
@@ -233,8 +240,8 @@ describe('ProxyStorageService', () => {
                 if (i <= 0) throw new Error(`@i (${i}) should be > 0!`)
                 return { i }
             }
-            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 6'); // +1 cycle waiting.
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:6, updatedAt });
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +0 cycle waiting.
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });
             expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });                 // reset lock
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                                 // success
@@ -253,8 +260,8 @@ describe('ProxyStorageService', () => {
                 if (i <= 0) throw new Error(`@i (${i}) should be > 0!`)
                 return { i }
             }
-            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 6'); // +1 cycle waiting.
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:6, updatedAt });
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +1 cycle waiting.
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });
             expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });                 // reset lock
             expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                                 // success
