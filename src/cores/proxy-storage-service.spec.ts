@@ -32,6 +32,7 @@ export type MyType = '' | 'test';
 export interface MyModel extends CoreModel<MyType> {
     name?: string;
     count?: number;
+    price?: number;
 }
 const FIELDS = 'name,count'.split(',');
 class MyService extends GeneralKeyMaker<MyType> {
@@ -50,6 +51,10 @@ class MyModelFilter extends GeneralModelFilter<MyModel, MyType> {
         model = super.onBeforeSave(model, origin);
         //! conversion data-type.
         if (model.count !== undefined) model.count = $U.N(model.count, 0);
+        return model;
+    }
+    public beforeUpdate(model: MyModel, incrementals?: MyModel): MyModel {
+        if (model.price) incrementals.count = 1; // increment count so.
         return model;
     }
 }
@@ -179,6 +184,17 @@ describe('ProxyStorageService', () => {
         expect2(await $test.read('aaa'), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });
         expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
         expect2(await $user.read('aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:user:aaa');
+
+        //! test filters.
+        if (1) {
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
+
+            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id:'TT:test:bbb', price:1000, count: 1 });
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b', price:1000, count: 1 });
+
+            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id:'TT:test:bbb', price:1000, count: 2 });
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b', price:1000, count: 2 });
+        }
 
         //! test lock()
         if (1){

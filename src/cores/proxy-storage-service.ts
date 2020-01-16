@@ -105,9 +105,9 @@ export const CORE_FIELDS: string[] = 'ns,type,sid,uid,gid,lock,next,meta,created
 /**
  * type: ModelFilter
  *
- * @param model  the current mode to update
- * @param origin the origin model stored.
- * @return       the updated model.
+ * @param model     the new model to update
+ * @param origin    the old model (or 2nd model)
+ * @return          the updated model.
  */
 export type CoreModelFilter<T> = (model: T, origin?: T) => T;
 
@@ -179,6 +179,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
     /**
      * parse `.meta` to json
      * @param model     the current model
+     * @param origin    the origin model
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public afterRead(model: T, origin?: T): T {
@@ -194,8 +195,8 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
      * - make sure data conversion
      * - move the unknown fields to `.meta`.
      *
-     * @param model
-     * @param origin
+     * @param model     the current model
+     * @param origin    the origin model
      */
     public beforeSave(model: T, origin?: T): T {
         _log(NS, `filter.beforeSave(${model._id})....`);
@@ -282,9 +283,10 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
 
     /**
      * called after updating the model.
-     * @param model     the updated model
+     * @param model         the updated model
+     * @param incrementals  (optional) incremental fields.
      */
-    public beforeUpdate(model: T) {
+    public beforeUpdate(model: T, incrementals?: T) {
         return model;
     }
 
@@ -298,9 +300,11 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
 
     /**
      * override this `onBeforeSave()` in sub-class.
+     * @param model     the current model
+     * @param origin    (optional) the origin model
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    public onBeforeSave(model: T, origin: T): T {
+    public onBeforeSave(model: T, origin?: T): T {
         //TODO - override this function.
         //! conversion data-type.
         // if (model.count !== undefined) model.count = $U.N(model.count, 0);
@@ -520,11 +524,12 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param incrementals (optional) fields to increment
      */
     public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T) {
+        const $inc: T = { ...incrementals }; //! make copy.
         const $key = this.service.asKey$(type, id);
-        const node2 = this.filters.beforeUpdate({ ...node, _id: $key._id });
+        const node2 = this.filters.beforeUpdate({ ...node, _id: $key._id }, $inc);
         delete node2['_id'];
         const { updatedAt } = this.asTime();
-        const model = await this.update($key._id, { ...node2, updatedAt }, incrementals);
+        const model = await this.update($key._id, { ...node2, updatedAt }, $inc);
         //! make sure it has `_id`
         model._id = $key._id; //! make sure `_id`
         return this.filters.afterUpdate(model);
@@ -579,12 +584,15 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
 
         //! determine of create or update.
         const { createdAt, updatedAt } = this.asTime();
-        const $save =
-            $org === null
-                ? { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 }
-                : { ...$ups, updatedAt };
-        const res: T = await ($org ? this.storage.update($key._id, $save as T) : this.storage.save($key._id, $save));
-        return this.filters.afterSave(res, $org);
+        if ($org) {
+            const $save = { ...$ups, updatedAt };
+            const res = await this.doUpdate(type, id, $save);
+            return this.filters.afterSave(res, $org);
+        } else {
+            const $save = { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 };
+            const res = await this.storage.save($key._id, $save);
+            return this.filters.afterSave(res, $org);
+        }
     }
 
     /**
