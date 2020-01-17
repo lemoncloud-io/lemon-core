@@ -8,12 +8,13 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, expect2, environ } from '../common/test-helper';
+import { GETERR, expect2 } from '../common/test-helper';
 import { DynamoService, DynamoOption } from './dynamo-service';
 import { GeneralItem } from './core-types';
 import { DynamoQueryService } from './dynamo-query-service';
-import { credentials, hasCredentials, loadDataYml } from '../tools';
+import { loadDataYml } from '../tools';
 
 interface MyModel extends GeneralItem {
     ID: string;
@@ -31,13 +32,13 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoQueryService', () => {
-    credentials(environ('PROFILE'));
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
     const dataMap = new Map<string, MyModel>();
 
     beforeAll(async done => {
         const { dynamo } = instance();
 
-        if (hasCredentials()) {
+        if (PROFILE) {
             const data: MyModel[] = loadDataYml('dummy-dynamo-query-data.yml').data;
             // Initialize data in table
             await data.map(async item => {
@@ -53,7 +54,7 @@ describe('DynamoQueryService', () => {
         const { dynamoQuery, options } = instance();
 
         expect2(dynamoQuery.hello()).toEqual(`dynamo-query-service:${options.tableName}`);
-        if (hasCredentials()) {
+        if (PROFILE) {
             expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
             for (let [id, item] of dataMap.entries())
                 expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
@@ -67,7 +68,7 @@ describe('DynamoQueryService', () => {
     afterAll(async done => {
         const { dynamo } = instance();
 
-        if (hasCredentials()) {
+        if (PROFILE) {
             // Cleanup table
             await Promise.all([...dataMap.keys()].map(id => dynamo.deleteItem(id)));
         }

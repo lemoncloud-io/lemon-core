@@ -7,9 +7,9 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { GETERR, expect2, environ } from '../common/test-helper';
+import { loadProfile } from '../environ';
+import { GETERR, expect2 } from '../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageModel } from './storage-service';
-import { credentials } from '../tools/';
 
 interface AccountModel extends StorageModel {
     slot?: number;
@@ -20,8 +20,7 @@ interface AccountModel extends StorageModel {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('StorageService', () => {
-    //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
 
     //! dummy storage service.
     it('should pass dummy storage-service', async done => {

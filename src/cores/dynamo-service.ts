@@ -267,7 +267,7 @@ export class DynamoService<T extends GeneralItem> {
         }
         //! build final expression.
         payload.UpdateExpression = 'SET ' + payload.UpdateExpression.join(', ');
-        _log(NS, `> UpdateExpression =`, payload.UpdateExpression);
+        _log(NS, `> UpdateExpression[${id}] =`, payload.UpdateExpression);
         return payload;
     }
 

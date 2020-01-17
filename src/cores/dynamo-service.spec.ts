@@ -8,10 +8,11 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { GETERR, expect2, _it, environ } from '../common/test-helper';
 
-import { credentials, hasCredentials, loadDataYml } from '../tools/';
+import { loadDataYml } from '../tools/';
 import { GeneralItem } from './core-types';
 import { DynamoService, DummyDynamoService, DynamoOption } from './dynamo-service';
 
@@ -30,6 +31,7 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoService', () => {
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
     //! dummy storage service.
     describe('DummyDynamoService', () => {
         //! load dummy storage service.
@@ -69,9 +71,7 @@ describe('DynamoService', () => {
 
     //! real DynamoDB storage service.
     describe('DynamoService (real)', () => {
-        // Following tests cannot be run without credentials
-        credentials(environ('PROFILE'));
-        if (!hasCredentials()) return;
+        if (!PROFILE) return;
 
         const { service, tableName } = instance();
         const dataMap = new Map<string, MyModel>();

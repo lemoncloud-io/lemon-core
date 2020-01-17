@@ -8,6 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, do_parrallel } from '../engine';
 import { expect2, GETERR, environ } from '../common/test-helper';
@@ -97,8 +98,7 @@ export const instance = (table?: string, time?: number) => {
 
 //! main test body.
 describe('ProxyStorageService', () => {
-    console.info('! env.PROFILE =', environ('PROFILE'));
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
     jest.setTimeout(10000);
 
     //! test w/ service
