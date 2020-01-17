@@ -85,6 +85,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.9     | improve `lock()` and `search()`.
 | 2.1.8     | improve `express` of request-context.
 | 2.1.7     | improve `TypedStorageService` w/ `save()`.
 | 2.1.5     | support `GeneralAPIController` along w/ `UniqueFieldManager`.
