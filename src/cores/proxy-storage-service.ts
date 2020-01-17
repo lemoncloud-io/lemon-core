@@ -409,7 +409,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         filters?: CoreModelFilterable<T>,
         idName?: string,
     ) {
-        const storage = ProxyStorageService.makeStorageService(table, fields);
+        const storage = ProxyStorageService.makeStorageService(table, fields, idName);
         const res: ProxyStorageService<T, ModelType> = new ProxyStorageService<T, ModelType>(
             service,
             storage as any,
@@ -461,7 +461,9 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * get key-id by type+id
      */
     public asKey = (type: ModelType, id: string | number): string => {
-        if (typeof this.service.asKey != 'undefined') return this.service.asKey(type, `${id}`);
+        if (typeof this.service.asKey == 'function') {
+            return this.service.asKey(type, `${id}`);
+        }
         const $key = this.service.asKey$(type, `${id}`);
         return ($key as any)[this.idName];
     };
