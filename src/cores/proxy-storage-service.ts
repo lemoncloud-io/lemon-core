@@ -105,9 +105,9 @@ export const CORE_FIELDS: string[] = 'ns,type,sid,uid,gid,lock,next,meta,created
 /**
  * type: ModelFilter
  *
- * @param model  the current mode to update
- * @param origin the origin model stored.
- * @return       the updated model.
+ * @param model     the new model to update
+ * @param origin    the old model (or 2nd model)
+ * @return          the updated model.
  */
 export type CoreModelFilter<T> = (model: T, origin?: T) => T;
 
@@ -179,6 +179,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
     /**
      * parse `.meta` to json
      * @param model     the current model
+     * @param origin    the origin model
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public afterRead(model: T, origin?: T): T {
@@ -194,8 +195,8 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
      * - make sure data conversion
      * - move the unknown fields to `.meta`.
      *
-     * @param model
-     * @param origin
+     * @param model     the current model
+     * @param origin    the origin model
      */
     public beforeSave(model: T, origin?: T): T {
         _log(NS, `filter.beforeSave(${model._id})....`);
@@ -282,9 +283,10 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
 
     /**
      * called after updating the model.
-     * @param model     the updated model
+     * @param model         the updated model
+     * @param incrementals  (optional) incremental fields.
      */
-    public beforeUpdate(model: T) {
+    public beforeUpdate(model: T, incrementals?: T) {
         return model;
     }
 
@@ -298,9 +300,11 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
 
     /**
      * override this `onBeforeSave()` in sub-class.
+     * @param model     the current model
+     * @param origin    (optional) the origin model
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    public onBeforeSave(model: T, origin: T): T {
+    public onBeforeSave(model: T, origin?: T): T {
         //TODO - override this function.
         //! conversion data-type.
         // if (model.count !== undefined) model.count = $U.N(model.count, 0);
@@ -398,7 +402,8 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     /**
      * update by _id
      */
-    public update = (_id: string, model: T): Promise<T> => this.storage.update(_id, model) as Promise<T>;
+    public update = (_id: string, model: T, incrementals?: T): Promise<T> =>
+        this.storage.update(_id, model, incrementals) as Promise<T>;
 
     /**
      * increment by _id
@@ -515,13 +520,16 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * @param type      model-type
      * @param id        node-id
+     * @param node      model
+     * @param incrementals (optional) fields to increment
      */
-    public async doUpdate(type: ModelType, id: string, node: T) {
+    public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T) {
+        const $inc: T = { ...incrementals }; //! make copy.
         const $key = this.service.asKey$(type, id);
-        const node2 = this.filters.beforeUpdate({ ...node, _id: $key._id });
+        const node2 = this.filters.beforeUpdate({ ...node, _id: $key._id }, $inc);
         delete node2['_id'];
         const { updatedAt } = this.asTime();
-        const model = await this.update($key._id, { ...node2, updatedAt });
+        const model = await this.update($key._id, { ...node2, updatedAt }, $inc);
         //! make sure it has `_id`
         model._id = $key._id; //! make sure `_id`
         return this.filters.afterUpdate(model);
@@ -550,7 +558,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param type      model-type
      * @param id        node-id
      * @param node      node to save (or update)
-     * @param $create   (optional) initial creation model.
+     * @param $create   (optional) initial creation model if not found.
      */
     public async doSave(type: ModelType, id: string, node: T, $create?: T) {
         //! read origin model w/o error.
@@ -565,8 +573,8 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         model._id = $key._id; //! make sure the internal id
 
         //! apply filter.
-        const $ups = this.filters.beforeSave(model, $org);
-        _log(NS, `> updates[${type}/${id}] =`, $U.json($ups));
+        const $ups = this.filters.beforeSave(model, $org); //! `$org` should be null if create.
+        _log(NS, `> ${type}[${id}].update =`, $U.json($ups));
 
         //! if null, then nothing to update.
         if (!$ups) {
@@ -576,24 +584,38 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
 
         //! determine of create or update.
         const { createdAt, updatedAt } = this.asTime();
-        const $save =
-            $org === null
-                ? { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 }
-                : { ...$ups, updatedAt };
-        const res: T = await ($org ? this.storage.update($key._id, $save as T) : this.storage.save($key._id, $save));
-        return this.filters.afterSave(res, $org);
+        if ($org) {
+            const $save = { ...$ups, updatedAt };
+            const res = await this.doUpdate(type, id, $save);
+            return this.filters.afterSave(res, $org); //! `$org` should be valid if update.
+        } else {
+            const $save = { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 };
+            const res = await this.storage.save($key._id, $save);
+            return this.filters.afterSave(res, null); //! `$org` should be null if create.
+        }
     }
 
     /**
      * lock data-entry by type+id w/ limited time tick
      * - WARN! must release lock by `doRelease()`
      *
-     * @param type  model-type
-     * @param id    model-id
-     * @param tick  tick to wait (in seconds)
+     * `total-waited-time = tick * interval (msec)`
+     *
+     * @param type      model-type
+     * @param id        model-id
+     * @param tick      tick count to wait.
+     * @param interval  timeout interval per each tick (in msec, default 1000 = 1sec)
      */
-    public async doLock(type: ModelType, id: string, tick: number = 30): Promise<boolean> {
-        const _id = this.asKey(type, id);
+    public async doLock(type: ModelType, id: string, tick?: number, interval?: number): Promise<boolean> {
+        tick = $U.N(tick, 30);
+        interval = $U.N(interval, 1000);
+        if (typeof tick != 'number' || tick < 0) throw new Error(`@tick (${tick}) is not valid!`);
+        if (typeof interval != 'number' || interval < 1) throw new Error(`@interval (${interval}) is not valid!`);
+        const $key = this.service.asKey$(type, `${id}`);
+        const _id = $key ? $key._id : this.asKey(type, id);
+        //! WARN! DO NOT MAKE ANY MODEL CREATION IN HERE.
+        // const $org = await this.storage.readOrCreate(_id, { lock: 0, ...$key } as any);
+        // _log(NS, `> $org[${type}/${id}].lock =`, $org.lock);
         const thiz = this;
         //! wait some time.
         const wait = async (timeout: number) =>
@@ -602,20 +624,27 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                     resolve(timeout);
                 }, timeout);
             });
-        //! recursive to wait lock()
-        const waitLock = async (tick: number): Promise<boolean> => {
-            const $up = { lock: 1 };
-            const $t2 = await thiz.storage.increment(_id, $up as T);
-            const lock = $U.N($t2.lock, 1);
-            _log(NS, `! waitLock(${_id}, ${tick}). lock =`, lock);
-            if (lock != 1 && tick > 0) {
-                return wait(1000).then(() => waitLock(tick - 1));
-            } else if (lock != 1) {
-                throw new Error(`500 FAILED TO LOCK - model[${_id}].lock = ${lock}`);
-            }
-            return true;
+        const incLock = (lock: number): Promise<number> => {
+            const $up = {};
+            const $in = { lock };
+            return thiz.storage.update(_id, $up as T, $in as T).then($t2 => {
+                return $U.N($t2.lock, 1);
+            });
         };
-        return waitLock(tick);
+        //! recursive to wait lock()
+        const waitLock = async (ttl: number, int: number): Promise<boolean> => {
+            const lock = await incLock(ttl > 0 ? 1 : 0);
+            _log(NS, `! waitLock(${_id}, ${ttl}). lock =`, lock);
+            if (lock == 1 || lock == 0) {
+                return true;
+            } else if (ttl > 0 && lock > 1) {
+                return wait(int).then(() => waitLock(ttl - 1, int));
+            } else {
+                throw new Error(`400 TIMEOUT - model[${_id}].lock = ${lock}`);
+            }
+        };
+        // return wait((Math.random() * 20) / 20).then(() => waitLock(tick, interval));
+        return waitLock(tick, interval);
     }
 
     /**
@@ -721,9 +750,10 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * @param id        node-id
      * @param model     model to update
+     * @param incrementals (optional) fields to increment.
      */
-    public update = (id: string | number, model: T): Promise<T> =>
-        this.storage.doUpdate(this.type, `${id || ''}`, model) as Promise<T>;
+    public update = (id: string | number, model: T, incrementals?: T): Promise<T> =>
+        this.storage.doUpdate(this.type, `${id || ''}`, model, incrementals) as Promise<T>;
 
     /**
      * insert model w/ auto generated id
@@ -776,19 +806,53 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
 
     /**
      * lock data-entry by type+id w/ limited time tick
-     * - WARN! must release lock by `doRelease()`
+     * - WARN! must release lock by `release(id)`
      *
-     * @param id    model-id
-     * @param tick  tick to wait (in seconds, default 30 sec)
+     * `total-waited-time = tick * interval (msec)`
+     *
+     * @param id        model-id to lock
+     * @param tick      tick count to wait.
+     * @param interval  timeout interval per each tick (in msec, default 1000 = 1sec)
      */
-    public lock = (id: string | number, tick?: number) => this.storage.doLock(this.type, `${id || ''}`, tick);
+    public lock = (id: string | number, tick?: number, interval?: number) =>
+        this.storage.doLock(this.type, `${id || ''}`, tick, interval);
 
     /**
      * release lock by resetting lock = 0.
-     *
      * @param id    model-id
      */
     public release = (id: string | number) => this.storage.doRelease(this.type, `${id || ''}`);
+
+    /**
+     * using `lock()`, guard func with auto lock & release.
+     *
+     * ```ts
+     * const res = await storage.guard(async ()=>{
+     *  return 'abc';
+     * });
+     * // res === 'abc'
+     * ```
+     */
+    public guard = async <T>(id: string | number, handler: () => Promise<T> | T, tick?: number, interval?: number) => {
+        let locked = false;
+        return this.lock(id, tick, interval)
+            .then((_: boolean) => {
+                locked = _;
+                try {
+                    return handler();
+                } catch (e) {
+                    return Promise.reject(e);
+                }
+            })
+            .then((_: any) => {
+                if (locked) return this.release(id).then(() => _);
+                return _;
+            })
+            .catch((e: Error) => {
+                if (locked) return this.release(id).then(() => Promise.reject(e));
+                throw e;
+            });
+    };
 
     /**
      * make `UniqueFieldManager` for field.

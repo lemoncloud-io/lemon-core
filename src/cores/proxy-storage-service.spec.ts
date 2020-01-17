@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U } from '../engine';
+import { $U, do_parrallel } from '../engine';
 import { expect2, GETERR, environ } from '../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageService } from './storage-service';
 import {
@@ -32,6 +32,7 @@ export type MyType = '' | 'test';
 export interface MyModel extends CoreModel<MyType> {
     name?: string;
     count?: number;
+    price?: number;
 }
 const FIELDS = 'name,count'.split(',');
 class MyService extends GeneralKeyMaker<MyType> {
@@ -50,6 +51,10 @@ class MyModelFilter extends GeneralModelFilter<MyModel, MyType> {
         model = super.onBeforeSave(model, origin);
         //! conversion data-type.
         if (model.count !== undefined) model.count = $U.N(model.count, 0);
+        return model;
+    }
+    public beforeUpdate(model: MyModel, incrementals?: MyModel): MyModel {
+        if (model.price) incrementals.count = 1; // increment count so.
         return model;
     }
 }
@@ -94,6 +99,7 @@ export const instance = (table?: string, time?: number) => {
 describe('ProxyStorageService', () => {
     console.info('! env.PROFILE =', environ('PROFILE'));
     const PROFILE = credentials(environ('PROFILE'));
+    jest.setTimeout(10000);
 
     //! test w/ service
     it('should pass basic service', async done => {
@@ -179,7 +185,18 @@ describe('ProxyStorageService', () => {
         expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
         expect2(await $user.read('aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:user:aaa');
 
-        //! test storage-service
+        //! test filters.
+        if (1) {
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
+
+            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id:'TT:test:bbb', price:1000, count: 1 });
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b', price:1000, count: 1 });
+
+            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id:'TT:test:bbb', price:1000, count: 2 });
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b', price:1000, count: 2 });
+        }
+
+        //! test lock()
         if (1){
             const id = 'a01';
             const $key = service.asKey$('test', id);
@@ -196,15 +213,84 @@ describe('ProxyStorageService', () => {
             expect2(await $test.insert({ name:'col' }), 'id,name').toEqual({ id:'1000003', name:'col' });
 
             //! test lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);                      // BE SURE 404
             expect2(await $test.lock(0, 1).catch(GETERR)).toEqual('@id (model-id) is required!');
-            expect2(await $test.lock(id, 1).catch(GETERR)).toEqual(true);
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:1, name:undefined });       // AUTO CREATED!!!
+            expect2(await $test.lock(id, -1).catch(GETERR)).toEqual('@tick (-1) is not valid!');
+            expect2(await $test.lock(id, 1, 0).catch(GETERR)).toEqual('@interval (0) is not valid!');
+            expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual(true);                                       // lock := 0
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });                   // AUTO CREATED!!!
+            expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual(true);                                       // lock := 1
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:1, name:undefined });                   // AUTO CREATED!!!
+            expect2(await $test.lock(id, 2, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 3');// lock := 1 + 2
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:3, name:undefined });                   // AUTO CREATED!!!
+
             expect2(await $test.release(id).catch(GETERR)).toEqual(true);
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });                   // RESET .lock
             expect2(await $test.release(0).catch(GETERR)).toEqual('@id (model-id) is required!');
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });       // lock := 0
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, name:undefined });                   // lock := 0
             expect2(await $test.update(id, { lock: 2 }).catch(GETERR)).toEqual({ _id, lock:2, updatedAt });
-            expect2(await $test.lock(id, 1).catch(GETERR)).toEqual('500 FAILED TO LOCK - model[TT:test:a01].lock = 4'); // 2 cycle waiting.
-            expect2(await $test.lock(id, 0).catch(GETERR)).toEqual('500 FAILED TO LOCK - model[TT:test:a01].lock = 5'); // 1 cycle waiting.
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:2, updatedAt });
+            expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 3'); // +1 tick
+            expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 3'); // +0 tick
+
+            //! test total lock count
+            expect2(await $test.delete(id).catch(GETERR), '_id').toEqual({ _id });
+            expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);        // BE SURE 404
+
+            //! use in parrallel.
+            if (type == 'dummy')
+            {
+                expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);        // BE SURE 404
+                expect2(await do_parrallel([1,2,3,4],(i => $test.lock(id, i, 5).catch(GETERR).then(()=>i)))).toEqual([1,2,3,4]);
+                expect2(await $test.read(id).catch(GETERR), 'lock').toEqual({ lock:((1+4)*4/2) });        // WARN! it may be fail with dynamo
+            }
+        }
+
+        //! test guard() with async function.
+        if (1) {
+            const id = 'a01';
+            const $key = service.asKey$('test', id);
+            const _id = $key._id;
+            expect2(await $test.update(id, { lock: 5 }).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });                 // rest lock := 5
+            const func = (i: number) => async () => {
+                if (i <= 0) throw new Error(`@i (${i}) should be > 0!`)
+                return { i }
+            }
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +0 cycle waiting.
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });
+            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });                 // reset lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                                 // success
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(-1), 0, 10).catch(GETERR)).toEqual('@i (-1) should be > 0!');                // error in func().
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+        }
+
+        //! test guard() with normal function.
+        if (1) {
+            const id = 'a01';
+            const $key = service.asKey$('test', id);
+            const _id = $key._id;
+            expect2(await $test.update(id, { lock: 5 }).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });                 // rest lock := 5
+            const func = (i: number) => () => {
+                if (i <= 0) throw new Error(`@i (${i}) should be > 0!`)
+                return { i }
+            }
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +1 cycle waiting.
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:5, updatedAt });
+            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });                 // reset lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                                 // success
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.guard(id, func(-1), 0, 10).catch(GETERR)).toEqual('@i (-1) should be > 0!');                // error in func().
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
+
+            //! in parrallel........
+            const list = [1,-1,2,0,5,3];
+            const expected = list.map(i => i <= 0 ? `@i (${i}) should be > 0!` : { i });
+            expect2(await do_parrallel(list, (i) => $test.guard(id, func(i), 20, 10).catch(GETERR))).toEqual(expected);
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });
         }
 
         //! basic CRUD.

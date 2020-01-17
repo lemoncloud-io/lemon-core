@@ -133,6 +133,7 @@ export class GeneralWEBController extends GeneralController {
 
     /**
      * translate to `NextIdentityAccess` from origin NextContext
+     * - use `api://lemon-accounts-api/oauth/0/pack-context` via protocol.
      *
      * @param context   the requested NextContext
      */
