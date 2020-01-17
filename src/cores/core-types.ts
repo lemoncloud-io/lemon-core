@@ -100,6 +100,14 @@ export interface NextIdentityAccess extends NextIdentity {
         domain?: string;
     };
     /**
+     * domain-information for current-access
+     */
+    Domain?: {
+        stereo?: string;
+        name?: string;
+        domain?: string;
+    };
+    /**
      * user-information for active user.
      */
     User?: {
