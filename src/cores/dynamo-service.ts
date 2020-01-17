@@ -267,7 +267,7 @@ export class DynamoService<T extends GeneralItem> {
         }
         //! build final expression.
         payload.UpdateExpression = 'SET ' + payload.UpdateExpression.join(', ');
-        _log(NS, `> UpdateExpression =`, payload.UpdateExpression);
+        _log(NS, `> UpdateExpression[${id}] =`, payload.UpdateExpression);
         return payload;
     }
 
@@ -315,9 +315,10 @@ export class DynamoService<T extends GeneralItem> {
     public async readItem(id: string, sort?: string | number): Promise<T> {
         const { tableName, idName, sortName } = this.options;
         // _log(NS, `readItem(${id})...`);
-        const payload = this.prepareItemKey(id, sort);
+        const itemKey = this.prepareItemKey(id, sort);
+        // _log(NS, `> pkey[${id}${sort ? '/' : ''}${sort || ''}] =`, $U.json(itemKey));
         return instance()
-            .dynamodoc.get(payload)
+            .dynamodoc.get(itemKey)
             .promise()
             .then(res => {
                 // _log(NS, '> readItem.res =', $U.json(res));

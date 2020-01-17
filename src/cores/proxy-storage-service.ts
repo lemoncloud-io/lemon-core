@@ -20,17 +20,48 @@ import { Elastic6SimpleQueriable } from './core-types';
 import { GeneralAPIController } from '../controllers/general-api-controller';
 
 /**
+ * class: `CoreKey`
+ * - to represent internal partition-key and model-id.
+ */
+export interface CoreKey<ModelType extends string> {
+    /**
+     * defualt internal partition-key
+     */
+    _id?: string;
+    /**
+     * namespace
+     */
+    ns?: string;
+    /**
+     * model-id
+     */
+    id: string;
+    /**
+     * model-type
+     */
+    type: ModelType;
+}
+
+/**
  * class: `CoreKeyMakeable`
  * - make internal key by type + id.
  */
 export interface CoreKeyMakeable<ModelType extends string> {
     /**
-     * get key object w/ internal partition-key (as _id).
+     * get key object w/ internal partition-key (default as _id).
      *
      * @param type  type of model
      * @param id    id of model in type
      */
-    asKey$(type: ModelType, id: string): { ns?: string; id: string; type: ModelType; _id: string };
+    asKey$(type: ModelType, id: string): CoreKey<ModelType>;
+
+    /**
+     * get key-string to use for query. (USED FOR CUSTOM ID NAME);
+     *
+     * @param type  type of model
+     * @param id    id of model in type
+     */
+    asKey?(type: ModelType, id: string): string;
 }
 
 /**
@@ -38,8 +69,10 @@ export interface CoreKeyMakeable<ModelType extends string> {
  * - common internal properties. (ONLY FOR INTERNAL PROCESSING)
  */
 export interface InternalModel<T> {
-    _id?: string; //! internal unique partition-key.
-    // _node?: T; //! internal model instance.
+    /**
+     * internal unique partition-key (valid if using default idName )
+     */
+    _id?: string;
 }
 
 /**
@@ -333,6 +366,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public static readonly AUTO_SEQUENCE = 1000000;
     public static readonly TYPE_SEQUENCE = 'sequence';
 
+    public readonly idName: string;
     public readonly service: CoreKeyMakeable<ModelType>;
     public readonly storage: StorageService<T>;
     public readonly filters: CoreModelFilterable<T>;
@@ -344,15 +378,19 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param storage   table-name or the parent storage-service
      * @param fields    list of fields.
      * @param filters   filters of `CoreModelFilterable`
+     * @param idName    (optional) internal partition-key (default as '_id')
      */
     public constructor(
         service: CoreKeyMakeable<ModelType>,
         storage: StorageService<T> | string,
         fields: string[],
         filters?: CoreModelFilterable<T>,
+        idName?: string,
     ) {
+        this.idName = idName === undefined ? '_id' : `${idName || ''}`;
         this.service = service;
-        this.storage = typeof storage == 'string' ? ProxyStorageService.makeStorageService(storage, fields) : storage;
+        this.storage =
+            typeof storage == 'string' ? ProxyStorageService.makeStorageService(storage, fields, idName) : storage;
         this.filters = filters || new GeneralModelFilter<T, ModelType>(fields);
     }
 
@@ -362,19 +400,22 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param table     table-name
      * @param fields    list of fields.
      * @param filters   model filter.
+     * @param idName    (optional) internal partition-key (default as '_id')
      */
     public static create<T extends CoreModel<ModelType>, ModelType extends string>(
         service: CoreKeyMakeable<ModelType>,
         table: string,
         fields?: string[],
         filters?: CoreModelFilterable<T>,
+        idName?: string,
     ) {
-        const storage = ProxyStorageService.makeStorageService(table, fields);
+        const storage = ProxyStorageService.makeStorageService(table, fields, idName);
         const res: ProxyStorageService<T, ModelType> = new ProxyStorageService<T, ModelType>(
             service,
             storage as any,
             fields,
             filters,
+            idName,
         );
         return res;
     }
@@ -417,6 +458,17 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public delete = (_id: string): Promise<T> => this.storage.delete(_id) as Promise<T>;
 
     /**
+     * get key-id by type+id
+     */
+    public asKey = (type: ModelType, id: string | number): string => {
+        if (typeof this.service.asKey == 'function') {
+            return this.service.asKey(type, `${id}`);
+        }
+        const $key = this.service.asKey$(type, `${id}`);
+        return ($key as any)[this.idName];
+    };
+
+    /**
      * get next auto-sequence number.
      *
      * @param type      type of seqeunce.
@@ -424,17 +476,18 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      */
     public async nextSeq(type: ModelType, initNext?: number): Promise<number> {
         _log(NS, `nextSeq(${type})..`);
-        const $key = this.service.asKey$(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
         const { createdAt, updatedAt } = this.asTime();
+        const _id = this.asKey(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
         // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
-        let res = await this.storage.increment($key._id, { next: 1 } as T, { updatedAt } as T); // it will create new row if not exists. (like upset)
+        let res = await this.storage.increment(_id, { next: 1 } as T, { updatedAt } as T); // it will create new row if not exists. (like upset)
         if (res.next == 1) {
+            const $key = this.service.asKey$(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
             initNext = initNext === undefined ? ProxyStorageService.AUTO_SEQUENCE : initNext;
             // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
             const $upd: T = { next: initNext } as T;
             // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
             const $inc: T = { ...$key, createdAt, updatedAt } as T;
-            res = await this.storage.increment($key._id, $upd, $inc); //! increment w/ update-set
+            res = await this.storage.increment(_id, $upd, $inc); //! increment w/ update-set
         }
         return res.next;
     }
@@ -460,21 +513,13 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     }
 
     /**
-     * get key-id by type+id
-     */
-    public asKey(type: ModelType, id: string | number): string {
-        const $key = this.service.asKey$(type, `${id}`);
-        return $key._id;
-    }
-
-    /**
      * delete sequence-key.
      * @param type      type of seqeunce.
      */
     public async clearSeq(type: ModelType): Promise<void> {
         _log(NS, `nextSeq(${type})..`);
-        const $key = this.service.asKey$(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
-        await this.storage.delete($key._id);
+        const _id = this.asKey(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
+        await this.storage.delete(_id);
     }
 
     /**
@@ -486,7 +531,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      */
     public async doRead(type: ModelType, id: string, $create?: T): Promise<T> {
         const $key = this.service.asKey$(type, id);
-        const _id = $key._id;
+        const _id = this.asKey(type, id);
         const model = await this.storage.read(_id).catch((e: Error) => {
             if (`${e.message}`.startsWith('404 NOT FOUND') && $create) {
                 const { createdAt, updatedAt } = this.asTime();
@@ -495,7 +540,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             throw e;
         });
         //! make sure it has `_id`
-        model._id = _id;
+        (model as any)[this.idName] = _id;
         const res = this.filters.afterRead(model);
         return res;
     }
@@ -508,11 +553,13 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param destroy   flag to destroy (real delete)
      */
     public async doDelete(type: ModelType, id: string, destroy: boolean = true) {
-        const $key = this.service.asKey$(type, id);
-        if (destroy === undefined || destroy === true) return this.storage.delete($key._id);
-        const { updatedAt, deletedAt } = this.asTime();
-        const $up = { updatedAt, deletedAt };
-        return this.update($key._id, $up as T);
+        const _id = this.asKey(type, id);
+        if (destroy === undefined || destroy === true) return this.storage.delete(_id);
+        const { createdAt, updatedAt, deletedAt } = this.asTime();
+        const $up: CoreModel<ModelType> = { updatedAt, deletedAt };
+        const $org = await this.read(_id); //! it will make 404 if not found.
+        if (!$org.createdAt) $up.createdAt = createdAt;
+        return this.update(_id, $up as T);
     }
 
     /**
@@ -525,13 +572,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      */
     public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T) {
         const $inc: T = { ...incrementals }; //! make copy.
-        const $key = this.service.asKey$(type, id);
-        const node2 = this.filters.beforeUpdate({ ...node, _id: $key._id }, $inc);
+        const _id = this.asKey(type, id);
+        // const $key = this.service.asKey$(type, id);
+        const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, $inc);
         delete node2['_id'];
         const { updatedAt } = this.asTime();
-        const model = await this.update($key._id, { ...node2, updatedAt }, $inc);
+        const model = await this.update(_id, { ...node2, updatedAt }, $inc);
         //! make sure it has `_id`
-        model._id = $key._id; //! make sure `_id`
+        (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
 
@@ -542,11 +590,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      */
     public async doIncrement(type: ModelType, id: string, $inc: T, $up: T) {
-        const $key = this.service.asKey$(type, id);
+        const _id = this.asKey(type, id);
         const { updatedAt } = this.asTime();
-        const model = await this.increment($key._id, { ...$inc }, { ...$up, updatedAt });
+        const model = await this.increment(_id, { ...$inc }, { ...$up, updatedAt });
         //! make sure it has `_id`
-        model._id = $key._id; //! make sure `_id`
+        (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
 
@@ -568,9 +616,9 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         })) as T;
 
         //! if `$create` is undefined, create it with default $key.
-        const $key: T = this.service.asKey$(type, id) as T;
+        const _id = this.asKey(type, id);
         const model: T = { ...node }; // copy from param.
-        model._id = $key._id; //! make sure the internal id
+        (model as any)[this.idName] = _id; //! make sure the internal id
 
         //! apply filter.
         const $ups = this.filters.beforeSave(model, $org); //! `$org` should be null if create.
@@ -578,8 +626,8 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
 
         //! if null, then nothing to update.
         if (!$ups) {
-            const res = { _id: $key._id };
-            return res as T;
+            const res: T = { [this.idName]: _id } as any;
+            return res;
         }
 
         //! determine of create or update.
@@ -589,8 +637,9 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             const res = await this.doUpdate(type, id, $save);
             return this.filters.afterSave(res, $org); //! `$org` should be valid if update.
         } else {
+            const $key: T = this.service.asKey$(type, id) as T;
             const $save = { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 };
-            const res = await this.storage.save($key._id, $save);
+            const res = await this.storage.save(_id, $save);
             return this.filters.afterSave(res, null); //! `$org` should be null if create.
         }
     }
@@ -611,8 +660,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         interval = $U.N(interval, 1000);
         if (typeof tick != 'number' || tick < 0) throw new Error(`@tick (${tick}) is not valid!`);
         if (typeof interval != 'number' || interval < 1) throw new Error(`@interval (${interval}) is not valid!`);
-        const $key = this.service.asKey$(type, `${id}`);
-        const _id = $key ? $key._id : this.asKey(type, id);
+        const _id = this.asKey(type, id);
         //! WARN! DO NOT MAKE ANY MODEL CREATION IN HERE.
         // const $org = await this.storage.readOrCreate(_id, { lock: 0, ...$key } as any);
         // _log(NS, `> $org[${type}/${id}].lock =`, $org.lock);
@@ -668,9 +716,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * @param table     table-name or dummy file name (ex: `dummy-data.yml`).
      * @param fields    required for dynamo table.
+     * @param idName    internal partition-key name (default '_id')
      */
-    public static makeStorageService<T>(table: string, fields?: string[]): StorageService<T> {
+    public static makeStorageService<T>(table: string, fields?: string[], idName?: string): StorageService<T> {
         if (!table) throw new Error(`@table (table-name) is required!`);
+        idName = idName === undefined ? '_id' : `${idName || ''}`;
         //! clear the duplicated string
         const clearDuplicated = (arr: string[]) =>
             arr.sort().reduce((L, val) => {
@@ -680,11 +730,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
 
         //! make internal storage-service by table
         if (table.endsWith('.yml')) {
-            return new DummyStorageService<T>(table, table.split('.')[0], '_id');
+            return new DummyStorageService<T>(table, table.split('.')[0], idName);
         } else {
             if (!fields) throw new Error(`@fields (list of field) is required!`);
             fields = clearDuplicated(CORE_FIELDS.concat(fields));
-            return new DynamoStorageService<T>(table, fields, '_id');
+            return new DynamoStorageService<T>(table, fields, idName);
         }
     }
 
@@ -941,7 +991,7 @@ export class UniqueFieldManager<T extends CoreModel<ModelType>, ModelType extend
      * @param value unique value in same type group.
      */
     public asLookupId(value: string): string {
-        return `#${this.type || ''}/${value || ''}`;
+        return `#${this.field || ''}/${value || ''}`;
     }
 
     /**

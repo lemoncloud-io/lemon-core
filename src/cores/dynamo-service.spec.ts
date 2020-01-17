@@ -8,10 +8,11 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { GETERR, expect2, _it, environ } from '../common/test-helper';
 
-import { credentials, hasCredentials, loadDataYml } from '../tools/';
+import { loadDataYml } from '../tools/';
 import { GeneralItem } from './core-types';
 import { DynamoService, DummyDynamoService, DynamoOption } from './dynamo-service';
 
@@ -30,6 +31,7 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoService', () => {
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
     //! dummy storage service.
     describe('DummyDynamoService', () => {
         //! load dummy storage service.
@@ -38,6 +40,7 @@ describe('DynamoService', () => {
         it('should pass basic CRUD', async done => {
             //! check dummy data.
             expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
+            /* eslint-disable prettier/prettier */
             expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
             expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });
             expect2(await dummy.readItem('A1'), 'ID,type,name').toEqual({ ID: 'A1', type: 'account', name: 'Hong' });
@@ -57,6 +60,7 @@ describe('DynamoService', () => {
         it('should pass simple list w/ dummy', async done => {
             //! check dummy data.
             expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
+            /* eslint-disable prettier/prettier */
             expect2(await dummy.listItems(), '!list').toEqual({ page: 1, limit: 2, total: 3 });
             expect2(await dummy.listItems(1, 1), '!list').toEqual({ page: 1, limit: 1, total: 3 });
             expect2(await dummy.listItems(2, 2), '!list').toEqual({ page: 2, limit: 2, total: 3 });
@@ -67,9 +71,7 @@ describe('DynamoService', () => {
 
     //! real DynamoDB storage service.
     describe('DynamoService (real)', () => {
-        // Following tests cannot be run without credentials
-        credentials(environ('PROFILE'));
-        if (!hasCredentials()) return;
+        if (!PROFILE) return;
 
         const { service, tableName } = instance();
         const dataMap = new Map<string, MyModel>();
@@ -87,6 +89,7 @@ describe('DynamoService', () => {
         it('should pass basic CRUD', async done => {
             //! check dummy data.
             expect2(service.hello()).toEqual(`dynamo-service:${tableName}`);
+            /* eslint-disable prettier/prettier */
             expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
             expect2(await service.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });
             expect2(await service.readItem('A1').catch(GETERR), 'ID,type,name').toEqual({ ID: 'A1', type: 'account', name: 'Hong' });
@@ -99,6 +102,7 @@ describe('DynamoService', () => {
             expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null });
             expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'ID').toEqual({ ID: 'A0' });
             expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
+            /* eslint-enable prettier/prettier */
             done();
         });
 

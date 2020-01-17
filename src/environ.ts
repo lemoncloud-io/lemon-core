@@ -24,6 +24,7 @@
  */
 import fs from 'fs';
 import * as yaml from 'js-yaml';
+import AWS from 'aws-sdk';
 
 interface Options {
     ENV?: string;
@@ -82,6 +83,38 @@ export const loadEnviron = (process: any, options?: Options) => {
         $new.STAGE = $new.STAGE || STAGE;
         return Object.assign($det, $new);
     })($env);
+};
+
+/**
+ * dynamic loading credentials by profile. (search PROFILE -> NAME)
+ * !WARN! - could not catch AWS.Error `Profile null not found` via callback.
+ *
+ * @param profile   profile name of AWS.
+ */
+const credentials = (profile: string): string => {
+    if (!profile) return '';
+    const credentials = new AWS.SharedIniFileCredentials({ profile });
+    AWS.config.credentials = credentials;
+    return `${profile}`;
+};
+
+/**
+ * load AWS credential profile via env.NAME
+ *
+ * ```sh
+ * # load AWS 'lemon' profile, and run test.
+ * $ NAME=lemon npm run test
+ * ````
+ * @param $proc     process (default `global.process`)
+ * @param $info     info logger (default `console.info`)
+ */
+export const loadProfile = ($proc?: { env?: any }, $info?: (title: string, msg?: string) => void) => {
+    $proc = $proc === undefined ? process : $proc;
+    $info = $info === undefined ? console.info : $info;
+    const $env = loadEnviron($proc);
+    const PROFILE = `${$env['NAME'] != 'none' ? $env['NAME'] || '' : ''}`;
+    if (PROFILE && $info) $info('! PROFILE =', PROFILE);
+    return credentials(PROFILE);
 };
 
 //! export default.

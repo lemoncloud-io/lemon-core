@@ -8,10 +8,9 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, expect2, _it, environ } from '../common/test-helper';
-
-import { credentials } from '../tools/';
+import { GETERR, expect2, _it } from '../common/test-helper';
 import { GeneralItem } from './core-types';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option } from './elastic6-service';
 
@@ -31,8 +30,7 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('Elastic6Service', () => {
-    //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
 
     //! dummy storage service.
     it('should pass basic CRUD w/ dummy', async done => {

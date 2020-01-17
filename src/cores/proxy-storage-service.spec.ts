@@ -8,9 +8,10 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, do_parrallel } from '../engine';
-import { expect2, GETERR, environ } from '../common/test-helper';
+import { expect2, GETERR } from '../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageService } from './storage-service';
 import {
     CoreModel,
@@ -23,7 +24,6 @@ import {
     UniqueFieldManager,
     ModelUtil,
 } from './proxy-storage-service';
-import { credentials } from '../tools/shared';
 
 //-------------------------
 //! internal definitions
@@ -97,8 +97,7 @@ export const instance = (table?: string, time?: number) => {
 
 //! main test body.
 describe('ProxyStorageService', () => {
-    console.info('! env.PROFILE =', environ('PROFILE'));
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
     jest.setTimeout(10000);
 
     //! test w/ service
@@ -167,22 +166,26 @@ describe('ProxyStorageService', () => {
         expect2((await storage.nextUuid()).split('-').length).toEqual('d01764cd-9ef2-41e2-9e88-68e79555c979'.split('-').length);
 
         //! check auto create on read().
-        await storage.doDelete('test', 'aaa').catch(GETERR);
+        await storage.doDelete('test', 'aaa', true).catch(GETERR);
+        expect2(await storage.doDelete('test', 'aaa', true).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');
         expect2(await storage.doRead('test', 'aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');        // BE SURE 404
         expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // AUTO CREATE
         expect2(await storage.doRead('test', 'aaa', { stereo: 'b' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // DO NOT UPDATE
         expect2(await storage.doRead('test', 'aaa'), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });        // READ BACK
+        expect2(await storage.doDelete('test', 'aaa', true).catch(GETERR),'_id').toEqual({ _id:'TT:test:aaa' });
+        expect2(await storage.doDelete('test', 'aaa', false).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');
+        expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // AUTO CREATE
 
         //! check auto create on update().
-        await storage.doDelete('test', 'bbb').catch(GETERR);
+        await storage.doDelete('test', 'bbb', true).catch(GETERR);
         expect2(await storage.doUpdate('test', 'bbb', { stereo:'b' })).toEqual({ _id:'TT:test:bbb', stereo:'b', updatedAt });
         expect2(await storage.doRead('test', 'bbb')).toEqual({ _id:'TT:test:bbb', stereo:'b', updatedAt });
 
         //! use typed-model-service.
         const $test = storage.makeTypedStorageService('test');
         const $user = storage.makeTypedStorageService('user' as MyType);
-        expect2(await $test.read('aaa'), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });
-        expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
+        expect2(await $test.read('aaa').catch(GETERR), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });
+        expect2(await $test.read('bbb').catch(GETERR), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
         expect2(await $user.read('aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:user:aaa');
 
         //! test filters.
@@ -409,8 +412,8 @@ describe('ProxyStorageService', () => {
 
             const ID_AAA = $unique.asLookupId('aaa');
             const ID_BBB = $unique.asLookupId('bbb');
-            expect2(await storage.read(ID_AAA).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:#test/aaa');
-            expect2(await storage.read(ID_BBB).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:#test/bbb');
+            expect2(await storage.read(ID_AAA).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:#name/aaa');
+            expect2(await storage.read(ID_BBB).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:#name/bbb');
             return { service, storage, $unique };
             /* eslint-enable prettier/prettier */
         };
@@ -462,15 +465,15 @@ describe('ProxyStorageService', () => {
             const bbb = await storage.read('bbb');
 
             //! updateLookup() w/o value
-            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#test/AAA');
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#name/AAA');
             expect2(await $unique.updateLookup(aaa).catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'AAA' });
-            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/AAA', type:'test', stereo:'#', meta:'aaa' });
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#name/AAA', type:'test', stereo:'#', meta:'aaa' });
 
             //! try to change name to 'BBB'
             expect2(await $unique.updateLookup({ ...aaa }, 'BBB').catch(GETERR), 'id,type,name').toEqual('@name (BBB) is not same as (AAA)!');                              // change to 'BBB' w/o changing model.
             expect2(await $unique.updateLookup({ ...aaa, name:'BBB' }, 'BBB').catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'BBB' });                // change to 'BBB' w/o changing model.
-            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/AAA', type:'test', stereo:'#', meta:'aaa' });   // occupied
-            expect2(await storage.read($unique.asLookupId('BBB')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#test/BBB', type:'test', stereo:'#', meta:'aaa' });   // newly created..
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#name/AAA', type:'test', stereo:'#', meta:'aaa' });   // occupied
+            expect2(await storage.read($unique.asLookupId('BBB')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#name/BBB', type:'test', stereo:'#', meta:'aaa' });   // newly created..
 
             //! try to update another to 'bbb'
             expect2(await $unique.updateLookup({ ...bbb }, 'BBB').catch(GETERR), 'id,type,name').toEqual('400 DUPLICATED NAME - name[BBB] is duplicated to test[aaa]');     // change to 'BBB' w/o changing model.
