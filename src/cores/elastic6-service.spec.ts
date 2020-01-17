@@ -10,7 +10,7 @@
  */
 import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, expect2, _it, environ } from '../common/test-helper';
+import { GETERR, expect2, _it } from '../common/test-helper';
 import { GeneralItem } from './core-types';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option } from './elastic6-service';
 

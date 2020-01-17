@@ -991,7 +991,7 @@ export class UniqueFieldManager<T extends CoreModel<ModelType>, ModelType extend
      * @param value unique value in same type group.
      */
     public asLookupId(value: string): string {
-        return `#${this.type || ''}/${value || ''}`;
+        return `#${this.field || ''}/${value || ''}`;
     }
 
     /**
