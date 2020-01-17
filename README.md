@@ -75,7 +75,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 - [ ] use environ as default region like `ap-northeast-2` (or use current region).
 - [x] draw protocol's sequence diagram w/ `callback` mechanism.
-- [ ] on protocol, use local account name as accountId for NextContext.
+- [x] on protocol, use local account name as accountId for NextContext.
 - [ ] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
 - [x] for protocol.enqueue(), use the optional delayed wait time.
 
@@ -85,6 +85,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.10    | support `loadProfile()`, and lookup-id style.
 | 2.1.9     | improve `lock()` and `search()`.
 | 2.1.8     | improve `express` of request-context.
 | 2.1.7     | improve `TypedStorageService` w/ `save()`.
