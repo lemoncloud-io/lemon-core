@@ -36,7 +36,7 @@ describe('StorageService', () => {
         expect(await $account.update('A00000', { stereo:'lemon' })).toEqual({ id: 'A00000', stereo:'lemon' });
         expect(await $account.increment('A00000', { slot:1 })).toEqual({ id: 'A00000', slot:1 });
         expect(await $account.increment('A00000', { slot:-2 })).toEqual({ id: 'A00000', slot:-1 });
-        expect(await $account.increment('A00000', { slot:null }).catch(GETERR)).toEqual('number is required at key:slot');
+        expect(await $account.increment('A00000', { slot:null }).catch(GETERR)).toEqual('.slot (null) should be number!');
         expect(await $account.increment('A00000', { stereo:null }).catch(GETERR)).toEqual({ id: 'A00000', stereo: null});
         expect((await $account.delete('A00000')).id).toEqual('A00000');
         expect(await $account.update('A00000', { type:'test', balance:1 })).toEqual({ id:'A00000', type:'test', balance:1 });  // it should make new entry.
@@ -48,8 +48,14 @@ describe('StorageService', () => {
         expect(await $account.read('A00000')).toEqual({ id:'A00000', type:'test', slot:1 });                                   //! it should return last slot#
 
         //! increment w/ $update
-        expect(await $account.increment('A00000', { slot:0 }, { balance:1000 })).toEqual({ id:'A00000', slot:1, balance:1000 });
-        expect(await $account.read('A00000')).toEqual({ id:'A00000', type:'test', slot:1, balance:1000 });
+        expect2(await $account.increment('A00000', { slot:0 }, { balance:1000 })).toEqual({ id:'A00000', slot:1, balance:1000 });
+        expect2(await $account.read('A00000')).toEqual({ id:'A00000', type:'test', slot:1, balance:1000 });
+
+        //! update with increments
+        expect2(await $account.update('A00000', {}, { balance: 100 })).toEqual({ id:'A00000', balance:1100 });
+        expect2(await $account.read('A00000')).toEqual({ id:'A00000', type:'test', slot:1, balance:1100 });
+        expect2(await $account.update('A00000', { slot:2 }, { balance: -500 })).toEqual({ id:'A00000', slot:2, balance:600 });
+        expect2(await $account.read('A00000')).toEqual({ id:'A00000', type:'test', slot:2, balance:600 });
 
         //! check delete()
         expect2(await $account.delete('A00000'), 'id').toEqual({ id:'A00000' });
@@ -78,7 +84,7 @@ describe('StorageService', () => {
         expect(await $account.update('A00000', { stereo:'lemon' })).toEqual({ _id: 'A00000', stereo:'lemon' });
         expect(await $account.increment('A00000', { slot:1 })).toEqual({ _id: 'A00000', slot:1 });
         expect(await $account.increment('A00000', { slot:-2 })).toEqual({ _id: 'A00000', slot:-1 });
-        expect(await $account.increment('A00000', { slot:null }).catch(GETERR)).toEqual('number is required at key:slot');
+        expect(await $account.increment('A00000', { slot:null }).catch(GETERR)).toEqual('.slot (null) should be number!');
         expect(await $account.increment('A00000', { stereo:null }).catch(GETERR)).toEqual({ _id: 'A00000', stereo: null});
         expect((await $account.delete('A00000'))._id).toEqual('A00000');
         expect(await $account.update('A00000', { type:'test', balance:1 })).toEqual({ _id:'A00000', type:'test', balance:1 });  // it should make new entry.
@@ -90,8 +96,14 @@ describe('StorageService', () => {
         expect(await $account.read('A00000')).toEqual({ _id:'A00000', type:'test', slot:1 });                                   //! it should return last slot#
 
         //! increment w/ $update
-        expect(await $account.increment('A00000', { slot:0 }, { balance:1000 })).toEqual({ _id:'A00000', slot:1, balance:1000 });
-        expect(await $account.read('A00000')).toEqual({ _id:'A00000', type:'test', slot:1, balance:1000 });
+        expect2(await $account.increment('A00000', { slot:0 }, { balance:1000 })).toEqual({ _id:'A00000', slot:1, balance:1000 });
+        expect2(await $account.read('A00000')).toEqual({ _id:'A00000', type:'test', slot:1, balance:1000 });
+
+        //! update with increments
+        expect2(await $account.update('A00000', {}, { balance: 100 })).toEqual({ _id:'A00000', balance:1100 });
+        expect2(await $account.read('A00000')).toEqual({ _id:'A00000', type:'test', slot:1, balance:1100 });
+        expect2(await $account.update('A00000', { slot:2 }, { balance: -500 })).toEqual({ _id:'A00000', slot:2, balance:600 });
+        expect2(await $account.read('A00000')).toEqual({ _id:'A00000', type:'test', slot:2, balance:600 });
 
         //! check delete()
         expect2(await $account.delete('A00000'), '_id').toEqual({ _id:'A00000' });
@@ -125,7 +137,7 @@ describe('StorageService', () => {
         expect(await $dynamo.increment('A00000', { slot:1})).toEqual({ no:'A00000', slot:1 });                                     //! auto update for un-defined attribute.
         expect(await $dynamo.increment('A00000', { slot:-2})).toEqual({ no:'A00000', slot:-1 });                                   //! accumulated incremental result.
         expect(await $dynamo.read('A00000')).toEqual({ no:'A00000', type:'account', stereo:'lemon', slot: -1 })
-        expect(await $dynamo.increment('A00000', { slot:null}).catch(GETERR)).toEqual('number is required at key:slot');
+        expect(await $dynamo.increment('A00000', { slot:null}).catch(GETERR)).toEqual('.slot (null) should be number!');
         expect(await $dynamo.increment('A00000', { stereo:null}).catch(GETERR)).toEqual({ no: 'A00000', stereo: null});
         expect(await $dynamo.delete('A00000')).toEqual({ no:'A00000', type:'account', stereo:null, slot: -1 });
         expect(await $dynamo.update('A00000', { type:'test' })).toEqual({ no:'A00000', type:'test' });                              //! it should make new entry.
@@ -137,6 +149,12 @@ describe('StorageService', () => {
         //! increment w/ $update
         expect(await $dynamo.increment('A00000', { slot:0 }, { balance:1000 })).toEqual({ no:'A00000', slot:1, balance:1000 });
         expect(await $dynamo.read('A00000')).toEqual({ no:'A00000', type:'test', slot:1, balance:1000 });
+
+        //! update with increments
+        expect2(await $dynamo.update('A00000', {}, { balance: 100 })).toEqual({ no:'A00000', balance:1100 });
+        expect2(await $dynamo.read('A00000')).toEqual({ no:'A00000', type:'test', slot:1, balance:1100 });
+        expect2(await $dynamo.update('A00000', { slot:2 }, { balance: -500 })).toEqual({ no:'A00000', slot:2, balance:600 });
+        expect2(await $dynamo.read('A00000')).toEqual({ no:'A00000', type:'test', slot:2, balance:600 });
 
         //! check delete()
         expect2(await $dynamo.delete('A00000'), 'no').toEqual({ no:'A00000' });

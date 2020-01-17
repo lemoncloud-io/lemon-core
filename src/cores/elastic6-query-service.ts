@@ -211,36 +211,45 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     });
                 } else {
                     //! escape if there is ' ' except like '(a AND B)'
-                    if (val === '') {
-                        val = '"' + val + '"';
-                    } else if (val && typeof val === 'string') {
-                        if (val.startsWith('(') && val.endsWith(')')) {
-                            // nop
-                        } else if (
-                            val.indexOf(' ') >= 0 ||
-                            val.indexOf('\n') >= 0 ||
-                            val.indexOf(':') >= 0 ||
-                            val.indexOf('\\') >= 0 ||
-                            val.indexOf('#') >= 0 ||
-                            val.indexOf('^') >= 0
-                        ) {
-                            val = val.replace(/([\"\'])/gi, '\\$1'); // replace '"' -> '\"'
+                    const escape_val = (val: string): string | string[] => {
+                        if (val === '') {
                             val = '"' + val + '"';
-                        } else if (val.indexOf(',') > 0) {
-                            val = val.split(',').map(s => {
-                                return (s || '').trim();
-                            });
+                        } else if (val && typeof val === 'string') {
+                            if (val.startsWith('(') && val.endsWith(')')) {
+                                // nop
+                            } else if (val.startsWith('"') && val.endsWith('"')) {
+                                // must be string block
+                                return val;
+                            } else if (val.indexOf(',') > 0) {
+                                // list of array.
+                                return val.split(',').map(s => {
+                                    return (s || '').trim();
+                                });
+                            } else if (
+                                // special chars
+                                val.indexOf(' ') >= 0 ||
+                                val.indexOf('\n') >= 0 ||
+                                val.indexOf(':') >= 0 ||
+                                val.indexOf('\\') >= 0 ||
+                                val.indexOf('#') >= 0 ||
+                                val.indexOf('^') >= 0
+                            ) {
+                                val = val.replace(/([\"\'])/gi, '\\$1'); // replace '"' -> '\"'
+                                val = '"' + val + '"';
+                            }
                         }
-                    }
+                        return val;
+                    };
+                    val = escape_val(val);
+
                     //! add to query-list.
                     if (key.startsWith('!')) {
                         if (val) {
                             if (Array.isArray(val)) {
-                                val.forEach(_ => {
-                                    _ && list.push('NOT ' + key.substr(1) + ':' + _);
-                                });
+                                const vals = val.map(_ => escape_val(_));
+                                list.push(key.substr(1) + ':(NOT (' + vals.join(' OR ') + '))');
                             } else {
-                                list.push('NOT ' + key.substr(1) + ':' + val);
+                                list.push(key.substr(1) + ':(NOT ' + val + ')');
                             }
                         } else {
                             list.push('_exists_:' + key.substr(1));
@@ -255,7 +264,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                         //! nop
                     } else if (val && Array.isArray(val)) {
                         // list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
-                        list.push(`${key}:` + '(' + val.map(val => `${val}`).join(' OR ') + ')');
+                        list.push(`${key}:` + '(' + val.map(val => `${escape_val(val)}`).join(' OR ') + ')');
                     } else {
                         list.push(`${key}:${val}`);
                     }
