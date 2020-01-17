@@ -167,22 +167,26 @@ describe('ProxyStorageService', () => {
         expect2((await storage.nextUuid()).split('-').length).toEqual('d01764cd-9ef2-41e2-9e88-68e79555c979'.split('-').length);
 
         //! check auto create on read().
-        await storage.doDelete('test', 'aaa').catch(GETERR);
+        await storage.doDelete('test', 'aaa', true).catch(GETERR);
+        expect2(await storage.doDelete('test', 'aaa', true).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');
         expect2(await storage.doRead('test', 'aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');        // BE SURE 404
         expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // AUTO CREATE
         expect2(await storage.doRead('test', 'aaa', { stereo: 'b' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // DO NOT UPDATE
         expect2(await storage.doRead('test', 'aaa'), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });        // READ BACK
+        expect2(await storage.doDelete('test', 'aaa', true).catch(GETERR),'_id').toEqual({ _id:'TT:test:aaa' });
+        expect2(await storage.doDelete('test', 'aaa', false).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');
+        expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // AUTO CREATE
 
         //! check auto create on update().
-        await storage.doDelete('test', 'bbb').catch(GETERR);
+        await storage.doDelete('test', 'bbb', true).catch(GETERR);
         expect2(await storage.doUpdate('test', 'bbb', { stereo:'b' })).toEqual({ _id:'TT:test:bbb', stereo:'b', updatedAt });
         expect2(await storage.doRead('test', 'bbb')).toEqual({ _id:'TT:test:bbb', stereo:'b', updatedAt });
 
         //! use typed-model-service.
         const $test = storage.makeTypedStorageService('test');
         const $user = storage.makeTypedStorageService('user' as MyType);
-        expect2(await $test.read('aaa'), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });
-        expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
+        expect2(await $test.read('aaa').catch(GETERR), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });
+        expect2(await $test.read('bbb').catch(GETERR), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
         expect2(await $user.read('aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:user:aaa');
 
         //! test filters.

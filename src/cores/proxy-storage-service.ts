@@ -555,8 +555,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public async doDelete(type: ModelType, id: string, destroy: boolean = true) {
         const _id = this.asKey(type, id);
         if (destroy === undefined || destroy === true) return this.storage.delete(_id);
-        const { updatedAt, deletedAt } = this.asTime();
-        const $up = { updatedAt, deletedAt };
+        const { createdAt, updatedAt, deletedAt } = this.asTime();
+        const $up: CoreModel<ModelType> = { updatedAt, deletedAt };
+        const $org = await this.read(_id); //! it will make 404 if not found.
+        if (!$org.createdAt) $up.createdAt = createdAt;
         return this.update(_id, $up as T);
     }
 
