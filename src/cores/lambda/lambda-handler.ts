@@ -25,6 +25,7 @@ import {
 } from 'aws-lambda';
 import * as $lambda from 'aws-lambda';
 import { NextContext, ProtocolParam, CoreConfigService } from './../core-services';
+import { GETERR } from '../../common/test-helper';
 
 export type ConfigService = CoreConfigService;
 export type Context = $lambda.Context;
@@ -107,6 +108,23 @@ export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHan
     }
     abstract handle: T;
 }
+
+/**
+ * build reprot-error function in safe.
+ *
+ * @param isReport flag to report-error via sns
+ * @return the last error message
+ */
+export const buildReportError = (isReport?: boolean) => (
+    e: Error,
+    context?: any,
+    event?: any,
+    data?: any,
+): Promise<string> => {
+    return (isReport ? doReportError(e, context, event, data) : Promise.resolve(data))
+        .then(() => GETERR(e))
+        .catch(GETERR);
+};
 
 /**
  * class: `LambdaHandler`

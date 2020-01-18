@@ -45,6 +45,6 @@
             "SizeBytes": 90,
             "StreamViewType": "NEW_AND_OLD_IMAGES"
         },
-        "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:796730245826:table/MetricsTest/stream/2019-11-18T14:16:45.421"
+        "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:1574150700000:table/MetricsTest/stream/2019-11-18T14:16:45.421"
     }]
 }
