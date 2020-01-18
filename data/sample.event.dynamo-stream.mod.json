@@ -1,0 +1,38 @@
+{
+    "!":"DynamoDB Stream Event Data @200118 w/ lemon.dev",
+    "Records": [{
+        "eventID": "22e94af90e9b5b3012f4a85d58f68c01",
+        "eventName": "MODIFY",
+        "eventVersion": "1.1",
+        "eventSource": "aws:dynamodb",
+        "awsRegion": "ap-northeast-2",
+        "dynamodb": {
+            "ApproximateCreationDateTime": 1579321041,
+            "Keys": {
+                "_id": {
+                    "S": "aaaa"
+                }
+            },
+            "NewImage": {
+                "_id": {
+                    "S": "aaaa"
+                },
+                "type": {
+                    "S": "test"
+                }
+            },
+            "OldImage": {
+                "meta": {
+                    "S": "none"
+                },
+                "_id": {
+                    "S": "aaaa"
+                }
+            },
+            "SequenceNumber": "184747000000000007090939727",
+            "SizeBytes": 37,
+            "StreamViewType": "NEW_AND_OLD_IMAGES"
+        },
+        "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:1574150700000:table/AccountsTest/stream/2019-12-10T05:03:02.912"
+    }]
+}
