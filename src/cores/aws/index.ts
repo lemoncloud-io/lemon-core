@@ -15,9 +15,6 @@ import { AWSSNSService } from './aws-sns-service';
 import { AWSSQSService } from './aws-sqs-service';
 import { AWSS3Service } from './aws-s3-service';
 
-//! get common region.
-export * from './../core-types';
-
 export { AWSKMSService } from './aws-kms-service';
 export { AWSSNSService } from './aws-sns-service';
 export { AWSSQSService } from './aws-sqs-service';
