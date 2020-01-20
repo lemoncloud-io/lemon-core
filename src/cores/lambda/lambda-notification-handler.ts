@@ -70,7 +70,7 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'notification' : undefined);
-        _log(NS, `LambdaNotificationHandler()..`);
+        _log(NS, `LambdaNotificationHandler(${register})..`);
     }
 
     protected listeners: NotificationNextHandler[] = [];

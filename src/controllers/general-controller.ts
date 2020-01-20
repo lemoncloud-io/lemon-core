@@ -167,6 +167,8 @@ export class GeneralWEBController extends GeneralController {
     /**
      * notify self-service's event message via SNS
      * - config `env.EVENT_RELAY_SNS` as SNS endpoint.
+     *
+     * @returns message-id
      */
     public doNotifyServiceEvent = async (
         context: NextContext,
@@ -197,6 +199,7 @@ export class GeneralWEBController extends GeneralController {
         const message = { type, id, state, service, param };
         if (endpoint === '#') return $U.json({ endpoint, subject, message });
         if (!endpoint) return `ignored`;
+        //! publish to sns endpoint.
         return $aws.sns.publish(endpoint, subject, message).catch(GETERR);
     };
 }

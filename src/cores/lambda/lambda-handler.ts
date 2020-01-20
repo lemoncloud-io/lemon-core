@@ -207,6 +207,7 @@ export class LambdaHandler {
         //! Check API parameters.
         const main: Handler = (event: any, context: Context, callback: Callback<any>): Promise<any> | void => {
             const type = this.findService(event);
+            _log(NS, `main(${type})...`);
             const handler = this._map[type];
             if (handler && typeof handler == 'function') {
                 //! low level handler function.
