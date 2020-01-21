@@ -389,17 +389,21 @@ export class Utilities {
         return $n;
     }
 
-    public diff(obj1: any, obj2: any) {
+    public diff(obj1: any, obj2: any): string[] {
+        obj1 = obj1 || {};
+        obj2 = obj2 || {};
         const $_ = this.lodash();
-        const diff = Object.keys(obj1).reduce((result, key) => {
-            if (!obj2.hasOwnProperty(key)) {
-                result.push(key);
-            } else if ($_.isEqual(obj1[key], obj2[key])) {
-                const resultKeyIndex = result.indexOf(key);
-                result.splice(resultKeyIndex, 1);
-            }
-            return result;
-        }, Object.keys(obj2));
+        const diff = Object.keys(obj1)
+            .reduce((result, key) => {
+                if (!obj2.hasOwnProperty(key)) {
+                    result.push(key);
+                } else if ($_.isEqual(obj1[key], obj2[key])) {
+                    const resultKeyIndex = result.indexOf(key);
+                    result.splice(resultKeyIndex, 1);
+                }
+                return result;
+            }, Object.keys(obj2))
+            .sort();
 
         return diff;
     }

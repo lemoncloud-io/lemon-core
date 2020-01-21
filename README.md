@@ -76,8 +76,9 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 - [ ] use environ as default region like `ap-northeast-2` (or use current region).
 - [x] draw protocol's sequence diagram w/ `callback` mechanism.
 - [x] on protocol, use local account name as accountId for NextContext.
-- [ ] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
 - [x] for protocol.enqueue(), use the optional delayed wait time.
+- [ ] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
+- [ ] for protocol.brodcast(), use `SNS` to receive events (along with https) @200121
 
 
 ----------------
@@ -85,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.11    | improve `syncToElastic6`, and `DynamoScanService`.
 | 2.1.10    | support `loadProfile()`, and lookup-id style.
 | 2.1.9     | improve `lock()` and `search()`.
 | 2.1.8     | improve `express` of request-context.

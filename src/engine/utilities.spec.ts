@@ -100,4 +100,19 @@ describe(`core/utilities.ts`, () => {
 
         done();
     });
+
+    //! test cryto()
+    test('check diff()', async done => {
+        const { $U } = instance();
+
+        expect2(() => $U.diff(undefined, undefined)).toEqual([]);
+        expect2(() => $U.diff(null, null)).toEqual([]);
+        expect2(() => $U.diff({}, null)).toEqual([]);
+        expect2(() => $U.diff({ a: 1 }, null)).toEqual(['a']);
+        expect2(() => $U.diff(null, { b: 1 })).toEqual(['b']);
+        expect2(() => $U.diff({ a: 1 }, { b: 1 })).toEqual(['a', 'b']);
+        expect2(() => $U.diff({ a: 1 }, { a: 1 })).toEqual([]);
+
+        done();
+    });
 });

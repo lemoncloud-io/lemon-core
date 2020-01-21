@@ -14,10 +14,9 @@ const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
 import { NextContext, NextHandler } from './../core-services';
-import { LambdaHandler, SNSHandler, LambdaSubHandler } from './lambda-handler';
+import { LambdaHandler, SNSHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
-import { GETERR$, GETERR } from '../../common/test-helper';
 
 /**
  * class: LambdaSNSHandler
@@ -50,10 +49,8 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
         //! for each records.
         const records: SNSEventRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
-        _log(NS, '> event =', $U.json(event));
-        const $doReportError: (...a: any) => Promise<any> = LambdaSNSHandler.REPORT_ERROR
-            ? doReportError
-            : async () => {};
+        // _log(NS, '> event =', $U.json(event));
+        const $doReportError = buildReportError(LambdaSNSHandler.REPORT_ERROR);
 
         //! handle sqs record data.
         const onSNSRecord = async (record: SNSEventRecord, index: number): Promise<string> => {
@@ -88,7 +85,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                         //! call the remote service if callback.
                         return proto ? $protocol.service.execute(proto) : body;
                     })
-                    .catch(e => $doReportError(e, param.context, null, { protocol: param }).catch(GETERR$));
+                    .catch(e => $doReportError(e, param.context, null, { protocol: param }));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
                 return '';
             } else {
@@ -110,18 +107,12 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                 _log(NS, `> sns[${index}].param =`, $U.json(param));
                 _log(NS, `> sns[${index}].body =`, $U.json(body));
 
-                //! process for each listeners.
-                const res: string[] = await Promise.all(
-                    this.listeners.map((h, i) =>
-                        h(`SNS`, param, body, null)
-                            .then(_ => {
-                                _log(NS, `>> [${i}].res =`, $U.json(_));
-                                return `${i}`;
-                            })
-                            .catch(e => $doReportError(e, null, null, { i, param, body }).catch(GETERR)),
-                    ),
-                );
-                //! concont
+                //! call all listeners in parrallel.
+                const asyncNext = (fn: NextHandler, j: number) =>
+                    new Promise(resolve => {
+                        resolve(fn('SNS', param, body, null));
+                    }).catch(e => $doReportError(e, null, null, { param, body, i: index, j }));
+                const res = await Promise.all(this.listeners.map(asyncNext));
                 return res.join(',');
             }
         };
@@ -129,8 +120,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
         //! serialize each records.
         this.$lastResult = await do_parrallel(
             records,
-            (record, i) =>
-                onSNSRecord(record, i).catch(e => $doReportError(e, null, null, { record, i }).catch(GETERR)),
+            (record, i) => onSNSRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
             5,
         );
 
