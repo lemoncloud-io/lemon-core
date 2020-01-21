@@ -10,10 +10,15 @@
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err } from '../engine/';
-import { NextMode, NextContext, NextIdentityAccess, ProtocolService, ProtocolParam, NextHandler } from '../cores/';
+import { _log, _inf, _err, $U } from '../engine/';
+import { GETERR } from '../common/test-helper';
+import { NextMode, NextContext, NextIdentityAccess, NextHandler, GeneralItem } from '../cores/core-types';
+import { ProtocolService, ProtocolParam } from '../cores/core-services';
 import { CoreWEBController } from '../cores/lambda';
+import $aws from '../cores/aws/';
+import $config from '../cores/config/';
 import $protocols from '../cores/protocol/';
+import { ConfigService } from '../cores/config/config-service';
 
 /**
  * class: `GeneralController`.
@@ -137,7 +142,7 @@ export class GeneralWEBController extends GeneralController {
      *
      * @param context   the requested NextContext
      */
-    public async asNextIdentityAccess(context: NextContext): Promise<NextIdentityAccess> {
+    public asNextIdentityAccess = async (context: NextContext): Promise<NextIdentityAccess> => {
         //! ignore if .identity is already populated.
         if (context && context.identity) {
             const $old: NextIdentityAccess = context.identity as NextIdentityAccess;
@@ -157,5 +162,44 @@ export class GeneralWEBController extends GeneralController {
 
         //! returns;
         return res;
-    }
+    };
+
+    /**
+     * notify self-service's event message via SNS
+     * - config `env.EVENT_RELAY_SNS` as SNS endpoint.
+     *
+     * @returns message-id
+     */
+    public doNotifyServiceEvent = async (
+        context: NextContext,
+        type: string,
+        id: string,
+        state: string,
+        $param?: GeneralItem,
+        endpoint?: string,
+    ): Promise<string> => {
+        endpoint = endpoint || $U.env('EVENT_RELAY_SNS', '');
+        id = `${id || ''}`;
+        type = `${type || ''}`;
+        state = `${state || ''}`;
+        const config: ConfigService = $config.config;
+        const $proto: ProtocolService = $protocols.service;
+        const subject = `event://${config.getService()}-${config.getStage()}`;
+        const { service, param } = ((asUrl: boolean): { service: string; param: GeneralItem } => {
+            if (asUrl) {
+                const uri = $proto.myProtocolURI(context, type, id);
+                const [a, b] = uri.split('#', 2);
+                const service = `${a}${param ? '?' : ''}${param ? $U.qs.stringify(param) : ''}#${b}`;
+                return { service, param: undefined };
+            } else {
+                const service: string = $proto.myProtocolURI(context, type, id);
+                return { service, param: $param };
+            }
+        })(0 ? true : false);
+        const message = { type, id, state, service, param };
+        if (endpoint === '#') return $U.json({ endpoint, subject, message });
+        if (!endpoint) return `ignored`;
+        //! publish to sns endpoint.
+        return $aws.sns.publish(endpoint, subject, message).catch(GETERR);
+    };
 }

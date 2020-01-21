@@ -1,0 +1,30 @@
+{
+    "!":"DynamoDB Stream Event Data @200118 w/ lemon.dev",
+    "Records": [{
+        "eventID": "e7a5cfd35081a61851df4b328b5f43cf",
+        "eventName": "REMOVE",
+        "eventVersion": "1.1",
+        "eventSource": "aws:dynamodb",
+        "awsRegion": "ap-northeast-2",
+        "dynamodb": {
+            "ApproximateCreationDateTime": 1579321108,
+            "Keys": {
+                "_id": {
+                    "S": "aaaa"
+                }
+            },
+            "OldImage": {
+                "_id": {
+                    "S": "aaaa"
+                },
+                "type": {
+                    "S": "test"
+                }
+            },
+            "SequenceNumber": "184747100000000007090962083",
+            "SizeBytes": 22,
+            "StreamViewType": "NEW_AND_OLD_IMAGES"
+        },
+        "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:1574150700000:table/AccountsTest/stream/2019-12-10T05:03:02.912"
+    }]
+}

@@ -10,7 +10,7 @@
 import request from 'supertest';
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
 import { ProtocolParam, NextHandler } from '../cores';
-import { buildEngine } from '../engine';
+import { buildEngine, $U } from '../engine';
 import { buildExpress, loadJsonSync } from '../tools';
 import { expect2 } from '../common/test-helper';
 import { GeneralController, GeneralWEBController } from './general-controller';
@@ -199,6 +199,43 @@ describe('GeneralController', () => {
         expect2(await request(app).get('/hello3/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()` from .base
         expect2(await request(app).get('/hello3/bb/lemon'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'lemon-bb' } });     // via `getHelloLemon()` from .base
         /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! general contoller api.
+    it('should pass doNotifyServiceEvent()', async done => {
+        const { controller3: $api } = instance('hello');
+        const $pack = loadJsonSync('package.json');
+        const endpoint = '#';
+
+        expect2(() => $api.doNotifyServiceEvent({}, 'test', '_', null, undefined, endpoint)).toEqual(
+            $U.json({
+                endpoint,
+                subject: 'event://lemon-core-local',
+                message: {
+                    type: 'test',
+                    id: '_',
+                    state: '',
+                    service: `api://lemon-core-dev/test/_#${$pack.version}`,
+                },
+            }),
+        );
+
+        expect2(() => $api.doNotifyServiceEvent({}, 'TST!', '_', 'ok', { a: 1, b: 'c' }, endpoint)).toEqual(
+            $U.json({
+                endpoint,
+                subject: 'event://lemon-core-local',
+                message: {
+                    type: 'TST!',
+                    id: '_',
+                    state: 'ok',
+                    service: `api://lemon-core-dev/TST!/_#${$pack.version}`,
+                    // service: `api://lemon-core-dev/TST!/_?a=1&b=c#${$pack.version}`,
+                    param: { a: 1, b: 'c' },
+                },
+            }),
+        );
+
         done();
     });
 });

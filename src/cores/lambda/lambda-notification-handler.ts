@@ -13,7 +13,14 @@ import { _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HNOT', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 import { NextContext, NextHandler } from './../core-services';
-import { LambdaHandler, LambdaSubHandler, NotificationHandler, WEBEvent, Context } from './lambda-handler';
+import {
+    LambdaHandler,
+    LambdaSubHandler,
+    NotificationHandler,
+    WEBEvent,
+    Context,
+    buildReportError,
+} from './lambda-handler';
 import { success } from './lambda-web-handler';
 import { APIGatewayEventRequestContext } from 'aws-lambda';
 
@@ -63,7 +70,7 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'notification' : undefined);
-        _log(NS, `LambdaNotificationHandler()..`);
+        _log(NS, `LambdaNotificationHandler(${register})..`);
     }
 
     protected listeners: NotificationNextHandler[] = [];
@@ -82,14 +89,22 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
     public handle: NotificationHandler = async (event, context) => {
         _log(NS, `handle()....`);
         // _log(NS, '! event =', $U.json(event));
+        // _log(NS, '> event =', $U.json(event));
+        const $doReportError = buildReportError(LambdaNotificationHandler.REPORT_ERROR);
+
         // _inf(NS, '! event.headers =', $U.json(event.headers));
         // _inf(NS, '! context =', $U.json(context));
         _log(NS, '! path =', event.path);
         const id = `${event.path}`;
         const { param, body } = this.packNotificationParamBody(event);
-        const ret = await Promise.all(this.listeners.map(_ => _(id, param, body, context)));
-        const res = success(ret.join(','));
-        return res;
+        //! call all listeners in parrallel.
+        const asyncNext = (fn: NextHandler, i: number) =>
+            new Promise(resolve => {
+                resolve(fn(id, param, body, context));
+            }).catch(e => $doReportError(e, null, null, { param, body, i }));
+        const res = await Promise.all(this.listeners.map(asyncNext));
+        const ret = success(res.join(','));
+        return ret;
     };
 
     /**

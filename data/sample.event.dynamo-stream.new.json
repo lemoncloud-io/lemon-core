@@ -1,0 +1,30 @@
+{
+    "!":"DynamoDB Stream Event Data @200118 w/ lemon.dev",
+    "Records": [{
+        "eventID": "9ce98007139c5b18d84e895f6e1f62ce",
+        "eventName": "INSERT",
+        "eventVersion": "1.1",
+        "eventSource": "aws:dynamodb",
+        "awsRegion": "ap-northeast-2",
+        "dynamodb": {
+            "ApproximateCreationDateTime": 1579320935,
+            "Keys": {
+                "_id": {
+                    "S": "aaaa"
+                }
+            },
+            "NewImage": {
+                "meta": {
+                    "S": "none"
+                },
+                "_id": {
+                    "S": "aaaa"
+                }
+            },
+            "SequenceNumber": "184746900000000007090915097",
+            "SizeBytes": 22,
+            "StreamViewType": "NEW_AND_OLD_IMAGES"
+        },
+        "eventSourceARN": "arn:aws:dynamodb:ap-northeast-2:1574150700000:table/AccountsTest/stream/2019-12-10T05:03:02.912"
+    }]
+}

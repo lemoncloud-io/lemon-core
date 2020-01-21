@@ -11,14 +11,13 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, $_ } from '../../engine/';
 const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
-import { doReportError, do_parrallel } from '../../engine/';
+import { do_parrallel } from '../../engine/';
 
 import { SQSRecord } from 'aws-lambda';
-import { SQSHandler, LambdaHandler, LambdaSubHandler } from './lambda-handler';
+import { SQSHandler, LambdaHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { NextHandler, NextContext } from './../core-services';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
-import { GETERR$, GETERR } from '../../common/test-helper';
 
 /**
  * class: LambdaSQSHandler
@@ -51,10 +50,8 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
         //! for each records.
         const records: SQSRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
-        _log(NS, '> event =', $U.json(event));
-        const $doReportError: (...a: any) => Promise<any> = LambdaSQSHandler.REPORT_ERROR
-            ? doReportError
-            : async () => {};
+        // _log(NS, '> event =', $U.json(event));
+        const $doReportError = buildReportError(LambdaSQSHandler.REPORT_ERROR);
 
         //! handle sqs record data.
         const onSQSRecord = async (record: SQSRecord, index: number): Promise<string> => {
@@ -97,7 +94,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         //! call the remote service if callback.
                         return proto ? $protocol.service.execute(proto) : body;
                     })
-                    .catch(e => $doReportError(e, param.context, null, { protocol: param }).catch(GETERR$));
+                    .catch(e => $doReportError(e, param.context, null, { protocol: param }));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
                 return '';
             } else {
@@ -109,18 +106,12 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                 _log(NS, `> sqs[${index}].param =`, $U.json(param));
                 _log(NS, `> sqs[${index}].body =`, $U.json(body));
 
-                //! process for each listeners.
-                const res: string[] = await Promise.all(
-                    this.listeners.map((h, i) =>
-                        h(`SQS`, param, body, null)
-                            .then(_ => {
-                                _log(NS, `>> [${i}].res =`, $U.json(_));
-                                return `${i}`;
-                            })
-                            .catch(e => $doReportError(e, null, null, { i, param, body }).catch(GETERR)),
-                    ),
-                );
-                //! concont
+                //! call all listeners in parrallel.
+                const asyncNext = (fn: NextHandler, j: number) =>
+                    new Promise(resolve => {
+                        resolve(fn('SQS', param, body, null));
+                    }).catch(e => $doReportError(e, null, null, { param, body, i: index, j }));
+                const res = await Promise.all(this.listeners.map(asyncNext));
                 return res.join(',');
             }
         };
@@ -128,8 +119,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
         //! serialize each records.
         this.$lastResult = await do_parrallel(
             records,
-            (record, i) =>
-                onSQSRecord(record, i).catch(e => $doReportError(e, null, null, { record, i }).catch(GETERR)),
+            (record, i) => onSQSRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
             1,
         );
 

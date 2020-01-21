@@ -13,7 +13,7 @@ import { _log, _inf, _err, $_, $U, do_parrallel, doReportError } from '../../eng
 const NS = $U.NS('HDBS', 'green'); // NAMESPACE TO BE PRINTED.
 
 import { DynamoDBRecord } from 'aws-lambda';
-import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler } from './lambda-handler';
+import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { NextHandler } from './../core-types';
 import { toJavascript } from '../../lib/dynamodb-value';
 import { Elastic6Service, Elastic6Item } from './../elastic6-service';
@@ -70,6 +70,9 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
         this.listeners.push(handler);
     }
 
+    //! for debugging. save last result
+    protected $lastResult: any = null;
+
     /**
      * Default Handler.
      */
@@ -77,52 +80,52 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
         //! for each records.
         const records: DynamoDBRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
-        _log(NS, '> event =', $U.json(event));
+        // _log(NS, '> event =', $U.json(event));
+        const $doReportError = buildReportError(LambdaDynamoStreamHandler.REPORT_ERROR);
+
+        const onStreamRecord = async (record: DynamoDBRecord, i: number): Promise<string> => {
+            const region = record.awsRegion;
+            const eventId = record.eventID;
+            const eventName = record.eventName;
+            const tableName = (record.eventSourceARN && record.eventSourceARN.split('/')[1]) || '';
+            _log(NS, `> record[${i}].eventName/tableName =`, eventName, tableName);
+
+            const dynamodb = record.dynamodb;
+            if (!dynamodb) return; // ignore this.
+            const $key = dynamodb.Keys ? toJavascript(dynamodb.Keys, null) : null;
+            const $new = dynamodb.NewImage ? toJavascript(dynamodb.NewImage, null) : null; // null if eventName == 'REMOVE'
+            const $old = dynamodb.OldImage ? toJavascript(dynamodb.OldImage, null) : null; // null if eventName == 'INSERT'
+
+            //! 이제 변경된 데이터를 추적해서, 이후 처리 지원. (update 는 호출만되어도 이벤트가 발생하게 됨)
+            const diff = eventName === 'MODIFY' ? $U.diff($old, $new) : [];
+            const node = $new || $old || {}; // make sure not null.
+            const prev = $_.reduce(
+                diff,
+                (M: any, key: any) => {
+                    M[key] = $old[key];
+                    return M;
+                },
+                {},
+            );
+
+            //! prepare next-handler's param & body.
+            const param: DynamoStreamParam = { region, eventId, eventName, tableName };
+            const body: DynamoStreamBody = { keys: $key, diff, prev, node };
+
+            //! call all listeners in parrallel.
+            const asyncNext = (fn: DynamoStreamNextHandler, j: number) =>
+                new Promise(resolve => {
+                    resolve(fn('!', param, body, context));
+                }).catch(e => $doReportError(e, null, null, { record, i, j }));
+            const res = await Promise.all(this.listeners.map(asyncNext));
+            _log(NS, `>> result[${i}] =`, $U.json(res));
+            return `${i}`;
+        };
 
         //! serialize all record...
-        await do_parrallel(
+        this.$lastResult = await do_parrallel(
             records,
-            async (record, i): Promise<void> => {
-                const region = record.awsRegion;
-                const eventId = record.eventID;
-                const eventName = record.eventName;
-                const tableName = (record.eventSourceARN && record.eventSourceARN.split('/')[1]) || '';
-                _log(NS, `> record[${i}].eventName/tableName =`, eventName, tableName);
-
-                try {
-                    const dynamodb = record.dynamodb;
-                    if (!dynamodb) return; // ignore this.
-                    const $key = dynamodb.Keys ? toJavascript(dynamodb.Keys, null) : null;
-                    const $new = dynamodb.NewImage ? toJavascript(dynamodb.NewImage, null) : null;
-                    const $old = dynamodb.OldImage ? toJavascript(dynamodb.OldImage, null) : null;
-
-                    //! 이제 변경된 데이터를 추적해서, 이후 처리 지원. (update 는 호출만되어도 이벤트가 발생하게 됨)
-                    const diff = eventName === 'MODIFY' ? $U.diff($old, $new) : [];
-                    const prev = $_.reduce(
-                        diff,
-                        (node: any, key: any) => {
-                            node[key] = $old[key];
-                            return node;
-                        },
-                        {},
-                    );
-
-                    //! prepare next-handler's param & body.
-                    const param: DynamoStreamParam = { region, eventId, eventName, tableName };
-                    const body: DynamoStreamBody = { keys: $key, diff, prev, node: $new };
-
-                    //! call all listeners in parrallel.
-                    const res = await Promise.all(this.listeners.map(fn => fn('!', param, body, context)));
-                    _log(NS, `>> result[${i}] =`, $U.json(res));
-                } catch (e) {
-                    _log(NS, `>> error[${i}] =`, e);
-                    //! report error.
-                    if (LambdaDynamoStreamHandler.REPORT_ERROR) {
-                        return doReportError(e, context, event).then(() => {});
-                    }
-                    throw e;
-                }
-            },
+            (record, i) => onStreamRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
             1,
         );
     };
@@ -151,44 +154,43 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             keys && _log(NS, `> keys =`, $U.json(keys));
             diff && _log(NS, `> diff =`, $U.json(diff));
             prev && _log(NS, `> prev =`, $U.json(prev));
-            node && _log(NS, `> node =`, $U.json(node));
+            // node && _log(NS, `> node =`, $U.json(node));
 
             //! find id.
-            const _id = node[idName] || keys[idName];
-            if (_id === undefined) {
-                _log(NS, `WARN! id[${idName}] is undefined`);
+            const _id = (node && node[idName]) || keys[idName];
+            if (!_id) {
+                node && _log(NS, `> node =`, $U.json(node));
+                _log(NS, `WARN! node[${_id}] is missing! keys =`, $U.json(keys));
                 return;
             }
 
             //! origin object, and apply filter.
-            const item: T = node;
+            const item: T = 0 ? node : $U.cleanup(node || {}); //! remove internals like '_' '$'.
             const passed: boolean = !filter ? true : filter(_id, item, diff, prev);
             if (passed !== true && passed !== undefined) {
-                _log(NS, `WARN! id[${idName}] is by-passed`);
+                _log(NS, `WARN! node[${_id}] is by-passed`);
                 return;
             }
 
             //! update or save.
-            if (eventName == 'REMOVE') {
+            if (false) {
+            } else if (eventName == 'REMOVE') {
                 //! clear data.
-                const res = await service.deleteItem(_id).catch(() => {}); // ignore error.
+                const res = await service.deleteItem(_id); // ignore error.
                 _log(NS, `> deleted[${_id}] =`, $U.json(res));
-            } else if (diff !== undefined) {
+            } else if (diff && diff.length) {
                 //! try to update in advance, then save.
                 const $upt = $_.reduce(
                     diff,
                     (M: any, key: string) => {
-                        M[key] = node[key];
+                        M[key] = item[key];
                         return M;
                     },
                     {},
                 );
                 _log(NS, `> updates[${_id}] =`, $U.json($upt));
                 const res = await service.updateItem(_id, $upt).catch((e: Error) => {
-                    // _log(NS, `>> err[${_id}] =`, e);
-                    if (`${e.message}`.startsWith('404 NOT FOUND')) {
-                        return service.saveItem(_id, item);
-                    }
+                    if (`${e.message}`.startsWith('404 NOT FOUND')) return service.saveItem(_id, item);
                     throw e;
                 });
                 _log(NS, `> updated[${_id}] =`, $U.json(res));
