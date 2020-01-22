@@ -120,6 +120,10 @@ export class APIService implements APIServiceClient {
      * const api = new API('web', 'http://localhost:8081', {});
      * api.doGet('');
      *
+     * // via python
+     * const api = new API('residents', 'http://localhost:8113', {});
+     * api.doGet('123');    // http GET :8113/residents/123
+     *
      * // proxy server
      * const api = new API('web', 'http://localhost:8081', {}, null, proxy);
      * api.doGet('');
