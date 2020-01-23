@@ -174,16 +174,16 @@ describe('StorageService', () => {
         /* eslint-disable prettier/prettier */
         expect2(() => $http.hello()).toEqual(`http-storage-service:${endpoint}/id`);
 
-        await $http.delete('A00000');
-        await $http.delete('B00001');
+        await $http.delete('A00000').catch(GETERR);
+        await $http.delete('B00001').catch(GETERR);
 
         expect(await $http.save('A00000', { type:'account' })).toEqual({ id:'A00000', type:'account' });
         expect(await $http.save('A00000', { type:'account', name:'ho' })).toEqual({ id:'A00000', type:'account', name:'ho' }); //! it will have ONLY update-set.
         expect2(await $http.update('A00000', { stereo:'lemon' })).toEqual({ id: 'A00000', stereo:'lemon' });
         expect2(await $http.increment('A00000', { slot:1 })).toEqual({ id: 'A00000', slot:1 });
         expect2(await $http.increment('A00000', { slot:-2 })).toEqual({ id: 'A00000', slot:-1 });
-        // expect2(await $http.increment('A00000', { slot:null }).catch(GETERR)).toEqual('.slot (null) should be number!');
-        // expect2(await $account.increment('A00000', { stereo:null }).catch(GETERR)).toEqual({ id: 'A00000', stereo: null});
+        expect2(await $http.increment('A00000', { slot:null }).catch(GETERR)).toEqual('.slot (null) should be number!');
+        expect2(await $http.increment('A00000', { stereo:null }).catch(GETERR)).toEqual({ id: 'A00000', stereo: null});
         expect2((await $http.delete('A00000'))).toEqual('A00000');
 
         expect2(await $http.update('A00000', { type:'test', balance:1 })).toEqual({ id:'A00000', type:'test', balance:1 });  // it should make new entry.
@@ -203,6 +203,8 @@ describe('StorageService', () => {
         expect2(await $http.read('A00000'),'id,type,slot,balance').toEqual({ id:'A00000', type:'test', slot:1, balance:1100 });
         expect2(await $http.update('A00000', { slot:2 }, { balance: -500 })).toEqual({ id:'A00000', slot:2, balance:600 });
         expect2(await $http.read('A00000'),'id,type,slot,balance').toEqual({ id:'A00000', type:'test', slot:2, balance:600 });
+        expect2(await $http.update('A00000', { balance:800 }, { balance: -500 })).toEqual({ id:'A00000', balance:100 }); //! priority inc
+        expect2(await $http.read('A00000'),'id,type,slot,balance').toEqual({ id:'A00000', type:'test', slot:2, balance:100 });
 
         //! check delete()
         expect2(await $http.delete('A00000')).toEqual('A00000');

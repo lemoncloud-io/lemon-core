@@ -59,7 +59,8 @@ export class HttpStorageService<T extends StorageModel> implements StorageServic
     }
 
     public async update(id: string, item: T, $inc?: T): Promise<T> {
-        const node = { ...item, $inc };
+        const $I = await this.validateIncrement(id, $inc);
+        const node = { ...item, ...$I };
         return this.service.doPut(id, undefined, null, node);
     }
 
@@ -67,11 +68,42 @@ export class HttpStorageService<T extends StorageModel> implements StorageServic
         if (!id) throw new Error('@id is required!');
         if (!id.trim()) throw new Error('@id (string) is required!');
         if (!$inc && !$upt) throw new Error('@item is required!');
-        const node = { ...$upt, $inc };
+
+        const $I = await this.validateIncrement(id, $inc);
+
+        const node = { ...$upt, ...$I };
         return this.service.doPut(id, undefined, null, node);
     }
 
     public async delete(id: string): Promise<T> {
         return this.service.doDelete(id);
+    }
+
+    public async validateIncrement(id: string, $inc: T): Promise<T> {
+        const $org: any = await this.read(id).catch(e => {
+            if (`${e.message || e}`.startsWith('404 NOT FOUND')) return { id };
+            throw e;
+        });
+        if (!$inc) return null;
+        const $I = Object.entries($inc).reduce((N: any, cur) => {
+            const key = cur[0];
+            const val = cur[1];
+            if (val !== undefined) {
+                const org = ($org as any)[key];
+                //! check type matched!
+                if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
+                    throw new Error(`.${key} (${val}) should be number!`);
+                //! if not exists, update it.
+                if (org === undefined) {
+                    N[key] = val;
+                } else if (typeof val !== 'number') {
+                    N[key] = val;
+                } else {
+                    N[key] = org + val;
+                }
+            }
+            return N;
+        }, {});
+        return $I;
     }
 }
