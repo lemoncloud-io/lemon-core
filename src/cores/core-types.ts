@@ -152,6 +152,10 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
      */
     clientIp?: string;
     /**
+     * user-agent of source client.
+     */
+    userAgent?: string;
+    /**
      * id of request to keep track of timing infor w/ `metrics`
      */
     requestId?: string;

@@ -340,20 +340,20 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             identity.identityProvider = $id.cognitoAuthenticationProvider;
             identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
             identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
-            identity.accountId = $id.accountId; // acount-id should be same as context.accountId
+            identity.accountId = $id.accountId; // account-id should be same as context.accountId
             identity.userAgent = $id.userAgent; // user-agent string.
-
             //TODO - transform to access identity via `lemon-accounts-api` service @200106
         }
 
         //! - extract original request infor.
         const clientIp = `${(reqContext.identity && reqContext.identity.sourceIp) || ''}`;
+        const userAgent = `${(reqContext.identity && reqContext.identity.userAgent) || ''}`;
         const requestId = `${reqContext.requestId || ''}`;
         const accountId = `${reqContext.accountId || ''}`;
         const domain = `${reqContext.domainName || event.headers['Host'] || event.headers['host'] || ''}`;
 
         //! save into headers and returns.
-        const context: NextContext = { ...res, identity, clientIp, requestId, accountId, domain };
+        const context: NextContext = { ...res, identity, userAgent, clientIp, requestId, accountId, domain };
         context.source = $protocol.service.myProtocolURI(context); // self service-uri as source
         return context;
     }
