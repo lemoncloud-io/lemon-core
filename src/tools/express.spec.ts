@@ -93,6 +93,7 @@ describe('express', () => {
         expect2(await request(app).post('/test/a/500'), 'status,body').toEqual({ status:500, body:{} });
         expect2(await request(app).delete('/test/a'), 'status,body,text').toEqual({ status:404, body:{}, text:'404 NOT FOUND - DELETE /test/a' });
         /* eslint-enable prettier/prettier */
+        const ACCOUNT_ID = $U.env('USER', 'travis'); // it must be 'travis' in `travis-ci.org`
         //! echo request context.....
         expect2(
             await request(app)
@@ -106,13 +107,13 @@ describe('express', () => {
                 param: {},
                 body: { b: 2 },
                 context: {
-                    accountId: $U.env('USER'),
+                    accountId: ACCOUNT_ID,
                     clientIp: '::ffff:127.0.0.1',
-                    domain: '127.0.0.1',
+                    domain: ACCOUNT_ID == 'travis' ? '127.0.0.1:33471' : '127.0.0.1',
                     identity: {},
                     requestId: 'express-test-request-id',
-                    source: `api://${$U.env('USER')}@lemon-core-dev#${$pack.version}`,
-                    userAgent: `node-superagent/3.8.3`,
+                    source: `api://${ACCOUNT_ID}@lemon-core-dev#${$pack.version}`,
+                    userAgent: ACCOUNT_ID == 'travis' ? '' : `node-superagent/3.8.3`,
                 },
             },
         });
