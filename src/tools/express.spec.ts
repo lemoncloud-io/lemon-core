@@ -82,6 +82,7 @@ describe('express', () => {
     //! check mode
     it('should pass express routes', async done => {
         const { $express, $engine, $web, $pack } = await instance();
+        const ACCOUNT_ID = $U.env('USER', 'travis'); // it must be 'travis' in `travis-ci.org`
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         expect2(await request(app).get('/test/abc'), 'status').toEqual({ status: 200 });
@@ -93,7 +94,6 @@ describe('express', () => {
         expect2(await request(app).post('/test/a/500'), 'status,body').toEqual({ status:500, body:{} });
         expect2(await request(app).delete('/test/a'), 'status,body,text').toEqual({ status:404, body:{}, text:'404 NOT FOUND - DELETE /test/a' });
         /* eslint-enable prettier/prettier */
-        const ACCOUNT_ID = $U.env('USER', 'travis'); // it must be 'travis' in `travis-ci.org`
         //! echo request context.....
         expect2(
             await request(app)
@@ -109,7 +109,7 @@ describe('express', () => {
                 context: {
                     accountId: ACCOUNT_ID,
                     clientIp: '::ffff:127.0.0.1',
-                    domain: ACCOUNT_ID == 'travis' ? '127.0.0.1:33471' : '127.0.0.1',
+                    domain: ACCOUNT_ID == 'travis' ? '127.0.0.1' : '127.0.0.1',
                     identity: {},
                     requestId: 'express-test-request-id',
                     source: `api://${ACCOUNT_ID}@lemon-core-dev#${$pack.version}`,

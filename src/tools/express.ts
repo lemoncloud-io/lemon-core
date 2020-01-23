@@ -116,7 +116,7 @@ export const buildExpress = (
     const middle: RequestHandler = (req: any, res: any, next: any) => {
         // _log(NS, `! req =`, req);
         // _log(NS, `! header =`, req.headers);
-        const getHeader = buildHeaderGetter(req.header || {});
+        const getHeader = buildHeaderGetter(req.headers || {});
         const host = getHeader('host').split(':')[0];
         const accountId = $engine.environ('USER', $engine.environ('LOGNAME', ''));
         const requestId = genRequestId();
