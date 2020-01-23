@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.12    | support `userAgent` in NextContext.
 | 2.1.11    | improve `syncToElastic6`, and `DynamoScanService`.
 | 2.1.10    | support `loadProfile()`, and lookup-id style.
 | 2.1.9     | improve `lock()` and `search()`.
