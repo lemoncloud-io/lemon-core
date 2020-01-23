@@ -113,7 +113,7 @@ describe('express', () => {
                     identity: {},
                     requestId: 'express-test-request-id',
                     source: `api://${ACCOUNT_ID}@lemon-core-dev#${$pack.version}`,
-                    userAgent: ACCOUNT_ID == 'travis' ? '' : `node-superagent/3.8.3`,
+                    userAgent: 'node-superagent/3.8.3',
                 },
             },
         });
