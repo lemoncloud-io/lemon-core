@@ -19,6 +19,7 @@
  * @date        2019-08-01a auto register api with pattern. `/^[a-z][a-z0-9\-_]+$/`
  * @date        2019-08-07 ignore `engine.dt` function.
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2020-01-23 improve context information via headers.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -35,12 +36,24 @@ import multer from 'multer';
 import http from 'http';
 import * as requestIp from 'request-ip';
 
+//! helper to catch header value w/o case-sensitive
+export const buildHeaderGetter = (headers: any) => (name: string): string => {
+    name = `${name || ''}`.toLowerCase();
+    headers = headers || {};
+    return Object.keys(headers).reduce((found: string, key: string) => {
+        const val = headers[key];
+        key = `${key || ''}`.toLowerCase();
+        if (key == name) return val;
+        return found;
+    }, '');
+};
+
 //! create Server Instance.
 //NOTE - avoid external reference of type.
 export const buildExpress = (
     $engine: LemonEngine,
     $web: LambdaWEBHandler,
-    options?: { argv?: string[]; prefix?: string },
+    options?: { argv?: string[]; prefix?: string; genRequestId?: () => string },
 ): { express: () => any; app: any; createServer: () => any } => {
     if (!$engine) throw new Error('$engine is required!');
     options = options || {};
@@ -88,38 +101,30 @@ export const buildExpress = (
     //! create express app.
     const app: any = express();
     const uploader = multer({ dest: '../tmp/' });
+    const genRequestId =
+        options.genRequestId ||
+        ((): string => {
+            const msec = new Date().getMilliseconds() % 1000;
+            return `${$U.ts()}.${msec < 10 ? '00' : msec < 100 ? '0' : ''}${msec}`;
+        });
 
     app.use(cors());
     app.use(bodyParser.json({ limit: '10mb' })); // default limit 10mb
     app.use(bodyParser.urlencoded({ extended: true }));
-    // app.use(requestIp.mw());
-    // app.use(requestIp.mw());
-
-    //! helper to catch header value w/o case-sensitive
-    const viaHeader = (name: string, headers: any) => {
-        name = `${name || ''}`.toLowerCase();
-        headers = headers || {};
-        return Object.keys(headers).reduce((found: string, key: string) => {
-            const val = headers[key];
-            key = `${key || ''}`.toLowerCase();
-            if (key == name) return val;
-            return found;
-        }, '');
-    };
 
     //! middle ware
     const middle: RequestHandler = (req: any, res: any, next: any) => {
         // _log(NS, `! req =`, req);
-        // const _err = console.error;
-        //! prepare event compartible with API-Gateway Event.
-        _log(NS, `! header =`, req.headers);
-        const host = viaHeader('host', req.headers()).split(':')[0];
+        // _log(NS, `! header =`, req.headers);
+        const getHeader = buildHeaderGetter(req.header || {});
+        const host = getHeader('host').split(':')[0];
         const accountId = $engine.environ('USER', $engine.environ('LOGNAME', ''));
-        const msec = new Date().getMilliseconds() % 1000;
-        const requestId = `${$U.ts()}.${msec < 10 ? '00' : msec < 100 ? '0' : ''}${msec}`;
+        const requestId = genRequestId();
         const clientIp = typeof req.clientIp == 'string' ? req.clientIp : ''; //NOTE! - use `request-ip`
         const sourceIp = clientIp || `${requestIp.getClientIp(req as any) || ''}`;
-        const userAgent = viaHeader('user-agent', req.headers());
+        const userAgent = getHeader('user-agent');
+
+        //! prepare event compartible with API-Gateway Event.
         const event = {
             path: req.path,
             queryStringParameters: req.query || {},
@@ -168,7 +173,7 @@ export const buildExpress = (
 
         //! use json parser or multer.
         const method = req.method || '';
-        const ctype = (req.headers && req.headers['content-type']) || '';
+        const ctype = getHeader('content-type');
         _log(NS, `! ${method} ${req.url} =`, ctype);
 
         if (ctype.indexOf('multipart/') >= 0) {
