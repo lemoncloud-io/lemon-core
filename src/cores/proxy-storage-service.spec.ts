@@ -60,7 +60,6 @@ class MyModelFilter extends GeneralModelFilter<MyModel, MyType> {
 }
 //! override of ProxyStorageService to have constant asTime()
 class MyStorage extends ProxyStorageService<MyModel, MyType> {
-    public readonly NOW: number;
     public constructor(
         service: CoreKeyMakeable<MyType>,
         storage: StorageService<MyModel>,
@@ -68,13 +67,13 @@ class MyStorage extends ProxyStorageService<MyModel, MyType> {
         current: number,
     ) {
         super(service, storage, FIELDS, filters);
-        this.NOW = current;
+        this.setTimer(() => current);
     }
     public asTime(ts?: number) {
-        if (ts !== undefined) return super.asTime(ts);
-        const createdAt = this.NOW + 10;
-        const updatedAt = this.NOW + 100;
-        const deletedAt = this.NOW + 1000;
+        const { createdAt: now } = super.asTime(ts);
+        const createdAt = now + 10;
+        const updatedAt = now + 100;
+        const deletedAt = now + 1000;
         return { createdAt, updatedAt, deletedAt };
     }
 }
@@ -116,7 +115,7 @@ describe('ProxyStorageService', () => {
         expect2(service.asKey$('test','1:23:45')).toEqual({ ns:'TT', type:'test', id:'1:23:45', _id:'TT:test:1-23-45' });
 
         expect2(storage.asTime()).toEqual({ createdAt: current + 10, updatedAt: current + 100, deletedAt: current + 1000 });
-        expect2(storage.asTime(current)).toEqual({ createdAt: current, updatedAt: current, deletedAt: current });
+        expect2(storage.asTime(current)).toEqual({ createdAt: current + 10, updatedAt: current + 100, deletedAt: current + 1000 });
 
         //! check fields count.
         expect2(CORE_FIELDS.length).toEqual(11);
@@ -154,6 +153,17 @@ describe('ProxyStorageService', () => {
         const updatedAt = current + 100;
         const deletedAt = current + 1000;
         expect2(storage.asTime()).toEqual({ createdAt, updatedAt, deletedAt });
+
+        if (1) {
+            //! override timer.
+            expect2(storage.setTimer(() => 11223344)).toEqual(current);
+            expect2(storage.getTime()).toEqual(11223344);
+            expect2(storage.asTime()).toEqual({ createdAt:11223344 + 10, updatedAt:11223344 + 100, deletedAt:11223344 + 1000 });
+            //! restore origin.
+            expect2(storage.setTimer(null)).toEqual(11223344);      // should returns previous
+            expect2(storage.setTimer(null)).toEqual(null);          // should returns previous
+            expect2(storage.setTimer(() => current)).toEqual(null); // should returns previous
+        }
 
         //! delete old, and check next-seq
         await storage.clearSeq('test').catch(GETERR);

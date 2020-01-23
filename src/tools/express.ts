@@ -95,17 +95,31 @@ export const buildExpress = (
     // app.use(requestIp.mw());
     // app.use(requestIp.mw());
 
+    //! helper to catch header value w/o case-sensitive
+    const viaHeader = (name: string, headers: any) => {
+        name = `${name || ''}`.toLowerCase();
+        headers = headers || {};
+        return Object.keys(headers).reduce((found: string, key: string) => {
+            const val = headers[key];
+            key = `${key || ''}`.toLowerCase();
+            if (key == name) return val;
+            return found;
+        }, '');
+    };
+
     //! middle ware
     const middle: RequestHandler = (req: any, res: any, next: any) => {
         // _log(NS, `! req =`, req);
         // const _err = console.error;
         //! prepare event compartible with API-Gateway Event.
-        const host = `${req.headers['host'] || ''}`.split(':')[0];
+        _log(NS, `! header =`, req.headers);
+        const host = viaHeader('host', req.headers()).split(':')[0];
         const accountId = $engine.environ('USER', $engine.environ('LOGNAME', ''));
         const msec = new Date().getMilliseconds() % 1000;
         const requestId = `${$U.ts()}.${msec < 10 ? '00' : msec < 100 ? '0' : ''}${msec}`;
         const clientIp = typeof req.clientIp == 'string' ? req.clientIp : ''; //NOTE! - use `request-ip`
         const sourceIp = clientIp || `${requestIp.getClientIp(req as any) || ''}`;
+        const userAgent = viaHeader('user-agent', req.headers());
         const event = {
             path: req.path,
             queryStringParameters: req.query || {},
@@ -123,6 +137,7 @@ export const buildExpress = (
                 stage: $engine.environ('STAGE', ''),
                 identity: {
                     sourceIp,
+                    userAgent,
                 },
             },
         };
