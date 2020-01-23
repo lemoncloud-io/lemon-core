@@ -502,10 +502,24 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     }
 
     /**
+     * timer to generate the current-time (msec)
+     */
+    private $timer: () => number = null;
+    public setTimer = (timer: () => number) => {
+        const previous = this.$timer;
+        this.$timer = timer;
+        return previous;
+    };
+    public getTime = (): number => {
+        if (this.$timer) return this.$timer();
+        return new Date().getTime();
+    };
+
+    /**
      * get time-stamp as now.
      */
     public asTime(currentTime?: number) {
-        currentTime = currentTime || new Date().getTime();
+        currentTime = currentTime || this.getTime();
         const createdAt = currentTime;
         const updatedAt = currentTime;
         const deletedAt = currentTime;
