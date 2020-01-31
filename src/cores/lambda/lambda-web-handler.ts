@@ -48,26 +48,30 @@ export interface CoreWEBController {
 /** ********************************************************************************************************************
  *  COMMON Functions.
  ** ********************************************************************************************************************/
-export const buildResponse = (statusCode: number, body: any): APIGatewayProxyResult => {
+export const buildResponse = (statusCode: number, body: any, contentType?: string): APIGatewayProxyResult => {
+    const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
+    contentType =
+        contentType ||
+        (typeof body === 'string'
+            ? body.startsWith('<') && body.endsWith('>')
+                ? 'text/html; charset=utf-8'
+                : 'text/plain; charset=utf-8'
+            : 'application/json; charset=utf-8');
     // @0612 - body 가 string일 경우, 응답형식을 텍스트로 바꿔서 출력한다.
     return {
         statusCode,
         headers: {
-            'Content-Type':
-                typeof body === 'string'
-                    ? body.startsWith('<') && body.endsWith('>')
-                        ? 'text/html; charset=utf-8'
-                        : 'text/plain; charset=utf-8'
-                    : 'application/json; charset=utf-8',
+            'Content-Type': contentType,
             'Access-Control-Allow-Origin': '*', // Required for CORS support to work
             'Access-Control-Allow-Credentials': true, // Required for cookies, authorization headers with HTTPS
         },
         body: typeof body === 'string' ? body : JSON.stringify(body),
+        isBase64Encoded,
     };
 };
 
-export const success = (body: any) => {
-    return buildResponse(200, body);
+export const success = (body: any, contentType?: string) => {
+    return buildResponse(200, body, contentType);
 };
 
 export const notfound = (body: any) => {
@@ -177,6 +181,15 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         _log(NS, '! $path =', $U.json($path));
         _log(NS, '! $param =', $U.json($param));
 
+        //! serve `favicon.ico` as default.
+        if (event.httpMethod == 'GET' && event.path == '/favicon.ico') {
+            // TO SERVE BINARY. `$ npm i -S serverless-apigw-binary serverless-apigwy-binary`. refer 'https://read.acloud.guru/serverless-image-optimization-and-delivery-510b6c311fe5'
+            const ico =
+                'AAABAAEAEBAAAAAAAABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8AJCQk/yQkJP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/0ZGRv8XFxf/////AP///wD///8A////AP///////////////+7u7v9OTk7/sbGx/11dXf9KSkr///////////+lpaX/4eHh/////wD///8A////AAAAAP8AAAD///////////+8vLz///////X19f/t7e3/gICA/5eXl////////////wAAAP8AAAD/////AKysrP8AAAD/AAAA/wAAAP+enp7/////////////////////////////////5OTk/wAAAP8AAAD/AAAA/6ysrP////8A////AP///wCurq6PlJSUzP///wD///8A////AP///wD///8A////AJSUlMyQkJDY////AP///wD///8A////AP///wD///8AAAAA/wAAAP////8A////AP///wD///8A////AP///wAAAAD/AAAA/////wD///8A////AP///wD///8AAAAA/wAAAP8AAAD/////AP///wD///8A////AP///wD///8AAAAA/wAAAP8AAAD/////AP///wD///8ACwsL/wAAAP8AAAD/lJSU2AAAAP8AAAD/cnJy/1hYWP8AAAD/AAAA/2FhYdgHBwf/AAAA/wAAAP////8A////AP///wD///8A////AP///wAAAAD/s7Oz/wAAAP8AAAD/x8fH/wAAAP////8A////AP///wD///8A////AP///wD///8A////AP///wAAAAD/AAAA/////wAAAAD/AAAA/////wAAAAD/AAAA/////wD///8A////AP///wD///8A////AP///wD///8AAAAA/wAAAP+qqqqlAAAA/wAAAP9lZWXjAAAA/wAAAP////8A////AP///wD///8A////AP///wD///8A////ALa2tv////8A9vb2UQAAAP8AAAD/////Uf///wDAwMD/////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wBcXFz/AAAA/////wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A////AP///wD///8A//8AAP//AADAAwAAwAMAAIABAAAAAAAA5+cAAOfnAADH4wAAgAEAAPgfAADyTwAA8A8AAPZvAAD+fwAA//8AAA==';
+            // return success(ico, 'image/x-icon;base64');
+            return success(ico, 'image/x-icon');
+        }
+
         //! prevent error via transform.
         const promised = async (event: WEBEvent) => {
             //! transform to protocol-context.
@@ -186,6 +199,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             _log(NS, '! protocol-param =', $U.json(param));
             return { event, param };
         };
+
         //! start promised..
         return promised(event)
             .then(({ param, event }) => this.handleProtocol(param, event))
