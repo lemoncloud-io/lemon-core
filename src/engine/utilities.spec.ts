@@ -91,12 +91,33 @@ describe(`core/utilities.ts`, () => {
         const $crypt = $U.crypto(passwd);
         const $crypt2 = $U.crypto('LM~1212@' + 'SES');
 
-        expect2($crypt.encrypt(passwd)).toEqual('mwy4PPoRKDwGLlimYBvm8jbzAT0EMTl0FB7ErItyFEIux4bclkJc');
-        expect2($crypt.decrypt($crypt.encrypt(passwd))).toEqual(passwd);
+        /* eslint-disable prettier/prettier */
+        expect2(() => $crypt.encrypt(passwd)).toEqual('mwy4PPoRKDwGLlimYBvm8jbzAT0EMTl0FB7ErItyFEIux4bclkJc');
+        expect2(() => $crypt.decrypt($crypt.encrypt(passwd))).toEqual(passwd);
         expect2(() => $crypt2.decrypt($crypt.encrypt(passwd))).toEqual('400 INVALID PASSWD - invalid magic string!');
-        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual(
-            'gXdY3v6rQMtSeXwF',
-        );
+        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual('gXdY3v6rQMtSeXwF');
+        /* eslint-enable prettier/prettier */
+
+        done();
+    });
+
+    //! test cryto2()
+    test('check cryto2()', async done => {
+        const { $U } = instance();
+
+        const passwd = 'lemon';
+        const $crypt = $U.crypto2(passwd);
+        const $crypt2 = $U.crypto2('LM~1212@' + 'SES');
+
+        /* eslint-disable prettier/prettier */
+        expect2(() => $crypt.encrypt(passwd)).toEqual('9YhXj09n6JPFSSwN0HaISCIR7UgdhrbgaFOffANb1QQoErpHNwtZ');
+        expect2(() => $crypt.decrypt($crypt.encrypt(passwd))).toEqual(`${passwd}`);
+        expect2(() => $crypt.decrypt('9YhXj09n6JPFSSwN0HaISCIR7UgdhrbgaFOffANb1QQoErpHNwtZ')).toEqual(`${passwd}`);
+        expect2(() => $crypt2.decrypt($crypt.encrypt(passwd))).toEqual('400 INVALID PASSWD - invalid magic string!');
+        expect2(() => $crypt2.decrypt($crypt2.encrypt(passwd))).toEqual(`${passwd}`);
+        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual('400 INVALID PASSWD - invalid magic string!');
+        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqK=')).toEqual('400 INVALID PASSWD - invalid magic string!');
+        /* eslint-enable prettier/prettier */
 
         done();
     });

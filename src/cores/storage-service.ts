@@ -13,6 +13,8 @@
 import { _log, _inf, _err, $U } from '../engine/';
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 
+export * from './http-storage-service';
+
 /**
  * only for type information for internal partition-key.
  */

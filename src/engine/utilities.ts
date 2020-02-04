@@ -601,6 +601,49 @@ export class Utilities {
     };
 
     /**
+     * get crypto2 object (w/ Cipheriv).
+     * - to avoid `(node:66818) Warning: Use Cipheriv for counter mode of aes-256-ctr`
+     *
+     * @param passwd    password to crypt
+     * @param algorithm (default as `aes-256-ctr`)
+     * @param ivNumb    iv number to populate. (default as 0, or -1 use random)
+     * @param magic     magic string to verify (default `LM!#`)
+     */
+    public readonly crypto2 = (passwd: string, algorithm?: string, ivNumb?: number, magic?: string) => {
+        algorithm = algorithm || 'aes-256-ctr';
+        const MAGIC = magic === undefined ? 'LM!#' : `${magic || ''}`;
+        const iv = Buffer.from(
+            Array.prototype.map.call(Buffer.alloc(16), () => {
+                return ivNumb === undefined ? 0 : ivNumb === -1 ? Math.floor(Math.random() * 256) : ivNumb;
+            }),
+        );
+        return new (class {
+            public encrypt = (val: string): string => {
+                val = val === undefined ? null : val;
+                //! use json string to support all data-type
+                const msg = JSON.stringify({ alg: algorithm, val: val });
+                const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
+                const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
+                const cipher = crypto.createCipheriv(algorithm, key, iv);
+                const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
+                return crypted.toString('base64');
+            };
+            public decrypt = (msg: string): string => {
+                const buffer = Buffer.from(`${msg || ''}`, 'base64');
+                var key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
+                const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                const dec = Buffer.concat([decipher.update(buffer), decipher.final()]).toString('utf8');
+                if (!dec.startsWith(MAGIC)) throw new Error(`400 INVALID PASSWD - invalid magic string!`);
+                const data = dec.substr(MAGIC.length);
+                if (data && !data.startsWith('{') && !data.endsWith('}'))
+                    throw new Error('400 INVALID PASSWD - invalid json string!');
+                var $msg = JSON.parse(data) || {};
+                return $msg.val;
+            };
+        })();
+    };
+
+    /**
      * get UUID as `uuid.v4()`
      */
     public uuid() {
