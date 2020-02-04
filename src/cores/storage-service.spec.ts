@@ -9,7 +9,7 @@
  */
 import { loadProfile } from '../environ';
 import { GETERR, expect2 } from '../common/test-helper';
-import { DynamoStorageService, DummyStorageService, StorageModel } from './storage-service';
+import { DynamoStorageService, DummyStorageService, HttpStorageService, StorageModel } from './storage-service';
 
 interface AccountModel extends StorageModel {
     slot?: number;
@@ -159,6 +159,69 @@ describe('StorageService', () => {
         expect2(await $dynamo.delete('A00000'), 'no').toEqual({ no:'A00000' });
         expect2(await $dynamo.read('A00000').catch(GETERR)).toEqual('404 NOT FOUND - no:A00000');
         expect2(await $dynamo.readOrCreate('A00000', { type:'auto', slot:2 })).toEqual({ no:'A00000', type:'auto', slot:2 });        //! it should create with model.
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! http storage service.
+    it('should pass http storage-service w/ _id', async done => {
+        //! load http storage service.
+        const endpoint = 'http://localhost:8113'; // [kwonsun]ssocioliving-admin-web
+        const type = 'accounts';
+        const $storage = new HttpStorageService(endpoint, type);
+        const $http = $storage as HttpStorageService<AccountModel>;
+
+        /* eslint-disable prettier/prettier */
+        expect2(() => $http.hello()).toEqual(`http-storage-service:${endpoint}/id`);
+
+        //! bypass test if ECONNREFUSED
+        // expect2(await $http.read('0').catch(GETERR)).toEqual($U.json({ errno:'ECONNREFUSED', code:'ECONNREFUSED',syscall:'connect',address:'127.0.0.1', port:8113}));
+        const ERRCON = await $http.read('0').catch(GETERR);
+        if (typeof ERRCON == 'string' && ERRCON.indexOf('"ECONNREFUSED"') >= 0) return done();
+
+        //! make sure deleted.
+        await $http.delete('A00000').catch(GETERR);
+        await $http.delete('B00001').catch(GETERR);
+
+        expect2(await $http.save('A00000', { type:'account' })).toEqual({ id:'A00000', type:'account' });
+        expect2(await $http.save('A00000', { type:'account', name:'ho' })).toEqual({ id:'A00000', type:'account', name:'ho' }); //! it will have ONLY update-set.
+        expect2(await $http.update('A00000', { stereo:'lemon' })).toEqual({ id: 'A00000', stereo:'lemon' });
+        expect2(await $http.increment('A00000', { slot:1 })).toEqual({ id: 'A00000', slot:1 });
+        expect2(await $http.increment('A00000', { slot:-2 })).toEqual({ id: 'A00000', slot:-1 });
+        expect2(await $http.increment('A00000', { slot:null }).catch(GETERR)).toEqual('.slot (null) should be number!');
+        expect2(await $http.increment('A00000', { stereo:null }).catch(GETERR)).toEqual({ id: 'A00000', stereo: null});
+        expect2((await $http.delete('A00000'))).toEqual('A00000');
+
+        expect2(await $http.update('A00000', { type:'test', balance:1 })).toEqual({ id:'A00000', type:'test', balance:1 });  // it should make new entry.
+        expect2(await $http.update('A00000', { balance:22 })).toEqual({ id:'A00000', balance:22 });                          //! it should update
+        expect2(await $http.read('A00000'), 'id,type,balance').toEqual({ id:'A00000', type:'test', balance:22 });            //! it should have latest value.
+        expect2(await $http.delete('A00000')).toEqual('A00000');
+        expect2(await $http.increment('A00000', { type:'test', slot:1 })).toEqual({ id:'A00000', type:'test', slot:1 });     //! it should make new entry also.
+        expect2(await $http.increment('A00000', { type:'test', slot:0 })).toEqual({ id:'A00000', type:'test', slot:1 });     //! it should return last slot#
+        expect2(await $http.read('A00000'),'id,type,slot').toEqual({ id:'A00000', type:'test', slot:1 });                                   //! it should return last slot#
+
+        //! increment w/ $update
+        expect2(await $http.increment('A00000', { slot:0 }, { balance:1000 })).toEqual({ id:'A00000', slot:1, balance:1000 });
+        expect2(await $http.read('A00000'),'id,type,slot,balance').toEqual({ id:'A00000', type:'test', slot:1, balance:1000 });
+
+        //! update with increments
+        expect2(await $http.update('A00000', {}, { balance: 100 })).toEqual({ id:'A00000', balance:1100 });
+        expect2(await $http.read('A00000'),'id,type,slot,balance').toEqual({ id:'A00000', type:'test', slot:1, balance:1100 });
+        expect2(await $http.update('A00000', { slot:2 }, { balance: -500 })).toEqual({ id:'A00000', slot:2, balance:600 });
+        expect2(await $http.read('A00000'),'id,type,slot,balance').toEqual({ id:'A00000', type:'test', slot:2, balance:600 });
+        expect2(await $http.update('A00000', { balance:800 }, { balance: -500 })).toEqual({ id:'A00000', balance:100 }); //! priority inc
+        expect2(await $http.read('A00000'),'id,type,slot,balance').toEqual({ id:'A00000', type:'test', slot:2, balance:100 });
+
+        //! check delete()
+        expect2(await $http.delete('A00000')).toEqual('A00000');
+        expect2(await $http.read('A00000').catch(GETERR)).toEqual('404 NOT FOUND - id:A00000');
+        expect2(await $http.readOrCreate('A00000', { type:'auto', slot:2 })).toEqual({ id:'A00000', type:'auto', slot:2 });  //! it should create with model.
+
+        //! error cases.
+        expect2(await $http.increment('', { type:'test', slot:1 }).catch(GETERR)).toEqual('@id is required!');
+        expect2(await $http.increment(' ', { type:'test', slot:1 }).catch(GETERR)).toEqual('@id (string) is required!');
+        expect2(await $http.increment('B00001', null).catch(GETERR)).toEqual('@item is required!');
+        expect2(await $http.increment('B00001', { type:'test', slot:1 }).catch(GETERR)).toEqual({ id:'B00001', type:'test', slot:1 });
         /* eslint-enable prettier/prettier */
         done();
     });
