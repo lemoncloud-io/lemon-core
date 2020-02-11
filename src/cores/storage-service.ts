@@ -224,6 +224,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * @param $update   (optional) update-set.
      */
     public async increment(id: string, model: T, $update?: T): Promise<T> {
+        if (!model && !$update) throw new Error('@item is required!');
         const $org: any = await this.read(id).catch(e => {
             if (`${e.message || e}`.startsWith('404 NOT FOUND')) return { id };
             throw e;
