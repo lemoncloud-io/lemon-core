@@ -13,7 +13,7 @@
             }
         ],
         "name": "lemon",
-        "path": "GET /hello/world"
+        "path": "GET /hello/world#a"
     },
     "error": ""
 }

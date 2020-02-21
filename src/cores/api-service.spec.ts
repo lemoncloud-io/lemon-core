@@ -207,7 +207,7 @@ describe('APIService', () => {
         expect2(await proxy.doProxy('GET', undefined).catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello');
         expect2(await proxy.doProxy('GET', 'hello', '1')).toEqual({ name: 'cloud' });
         expect2(await proxy.doProxy('GET', 'lemon', '1').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/lemon/1');
-        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR)).toEqual({ name: 'world' });
+        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR), '!path').toEqual({ name: 'world' });
 
         expect2(await service.doGet(undefined)).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
         expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
@@ -233,13 +233,13 @@ describe('APIService', () => {
         expect2(proxy.hello()).toEqual(`mocks-api-service:https://api.lemoncloud.io/hello/world`);
         expect2(service.hello()).toEqual(`api-service:api-client:mocks-api-service:https://api.lemoncloud.io/hello/world`);
 
-        expect2(await client.doGet(undefined).catch(GETERR)).toEqual({ list: [{ name: 'lemon' }, { name: 'world' }], name: 'lemon' });
-        expect2(await client.doGet('1').catch(GETERR)).toEqual({ name: 'world' });
+        expect2(await client.doGet(undefined).catch(GETERR), '!path').toEqual({ list: [{ name: 'lemon' }, { name: 'world' }], name: 'lemon' });
+        expect2(await client.doGet('1').catch(GETERR), '!path').toEqual({ name: 'world' });
 
         expect2(await proxy.doProxy('GET', undefined).catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello');
-        expect2(await proxy.doProxy('GET', 'hello', '1')).toEqual({ name: 'cloud' });
+        expect2(await proxy.doProxy('GET', 'hello', '1'), '!path').toEqual({ name: 'cloud' });
         expect2(await proxy.doProxy('GET', 'lemon', '1').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/lemon/1');
-        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR)).toEqual({ name: 'world' });
+        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR), '!path').toEqual({ name: 'world' });
 
         expect2(await service.doGet(undefined)).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
         expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
