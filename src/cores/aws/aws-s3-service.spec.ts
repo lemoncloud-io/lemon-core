@@ -7,84 +7,42 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+// require('source-map-support').install();
+const ENV_NAME = 'MY_S3_BUCKET';
+const DEF_BUCKET = 'lemon-hello-www';
+
+//! override environ.
+process.env = Object.assign(process.env, {
+    [ENV_NAME]: 'hello-bucket',
+});
 
 //! load $engine, and prepare dummy handler
-import { AWSS3Service, AWSS3DummyService } from './aws-s3-service';
-import { loadJsonSync, credentials } from '../../tools/shared';
-import { loadProfile } from '../../environ';
-import { expect2, _it, GETERR, environ } from '../../common/test-helper';
+import { AWSS3Service } from './aws-s3-service';
+import { credentials } from '../../tools/shared';
+import { environ } from '../../common/test-helper';
 
-//! create service instance.
-export const instance = () => {
-    const service = new AWSS3Service();
-    const dummy = new AWSS3DummyService('dummy-dynamo-data.yml');
-    return { service, dummy };
-};
+const S3 = new AWSS3Service();
 
-describe('aws-s3-service', () => {
-    /* eslint-disable prettier/prettier */
+describe(`test service/s3-service.js`, () => {
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('PROFILE'));
 
-    // load on aws config to memory
-    const PROFILE = loadProfile({ env: { ENV: process.env['ENV'] } });
-
-    const { service, dummy } = instance();
-    beforeAll( async (done) => {
-        if(!PROFILE) return done();
-        expect2( await dummy.read('999999').catch(GETERR) ).toEqual("404 NOT FOUND - _id:dummy/999999.json");
-        expect2( await service.read('999999').catch(GETERR) ).toEqual("404 NOT FOUND - _id:test/999999.json");
-        done();
-    })
-    
-    it('should be same aws-s3-service with dummy-s3-service', async done => {
-        if(!PROFILE) return done();
-        
-        // compare introduce
-        expect2( dummy.hello() ).toEqual("dummy-storage-service:memory/_id");
-        expect2( service.hello() ).toEqual("aws-s3-service:lemon-hello-www:test");
-
-        // load data
-        const mock = loadJsonSync('./data/mocks/carrot.inbreed_table_033566.json');
-        const mock2 = loadJsonSync('./data/mocks/carrot.herit_table.json');
-
-        // save & read object
-        expect2( await dummy.save('033566', mock.node) , '_id' ).toEqual({"_id": "dummy/033566.json"});
-        expect2( await dummy.save('043319', mock2.node) , '_id' ).toEqual({"_id": "dummy/043319.json"});
-        const fetchDummy = await dummy.read('033566');
-        const fetchDummy2 = await dummy.read('043319');
-
-        expect2( await service.save('033566', mock.node) , 'mabun').toEqual({"mabun": "033566"});
-        expect2( await service.save('043319', mock2.node) , 'mabun').toEqual({"mabun": "043319"});
-        const fetchAws = await service.read('033566');
-        const fetchAws2 = await service.read('043319');
-
-        // exactly same read object.
-        expect2( fetchDummy, '!_id' ).toEqual(fetchAws);
-        expect2( fetchDummy2, '!_id' ).toEqual(fetchAws2);
-
-        // update object
-        const updateDummy = await dummy.update('033566', mock2.node, {user:'carrot'});
-        const updateAWS = await service.update('033566', mock2.node, {user:'carrot'});
-        expect2(updateDummy, '!_id').toEqual(updateAWS);
-
-        const updatedDummy = await dummy.read('033566');
-        const updatedAWS = await service.read('033566');
-        expect2(updatedDummy, '!_id').toEqual(updatedAWS);
-
-        // delete data
-        const removeDummy = await dummy.delete('033566');
-        const removeDummy2 = await dummy.delete('043319');
-        expect2( await dummy.read('033566').catch(GETERR) ).toEqual("404 NOT FOUND - _id:dummy/033566.json");
-        expect2( await dummy.read('043319').catch(GETERR) ).toEqual("404 NOT FOUND - _id:dummy/043319.json");
-        const removeAWS = await service.delete('033566');
-        const removeAWS2 = await service.delete('043319');
-        expect2( await service.read('033566').catch(GETERR) ).toEqual("404 NOT FOUND - _id:test/033566.json");
-        expect2( await service.read('043319').catch(GETERR) ).toEqual("404 NOT FOUND - _id:test/043319.json");
-
-        // exactly same delete object.
-        expect2( removeDummy , '!_id').toEqual(removeAWS);
-        expect2( removeDummy2 , '!_id').toEqual(removeAWS2);
-
-        done();
+    test('check name() function', async () => {
+        expect(S3.name()).toEqual('S3');
     });
-    /* eslint-enable prettier/prettier */
+
+    test('check hello() function', async () => {
+        expect(S3.hello()).toEqual('aws-s3-service:');
+    });
+
+    test('check bucket() function', async () => {
+        expect(AWSS3Service.ENV_S3_NAME).toEqual(ENV_NAME);
+        expect(AWSS3Service.DEF_S3_BUCKET).toEqual(DEF_BUCKET);
+        const a0 = await S3.bucket(ENV_NAME);
+        expect(a0).toEqual('hello-bucket');
+        const a1 = await S3.bucket('MY_BUCKET');
+        expect(a1).toEqual(DEF_BUCKET);
+        const a2 = await S3.bucket('my-bucket');
+        expect(a2).toEqual('my-bucket');
+    });
 });
