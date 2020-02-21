@@ -1,0 +1,267 @@
+{
+	"!":"POST http://studbook.kra.co.kr/html/info/ind/s_blood_simul2.jsp",
+	"!body":"{'mabun':'027600'}",
+	"time": "2019-12-27 14:53:53",
+	"node": {
+		"mabun": "033566",
+		"f": {
+			"name": "메니피",
+			"mabun": "020256"
+		},
+		"ff": {
+			"name": "HARLAN",
+			"mabun": "250765"
+		},
+		"fff": {
+			"aptitude": "Q",
+			"name": "STORM CAT",
+			"mabun": "241691"
+		},
+		"ffff": {
+			"aptitude": "Q",
+			"name": "STORM BIRD",
+			"mabun": "219946"
+		},
+		"fffff": {
+			"name": "NORTHERN DANCER",
+			"mabun": "214549"
+		},
+		"ffffm": {
+			"name": "SOUTH OCEAN",
+			"mabun": "219430"
+		},
+		"fffm": {
+			"aptitude": "R",
+			"name": "TERLINGUA",
+			"mabun": "241701"
+		},
+		"fffmf": {
+			"name": "SECRETARIAT",
+			"mabun": "218422"
+		},
+		"fffmm": {
+			"name": "CRIMSON SAINT",
+			"mabun": "241647"
+		},
+		"ffm": {
+			"name": "COUNTRY ROMANCE",
+			"mabun": "250766"
+		},
+		"ffmf": {
+			"aptitude": "BC",
+			"name": "HALO",
+			"mabun": "208624"
+		},
+		"ffmff": {
+			"name": "HAIL TO REASON",
+			"mabun": "208597"
+		},
+		"ffmfm": {
+			"name": "COSMAH",
+			"mabun": "204368"
+		},
+		"ffmm": {
+			"name": "SWEET ROMANCE",
+			"mabun": "250767"
+		},
+		"ffmmf": {
+			"name": "GUN BOW",
+			"mabun": "208530"
+		},
+		"ffmmm": {
+			"name": "SUITI",
+			"mabun": "250768"
+		},
+		"fm": {
+			"name": "ANNE CAMPBELL",
+			"mabun": "200727"
+		},
+		"fmf": {
+			"aptitude": "BI",
+			"name": "NEVER BEND",
+			"mabun": "214256"
+		},
+		"fmff": {
+			"aptitude": "B",
+			"name": "NASRULLAH",
+			"mabun": "214065"
+		},
+		"fmfff": {
+			"name": "NEARCO",
+			"mabun": "214159"
+		},
+		"fmffm": {
+			"name": "MUMTAZ BEGUM",
+			"mabun": "213826"
+		},
+		"fmfm": {
+			"aptitude": "R",
+			"name": "LALUN",
+			"mabun": "211250"
+		},
+		"fmfmf": {
+			"name": "DJEDDAH",
+			"mabun": "205303"
+		},
+		"fmfmm": {
+			"name": "BE FAITHFUL",
+			"mabun": "201552"
+		},
+		"fmm": {
+			"name": "REPERCUSSION",
+			"mabun": "217112"
+		},
+		"fmmf": {
+			"name": "TATAN",
+			"mabun": "220708"
+		},
+		"fmmff": {
+			"name": "THE YUVARAJ",
+			"mabun": "220982"
+		},
+		"fmmfm": {
+			"name": "VALKYRIE",
+			"mabun": "221956"
+		},
+		"fmmm": {
+			"name": "TOMINA",
+			"mabun": "221272"
+		},
+		"fmmmf": {
+			"name": "TOM FOOL",
+			"mabun": "221264"
+		},
+		"fmmmm": {
+			"name": "SECRET MEETING",
+			"mabun": "218412"
+		},
+		"m": {
+			"name": "천마총",
+			"mabun": "010316"
+		},
+		"mf": {
+			"name": "로스트마운틴",
+			"mabun": "006891"
+		},
+		"mff": {
+			"aptitude": "Q",
+			"name": "COX′S RIDGE",
+			"mabun": "204479"
+		},
+		"mfff": {
+			"aptitude": "C",
+			"name": "BEST TURN",
+			"mabun": "201874"
+		},
+		"mffff": {
+			"name": "TURN-TO",
+			"mabun": "221717"
+		},
+		"mfffm": {
+			"name": "SWEET CLEMENTINE",
+			"mabun": "220410"
+		},
+		"mffm": {
+			"name": "OUR MARTHA",
+			"mabun": "214982"
+		},
+		"mffmf": {
+			"name": "BALLYDONNELL",
+			"mabun": "201351"
+		},
+		"mffmm": {
+			"name": "CORDAY",
+			"mabun": "204314"
+		},
+		"mfm": {
+			"name": "SPACE ANGEL",
+			"mabun": "219471"
+		},
+		"mfmf": {
+			"name": "TO THE QUICK",
+			"mabun": "221231"
+		},
+		"mfmff": {
+			"name": "RAISE A NATIVE",
+			"mabun": "216771"
+		},
+		"mfmfm": {
+			"name": "QUILLON",
+			"mabun": "216675"
+		},
+		"mfmm": {
+			"name": "NECIE′S PRIDE",
+			"mabun": "214176"
+		},
+		"mfmmf": {
+			"name": "SKY HIGH",
+			"mabun": "219069"
+		},
+		"mfmmm": {
+			"name": "LISANNINGA",
+			"mabun": "211641"
+		},
+		"mm": {
+			"name": "어프렌치부케",
+			"mabun": "007723"
+		},
+		"mmf": {
+			"name": "SEARCH FOR GOLD",
+			"mabun": "218383"
+		},
+		"mmff": {
+			"aptitude": "B",
+			"name": "RAISE A NATIVE",
+			"mabun": "216771"
+		},
+		"mmfff": {
+			"name": "NATIVE DANCER",
+			"mabun": "214091"
+		},
+		"mmffm": {
+			"name": "RAISE YOU",
+			"mabun": "216776"
+		},
+		"mmfm": {
+			"aptitude": "R",
+			"name": "GOLD DIGGER",
+			"mabun": "208014"
+		},
+		"mmfmf": {
+			"name": "NASHUA",
+			"mabun": "214056"
+		},
+		"mmfmm": {
+			"name": "SEQUENCE",
+			"mabun": "218493"
+		},
+		"mmm": {
+			"name": "BONNE ENFANT",
+			"mabun": "202481"
+		},
+		"mmmf": {
+			"name": "DECK HAND",
+			"mabun": "204976"
+		},
+		"mmmff": {
+			"name": "COHOES",
+			"mabun": "204041"
+		},
+		"mmmfm": {
+			"name": "WAVY NAVY",
+			"mabun": "222429"
+		},
+		"mmmm": {
+			"name": "SPACE ODYSSEY",
+			"mabun": "219477"
+		},
+		"mmmmf": {
+			"name": "PROMISED LAND",
+			"mabun": "216367"
+		},
+		"mmmmm": {
+			"name": "STOP ON RED",
+			"mabun": "219940"
+		}
+	}
+}

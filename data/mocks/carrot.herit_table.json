@@ -1,0 +1,305 @@
+{
+	"time": "2020-01-28 17:56:06",
+	"node": {
+		"mabun": "043319",
+		"f": {
+			"name": "컬러즈플라잉",
+			"mabun": "027443"
+		},
+		"ff": {
+			"aptitude": "IC",
+			"name": "A.P. INDY",
+			"mabun": "247992"
+		},
+		"fff": {
+			"aptitude": "BC",
+			"name": "SEATTLE SLEW",
+			"mabun": "218392"
+		},
+		"ffff": {
+			"aptitude": "Q",
+			"name": "BOLD REASONING",
+			"mabun": "202417"
+		},
+		"fffff": {
+			"name": "BOLDNESIAN",
+			"mabun": "202442"
+		},
+		"ffffm": {
+			"name": "REASON TO EARN",
+			"mabun": "216904"
+		},
+		"fffm": {
+			"aptitude": "R",
+			"name": "MY CHARMER",
+			"mabun": "213882"
+		},
+		"fffmf": {
+			"name": "POKER",
+			"mabun": "215930"
+		},
+		"fffmm": {
+			"name": "FAIR CHARMER",
+			"mabun": "206335"
+		},
+		"ffm": {
+			"aptitude": "R",
+			"name": "WEEKEND SURPRISE",
+			"mabun": "241083"
+		},
+		"ffmf": {
+			"aptitude": "IC",
+			"name": "SECRETARIAT",
+			"mabun": "218422"
+		},
+		"ffmff": {
+			"name": "BOLD RULER",
+			"mabun": "202422"
+		},
+		"ffmfm": {
+			"name": "SOMETHINGROYAL",
+			"mabun": "219360"
+		},
+		"ffmm": {
+			"aptitude": "R",
+			"name": "LASSIE DEAR",
+			"mabun": "211305"
+		},
+		"ffmmf": {
+			"name": "BUCKPASSER",
+			"mabun": "202886"
+		},
+		"ffmmm": {
+			"name": "GAY MISSILE",
+			"mabun": "207692"
+		},
+		"fm": {
+			"name": "STORM FLAG FLYING",
+			"mabun": "323166"
+		},
+		"fmf": {
+			"aptitude": "Q",
+			"name": "STORM CAT",
+			"mabun": "241691"
+		},
+		"fmff": {
+			"aptitude": "Q",
+			"name": "STORM BIRD",
+			"mabun": "219946"
+		},
+		"fmfff": {
+			"name": "NORTHERN DANCER",
+			"mabun": "214549"
+		},
+		"fmffm": {
+			"name": "SOUTH OCEAN",
+			"mabun": "219430"
+		},
+		"fmfm": {
+			"aptitude": "R",
+			"name": "TERLINGUA",
+			"mabun": "241701"
+		},
+		"fmfmf": {
+			"name": "SECRETARIAT",
+			"mabun": "218422"
+		},
+		"fmfmm": {
+			"name": "CRIMSON SAINT",
+			"mabun": "241647"
+		},
+		"fmm": {
+			"name": "MY FLAG",
+			"mabun": "326224"
+		},
+		"fmmf": {
+			"name": "EASY GOER",
+			"mabun": "254696"
+		},
+		"fmmff": {
+			"name": "ALYDAR",
+			"mabun": "200533"
+		},
+		"fmmfm": {
+			"name": "RELAXING",
+			"mabun": "241028"
+		},
+		"fmmm": {
+			"aptitude": "R",
+			"name": "PERSONAL ENSIGN",
+			"mabun": "248047"
+		},
+		"fmmmf": {
+			"name": "PRIVATE ACCOUNT",
+			"mabun": "216337"
+		},
+		"fmmmm": {
+			"name": "GRECIAN BANNER",
+			"mabun": "208380"
+		},
+		"m": {
+			"name": "유툭마보이즈머니",
+			"mabun": "036668"
+		},
+		"mf": {
+			"name": "CANDY RIDE",
+			"mabun": "340178"
+		},
+		"mff": {
+			"name": "RIDE THE RAILS",
+			"mabun": "306653"
+		},
+		"mfff": {
+			"name": "CRYPTOCLEARANCE",
+			"mabun": "231958"
+		},
+		"mffff": {
+			"name": "FAPPIANO",
+			"mabun": "206500"
+		},
+		"mfffm": {
+			"name": "NAVAL ORANGE",
+			"mabun": "231959"
+		},
+		"mffm": {
+			"name": "HERBALESIAN",
+			"mabun": "306655"
+		},
+		"mffmf": {
+			"name": "HERBAGER",
+			"mabun": "208945"
+		},
+		"mffmm": {
+			"name": "ALANESIAN",
+			"mabun": "200316"
+		},
+		"mfm": {
+			"name": "CANDY GIRL",
+			"mabun": "383207"
+		},
+		"mfmf": {
+			"aptitude": "Q",
+			"name": "CANDY STRIPES",
+			"mabun": "265882"
+		},
+		"mfmff": {
+			"name": "BLUSHING GROOM",
+			"mabun": "202315"
+		},
+		"mfmfm": {
+			"name": "BUBBLE COMPANY",
+			"mabun": "264786"
+		},
+		"mfmm": {
+			"name": "CITY GIRL",
+			"mabun": "265883"
+		},
+		"mfmmf": {
+			"name": "FARNESIO",
+			"mabun": "252503"
+		},
+		"mfmmm": {
+			"name": "CITHARA",
+			"mabun": "265884"
+		},
+		"mm": {
+			"name": "HEN PARTY",
+			"mabun": "334440"
+		},
+		"mmf": {
+			"aptitude": "Q",
+			"name": "HENNESSY",
+			"mabun": "256074"
+		},
+		"mmff": {
+			"aptitude": "Q",
+			"name": "STORM CAT",
+			"mabun": "241691"
+		},
+		"mmfff": {
+			"name": "STORM BIRD",
+			"mabun": "219946"
+		},
+		"mmffm": {
+			"name": "TERLINGUA",
+			"mabun": "241701"
+		},
+		"mmfm": {
+			"name": "ISLAND KITTY",
+			"mabun": "256075"
+		},
+		"mmfmf": {
+			"name": "HAWAII",
+			"mabun": "208791"
+		},
+		"mmfmm": {
+			"name": "T. C. KITTEN",
+			"mabun": "256076"
+		},
+		"mmm": {
+			"name": "BASKING",
+			"mabun": "352439"
+		},
+		"mmmf": {
+			"aptitude": "C",
+			"name": "ALYDAR",
+			"mabun": "200533"
+		},
+		"mmmff": {
+			"name": "RAISE A NATIVE",
+			"mabun": "216771"
+		},
+		"mmmfm": {
+			"name": "SWEET TOOTH",
+			"mabun": "220464"
+		},
+		"mmmm": {
+			"name": "SLEWSBASQUE",
+			"mabun": "351232"
+		},
+		"mmmmf": {
+			"name": "SEATTLE SLEW",
+			"mabun": "218392"
+		},
+		"mmmmm": {
+			"name": "LA BASQUE",
+			"mabun": "252272"
+		},
+		"dosageProfile": {
+			"B": 2,
+			"I": 5,
+			"C": 9,
+			"S": 0,
+			"P": 0
+		},
+		"dosageIndex": 2.55,
+		"centerOfDistribution": 0.56,
+		"coefficientOfInbreeding": 2.73,
+		"inbreedings": [
+			{
+				"name": "* SEATTLE SLEW",
+				"depth": "3S X 5D"
+			},
+			{
+				"name": "* STORM CAT",
+				"depth": "3S X 4D"
+			},
+			{
+				"name": "STORM BIRD",
+				"depth": "4S X 5D"
+			},
+			{
+				"name": "TERLINGUA",
+				"depth": "4S X 5D"
+			},
+			{
+				"name": "* ALYDAR",
+				"depth": "5S X 4D"
+			},
+			{
+				"name": "SECRETARIAT",
+				"depth": "4S X 5S"
+			}
+		]
+	}
+}
