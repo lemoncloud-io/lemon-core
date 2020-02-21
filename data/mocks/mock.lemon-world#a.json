@@ -2,7 +2,7 @@
     "!": "read world of lemon",
     "param": {
         "method": "GET",
-        "endpoint": "https://api.lemoncloud.io/hello/world"
+        "endpoint": "https://api.lemoncloud.io/hello/world#a"
     },
     "data": {
         "list": [{
