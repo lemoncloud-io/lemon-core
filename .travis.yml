@@ -1,4 +1,5 @@
 language: node_js
+version: 1.0
 sudo: false
 node_js:
   # - 8   # due to EOL v8.
@@ -26,6 +27,7 @@ after_success:
 #- npm run release.minor
 #- git push --follow-tags origin master
 deploy:
+  edge: true
   provider: npm
   skip_cleanup: true
   email: steve@lemoncloud.io
