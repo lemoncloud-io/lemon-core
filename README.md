@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.14    | support `hash` param for `MocksAPIService`.
 | 2.1.13    | support `HttpStorage`, `$U.crypto2`, and `/favicon.ico`.
 | 2.1.12    | support `userAgent` in NextContext.
 | 2.1.11    | improve `syncToElastic6`, and `DynamoScanService`.
