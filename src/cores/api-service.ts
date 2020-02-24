@@ -31,11 +31,11 @@ export interface APIHeaders {
  */
 export interface APIServiceClient {
     hello(): string; // say this agent's name.
-    doGet<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T>;
-    doPut<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T>;
-    doPost<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T>;
-    doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T>;
-    doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T>;
+    doGet<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T>;
+    doPut<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T>;
+    doPost<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T>;
+    doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T>;
+    doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T>;
 }
 
 /**
@@ -64,6 +64,7 @@ export interface ApiHttpProxy {
      * @param param     query paramters
      * @param body      body
      * @param ctx       context
+     * @param hash      (optional) hash value (valid only for client-side).
      */
     doProxy<T = any>(
         method: APIHttpMethod,
@@ -72,6 +73,7 @@ export interface ApiHttpProxy {
         param?: any,
         body?: any,
         ctx?: any,
+        hash?: string,
     ): Promise<T>;
 }
 
@@ -85,20 +87,20 @@ export class APIProxyClient implements APIServiceClient {
         this.service = service;
     }
     public hello = () => this.service.hello();
-    public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.service.doGet(id, cmd, param, body);
+    public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
+        return this.service.doGet(id, cmd, param, body, hash);
     }
-    public doPut<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.service.doPut(id, cmd, param, body);
+    public doPut<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
+        return this.service.doPut(id, cmd, param, body, hash);
     }
-    public doPost<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.service.doPost(id, cmd, param, body);
+    public doPost<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
+        return this.service.doPost(id, cmd, param, body, hash);
     }
-    public doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.service.doPatch(id, cmd, param, body);
+    public doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
+        return this.service.doPatch(id, cmd, param, body, hash);
     }
-    public doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
-        return this.service.doDelete(id, cmd, param, body);
+    public doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
+        return this.service.doDelete(id, cmd, param, body, hash);
     }
 }
 
@@ -267,25 +269,25 @@ export class APIService implements APIServiceClient {
             return { host, path };
         };
         public hello = () => `api-client:${this.proxy.hello()}`;
-        public async doGet(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doGet(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
-            return this.proxy.doProxy('GET', host, path, param, body, ctx);
+            return this.proxy.doProxy('GET', host, path, param, body, null, hash);
         }
-        public async doPut(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doPut(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
-            return this.proxy.doProxy('PUT', host, path, param, body, ctx);
+            return this.proxy.doProxy('PUT', host, path, param, body, null, hash);
         }
-        public async doPost(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doPost(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
-            return this.proxy.doProxy('POST', host, path, param, body, ctx);
+            return this.proxy.doProxy('POST', host, path, param, body, null, hash);
         }
-        public async doPatch(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doPatch(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
-            return this.proxy.doProxy('PATCH', host, path, param, body, ctx);
+            return this.proxy.doProxy('PATCH', host, path, param, body, null, hash);
         }
-        public async doDelete(id: string, cmd?: string, param?: any, body?: any, ctx?: any): Promise<any> {
+        public async doDelete(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
             const { host, path } = this.asHostPath(id, cmd);
-            return this.proxy.doProxy('DELETE', host, path, param, body, ctx);
+            return this.proxy.doProxy('DELETE', host, path, param, body, null, hash);
         }
     };
 
@@ -306,20 +308,20 @@ export class APIService implements APIServiceClient {
             if (id != encodeURI(id)) throw new Error(`@id (string) is not valid format.`);
             return cmd !== undefined && cmd !== null ? `${id || ''}/${cmd}` : `${id || ''}`;
         };
-        public async doGet(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.parent.doGet(this.type, this.asCmd(id, cmd), param, body);
+        public async doGet(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.parent.doGet(this.type, this.asCmd(id, cmd), param, body, hash);
         }
-        public async doPut(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.parent.doPut(this.type, this.asCmd(id, cmd), param, body);
+        public async doPut(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.parent.doPut(this.type, this.asCmd(id, cmd), param, body, hash);
         }
-        public async doPost(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.parent.doPost(this.type, this.asCmd(id, cmd), param, body);
+        public async doPost(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.parent.doPost(this.type, this.asCmd(id, cmd), param, body, hash);
         }
-        public async doPatch(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.parent.doPatch(this.type, this.asCmd(id, cmd), param, body);
+        public async doPatch(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.parent.doPatch(this.type, this.asCmd(id, cmd), param, body, hash);
         }
-        public async doDelete(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.parent.doDelete(this.type, this.asCmd(id, cmd), param, body);
+        public async doDelete(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.parent.doDelete(this.type, this.asCmd(id, cmd), param, body, hash);
         }
     };
 
@@ -342,13 +344,14 @@ export class APIService implements APIServiceClient {
             param?: any,
             body?: any,
             context?: any,
+            hash?: string,
         ): Promise<T> {
             const endpoint =
                 host.startsWith('http://') || host.startsWith('https://') ? `${host}${path}` : `http://${host}${path}`;
             const index = APIService.ApiHttpProxyRecorder.next++;
             const load = { method, endpoint, param, body, context };
             return this.target
-                .doProxy(method, host, path, param, body, context)
+                .doProxy(method, host, path, param, body, context, hash)
                 .then((data: any) => ({ index, load, data, error: null }))
                 .catch((error: any) => ({ index, load, data: null, error }))
                 .then(({ index, load, data, error }) => {
@@ -388,15 +391,15 @@ export class APIService implements APIServiceClient {
             this.folder = `${folder || './logs'}`;
         }
         public hello = () => `recorder:${this.target.hello()}`;
-        public async doRecord(method: APIHttpMethod, id: string, cmd?: string, param?: any, body?: any) {
+        public async doRecord(method: APIHttpMethod, id: string, cmd?: string, param?: any, body?: any, hash?: string) {
             const index = APIService.APIServiceClientRecorder.next++;
             const load = { method, endpoint: `${this.endpoint || ''}`, id, cmd, param, body };
             const call = async (method: APIHttpMethod) => {
-                if (method == 'GET') return this.target.doGet(id, cmd, param, body);
-                if (method == 'PUT') return this.target.doPut(id, cmd, param, body);
-                if (method == 'POST') return this.target.doPost(id, cmd, param, body);
-                if (method == 'PATCH') return this.target.doPatch(id, cmd, param, body);
-                if (method == 'DELETE') return this.target.doDelete(id, cmd, param, body);
+                if (method == 'GET') return this.target.doGet(id, cmd, param, body, hash);
+                if (method == 'PUT') return this.target.doPut(id, cmd, param, body, hash);
+                if (method == 'POST') return this.target.doPost(id, cmd, param, body, hash);
+                if (method == 'PATCH') return this.target.doPatch(id, cmd, param, body, hash);
+                if (method == 'DELETE') return this.target.doDelete(id, cmd, param, body, hash);
                 throw new Error(`@method is not valid. method:${method}`);
             };
             return call(method)
@@ -423,56 +426,56 @@ export class APIService implements APIServiceClient {
                     else return data;
                 });
         }
-        public async doGet(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.doRecord('GET', id, cmd, param, body);
+        public async doGet(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.doRecord('GET', id, cmd, param, body, hash);
         }
-        public async doPut(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.doRecord('PUT', id, cmd, param, body);
+        public async doPut(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.doRecord('PUT', id, cmd, param, body, hash);
         }
-        public async doPost(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.doRecord('POST', id, cmd, param, body);
+        public async doPost(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.doRecord('POST', id, cmd, param, body, hash);
         }
-        public async doPatch(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.doRecord('PATCH', id, cmd, param, body);
+        public async doPatch(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.doRecord('PATCH', id, cmd, param, body, hash);
         }
-        public async doDelete(id: string, cmd?: string, param?: any, body?: any): Promise<any> {
-            return this.doRecord('DELETE', id, cmd, param, body);
+        public async doDelete(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<any> {
+            return this.doRecord('DELETE', id, cmd, param, body, hash);
         }
     };
 
     /**
      * GET HOST/PATH?$param
      */
-    public doGet = async (id: string, cmd?: string, $param?: any, $body?: any) => {
-        return this.client.doGet(id, cmd, $param, $body);
+    public doGet = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
+        return this.client.doGet(id, cmd, $param, $body, hash);
     };
 
     /**
      * PUT HOST/PATH?$param
      */
-    public doPut = async (id: string, cmd?: string, $param?: any, $body?: any) => {
-        return this.client.doPut(id, cmd, $param, $body);
+    public doPut = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
+        return this.client.doPut(id, cmd, $param, $body, hash);
     };
 
     /**
      * POST HOST/PATH?$param
      */
-    public doPost = async (id: string, cmd?: string, $param?: any, $body?: any) => {
-        return this.client.doPost(id, cmd, $param, $body);
+    public doPost = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
+        return this.client.doPost(id, cmd, $param, $body, hash);
     };
 
     /**
      * PATCH HOST/PATH?$param
      */
-    public doPatch = async (id: string, cmd?: string, $param?: any, $body?: any) => {
-        return this.client.doPatch(id, cmd, $param, $body);
+    public doPatch = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
+        return this.client.doPatch(id, cmd, $param, $body, hash);
     };
 
     /**
      * DELETE HOST/PATH?$param
      */
-    public doDelete = async (id: string, cmd?: string, $param?: any, $body?: any) => {
-        return this.client.doDelete(id, cmd, $param, $body);
+    public doDelete = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
+        return this.client.doDelete(id, cmd, $param, $body, hash);
     };
 }
 
@@ -651,12 +654,18 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
                 const file = F.file || '';
                 const data = F.json;
                 const param: any = data.param || {};
-                const { method, endpoint, id, cmd } = param;
-                const url = `${endpoint}` + (id ? `/${id}` : '') + (id && cmd ? `/${cmd}` : '');
+                const { method, endpoint: endpoint0, id, cmd, param: $qs } = param;
+                const has = (a: any) => a !== undefined && a !== null;
+                const [endpoint, hash] = `${endpoint0}`.split('#', 2);
+                const qs = $qs ? $U.qs.stringify($qs) : '';
+                const url = `${endpoint}` + (has(id) ? `/${id}` : '') + (has(id) && has(cmd) ? `/${cmd}` : '');
                 const key = `${method} ${url}`;
+                const key2 = qs ? `${key}${key.indexOf('?') > 0 ? '&' : '?'}${qs}` : key;
+                const key3 = hash ? `${key2}${hash ? '#' : ''}${hash || ''}` : key2;
+                // if (file.indexOf('#') > 0) console.info(`! file[${file}] =`, key3);
                 //! save by file & key.
                 M[file] = data;
-                M[key] = data;
+                M[key3] = data;
                 return M;
             }, {});
         // console.log(NS, '> $map =', $map);
@@ -675,14 +684,20 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         param?: any,
         body?: any,
         ctx?: any,
+        hash?: string,
     ): Promise<T> {
         // console.info(`! mocks.proxy(${method},${type},${path})...`);
         this.loadSync();
         const file = path && path.endsWith('.json') ? path.split('/').pop() : '';
         // eslint-disable-next-line prettier/prettier
         const key = `${method} ${this.endpoint}${this.na(type, '', '/')}${type || ''}${!path || path.startsWith('/') ? '' : '/'}${path || ''}`;
-        const data: any = this.$map[file] || this.$map[key];
-        if (!data) throw new Error(`404 NOT FOUND - ${key}`);
+        const qs = param ? $U.qs.stringify(param) : '';
+        const key2 = qs ? `${key}${path.indexOf('?') > 0 ? '&' : '?'}${qs}` : key;
+        const key3 = hash ? `${key2}${hash.startsWith('#') ? '' : '#'}${hash}` : key2;
+        // if (param) console.info('!key[] =', [key3, key2, key]);
+        // if (hash) console.info(`! hash[${hash}].keys =`, [key3, key2, key]);
+        const data: any = this.$map[file] || this.$map[key3] || this.$map[key2] || this.$map[key];
+        if (!data) throw new Error(`404 NOT FOUND - ${key3}`);
         const err = data.error;
         if (err && typeof err == 'string') {
             if (err.startsWith('{') && err.endsWith('}')) throw JSON.parse(err);
@@ -690,29 +705,30 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         } else if (err) {
             throw err;
         }
+        //! returns data.
         return data.data ? JSON.parse($U.json(data.data)) : data.data;
     }
 
     protected na = (a: any, x: string, y: string) => (a === undefined || a === null ? x : y);
     public hello = () => `mocks-api-service:${this.endpoint}${this.na(this.type, '', '/')}${this.type || ''}`;
-    public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+    public doGet<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
         const path = this.asPath(id, cmd); // use mocks.type infor
-        return this.doProxy<T>('GET', this.type, path, param, body);
+        return this.doProxy<T>('GET', this.type, path, param, body, null, hash);
     }
-    public doPut<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+    public doPut<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
         const path = this.asPath(id, cmd); // use mocks.type infor
-        return this.doProxy<T>('PUT', this.type, path, param, body);
+        return this.doProxy<T>('PUT', this.type, path, param, body, null, hash);
     }
-    public doPost<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+    public doPost<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
         const path = this.asPath(id, cmd); // use mocks.type infor
-        return this.doProxy<T>('POST', this.type, path, param, body);
+        return this.doProxy<T>('POST', this.type, path, param, body, null, hash);
     }
-    public doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+    public doPatch<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
         const path = this.asPath(id, cmd); // use mocks.type infor
-        return this.doProxy<T>('PATCH', this.type, path, param, body);
+        return this.doProxy<T>('PATCH', this.type, path, param, body, null, hash);
     }
-    public doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any): Promise<T> {
+    public doDelete<T = any>(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise<T> {
         const path = this.asPath(id, cmd); // use mocks.type infor
-        return this.doProxy<T>('DELETE', this.type, path, param, body);
+        return this.doProxy<T>('DELETE', this.type, path, param, body, null, hash);
     }
 }

@@ -18,6 +18,7 @@ const NS = $U.NS('S3', 'blue');
 
 import AWS from 'aws-sdk';
 import { v4 } from 'uuid';
+import * as StringTool from 'string_decoder';
 import { CoreServices } from '../core-services';
 
 export interface TagSet {
@@ -33,6 +34,7 @@ export interface CoreS3Service extends CoreServices {
         tags?: TagSet,
     ) => Promise<{ Bucket: string; Key: string; Location: string }>;
     getObject: (fileName: string) => Promise<any>;
+    getDecodedObject: (fileName: string) => Promise<any>;
 }
 
 /** ****************************************************************************************************************
@@ -132,7 +134,7 @@ export class AWSS3Service implements CoreS3Service {
                 const Key = (data && data.Key) || fileName;
                 const Location = (data && data.Location) || '';
                 _log(NS, `> data[${Bucket}].Key =`, Key);
-                return { Bucket, Key, Location };
+                return { Bucket, Key, Location, saved: body };
             })
             .catch(e => {
                 _err(NS, `! err[${Bucket}]=`, e);
@@ -159,6 +161,32 @@ export class AWSS3Service implements CoreS3Service {
             .then(data => {
                 _log(NS, '> data.type =', typeof data);
                 return data as any;
+            })
+            .catch(e => {
+                _err(NS, '! err=', e);
+                throw e;
+            });
+    };
+
+    /**
+     * return decoded Object from bucket file.
+     * @param {string} fileName ex) 'hello-0001.json' , 'dits/hello-0001.json
+     */
+    public getDecodedObject = async (fileName: string): Promise<any> => {
+        if (!fileName) throw new Error('@fileName is required!');
+
+        const Bucket = await this.bucket();
+        const params = { Bucket, Key: fileName };
+
+        //! call s3.getObject.
+        // _log(NS, '> params =', params);
+        return instance()
+            .then(_ => _.getObject(params).promise())
+            .then((data: any) => {
+                _log(NS, '> data.type =', typeof data);
+                const decoder = new StringTool.StringDecoder('UTF8');
+                const buf = Buffer.from(data.Body || data.Body.data || '');
+                return JSON.parse(decoder.write(buf));
             })
             .catch(e => {
                 _err(NS, '! err=', e);

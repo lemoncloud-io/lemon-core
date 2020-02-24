@@ -100,7 +100,7 @@ describe('AWSSQSService', () => {
         const message = service.hello();
         const attribs = { hello: 'lemon', numb: 2 };
         const queueid = await service.sendMessage(message, attribs);
-        console.info(`! queue-id =`, queueid);
+        // console.info(`! queue-id =`, queueid);
         // expect2(queueid).toEqual('9b0888d7-5120-4c36-b29b-ff2cb2bedc39');
         expect2(typeof queueid + ':' + `${queueid}`.length).toEqual('string:' + '9b0888d7-5120-4c36-b29b-ff2cb2bedc39'.length);
 
