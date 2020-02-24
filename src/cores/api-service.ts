@@ -695,7 +695,7 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         const key2 = qs ? `${key}${path.indexOf('?') > 0 ? '&' : '?'}${qs}` : key;
         const key3 = hash ? `${key2}${hash.startsWith('#') ? '' : '#'}${hash}` : key2;
         // if (param) console.info('!key[] =', [key3, key2, key]);
-        if (hash) console.info(`! hash[${hash}].keys =`, [key3, key2, key]);
+        // if (hash) console.info(`! hash[${hash}].keys =`, [key3, key2, key]);
         const data: any = this.$map[file] || this.$map[key3] || this.$map[key2] || this.$map[key];
         if (!data) throw new Error(`404 NOT FOUND - ${key3}`);
         const err = data.error;
