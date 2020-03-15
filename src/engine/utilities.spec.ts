@@ -8,7 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { GETERR, expect2 } from '../common/test-helper';
+import { expect2 } from '../common/test-helper';
 import { Utilities } from './utilities';
 
 import * as $builder from './builder.spec';
@@ -122,7 +122,7 @@ describe(`core/utilities.ts`, () => {
         done();
     });
 
-    //! test cryto()
+    //! test diff()
     test('check diff()', async done => {
         const { $U } = instance();
 
@@ -133,6 +133,94 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $U.diff(null, { b: 1 })).toEqual(['b']);
         expect2(() => $U.diff({ a: 1 }, { b: 1 })).toEqual(['a', 'b']);
         expect2(() => $U.diff({ a: 1 }, { a: 1 })).toEqual([]);
+
+        done();
+    });
+
+    //! test Integer Parser
+    test('check N()', async done => {
+        const { $U } = instance();
+
+        expect2(() => $U.isInteger(0)).toEqual(true);
+        expect2(() => $U.isInteger(0.1)).toEqual(false);
+        expect2(() => $U.isInteger(1)).toEqual(true);
+        expect2(() => $U.isInteger(1.0)).toEqual(true);
+        expect2(() => $U.isInteger(1.1)).toEqual(false);
+        expect2(() => $U.isInteger(1.0 / 3)).toEqual(false);
+
+        expect2(() => $U.N('', 2)).toEqual(2);
+        expect2(() => $U.N('1', 2)).toEqual(1);
+        expect2(() => $U.N('1.1', 2)).toEqual(1);
+        expect2(() => $U.N('1,000', 2)).toEqual(1000);
+
+        done();
+    });
+
+    //! test Float Parser
+    test('check F()', async done => {
+        const { $U } = instance();
+
+        expect2(() => $U.F('', 2)).toEqual(2);
+        expect2(() => $U.F('1.0', 2)).toEqual(1);
+        expect2(() => $U.F('1.1', 2)).toEqual(1.1);
+        expect2(() => $U.F('1,000.0', 2)).toEqual(1000);
+
+        expect2(() => $U.F(1.0 / 3, 0)).toEqual(0.3333333333333333);
+        expect2(() => $U.F(1 / 3.0, 0)).toEqual(0.3333333333333333);
+        expect2(() => $U.F(-1 / 3.0, 0)).toEqual(-0.3333333333333333);
+        expect2(() => $U.F(-2 / 3.0, 0)).toEqual(-0.6666666666666666);
+        expect2(() => $U.F('0.3333', 0)).toEqual(0.3333);
+        expect2(() => $U.F('0.33333', 0)).toEqual(0.33333);
+        expect2(() => $U.F('-0.33333', 0)).toEqual(-0.33333);
+        expect2(() => $U.F('+0.33333', 0)).toEqual(0.33333);
+
+        done();
+    });
+
+    //! test Float Parser w/ length
+    test('check FN()', async done => {
+        const { $U } = instance();
+
+        expect2(() => $U.FN(0.0, -1)).toEqual('@len[-1] is out of range!');
+        expect2(() => $U.FN(0.0, 0)).toEqual(0);
+        expect2(() => $U.FN(0.0, 1)).toEqual(0);
+        expect2(() => $U.FN(0.0, 2)).toEqual(0);
+        expect2(() => $U.FN(0.0, 3)).toEqual(0);
+        expect2(() => $U.FN(0.0, 4)).toEqual(0);
+        expect2(() => $U.FN(0.0, 5)).toEqual(0);
+        expect2(() => $U.FN(0.0, 6)).toEqual(0);
+        expect2(() => $U.FN(0.0, 7)).toEqual('@len[7] is out of range!');
+
+        expect2(() => $U.FN(1.0 / 3, 0)).toEqual(0);
+        expect2(() => $U.FN(1.0 / 3, 1)).toEqual(0.3);
+        expect2(() => $U.FN(+1 / 3.0, 2)).toEqual(0.33);
+        expect2(() => $U.FN(+2 / 3.0, 2)).toEqual(0.67);
+        expect2(() => $U.FN(+2 / 3.0, 2, 'round')).toEqual(0.67);
+        expect2(() => $U.FN(+2 / 3.0, 2, 'floor')).toEqual(0.66);
+        expect2(() => $U.FN(-1 / 3.0, 2)).toEqual(-0.33);
+        expect2(() => $U.FN(-2 / 3.0, 2)).toEqual(-0.67);
+        expect2(() => $U.FN(-2 / 3.0, 2, 'round')).toEqual(-0.67);
+        expect2(() => $U.FN(-2 / 3.0, 2, 'floor')).toEqual(-0.67);
+
+        expect2(() => $U.FN(1 + 1.0 / 3, 0)).toEqual(1);
+        expect2(() => $U.FN(1 + 1.0 / 3, 1)).toEqual(1.3);
+        expect2(() => $U.FN(1 + 1 / 3.0, 2)).toEqual(1.33);
+        expect2(() => $U.FN(1 + 2 / 3.0, 2)).toEqual(1.67);
+        expect2(() => $U.FN(1 + 2 / 3.0, 2, 'round')).toEqual(1.67);
+        expect2(() => $U.FN(1 + 2 / 3.0, 2, 'floor')).toEqual(1.66);
+        expect2(() => $U.FN(1 - 1 / 3.0, 2)).toEqual(0.67);
+        expect2(() => $U.FN(1 - 2 / 3.0, 2)).toEqual(0.33);
+        expect2(() => $U.FN(1 - 2 / 3.0, 2, 'round')).toEqual(0.33);
+        expect2(() => $U.FN(1 - 2 / 3.0, 2, 'floor')).toEqual(0.33);
+
+        expect2(() => $U.F2(8 / 3.0)).toEqual(2.67);
+        expect2(() => $U.F3(8 / 3.0)).toEqual(2.667);
+
+        expect2(() => $U.F2('1.66666666')).toEqual(1.67);
+        expect2(() => $U.F3('1.66666666')).toEqual(1.667);
+
+        expect2(() => $U.F2('-1.66666666')).toEqual(-1.67);
+        expect2(() => $U.F3('-1.66666666')).toEqual(-1.667);
 
         done();
     });
