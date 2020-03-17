@@ -20,12 +20,39 @@ const $context = (source = 'express', account = '085403634746' /* profile: lemon
     };
 };
 
+//! main test body.
 describe(`test the 'core/engine.ts'`, () => {
     test('check do_parallel()', (done: any) => {
         const list = [1, 2, 3, 4, 5, 6].map((n, i) => {
             return i == 4 ? null : { n };
         });
         do_parrallel(list, (node, i) => {
+            const n = (node && node.n) || 0;
+            const msg = `N${n}:${i}`;
+            if (i === 0) return msg;
+            else if (i === 1) return Promise.resolve(Object.assign(node, { msg }));
+            else if (i === 2) return Promise.reject(msg);
+            else if (i === 3) throw new Error(msg);
+            return msg;
+        }).then(_ => {
+            expect(_[0] as any).toEqual('N1:0');
+            expect((_[1] as any).msg).toEqual('N2:1');
+            expect((_[2] as any) instanceof Error).toEqual(true);
+            expect((_[2] as any).message).toEqual('N3:2');
+            expect((_[3] as any) instanceof Error).toEqual(true);
+            expect((_[3] as any).message).toEqual('N4:3');
+            expect((_[4] as any) instanceof Error).toEqual(false);
+            expect(_[4] as any).toEqual('N0:4');
+            expect(_[5] as any).toEqual('N6:5');
+            done();
+        });
+    });
+
+    test('check do_parallel(async)', (done: any) => {
+        const list = [1, 2, 3, 4, 5, 6].map((n, i) => {
+            return i == 4 ? null : { n };
+        });
+        do_parrallel(list, async (node, i) => {
             const n = (node && node.n) || 0;
             const msg = `N${n}:${i}`;
             if (i === 0) return msg;
