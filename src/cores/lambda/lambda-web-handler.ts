@@ -367,7 +367,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const userAgent = `${(reqContext.identity && reqContext.identity.userAgent) || ''}`;
         const requestId = `${reqContext.requestId || ''}`;
         const accountId = `${reqContext.accountId || ''}`;
-        const domain = `${reqContext.domainName || event.headers['Host'] || event.headers['host'] || ''}`;
+        const domain = `${reqContext.domainName || headers['Host'] || headers['host'] || ''}`; //! chore avoid null of headers
 
         //! save into headers and returns.
         const context: NextContext = { ...res, identity, userAgent, clientIp, requestId, accountId, domain };

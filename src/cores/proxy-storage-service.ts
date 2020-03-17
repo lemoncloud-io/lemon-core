@@ -216,7 +216,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public afterRead(model: T, origin?: T): T {
-        _log(NS, `filter.afterRead(${model._id || ''})....`);
+        // _log(NS, `filter.afterRead(${model._id || ''})....`);
         if (!model.meta) return model;
         const meta = model.meta;
         model.meta = meta && typeof meta == 'string' && meta.startsWith('{') ? JSON.parse(meta) : meta;
@@ -232,7 +232,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
      * @param origin    the origin model
      */
     public beforeSave(model: T, origin?: T): T {
-        _log(NS, `filter.beforeSave(${model._id})....`);
+        // _log(NS, `filter.beforeSave(${model._id})....`);
         origin = origin || ({} as any);
         const FIELDS: string[] = this.FIELDS && this.FIELDS.length ? this.FIELDS : null;
 
