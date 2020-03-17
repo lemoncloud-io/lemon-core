@@ -225,6 +225,15 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $U.F2('-1.66666666')).toEqual(-1.67);
         expect2(() => $U.F3('-1.66666666')).toEqual(-1.667);
 
+        expect2(() => $U.F2('1.66666666', 'floor')).toEqual(1.66);
+        expect2(() => $U.F3('1.66666666', 'floor')).toEqual(1.666);
+
+        expect2(() => $U.F2('.66666666', 'floor')).toEqual(0.66);
+        expect2(() => $U.F3('.66666666', 'floor')).toEqual(0.666);
+
+        expect2(() => $U.F2('-1.66666666', 'floor')).toEqual(-1.67);
+        expect2(() => $U.F3('-1.66666666', 'floor')).toEqual(-1.667);
+
         done();
     });
 });
