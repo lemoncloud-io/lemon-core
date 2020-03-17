@@ -242,10 +242,9 @@ export class Utilities {
     /**
      * 현재 시간값 (number of milliseconds since midnight of January 1, 1970.)
      *
-     *
      * @returns {number}
      */
-    public current_time_ms(shift?: number) {
+    public current_time_ms(shift?: number): number {
         var time_shift = this.N(shift, 0);
         var ret = new Date().getTime();
         ret += time_shift;
@@ -299,18 +298,26 @@ export class Utilities {
         return "'" + str + "'";
     }
 
-    // convert to integer.
+    /**
+     * check if integer
+     * @param x     any number or string
+     */
     public isInteger(x: any) {
         return typeof x === 'number' && x % 1 === 0;
     }
 
-    public N(x: any, def?: any) {
+    /**
+     * convert as integer number.
+     * @param x     any number or string
+     * @param def   default value.
+     */
+    public N(x: any, def?: number): number {
         try {
             if (x === '' || x === undefined || x === null) return def;
             if (typeof x === 'number' && x % 1 === 0) return x;
             if (typeof x == 'number') return parseInt('' + x);
             x = '0' + x;
-            x = x.startsWith('0-') ? x.substr(1) : x; // minus
+            x = x.startsWith('0-') || x.startsWith('0+') ? x.substr(1) : x; // minus
             return parseInt(x.replace(/,/gi, '').trim());
         } catch (e) {
             this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e.message || ''), e);
@@ -318,14 +325,18 @@ export class Utilities {
         }
     }
 
-    //! parse float number (like 1.01)
-    public F(x: any, def?: any) {
+    /**
+     * parse as float number (like 1.01)
+     * @param x     any number or string
+     * @param def   default value.
+     */
+    public F(x: any, def?: number): number {
         try {
             if (x === '' || x === undefined || x === null) return def;
             if (typeof x === 'number' && x % 1 === 0) return x;
             if (typeof x == 'number') return parseFloat('' + x);
             x = '0' + x;
-            x = x.startsWith('0-') ? x.substr(1) : x; // minus
+            x = x.startsWith('0-') || x.startsWith('0+') ? x.substr(1) : x; // minus
             return parseFloat(x.replace(/,/gi, '').trim());
         } catch (e) {
             this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e.message || ''), e);
@@ -333,13 +344,45 @@ export class Utilities {
         }
     }
 
-    //! remove underscore variables.
-    public cleanup($N: any) {
-        return Object.keys($N).reduce(function($N, key) {
-            if (key.startsWith('_')) delete $N[key];
-            if (key.startsWith('$')) delete $N[key];
-            return $N;
-        }, $N);
+    /**
+     * parse float by len
+     * ```
+     * FN(0.333333, 2) = 0.33
+     * ```
+     * @param x     any numbe or string
+     * @param len   decimal length
+     * @param mode  'round' | 'floor'
+     */
+    public FN(x: any, len: number, mode?: 'round' | 'floor'): number {
+        mode = mode === undefined ? 'round' : mode;
+        const DIV = [0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0];
+        if (len < 0 || len >= DIV.length) throw new Error(`@len[${len}] is out of range!`);
+        const div = DIV[len];
+        if (div <= 0) return this.N(x, 0); // as integer
+        const val = this.F(x, 0) * div;
+        const val2 = mode == 'round' ? Math.round(val) : Math.floor(val);
+        const val3 = val2 / div;
+        return val3;
+    }
+
+    /**
+     * parse float by decimal point 2
+     */
+    public F2 = (x: any, mode: 'round' | 'floor' = 'round') => this.FN(x, 2, mode);
+
+    /**
+     * parse float by decimal point 3
+     */
+    public F3 = (x: any, mode: 'round' | 'floor' = 'round') => this.FN(x, 3, mode);
+
+    /**
+     * remove internal properties which starts with _ or $
+     */
+    public cleanup(node: any) {
+        return Object.keys(node).reduce(function(N, key) {
+            if (key.startsWith('_') || key.startsWith('$')) delete N[key];
+            return N;
+        }, node);
     }
 
     //! remove underscore variables.
@@ -364,13 +407,12 @@ export class Utilities {
         }, {});
     }
 
-    public copy_node($N: any, isClear?: boolean) {
+    public copy_node(node: any, isClear?: boolean) {
         isClear = isClear === undefined ? false : isClear;
-        return Object.keys($N).reduce(function($n: any, key) {
-            if (key.startsWith('_')) return $n;
-            if (key.startsWith('$')) return $n;
-            $n[key] = isClear ? null : $N[key];
-            return $n;
+        return Object.keys(node).reduce(function(N: any, key) {
+            if (key.startsWith('_') || key.startsWith('$')) return N;
+            N[key] = isClear ? null : node[key];
+            return N;
         }, {});
     }
 
