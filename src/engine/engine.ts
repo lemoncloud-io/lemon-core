@@ -325,8 +325,9 @@ export const do_parrallel = <T, U>(
         try {
             //! error proof.
             const R = safeCall(node, index);
-            if (R && R instanceof Promise) {
-                return R.catch(e => {
+            if (R && typeof R == 'object' && R instanceof Promise) {
+                const R2: Promise<any> = R as Promise<any>; // avoid compile error.
+                return R2.catch(e => {
                     _err(`!ERR@1 node[${index}] =`, e);
                     //! make sure error instance.
                     return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
