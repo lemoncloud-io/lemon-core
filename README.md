@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.1.16    | improve `lock()` w/ 404 error, and `.aggregations` in QueryResult.
 | 2.1.15    | support `$U.FN()`for float-number.
 | 2.1.14    | support `hash` param for `MocksAPIService`.
 | 2.1.13    | support `HttpStorage`, `$U.crypto2`, and `/favicon.ico`.
