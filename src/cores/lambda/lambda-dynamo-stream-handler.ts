@@ -19,10 +19,11 @@ import { toJavascript } from '../../lib/dynamodb-value';
 import { Elastic6Service, Elastic6Item } from '../elastic6-service';
 import { DynamoOption } from '../dynamo-service';
 
+export type DynamoStreamEvent = DynamoDBRecord['eventName'];
 export interface DynamoStreamParam {
     region?: string;
     eventId?: string;
-    eventName?: 'INSERT' | 'MODIFY' | 'REMOVE';
+    eventName?: DynamoStreamEvent;
     tableName?: string;
 }
 export interface DynamoStreamBody<T = any> {
@@ -44,6 +45,16 @@ export interface DynamoStreamBody<T = any> {
     node: T;
 }
 export type DynamoStreamNextHandler<T = any> = NextHandler<DynamoStreamParam, void, DynamoStreamBody<T>>;
+
+/**
+ * types for stream synchronizer
+ */
+export interface DynamoStreamFilter<T = any> {
+    (id: string, item: T, diff?: string[], prev?: T): boolean;
+}
+export interface DynamoStreamCallback<T = any> {
+    (id: string, eventName: DynamoStreamEvent, item: T, diff?: string[], prev?: T): Promise<void>;
+}
 
 /**
  * class: LambdaDynamoStreamHandler
@@ -132,14 +143,20 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
 
     /**
      * create synchronizer to elastic6 via dynamo-stream.
+     *  - procedure: (filter) -> (onBeforeSync) -> synchronization -> (onAfterSync)
      *
      * @param options       options of dynamo table.
-     * @param idName        name of id.
+     * @param service       Elastic6Service instance
+     * @param filter        filter function
+     * @param onBeforeSync  callback function invoked before synchronization
+     * @param onAfterSync   callback function invoked after synchronization
      */
     public static createSyncToElastic6<T extends Elastic6Item>(
         options: DynamoOption,
         service: Elastic6Service<T>,
-        filter?: (id: string, item: T, diff?: string[], prev?: T) => boolean,
+        filter?: DynamoStreamFilter<T>,
+        onBeforeSync?: DynamoStreamCallback<T>,
+        onAfterSync?: DynamoStreamCallback<T>,
     ): DynamoStreamNextHandler {
         // const _log = console.log;
         const handler: DynamoStreamNextHandler = async (id, param, body, $ctx) => {
@@ -172,6 +189,9 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                 return;
             }
 
+            //! call pre sync function
+            if (onBeforeSync) await onBeforeSync(_id, eventName, item, diff, prev);
+
             //! update or save.
             if (false) {
             } else if (eventName == 'REMOVE') {
@@ -199,6 +219,9 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                 const res = await service.saveItem(_id, item);
                 _log(NS, `> saved[${_id}] =`, $U.json(res));
             }
+
+            //! call post sync function
+            if (onAfterSync) await onAfterSync(_id, eventName, item, diff, prev);
         };
         return handler;
     }
