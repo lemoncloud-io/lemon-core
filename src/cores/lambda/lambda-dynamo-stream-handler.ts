@@ -14,10 +14,10 @@ const NS = $U.NS('HDBS', 'green'); // NAMESPACE TO BE PRINTED.
 
 import { DynamoDBRecord } from 'aws-lambda';
 import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
-import { NextHandler } from './../core-types';
+import { NextHandler } from '../core-types';
 import { toJavascript } from '../../lib/dynamodb-value';
-import { Elastic6Service, Elastic6Item } from './../elastic6-service';
-import { DynamoOption } from './../dynamo-service';
+import { Elastic6Service, Elastic6Item } from '../elastic6-service';
+import { DynamoOption } from '../dynamo-service';
 
 export interface DynamoStreamParam {
     region?: string;
