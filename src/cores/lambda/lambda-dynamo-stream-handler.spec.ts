@@ -14,7 +14,7 @@ import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
 import * as $elastic6 from './../elastic6-service.spec';
-import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
+import { LambdaDynamoStreamHandler, DynamoStreamFilter, DynamoStreamCallback } from './lambda-dynamo-stream-handler';
 import { DynamoOption } from './../dynamo-service';
 
 class LambdaDynamoStreamHandlerLocal extends LambdaDynamoStreamHandler {
@@ -74,12 +74,14 @@ describe('LambdaDynamoStreamHandler', () => {
         ///////////////////////
         //STEP 1. update event.
         //! attach handler.
-        const filter = (id: string, item: any, diff: any, prev: any) => {
-            item['X'] = 'x';
+        const filter: DynamoStreamFilter = (id, item, diff, prev) => {
             return true;
-        }
-        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6, filter)
-        service.addListener(handler)
+        };
+        const preSync: DynamoStreamCallback = async (id, eventName, item, diff, prev) => {
+            item['X'] = 'x';
+        };
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6, filter, preSync);
+        service.addListener(handler);
 
         //! pre-condition.
         expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`);
