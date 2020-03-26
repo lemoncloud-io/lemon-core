@@ -686,7 +686,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                     resolve(timeout);
                 }, timeout);
             });
-        const incLock = (lock: number): Promise<number> => {
+        const incLock = async (_id: string, lock: number): Promise<number> => {
             const $up = {};
             const $in = { lock };
             return thiz.storage.update(_id, $up as T, $in as T).then($t2 => {
@@ -694,19 +694,23 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             });
         };
         //! recursive to wait lock()
-        const waitLock = async (ttl: number, int: number): Promise<boolean> => {
-            const lock = await incLock(ttl > 0 ? 1 : 0);
+        const waitLock = async (_id: string, ttl: number, int: number): Promise<boolean> => {
+            //! try to check the current value.....
+            const lock = await incLock(_id, 0).then(n => {
+                if (n > 1) return n;
+                //! then, try to increment the lock
+                return incLock(_id, ttl > 0 ? 1 : 0);
+            });
             _log(NS, `! waitLock(${_id}, ${ttl}). lock =`, lock);
             if (lock == 1 || lock == 0) {
                 return true;
             } else if (ttl > 0 && lock > 1) {
-                return wait(int).then(() => waitLock(ttl - 1, int));
+                return wait(int).then(() => waitLock(_id, ttl - 1, int));
             } else {
                 throw new Error(`400 TIMEOUT - model[${_id}].lock = ${lock}`);
             }
         };
-        // return wait((Math.random() * 20) / 20).then(() => waitLock(tick, interval));
-        return waitLock(tick, interval);
+        return waitLock(_id, tick, interval);
     }
 
     /**
@@ -874,12 +878,18 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * `total-waited-time = tick * interval (msec)`
      *
+     * **[UPDATES]**
+     * 1. read original node (or, throw 404 error)
+     * 2. use internal lock.
+     *
      * @param id        model-id to lock
      * @param tick      tick count to wait.
      * @param interval  timeout interval per each tick (in msec, default 1000 = 1sec)
      */
     public lock = (id: string | number, tick?: number, interval?: number) =>
-        this.storage.doLock(this.type, `${id || ''}`, tick, interval);
+        this.storage
+            .doRead(this.type, `${id || ''}`, null)
+            .then(node => this.storage.doLock(this.type, node.id, tick, interval));
 
     /**
      * release lock by resetting lock = 0.
@@ -914,7 +924,8 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
             })
             .catch((e: Error) => {
                 if (locked) return this.release(id).then(() => Promise.reject(e));
-                throw e;
+                // throw e;
+                return Promise.reject(e);
             });
     };
 

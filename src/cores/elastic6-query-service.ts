@@ -124,6 +124,27 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         });
 
         const result: QueryResult<T> = { list, total };
+        if (res.aggregations) {
+            const $aggregations = res.aggregations || {};
+            result.aggregations = Object.keys($aggregations).reduce((aggrs, field) => {
+                const {
+                    doc_count_error_upper_bound: docCountError = 0,
+                    sum_other_doc_count: docSkippedCount = 0,
+                    buckets,
+                } = res.aggregations[field];
+                if (docCountError > 0)
+                    _err(NS, `> [WARN] aggregation: counts for each term are not accurate.`);
+                if (docSkippedCount > 0)
+                    _err(NS, '> [WARN] aggregation: too many unique terms in the result. some terms are skipped.');
+                if (Array.isArray(buckets)) {
+                    aggrs[field] = buckets.map((bucket: any) => {
+                        return { key: bucket.key, count: bucket.doc_count };
+                    });
+                }
+                return aggrs;
+            }, {} as any);
+        }
+
         return result;
     }
 

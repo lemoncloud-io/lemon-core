@@ -207,6 +207,8 @@ export interface QueryResult<T> {
     page?: number;
     // limit of list.
     limit?: number;
+    // terms aggregations
+    aggregations?: any;
 }
 /**
  * class: `SimpleSearchParam`
