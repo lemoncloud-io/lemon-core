@@ -14,7 +14,7 @@ import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
 import * as $elastic6 from './../elastic6-service.spec';
-import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
+import { LambdaDynamoStreamHandler, DynamoStreamFilter, DynamoStreamCallback } from './lambda-dynamo-stream-handler';
 import { DynamoOption } from './../dynamo-service';
 
 class LambdaDynamoStreamHandlerLocal extends LambdaDynamoStreamHandler {
@@ -71,15 +71,34 @@ describe('LambdaDynamoStreamHandler', () => {
         event.Records[0].dynamodb.NewImage[idName] = { 'S': id };
         event.Records[0].dynamodb.OldImage[idName] = { 'S': id };
 
+        //! to check handlers were called
+        let handlersCalled = { filter: false, onBeforeSync: false, onAfterSync: false };
+
         ///////////////////////
         //STEP 1. update event.
-        //! attach handler.
-        const filter = (id: string, item: any, diff: any, prev: any) => {
-            item['X'] = 'x';
+        //! attach handlers.
+        const filter: DynamoStreamFilter = (id, item, diff, prev) => {
+            expect2(handlersCalled).toEqual({ filter: false, onBeforeSync: false, onAfterSync: false });
+            handlersCalled.filter = true;
+            // check diff items
+            for (let key of Object.keys(item))
+                if (diff.includes(key)) expect2(item[key]).not.toEqual(prev[key]);
             return true;
-        }
-        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6, filter)
-        service.addListener(handler)
+        };
+        const onBeforeSync: DynamoStreamCallback = async (id, eventName, item, diff, prev) => {
+            expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: false, onAfterSync: false });
+            handlersCalled.onBeforeSync = true;
+            // set extra field
+            item['X'] = 'x';
+        };
+        const onAfterSync: DynamoStreamCallback = async (id, eventName, item, diff, prev) => {
+            expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: false });
+            handlersCalled.onAfterSync = true;
+            // check extra field set
+            expect2(item['X']).toBe('x');
+        };
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6, filter, onBeforeSync, onAfterSync);
+        service.addListener(handler);
 
         //! pre-condition.
         expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`);
@@ -91,12 +110,17 @@ describe('LambdaDynamoStreamHandler', () => {
         //! check post-condition.
         expect2(await elastic6.readItem(id).catch(GETERR)).toEqual({ [idName]:`${id}`, '@ts': 1574150700000, count:6, hello:'lemon', id:'A001', X:'x' });
 
+        //! check all handlers were called
+        expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: true });
+
         ///////////////////////
         //STEP 2. delete event.
         event.Records[0].eventName = 'REMOVE';
+        handlersCalled = { filter: false, onBeforeSync: false, onAfterSync: false };
         const res2 = await service.handle(event, null);
         expect2(res2).toEqual(undefined);
         expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`);     // must be deleted.
+        expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: true });
 
         /* eslint-enable prettier/prettier */
         done();
