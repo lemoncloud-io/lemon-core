@@ -156,8 +156,8 @@ export class APIService implements APIServiceClient {
             this.client = APIService.buildClient(this.type, this.endpoint, this.headers, null, proxy);
         } else {
             //! use default `env.BACKBONE_API` to detect proxy-server.
-            const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
-            this.client = APIService.buildClient(this.type, this.endpoint, this.headers, BACKBONE);
+            // const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
+            this.client = APIService.buildClient(this.type, this.endpoint, this.headers);
         }
     }
 
