@@ -17,7 +17,7 @@ import {
     UniqueFieldManager,
 } from './proxy-storage-service';
 
-const NS = $U.NS('MMGR', 'cyan'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('MMGR', 'cyan'); // default namespace name
 
 /**
  * class: `AbstractManager`
@@ -31,6 +31,7 @@ export abstract class AbstractManager<
     S extends StorageMakeable<T, ModelType>,
     ModelType extends string
 > extends GeneralModelFilter<T, ModelType> {
+    public readonly NS: string;
     public readonly type: ModelType;
     public readonly parent: S;
     public readonly storage: TypedStorageService<T, ModelType>;
@@ -42,9 +43,12 @@ export abstract class AbstractManager<
      * @param parent        service instance which implements StorageMakeable interface
      * @param fields        list of model field names
      * @param uniqueField   (optional) unique field name
+     * @param ns            (optional) namespace to be printed. pass NULL to suppress all logs.
+     *                      global NS value will be used if not specified or undefined.
      */
-    protected constructor(type: ModelType, parent: S, fields: string[], uniqueField?: string) {
+    protected constructor(type: ModelType, parent: S, fields: string[], uniqueField?: string, ns?: string) {
         super(fields);
+        this.NS = ns === undefined ? NS : ns;
         this.type = type;
         this.parent = parent;
         this.storage = parent.makeStorageService(type, fields, this);
@@ -98,19 +102,19 @@ export abstract class AbstractManager<
      * @param model model object
      */
     public async insert(model: T): Promise<T> {
-        _inf(NS, `insert(${this.type})...`);
+        this.NS && _inf(this.NS, `insert(${this.type})...`);
         if (!model) throw new Error(`@model (${this.type}-model) is required!`);
 
         const $def = this.prepareDefault(null);
         const created = await this.storage.insert($def);
         const id = `${(created && created.id) || ''}`;
         if (!id) throw new Error('.id (string) is missing - insert() failed!');
-        _log(NS, `> model.base =`, $U.json(model));
+        this.NS && _log(this.NS, `> model.base =`, $U.json(model));
 
         const $saves = { ...model }; // clone
         delete $saves.id; // ensure there is no 'id' field
         const saved = await this.storage.save(id, $saves);
-        _log(NS, `> model.saved =`, $U.json(saved));
+        this.NS && _log(this.NS, `> model.saved =`, $U.json(saved));
 
         return { ...created, ...saved, id };
     }
@@ -120,7 +124,7 @@ export abstract class AbstractManager<
      * @param id    model id
      */
     public async retrieve(id: string): Promise<T> {
-        _inf(NS, `retrieve(${this.type}/${id})...`);
+        this.NS && _inf(this.NS, `retrieve(${this.type}/${id})...`);
         if (!id) throw new Error(`@id is required!`);
 
         return this.storage.read(id).catch(e => {
@@ -136,7 +140,7 @@ export abstract class AbstractManager<
      * @param $inc  (optional) incremental set
      */
     public async update(id: string, model: T, $inc?: T): Promise<T> {
-        _inf(NS, `update(${this.type}/${id})...`);
+        this.NS && _inf(this.NS, `update(${this.type}/${id})...`);
         return this._updateModel(id, model, $inc, false);
     }
 
@@ -147,7 +151,7 @@ export abstract class AbstractManager<
      * @param $inc  (optional) incremental set
      */
     public async updateOrCreate(id: string, model: T, $inc?: T): Promise<T> {
-        _inf(NS, `updateOrCreate(${this.type}/${id})...`);
+        this.NS && _inf(this.NS, `updateOrCreate(${this.type}/${id})...`);
         return this._updateModel(id, model, $inc, true);
     }
 
@@ -157,13 +161,13 @@ export abstract class AbstractManager<
      * @param destroy   flag for hard delete or soft delete (by setting 'deletedAt' field)
      */
     public async delete(id: string, destroy: boolean = true): Promise<T> {
-        _inf(NS, `delete(${this.type}/${id})...`);
+        this.NS && _inf(this.NS, `delete(${this.type}/${id})...`);
         if (!id) throw new Error(`@id is required!`);
 
         const $org = await this.prepare(id, null, false);
-        _log(NS, `> model.org =`, $U.json($org));
+        this.NS && _log(this.NS, `> model.org =`, $U.json($org));
         const deleted = await this.storage.delete(id, destroy);
-        _log(NS, `> model.deleted =`, $U.json(deleted));
+        this.NS && _log(this.NS, `> model.deleted =`, $U.json(deleted));
 
         return { ...$org, ...deleted, id };
     }
@@ -180,10 +184,10 @@ export abstract class AbstractManager<
         if (!id) throw new Error(`@id is required!`);
 
         const $org = await this.prepare(id, null, isCreate);
-        _log(NS, `> model.org =`, $U.json($org));
+        this.NS && _log(this.NS, `> model.org =`, $U.json($org));
         const $ups = { ...model };
         const updated = await this.storage.update(id, $ups, $inc);
-        _log(NS, `> model.updated =`, $U.json(updated));
+        this.NS && _log(this.NS, `> model.updated =`, $U.json(updated));
 
         return { ...$org, ...updated, id };
     }
