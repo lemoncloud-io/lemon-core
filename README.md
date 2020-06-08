@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.2.0     | support `AbstractManager` for the template of model managers.
 | 2.1.17    | support `filter()` in DynamoStream.
 | 2.1.16    | improve `lock()` w/ 404 error, and `.aggregations` in QueryResult.
 | 2.1.15    | support `$U.FN()`for float-number.
@@ -99,7 +100,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 | 2.1.7     | improve `TypedStorageService` w/ `save()`.
 | 2.1.5     | support `GeneralAPIController` along w/ `UniqueFieldManager`.
 | 2.1.4     | optimized `ProtocolService` w/ callback.
-| 2.1.3     | support `asNextIdentityAccess()` for access indentity.
+| 2.1.3     | support `asNextIdentityAccess()` for access identity.
 | 2.1.2     | support `ProxyStorageService` for shared common storage.
 | 2.1.1     | support `enqueue()` with delayed-seconds.
 | 2.1.0     | support `ProtocolService` for inter communication of micro-services.
