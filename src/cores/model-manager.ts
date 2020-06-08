@@ -98,7 +98,7 @@ export abstract class AbstractManager<
      * @param model model object
      */
     public async insert(model: T): Promise<T> {
-        _inf(NS, `insert...`);
+        _inf(NS, `insert(${this.type})...`);
         if (!model) throw new Error(`@model (${this.type}-model) is required!`);
 
         const $def = this.prepareDefault(null);
@@ -120,7 +120,7 @@ export abstract class AbstractManager<
      * @param id    model id
      */
     public async retrieve(id: string): Promise<T> {
-        _inf(NS, `retrieve(${id})...`);
+        _inf(NS, `retrieve(${this.type}/${id})...`);
         if (!id) throw new Error(`@id is required!`);
 
         return this.storage.read(id).catch(e => {
@@ -136,7 +136,7 @@ export abstract class AbstractManager<
      * @param $inc  (optional) incremental set
      */
     public async update(id: string, model: T, $inc?: T): Promise<T> {
-        _inf(NS, `update(${id})...`);
+        _inf(NS, `update(${this.type}/${id})...`);
         return this._updateModel(id, model, $inc, false);
     }
 
@@ -147,7 +147,7 @@ export abstract class AbstractManager<
      * @param $inc  (optional) incremental set
      */
     public async updateOrCreate(id: string, model: T, $inc?: T): Promise<T> {
-        _inf(NS, `updateOrCreate(${id})...`);
+        _inf(NS, `updateOrCreate(${this.type}/${id})...`);
         return this._updateModel(id, model, $inc, true);
     }
 
@@ -157,7 +157,7 @@ export abstract class AbstractManager<
      * @param destroy   flag for hard delete or soft delete (by setting 'deletedAt' field)
      */
     public async delete(id: string, destroy: boolean = true): Promise<T> {
-        _inf(NS, `delete(${id})...`);
+        _inf(NS, `delete(${this.type}/${id})...`);
         if (!id) throw new Error(`@id is required!`);
 
         const $org = await this.prepare(id, null, false);
