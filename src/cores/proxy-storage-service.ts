@@ -128,6 +128,10 @@ export interface CoreModel<ModelType extends string> extends StorageModel, Inter
      * deleted timestamp
      */
     deletedAt?: number;
+    /**
+     * error message will be set if error occurred
+     */
+    error?: string;
 }
 
 //NOTE! - BE WARE TO USE `ts-transformer-keys` DUE TO MISSING `ttypescript`
