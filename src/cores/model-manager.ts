@@ -82,15 +82,15 @@ export abstract class AbstractManager<
      * @param isCreate  (optional) flag to allow creating a new model (default: true)
      */
     public async prepare(id: string, $def?: T, isCreate = true): Promise<T> {
-        _inf(NS, `prepare(${id})...`);
-        _log(NS, `> $def =`, $U.json($def));
-        _log(NS, `> isCreate =`, isCreate);
         if (!id) throw new Error(`404 NOT FOUND - id is not valid!`);
 
         // if 'isCreate' flag is set, read existing model or create initial model by calling abstract method 'prepareDefault'
         if (isCreate) return this.storage.readOrCreate(id, this.prepareDefault($def));
-        // this can throw 404
-        return this.storage.read(id);
+        // otherwise just try to read model and throw 404 if it does not exist
+        return this.storage.read(id).catch(e => {
+            if (`${e.message || e}`.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - ${this.type}:${id}`);
+            throw e;
+        });
     }
 
     /**
@@ -165,7 +165,7 @@ export abstract class AbstractManager<
         const deleted = await this.storage.delete(id, destroy);
         _log(NS, `> model.deleted =`, $U.json(deleted));
 
-        return { ...$org, id };
+        return { ...$org, ...deleted, id };
     }
 
     /**
@@ -178,7 +178,6 @@ export abstract class AbstractManager<
      */
     private async _updateModel(id: string, model: T, $inc?: T, isCreate = true): Promise<T> {
         if (!id) throw new Error(`@id is required!`);
-        if (!model) throw new Error(`@model (${model.type}) is required!`);
 
         const $org = await this.prepare(id, null, isCreate);
         _log(NS, `> model.org =`, $U.json($org));

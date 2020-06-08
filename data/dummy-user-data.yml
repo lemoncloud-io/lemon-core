@@ -1,0 +1,9 @@
+data:
+    - ns: TT
+      type: user
+      id: '1'
+      uid: U0001
+      name: 홍길동
+      age: 32
+      contact: 010-1234-4321
+      active: 1
