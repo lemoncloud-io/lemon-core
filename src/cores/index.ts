@@ -25,6 +25,7 @@ export * from './elastic6-service';
 export * from './elastic6-query-service';
 export * from './storage-service';
 export * from './proxy-storage-service';
+export * from './model-manager';
 
 //! import default with named.
 import aws from './aws/';
