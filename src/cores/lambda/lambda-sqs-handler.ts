@@ -81,14 +81,15 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         //! report call back.
                         const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
                         proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
-                        _log(NS, `> config.service =`, this.lambda.config.getService());
+                        _log(NS, `> config.service =`, this.lambda.config && this.lambda.config.getService());
                         //! check if service is in same..
-                        if (proto && proto.service == this.lambda.config.getService()) {
+                        if (proto && this.lambda.config && proto.service == this.lambda.config.getService()) {
                             proto.context.depth = $U.N(proto.context.depth, 1) + 1;
                             proto.body = body;
                             _log(NS, `! body[${index}] =`, $U.json(body));
                             return this.lambda.handleProtocol(proto).then(body => {
                                 _log(NS, `>> body[${index}].callback =`, $U.json(body));
+                                return body;
                             });
                         }
                         //! call the remote service if callback.
@@ -96,7 +97,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                     })
                     .catch(e => $doReportError(e, param.context, null, { protocol: param }));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
-                return '';
+                return typeof result == 'string' ? result : $U.json(result);
             } else {
                 //! load data as `body`
                 const body =

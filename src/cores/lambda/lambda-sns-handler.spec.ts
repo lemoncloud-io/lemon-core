@@ -1,6 +1,6 @@
 /**
- * `lambda-sqs-handler.spec.ts`
- * - unit test for `lambda-sqs-handler`
+ * `lambda-sns-handler.spec.ts`
+ * - unit test for `lambda-sns-handler`
  *
  *
  * @author      Steve Jung <steve@lemoncloud.io>
@@ -13,13 +13,13 @@
 import { expect2 } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/shared';
 import { LambdaHandler } from './lambda-handler';
-import { LambdaSQSHandler } from './lambda-sqs-handler';
+import { LambdaSNSHandler } from './lambda-sns-handler';
 
 import * as $lambda from './lambda-handler.spec';
 import * as $web from './lambda-web-handler.spec';
 import { $U } from '../../engine';
 
-class LambdaSQSHandlerLocal extends LambdaSQSHandler {
+class LambdaSNSHandlerLocal extends LambdaSNSHandler {
     public constructor(lambda: LambdaHandler) {
         super(lambda, true);
     }
@@ -28,19 +28,19 @@ class LambdaSQSHandlerLocal extends LambdaSQSHandler {
 export const instance = () => {
     const { service: lambda } = $lambda.instance();
     const { service: web } = $web.instance(lambda);
-    const service = new LambdaSQSHandlerLocal(lambda);
+    const service = new LambdaSNSHandlerLocal(lambda);
     return { lambda, service, web };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
-describe('LambdaSQSHandler', () => {
+describe('LambdaSNSHandler', () => {
     //! protocol param
     it('should pass handle protocol with web (default)', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service, web } = instance();
-        const event: any = loadJsonSync('data/protocol.event.sqs.json');
-        expect2(event.Records[0], 'messageId').toEqual({ messageId:'3649c307-b056-406c-b42a-d68493b8055e' });
+        const event: any = loadJsonSync('data/protocol.event.sns.json');
+        expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId:'7820a87c-f73c-5c88-b2be-fe250be6b564' });
 
         //! PRE-CONDITION
         expect2(() => web.result).toEqual(null);
@@ -63,13 +63,13 @@ describe('LambdaSQSHandler', () => {
     it('should pass handle protocol with web (hello)', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service, web } = instance();
-        const event: any = loadJsonSync('data/protocol.event.sqs.json');
-        expect2(event.Records[0], 'messageId').toEqual({ messageId:'3649c307-b056-406c-b42a-d68493b8055e' });
+        const event: any = loadJsonSync('data/protocol.event.sns.json');
+        expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId:'7820a87c-f73c-5c88-b2be-fe250be6b564' });
 
         //! CHANGE PARAM
-        const body = JSON.parse(event.Records[0].body);
+        const body = JSON.parse(event.Records[0].Sns.Message);
         body.type = 'hello';                                // override to `hello` type.
-        event.Records[0].body = JSON.stringify(body);
+        event.Records[0].Sns.Message = JSON.stringify(body);
 
         //! PRE-CONDITION
         expect2(() => web.result).toEqual(null);
