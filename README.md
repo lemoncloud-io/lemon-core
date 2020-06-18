@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.2.2     | fix result of sns/sqn event handler
 | 2.2.1     | fix missing export of a class declaration.
 | 2.2.0     | support `AbstractManager` for the template of model managers.
 | 2.1.17    | support `filter()` in DynamoStream.
