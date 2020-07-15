@@ -57,6 +57,12 @@ export interface NextIdentity {
      * roles  (like `user`, `admin`, `super`)
      */
     roles: string[];
+    /**
+     * prefered language (like 'ko')
+     * - use `x-lemon-language` header, or in `x-lemon-identity`
+     * @since ver2.2.3 2020/JUL/15
+     */
+    lang?: string;
 }
 
 /**

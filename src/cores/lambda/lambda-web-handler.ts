@@ -14,10 +14,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../../engine/';
-const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
-import { doReportError } from '../../engine/';
-
+import { _log, _inf, _err, $U, $_, doReportError } from '../../engine/';
 import {
     NextDecoder,
     NextHandler,
@@ -32,6 +29,7 @@ import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from '
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
 import $protocol from '../protocol/';
+const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
 
@@ -88,18 +86,17 @@ export const redirect = (location: any, status?: number) => {
     return res;
 };
 
-/** ********************************************************************************************************************
- *  COMMON Constants
- ** ********************************************************************************************************************/
+/**
+ * simple object container
+ */
 interface ModeMap {
     [key: string]: NextMode;
 }
-//! constants config
-const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
 
-/** ********************************************************************************************************************
- *  Main Class
- ** ********************************************************************************************************************/
+//! header names..
+const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
+const HEADER_LEMON_LANGUAGE = 'x-lemon-language';
+
 /**
  * class: LambdaWEBHandler
  * - default WEB Handler w/ event-listeners.
@@ -340,15 +337,25 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
         //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
         // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
-        const identity: NextIdentityCognito = await (async val => {
-            if (!val) return {};
-            return typeof val === 'string' && val.startsWith('{') && val.endsWith('}')
-                ? JSON.parse(val)
-                : { name: val };
-        })(headers[HEADER_LEMON_IDENTITY] || '').catch(e => {
-            _err(NS, '!WARN! parse.err =', e);
-            return {};
-        });
+        const _identity = async (val: string): Promise<NextIdentityCognito> => {
+            val = `${val || ''}`.trim();
+            try {
+                if (val && val.startsWith('{') && val.endsWith('}')) return JSON.parse(val);
+                _err(NS, '!WARN! identity =', val);
+            } catch (e) {
+                _err(NS, '!WARN! parse.err =', e);
+                _err(NS, '!WARN! identity =', val);
+            }
+            // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
+            const ret: any = val ? { meta: val } : {};
+            return ret as NextIdentityCognito;
+        };
+        const identity: NextIdentityCognito = await _identity(headers[HEADER_LEMON_IDENTITY]);
+
+        //! support prefered lanauge.
+        if (headers[HEADER_LEMON_LANGUAGE]) {
+            identity.lang = `${headers[HEADER_LEMON_LANGUAGE]}`.trim();
+        }
 
         //! translate cognito authentication to NextIdentity.
         if (reqContext.identity && reqContext.identity.cognitoIdentityPoolId !== undefined) {
