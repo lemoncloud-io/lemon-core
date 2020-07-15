@@ -101,7 +101,7 @@
     "ts-jest": "^24.3.0",
     "ts-node": "^8.6.2",
     "typedoc": "^0.15.8",
-    "typescript": "^3.8.3"
+    "typescript": "^3.9.6"
   },
   "private": false,
   "repository": {
