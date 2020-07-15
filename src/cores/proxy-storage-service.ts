@@ -10,14 +10,12 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine/';
-const NS = $U.NS('PSTR', 'blue'); // NAMESPACE TO BE PRINTED.
-
 import { StorageService, StorageModel } from './storage-service';
 import { DummyStorageService, DynamoStorageService } from './storage-service';
 import { NUL404 } from '../common/test-helper';
-
 import { Elastic6SimpleQueriable } from './core-types';
 import { GeneralAPIController } from '../controllers/general-api-controller';
+const NS = $U.NS('PSTR', 'blue'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: `CoreKey`

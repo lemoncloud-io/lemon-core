@@ -12,11 +12,10 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U, $_ } from '../engine/';
-const NS = $U.NS('APIS', 'green'); // NAMESPACE TO BE PRINTED.
-
-import fs from 'fs';
 import { loadJsonSync } from '../tools/shared';
 import { GETERR } from '../common/test-helper';
+import fs from 'fs';
+const NS = $U.NS('APIS', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
  * API headers.

@@ -11,12 +11,9 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine';
-const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 import { APIService, APIServiceClient, APIHeaders } from './api-service';
 import { StorageModel, StorageService } from './storage-service';
-/**
- * only for type information for internal partition-key.
- */
+const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: `HttpStorageService`

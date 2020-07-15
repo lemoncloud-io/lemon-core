@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { GETERR, expect2 } from '..';
+import { expect2 } from '..';
 import { loadProfile } from '../environ';
 import { loadDataYml } from '../tools';
 import { DynamoService, DynamoOption } from './dynamo-service';

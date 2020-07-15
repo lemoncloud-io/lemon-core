@@ -16,7 +16,6 @@ import {
     TypedStorageService,
     UniqueFieldManager,
 } from './proxy-storage-service';
-
 const NS = $U.NS('MMGR', 'cyan'); // default namespace name
 
 /**
