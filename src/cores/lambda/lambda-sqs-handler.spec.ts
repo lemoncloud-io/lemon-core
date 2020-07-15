@@ -8,16 +8,13 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-// import { _it } from '../common/test-helper';
-
+import { $U } from '../../engine';
 import { expect2 } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/shared';
 import { LambdaHandler } from './lambda-handler';
 import { LambdaSQSHandler } from './lambda-sqs-handler';
-
 import * as $lambda from './lambda-handler.spec';
 import * as $web from './lambda-web-handler.spec';
-import { $U } from '../../engine';
 
 class LambdaSQSHandlerLocal extends LambdaSQSHandler {
     public constructor(lambda: LambdaHandler) {

@@ -9,15 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../../engine/';
-const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
-import { do_parrallel } from '../../engine/';
-
+import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
 import { SQSRecord } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { NextHandler, NextContext } from './../core-services';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: LambdaSQSHandler

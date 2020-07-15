@@ -10,10 +10,9 @@
  */
 import { expect2 } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
-
-import * as $lambda from './lambda-handler.spec';
 import { LambdaHandler } from './lambda-handler';
 import { LambdaNotificationHandler } from './lambda-notification-handler';
+import * as $lambda from './lambda-handler.spec';
 
 class LambdaNotificationHandlerLocal extends LambdaNotificationHandler {
     public constructor(lambda: LambdaHandler) {

@@ -319,7 +319,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
     }
 
     /**
-     * called after updating the model.
+     * called before updating the model.
      * @param model         the updated model
      * @param incrementals  (optional) incremental fields.
      */
