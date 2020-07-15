@@ -425,7 +425,7 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         super(options);
         _log(NS, `DummyDynamoService(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');
-        const dummy = loadDataYml(dataFile);
+        const dummy: any = loadDataYml(dataFile);
         this.load(dummy.data as any);
     }
 

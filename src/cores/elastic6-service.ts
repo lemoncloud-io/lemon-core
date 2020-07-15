@@ -623,7 +623,7 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
         super(options);
         _log(NS, `DummyElastic6Service(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');
-        const dummy = loadDataYml(dataFile);
+        const dummy: any = loadDataYml(dataFile);
         this.load(dummy.data as any);
     }
 
