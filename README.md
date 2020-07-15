@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.2.4     | update package modules `npm update --save`.
 | 2.2.3     | support `x-lemon-language` header in identity.
 | 2.2.2     | fix result of sns/sqn event handler
 | 2.2.1     | fix missing export of a class declaration.
