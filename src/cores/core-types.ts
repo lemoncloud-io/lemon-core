@@ -63,6 +63,10 @@ export interface NextIdentity {
      * @since ver2.2.3 2020/JUL/15
      */
     lang?: string;
+    /**
+     * something unknown.
+     */
+    meta?: any;
 }
 
 /**
