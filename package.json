@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "npm run build-ts",
-    "build-ts": "tsc",
+    "build-ts": "tsc -v && tsc",
     "watch-ts": "tsc -w",
     "doc": "npm run doc:html && open dist/docs/index.html",
     "doc:html": "typedoc src/ --exclude **/*.spec.ts --target ES6 --mode file --out dist/docs",

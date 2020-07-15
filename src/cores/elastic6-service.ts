@@ -624,7 +624,7 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
         _log(NS, `DummyElastic6Service(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');
         const dummy = loadDataYml(dataFile);
-        this.load(dummy.data);
+        this.load(dummy.data as any);
     }
 
     private buffer: { [id: string]: T } = {};
