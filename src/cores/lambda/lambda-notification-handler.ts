@@ -10,8 +10,6 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, $_ } from '../../engine/';
-const NS = $U.NS('HNOT', 'yellow'); // NAMESPACE TO BE PRINTED.
-
 import { NextContext, NextHandler } from './../core-services';
 import {
     LambdaHandler,
@@ -23,6 +21,7 @@ import {
 } from './lambda-handler';
 import { success } from './lambda-web-handler';
 import { APIGatewayEventRequestContext } from 'aws-lambda';
+const NS = $U.NS('HNOT', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * param for containing headers infor

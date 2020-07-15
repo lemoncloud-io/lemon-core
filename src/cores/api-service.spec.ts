@@ -8,10 +8,10 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, GETERR$, expect2, marshal, Filter, _it } from '../common/test-helper';
-import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
+import { loadProfile } from '../environ';
 import $engine, { $U } from '../engine';
-import environ from '../environ';
+import { GETERR, expect2 } from '../common/test-helper';
+import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
 import { loadJsonSync } from '../tools';
 
 //! api with `lemon-hello-api` in prod @lemon.
@@ -29,9 +29,9 @@ const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHt
 
 //! main test body.
 describe('APIService', () => {
-    //! load env via `/env/<ENV>.yml`.
-    const $env = environ(process);
-    console.info(`! BACKBONE =`, $env['BACKBONE']);
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    console.info(`! PROFILE =`, PROFILE);
+    jest.setTimeout(10000);
 
     //! via direct request.
     it('should pass API w/ direct request', async done => {

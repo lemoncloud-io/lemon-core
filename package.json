@@ -1,12 +1,12 @@
 {
   "name": "lemon-core",
-  "version": "2.2.1",
+  "version": "2.2.3",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "npm run build-ts",
-    "build-ts": "tsc",
+    "build-ts": "tsc -v && tsc",
     "watch-ts": "tsc -w",
     "doc": "npm run doc:html && open dist/docs/index.html",
     "doc:html": "typedoc src/ --exclude **/*.spec.ts --target ES6 --mode file --out dist/docs",
@@ -101,7 +101,7 @@
     "ts-jest": "^24.3.0",
     "ts-node": "^8.6.2",
     "typedoc": "^0.15.8",
-    "typescript": "^3.8.3"
+    "typescript": "^3.9.6"
   },
   "private": false,
   "repository": {

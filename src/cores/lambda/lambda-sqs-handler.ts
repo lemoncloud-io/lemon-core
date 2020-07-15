@@ -9,15 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../../engine/';
-const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
-import { do_parrallel } from '../../engine/';
-
+import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
 import { SQSRecord } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { NextHandler, NextContext } from './../core-services';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: LambdaSQSHandler
@@ -81,14 +79,15 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         //! report call back.
                         const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
                         proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
-                        _log(NS, `> config.service =`, this.lambda.config.getService());
+                        _log(NS, `> config.service =`, this.lambda.config && this.lambda.config.getService());
                         //! check if service is in same..
-                        if (proto && proto.service == this.lambda.config.getService()) {
+                        if (proto && this.lambda.config && proto.service == this.lambda.config.getService()) {
                             proto.context.depth = $U.N(proto.context.depth, 1) + 1;
                             proto.body = body;
                             _log(NS, `! body[${index}] =`, $U.json(body));
                             return this.lambda.handleProtocol(proto).then(body => {
                                 _log(NS, `>> body[${index}].callback =`, $U.json(body));
+                                return body;
                             });
                         }
                         //! call the remote service if callback.
@@ -96,7 +95,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                     })
                     .catch(e => $doReportError(e, param.context, null, { protocol: param }));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
-                return '';
+                return typeof result == 'string' ? result : $U.json(result);
             } else {
                 //! load data as `body`
                 const body =

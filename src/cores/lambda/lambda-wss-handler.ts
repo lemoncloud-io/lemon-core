@@ -10,14 +10,10 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
-const NS = $U.NS('HWSS', 'yellow'); // NAMESPACE TO BE PRINTED.
-
 import { APIGatewayProxyResult } from 'aws-lambda';
 import { LambdaHandler, WSSHandler, LambdaSubHandler } from './lambda-handler';
+const NS = $U.NS('HWSS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-/** ********************************************************************************************************************
- *  COMMON Functions.
- ** ********************************************************************************************************************/
 export const buildResponse = (statusCode: number, body: any): APIGatewayProxyResult => {
     // @0612 - body 가 string일 경우, 응답형식을 텍스트로 바꿔서 출력한다.
     return {
