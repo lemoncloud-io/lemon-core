@@ -62,6 +62,7 @@ export const buildResponse = (statusCode: number, body: any, contentType?: strin
             'Content-Type': contentType,
             'Access-Control-Allow-Origin': '*', // Required for CORS support to work
             'Access-Control-Allow-Credentials': true, // Required for cookies, authorization headers with HTTPS
+            'Access-Control-Allow-Headers': 'origin, x-lemon-language', // custom headers
         },
         body: typeof body === 'string' ? body : JSON.stringify(body),
         isBase64Encoded,
