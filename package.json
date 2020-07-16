@@ -27,7 +27,9 @@
     "!release": "---- release with standard -----",
     "release": "standard-version",
     "release.first": "npm run release --first-release",
-    "release.minor": "npm run release --release-as minor"
+    "release.minor": "npm run release --release-as minor",
+    "!plato": "----- analysis code complexity -----",
+    "plato": "plato -r -d complexity dist"
   },
   "husky": {
     "hooks": {
@@ -92,6 +94,7 @@
     "husky": "^2.2.0",
     "jest": "^24.9.0",
     "lint-staged": "^8.1.6",
+    "plato": "^1.7.0",
     "prettier": "^1.19.1",
     "standard-version": "^8.0.1",
     "superagent": "^5.3.1",

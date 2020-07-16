@@ -387,6 +387,9 @@ lib-cov
 # Coverage directory used by tools like istanbul
 coverage
 
+# Complexity report by plato
+complexity
+
 # nyc test coverage
 .nyc_output
 
