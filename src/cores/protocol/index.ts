@@ -18,7 +18,7 @@ export class ProtocolModule implements EngineModule {
     private engine: LemonEngine;
     public constructor(engine?: LemonEngine) {
         this.engine = engine || $engine; // use input engine or global.
-        this.engine.register(this);
+        if (this.engine) this.engine.register(this);
     }
 
     //! create default services

@@ -22,9 +22,9 @@ export { AWSS3Service } from './aws-s3-service';
 
 export class AWSModule implements EngineModule {
     private engine: LemonEngine;
-    public constructor(engine: LemonEngine) {
-        this.engine = engine; // use input engine or global.
-        this.engine.register(this);
+    public constructor(engine?: LemonEngine) {
+        this.engine = engine || $engine; // use input engine or global.
+        if (this.engine) this.engine.register(this);
     }
 
     //! create default kms-service with `env.ENV_KMS_KEY_ID`.
