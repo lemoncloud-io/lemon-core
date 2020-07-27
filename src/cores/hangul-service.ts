@@ -1,10 +1,10 @@
 /** ****************************************************************************************************************
- *  Service Helper
+ *  Service Core
  ** ****************************************************************************************************************/
 /**
- * class `HangulUtil`
+ * class `HangulService`
  */
-class HangulUtil {
+export class HangulService {
     /* eslint-disable prettier/prettier */
     // Hangul Jamo
     //  1.Initial consonants (초성)
@@ -18,7 +18,7 @@ class HangulUtil {
     //  3. Final consonants (종성)
     public static readonly JONGSEONG = [
         'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ',
-        'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ᆽ', 'ᆾ', 'ᆿ', 'ᇀ', 'ᇁ', 'ᇂ',
+        'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
     ];
 
     // Hangul Composite Jamo(겹자모) -> Hangul Basic Jamo(기본 자모)
@@ -56,17 +56,9 @@ class HangulUtil {
     /* eslint-enable prettier/prettier */
 
     /**
-     * Check the text is Hangul
-     *
-     * @param text  input text
-     * @param partial   partial or whole (default: false)
+     * say hello
      */
-    public isHangul(text: string, partial: boolean = false): boolean {
-        const isHangulChar = (ch: string) => HangulUtil.isHangulChar(ch.charCodeAt(0));
-        const charArray = Array.from(text || '');
-
-        return partial ? charArray.some(isHangulChar) : charArray.every(isHangulChar);
-    }
+    public hello = () => `hangul-service`;
 
     /**
      * Decompose text into Hangul (Compatibility) Jamo sequence
@@ -86,19 +78,19 @@ class HangulUtil {
      */
     public asJamoSequence(text: string): string {
         return Array.from(text).reduce((str, ch) => {
-            if (HangulUtil.isHangulSyllable(ch.charCodeAt(0))) {
+            if (HangulService.isHangulSyllable(ch.charCodeAt(0))) {
                 const decomposed = ch.normalize('NFD');
                 let code: number;
 
                 // Initial consonant (Choseong)
                 code = decomposed.charCodeAt(0);
-                str += HangulUtil.CHOSEONG[code - 0x1100];
+                str += HangulService.CHOSEONG[code - 0x1100];
                 // Medial vowel (Jungseong)
                 code = decomposed.charCodeAt(1);
-                str += HangulUtil.JUNGSEONG[code - 0x1161];
+                str += HangulService.JUNGSEONG[code - 0x1161];
                 // Final consonant (Jongseong) - optional
                 code = decomposed.charCodeAt(2);
-                if (code) str += HangulUtil.JONGSEONG[code - 0x11a8];
+                if (code) str += HangulService.JONGSEONG[code - 0x11a8];
             } else {
                 str += ch;
             }
@@ -116,7 +108,7 @@ class HangulUtil {
      */
     public asBasicJamoSequence(text: string): string {
         return Array.from(this.asJamoSequence(text)).reduce((str, ch) => {
-            str += HangulUtil.JamoDecomposeMap.get(ch) || ch;
+            str += HangulService.JamoDecomposeMap.get(ch) || ch;
             return str;
         }, '');
     }
@@ -129,7 +121,7 @@ class HangulUtil {
      */
     public asAlphabetKeyStokes(text: string): string {
         return Array.from(this.asJamoSequence(text)).reduce((str, ch) => {
-            str += HangulUtil.QwertyMap.get(ch) || ch;
+            str += HangulService.QwertyMap.get(ch) || ch;
             return str;
         }, '');
     }
@@ -145,7 +137,7 @@ class HangulUtil {
 
         for (const ch of text) {
             const consonant = this.asJamoSequence(ch)[0];
-            if (HangulUtil.CHOSEONG.includes(consonant)) str += consonant;
+            if (HangulService.CHOSEONG.includes(consonant)) str += consonant;
             else break; // terminate loop if no Choseong found
         }
 
@@ -157,12 +149,12 @@ class HangulUtil {
      *
      * @param code  character code
      */
-    protected static isHangulChar(code: number): boolean {
-        // Do not use Jamo Extended-A (A960-A97F) and Jamo Extended-B (D7B0-D7FF).
+    public static isHangulChar(code: number): boolean {
+        // Do not allow Jamo Extended-A (A960-A97F) and Jamo Extended-B (D7B0-D7FF).
         return (
-            HangulUtil.isHangulSyllable(code) ||
-            HangulUtil.isHangulJamo(code) ||
-            HangulUtil.isHangulCompatibilityJamo(code)
+            HangulService.isHangulSyllable(code) ||
+            HangulService.isHangulJamo(code) ||
+            HangulService.isHangulCompatibilityJamo(code)
         );
     }
 
@@ -171,7 +163,7 @@ class HangulUtil {
      *
      * @param code  character code
      */
-    protected static isHangulSyllable(code: number): boolean {
+    public static isHangulSyllable(code: number): boolean {
         return code >= 0xac00 && code <= 0xd7a3;
     }
 
@@ -180,7 +172,7 @@ class HangulUtil {
      *
      * @param code  character code
      */
-    protected static isHangulJamo(code: number): boolean {
+    public static isHangulJamo(code: number): boolean {
         return code >= 0x1100 && code <= 0x11ff;
     }
 
@@ -189,10 +181,10 @@ class HangulUtil {
      *
      * @param code  character code
      */
-    protected static isHangulCompatibilityJamo(code: number): boolean {
+    public static isHangulCompatibilityJamo(code: number): boolean {
         return code >= 0x3130 && code <= 0x318f;
     }
 }
 
 // Default export as instance
-export default new HangulUtil();
+export default new HangulService();
