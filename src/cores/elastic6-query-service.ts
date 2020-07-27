@@ -12,8 +12,15 @@
 import { _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
 
-import { GeneralItem, Elastic6SimpleQueriable, QueryResult, SimpleSearchParam } from './core-types';
+import {
+    GeneralItem,
+    Elastic6SimpleQueriable,
+    QueryResult,
+    SimpleSearchParam,
+    AutocompleteSearchParam,
+} from './core-types';
 import { Elastic6Option, $ERROR, Elastic6Service } from './elastic6-service';
+import $hangul from './hangul-service';
 import { SearchParams } from 'elasticsearch';
 
 /** ****************************************************************************************************************
@@ -146,6 +153,63 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         }
 
         return result;
+    }
+
+    /**
+     * search item in Search-as-You-Type way
+     * @param param AutocompleteSearchParam
+     */
+    public async searchAutocomplete(param: AutocompleteSearchParam) {
+        const { endpoint, indexName, docType: type, autocompleteFields } = this.options;
+        const { client } = Elastic6Service.instance(endpoint);
+
+        if (!param) throw new Error('@param (SimpleSearchParam) is required');
+        if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required');
+        if (Object.keys(param.$query).length > 1) throw new Error('.query accepts only one property');
+
+        let [field, query] = Object.entries(param.$query)[0];
+        if (!field || !query) throw new Error(`.query is invalid`);
+        if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
+
+        // build query body
+        const body: any = {
+            query: {
+                match: { [`autocomplete.${field}`]: $hangul.asJamoSequence(query) },
+            },
+        };
+        if ('$limit' in param) {
+            body.size = $U.N(param.$limit, 0);
+            if ('$page' in param) body.from = $U.N(param.$page, 0) * body.size;
+        }
+
+        // perform search
+        const params = { index: indexName, type, body };
+        const res = await client.search(params).catch(
+            $ERROR.handler('search', e => {
+                _err(NS, `> search[${indexName}].err =`, e);
+                throw e;
+            }),
+        );
+        _log(NS, `> search.took =`, res.took);
+        _log(NS, `> search.hits.total =`, res.hits && res.hits.total);
+        _log(NS, `> search.hits.max_score =`, res.hits && res.hits.max_score);
+        _log(NS, `> search.hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
+
+        // extract result
+        const $hits = res.hits;
+        const hits = ($hits && $hits.hits) || [];
+        const total = $U.N($hits && $hits.total, 0);
+        const list: T[] = hits.map((_: any) => {
+            const id = _ && _._id; // id of elastic-search
+            const score = _ && _._score; // search score.
+            const source = _ && _._source; // origin data
+            //! save as internal
+            source._id = source._id || id; // attach to internal-id
+            source._score = score;
+            return source as T;
+        });
+
+        return { list, total };
     }
 
     /**

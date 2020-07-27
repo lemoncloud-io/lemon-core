@@ -238,6 +238,18 @@ export interface SimpleSearchParam extends GeneralItem {
 }
 
 /**
+ * class: `AutocompleteSearchParam`
+ *  - Search-as-You-Type
+ */
+export interface AutocompleteSearchParam {
+    $query: {
+        [field: string]: string;
+    };
+    $limit?: number; // limit
+    $page?: number; // page
+}
+
+/**
  * feature: `DynamoSimpleQueriable`
  * - simple query capable class.
  */
