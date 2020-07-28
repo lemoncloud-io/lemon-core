@@ -47,7 +47,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      * @param isDesc
      */
     public async queryAll(id: string, limit?: number, isDesc?: boolean): Promise<QueryResult<T>> {
-        const { endpoint, indexName, idName } = this.options;
+        const { idName } = this.options;
         const param: any = {
             [idName]: id,
         };
@@ -127,6 +127,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             //! save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
+            delete source[Elastic6Service.AUTOCOMPLETE_FIELD]; // delete internal autocomplete data
             return source as T;
         });
 
@@ -206,6 +207,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             //! save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
+            delete source[Elastic6Service.AUTOCOMPLETE_FIELD]; // delete internal autocomplete data
             return source as T;
         });
 

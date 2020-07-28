@@ -52,6 +52,9 @@ const instance = (endpoint: string) => {
  * - basic CRUD service for Elastic Search 6
  */
 export class Elastic6Service<T extends Elastic6Item = any> {
+    // internal field name to store analyzed strings for autocomplete search
+    public static readonly AUTOCOMPLETE_FIELD = '_autocomplete';
+
     protected options: Elastic6Option;
 
     public constructor(options: Elastic6Option) {
@@ -186,10 +189,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
         if (Array.isArray(autocompleteFields) && autocompleteFields.length > 0) {
-            body.autocomplete = {};
+            body[Elastic6Service.AUTOCOMPLETE_FIELD] = {};
             autocompleteFields.forEach(field => {
                 const value = item[field] as string;
-                body.autocomplete[field] = [
+                body[Elastic6Service.AUTOCOMPLETE_FIELD][field] = [
                     $hangul.asJamoSequence(value), // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
                     $hangul.asAlphabetKeyStokes(value), // 영자판 (e.g. '레몬' -> 'fpahs')
                 ];
@@ -464,7 +467,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         // 1. Search-as-You-Type (autocomplete search) - apply to 'autocomplete.*' fields
                         {
                             autocompletes: {
-                                path_match: 'autocomplete.*',
+                                path_match: `${Elastic6Service.AUTOCOMPLETE_FIELD}.*`,
                                 mapping: {
                                     type: 'text',
                                     analyzer: 'autocomplete',
