@@ -175,7 +175,9 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         // build query body
         const body: any = {
             query: {
-                match: { [`autocomplete.${field}`]: $hangul.asJamoSequence(query) },
+                match_phrase: {
+                    [`${Elastic6Service.AUTOCOMPLETE_FIELD}.${field}`]: $hangul.asJamoSequence(query),
+                },
             },
         };
         if ('$limit' in param) {
