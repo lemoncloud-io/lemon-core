@@ -82,8 +82,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param settings      creating settings
      */
     public async createIndex(settings?: any) {
-        const { endpoint, indexName, idName, timeSeries } = this.options;
-        settings = settings || Elastic6Service.prepareSettings(indexName, idName, timeSeries);
+        const { endpoint, indexName, docType, idName, timeSeries } = this.options;
+        settings = settings || Elastic6Service.prepareSettings(docType, idName, timeSeries);
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
         settings = settings || {};
@@ -91,10 +91,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         //! prepare payload
         const payload = {
             settings: {
-                index: {
-                    number_of_shards: 5,
-                    number_of_replicas: 1,
-                },
+                number_of_shards: 5,
+                number_of_replicas: 1,
             },
             ...settings,
         };
@@ -187,7 +185,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
-        if (autocompleteFields.length > 0) {
+        if (Array.isArray(autocompleteFields) && autocompleteFields.length > 0) {
             body.autocomplete = {};
             autocompleteFields.forEach(field => {
                 const value = item[field] as string;
@@ -400,14 +398,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * prepare default setting
      * - migrated from engine-v2.
      *
-     * @param indexName     index name
+     * @param docType       document type name
      * @param idName        id-name
      * @param shards        number of shards (default 4)
      * @param replicas      number of replicas (default 1)
      * @param timeSeries    flag of TIMESERIES (default false)
      */
     public static prepareSettings(
-        indexName: string,
+        docType: string,
         idName: string,
         timeSeries?: boolean,
         shards?: number,
@@ -418,7 +416,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         timeSeries = timeSeries === undefined ? false : timeSeries;
 
         //! core config.
-        const CONF_ES_INDEX = indexName;
+        const CONF_ES_DOCTYPE = docType;
         const CONF_ID_NAME = idName;
         const CONF_ES_TIMESERIES = !!timeSeries;
 
@@ -460,7 +458,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 },
             },
             mappings: {
-                [CONF_ES_INDEX]: {
+                [CONF_ES_DOCTYPE]: {
                     // NOTE: the order of dynamic templates are important.
                     dynamic_templates: [
                         // 1. Search-as-You-Type (autocomplete search) - apply to 'autocomplete.*' fields
@@ -531,8 +529,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            ES_SETTINGS.mappings[CONF_ES_INDEX].properties['@timestamp'] = { type: 'date', doc_values: true };
-            ES_SETTINGS.mappings[CONF_ES_INDEX].properties['ip'] = { type: 'ip' };
+            ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
+            ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
             //! clear mappings.
             const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
