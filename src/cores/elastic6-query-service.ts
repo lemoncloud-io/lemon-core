@@ -127,7 +127,10 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             //! save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
-            delete source[Elastic6Service.AUTOCOMPLETE_FIELD]; // delete internal autocomplete data
+            // delete internal autocomplete data
+            delete source[Elastic6Service.DECOMPOSED_FIELD];
+            delete source[Elastic6Service.QWERTY_FIELD];
+
             return source as T;
         });
 
@@ -140,8 +143,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     sum_other_doc_count: docSkippedCount = 0,
                     buckets,
                 } = res.aggregations[field];
-                if (docCountError > 0)
-                    _err(NS, `> [WARN] aggregation: counts for each term are not accurate.`);
+                if (docCountError > 0) _err(NS, `> [WARN] aggregation: counts for each term are not accurate.`);
                 if (docSkippedCount > 0)
                     _err(NS, '> [WARN] aggregation: too many unique terms in the result. some terms are skipped.');
                 if (Array.isArray(buckets)) {
@@ -173,10 +175,15 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
 
         // build query body
+        const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}}`;
+        const qwertyField = `${Elastic6Service.QWERTY_FIELD}.${field}`;
         const body: any = {
             query: {
-                match_phrase: {
-                    [`${Elastic6Service.AUTOCOMPLETE_FIELD}.${field}`]: $hangul.asJamoSequence(query),
+                bool: {
+                    should: [
+                        { match: { [decomposedField]: $hangul.asJamoSequence(query) } },
+                        { match: { [qwertyField]: query } },
+                    ],
                 },
             },
         };
@@ -209,7 +216,10 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             //! save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
-            delete source[Elastic6Service.AUTOCOMPLETE_FIELD]; // delete internal autocomplete data
+            // delete internal autocomplete data
+            delete source[Elastic6Service.DECOMPOSED_FIELD];
+            delete source[Elastic6Service.QWERTY_FIELD];
+
             return source as T;
         });
 

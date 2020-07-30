@@ -53,7 +53,8 @@ const instance = (endpoint: string) => {
  */
 export class Elastic6Service<T extends Elastic6Item = any> {
     // internal field name to store analyzed strings for autocomplete search
-    public static readonly AUTOCOMPLETE_FIELD = '_autocomplete';
+    public static readonly DECOMPOSED_FIELD = '_decomposed';
+    public static readonly QWERTY_FIELD = '_qwerty';
 
     protected options: Elastic6Option;
 
@@ -189,13 +190,23 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
         if (Array.isArray(autocompleteFields) && autocompleteFields.length > 0) {
-            body[Elastic6Service.AUTOCOMPLETE_FIELD] = {};
+            body[Elastic6Service.DECOMPOSED_FIELD] = {};
+            body[Elastic6Service.QWERTY_FIELD] = {};
+
             autocompleteFields.forEach(field => {
                 const value = item[field] as string;
-                body[Elastic6Service.AUTOCOMPLETE_FIELD][field] = [
-                    $hangul.asJamoSequence(value), // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
-                    $hangul.asAlphabetKeyStokes(value), // 영자판 (e.g. '레몬' -> 'fpahs')
-                ];
+
+                // 한글의 경우 자모 분해 형태와 영자판 변형 형태를 제공하고, 영문의 경우 원본 텍스트만 제공한다.
+                // 다만 사용자가 공백 및 하이픈을 생략하고 입력하는 경우에 대응하기 위해 공백과 하이픈을 제거한 형태를 공통으로 제공한다.
+                if ($hangul.isHangul(value, true)) {
+                    // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
+                    const decomposed = $hangul.asJamoSequence(value);
+                    body[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, decomposed.replace(/[ -]/g, '')];
+                    // 영자판 (e.g. '레몬' -> 'fpahs')
+                    body[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
+                } else {
+                    body[Elastic6Service.DECOMPOSED_FIELD][field] = [value, value.replace(/[ -]/g, '')];
+                }
             });
         }
 
@@ -429,33 +440,35 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 number_of_replicas: replicas,
                 analysis: {
                     tokenizer: {
-                        hangul_tokenizer: {
+                        hangul: {
                             type: 'seunjeon_tokenizer',
                             decompound: true, // 복합명사 분해
                             deinflect: true, // 활용어의 원형 추출
                             index_eojeol: true, // 어절 추출
                             pos_tagging: false, // 품사 태깅
                         },
-                    },
-                    filter: {
-                        autocomplete_filter: {
+                        edge_30grams: {
                             type: 'edge_ngram',
                             min_gram: 1,
                             max_gram: 30,
+                            token_chars: ['letter', 'digit', 'punctuation', 'symbol'],
                         },
                     },
                     analyzer: {
-                        standard_hangul: {
+                        hangul: {
                             type: 'custom',
-                            tokenizer: 'hangul_tokenizer',
+                            tokenizer: 'hangul',
                             filter: ['lowercase'],
-                            char_filter: ['html_strip'],
                         },
-                        autocomplete: {
+                        autocomplete_case_insensitive: {
                             type: 'custom',
-                            tokenizer: 'standard',
-                            filter: ['lowercase', 'autocomplete_filter'],
-                            char_filter: ['html_strip'],
+                            tokenizer: 'edge_30grams',
+                            filter: ['lowercase'],
+                        },
+                        autocomplete_case_sensitive: {
+                            type: 'custom',
+                            tokenizer: 'edge_30grams',
+                            filter: ['standard'],
                         },
                     },
                 },
@@ -464,18 +477,29 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 [CONF_ES_DOCTYPE]: {
                     // NOTE: the order of dynamic templates are important.
                     dynamic_templates: [
-                        // 1. Search-as-You-Type (autocomplete search) - apply to 'autocomplete.*' fields
+                        // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
                         {
-                            autocompletes: {
-                                path_match: `${Elastic6Service.AUTOCOMPLETE_FIELD}.*`,
+                            autocomplete: {
+                                path_match: `${Elastic6Service.DECOMPOSED_FIELD}.*`,
                                 mapping: {
                                     type: 'text',
-                                    analyzer: 'autocomplete',
+                                    analyzer: 'autocomplete_case_insensitive',
                                     search_analyzer: 'standard',
                                 },
                             },
                         },
-                        // 2. string type id field
+                        // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
+                        {
+                            autocomplete_qwerty: {
+                                path_match: `${Elastic6Service.QWERTY_FIELD}.*`,
+                                mapping: {
+                                    type: 'text',
+                                    analyzer: 'autocomplete_case_sensitive',
+                                    search_analyzer: 'standard',
+                                },
+                            },
+                        },
+                        // 3. string type ID field
                         {
                             string_id: {
                                 match_mapping_type: 'string',
@@ -486,18 +510,18 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                                 },
                             },
                         },
-                        // 3. any other string fields - use Hangul analyzer and create 'keyword' sub-field
+                        // 4. any other string fields - use Hangul analyzer and create 'keyword' sub-field
                         {
                             strings: {
                                 match_mapping_type: 'string',
                                 mapping: {
                                     type: 'text',
-                                    analyzer: 'standard_hangul',
-                                    search_analyzer: 'standard_hangul',
+                                    analyzer: 'hangul',
+                                    search_analyzer: 'hangul',
                                     fields: {
                                         // keyword sub-field
-                                        // 문자열 타입에 대한 템플릿 재정의로 인해 명시적으로 keyword 서브필드 생성하도록 선언함.
-                                        // (재정의를 하지 않을 시 ES에서 '.keyword' 필드를 디폴트로 생성함)
+                                        // 문자열 타입에 대한 템플릿을 지정하지 않으면 기본으로 ES가 '.keyword' 서브필드를 생성하나
+                                        // 문자열 타입 템플릿 재정의 시 기본으로 생성되지 않으므로 명시적으로 선언함.
                                         keyword: {
                                             type: 'keyword',
                                             ignore_above: 256,

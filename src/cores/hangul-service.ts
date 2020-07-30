@@ -61,6 +61,17 @@ export class HangulService {
     public hello = () => `hangul-service`;
 
     /**
+     * Identify whether given text is Hangul or not
+     * @param text      input text
+     * @param partial   (optional) if set true, result is true if there is at least one Korean letter in the text (default: false)
+     */
+    public isHangul(text: string, partial: boolean = false): boolean {
+        const isHangulChar = (ch: string) => HangulService.isHangulChar(ch.charCodeAt(0));
+        const charArray = [...`${text || ''}`];
+        return partial ? charArray.some(isHangulChar) : charArray.every(isHangulChar);
+    }
+
+    /**
      * Decompose text into Hangul (Compatibility) Jamo sequence
      *  - 초성, 중성, 종성으로 분해
      *  e.g. '한글' -> 'ㅎㅏㄴㄱㅡㄹ', '맴찟' -> 'ㅁㅐㅁㅉㅣㅅ'
