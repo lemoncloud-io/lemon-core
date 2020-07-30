@@ -183,32 +183,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param type  document type (default: doc-type given at construction time)
      */
     public async saveItem(id: string, item: T, type?: string): Promise<T> {
-        const { endpoint, indexName, docType, idName, autocompleteFields } = this.options;
+        const { endpoint, indexName, docType, idName } = this.options;
         const { client } = instance(endpoint);
         _log(NS, `- saveItem(${id})`);
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
-        if (Array.isArray(autocompleteFields) && autocompleteFields.length > 0) {
-            body[Elastic6Service.DECOMPOSED_FIELD] = {};
-            body[Elastic6Service.QWERTY_FIELD] = {};
-
-            autocompleteFields.forEach(field => {
-                const value = item[field] as string;
-
-                // 한글의 경우 자모 분해 형태와 영자판 변형 형태를 제공하고, 영문의 경우 원본 텍스트만 제공한다.
-                // 다만 사용자가 공백 및 하이픈을 생략하고 입력하는 경우에 대응하기 위해 공백과 하이픈을 제거한 형태를 공통으로 제공한다.
-                if ($hangul.isHangul(value, true)) {
-                    // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
-                    const decomposed = $hangul.asJamoSequence(value);
-                    body[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, decomposed.replace(/[ -]/g, '')];
-                    // 영자판 (e.g. '레몬' -> 'fpahs')
-                    body[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
-                } else {
-                    body[Elastic6Service.DECOMPOSED_FIELD][field] = [value, value.replace(/[ -]/g, '')];
-                }
-            });
-        }
+        this.prepareAutocompleteFields(body);
 
         const params: CreateDocumentParams = {
             index: indexName,
@@ -255,12 +236,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const id = '';
 
         type = `${type || docType}`;
+        const body: any = { ...item };
+        this.prepareAutocompleteFields(body);
+
         _log(NS, `- pushItem(${id})`);
-        const params: IndexDocumentParams<any> = {
-            index: indexName,
-            type,
-            body: item,
-        };
+        const params: IndexDocumentParams<any> = { index: indexName, type, body };
         _log(NS, `> params[${id}] =`, $U.json(params));
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
         const res = await client.index(params).catch(
@@ -566,6 +546,40 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! returns settings.
         return ES_SETTINGS;
+    }
+
+    /**
+     * generate autocomplete fields into the item body to be indexed
+     * @param body  item body to be saved into ES6 index
+     * @private
+     */
+    private prepareAutocompleteFields(body: any): void {
+        const { autocompleteFields } = this.options;
+
+        if (body && Array.isArray(autocompleteFields) && autocompleteFields.length > 0) {
+            body[Elastic6Service.DECOMPOSED_FIELD] = {};
+            body[Elastic6Service.QWERTY_FIELD] = {};
+
+            autocompleteFields.forEach(field => {
+                const value = body[field] as string;
+
+                if (typeof value == 'string' || value) {
+                    // 한글의 경우 자모 분해 형태와 영자판 변형 형태를 제공하고, 영문의 경우 원본 텍스트만 제공한다.
+                    // 다만 사용자가 공백/하이픈을 생략하고 입력하는 경우에 대응하기 위해 공백/하이픈을 제거한 형태를 공통으로 제공한다.
+                    if ($hangul.isHangul(value, true)) {
+                        // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
+                        const decomposed = $hangul.asJamoSequence(value);
+                        const recomposed = decomposed.replace(/[ -]/g, '');
+                        body[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
+                        // 영자판 (e.g. '레몬' -> 'fpahs')
+                        body[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
+                    } else {
+                        const recomposed = value.replace(/[ -]/g, '');
+                        body[Elastic6Service.DECOMPOSED_FIELD][field] = [value, recomposed];
+                    }
+                }
+            });
+        }
     }
 }
 
