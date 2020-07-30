@@ -242,10 +242,19 @@ export interface SimpleSearchParam extends GeneralItem {
  *  - Search-as-You-Type
  */
 export interface AutocompleteSearchParam {
+    /**
+     * query object. key as field to search and value as string to match
+     */
     $query: {
         [field: string]: string;
     };
+    /**
+     * maximum results in a page (default: 10)
+     */
     $limit?: number; // limit
+    /**
+     * 0-indexed page number (default: 0)
+     */
     $page?: number; // page
 }
 

@@ -170,7 +170,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required');
         if (Object.keys(param.$query).length > 1) throw new Error('.query accepts only one property');
 
-        let [field, query] = Object.entries(param.$query)[0];
+        const [field, query] = Object.entries(param.$query)[0];
         if (!field || !query) throw new Error(`.query is invalid`);
         if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
 
@@ -187,10 +187,8 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                 },
             },
         };
-        if ('$limit' in param) {
-            body.size = $U.N(param.$limit, 0);
-            if ('$page' in param) body.from = $U.N(param.$page, 0) * body.size;
-        }
+        body.size = $U.N(param.$limit, 10);
+        body.from = $U.N(param.$page, 0) * body.size;
 
         // perform search
         const params = { index: indexName, type, body };
