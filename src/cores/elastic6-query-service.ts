@@ -36,7 +36,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         // eslint-disable-next-line prettier/prettier
         _inf(NS, `Elastic6QueryService(${options.indexName}/${options.idName})...`);
         if (!options.indexName) throw new Error('.indexName is required');
-        this.options = { ...options };
+        this.options = { docType: '_doc', ...options };
     }
 
     /**
