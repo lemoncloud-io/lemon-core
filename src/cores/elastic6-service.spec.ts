@@ -10,7 +10,7 @@
  */
 import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, expect2, _it } from '../common/test-helper';
+import { GETERR, expect2, _it } from '..';
 import { GeneralItem } from './core-types';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option } from './elastic6-service';
 
@@ -21,10 +21,11 @@ export const instance = () => {
     const endpoint = 'https://localhost:8443'; //NOTE - use tunneling to elastic6 endpoint.
     const indexName = 'test-v3';
     const idName = 'id';
-    const options: Elastic6Option = { endpoint, indexName, idName };
+    const autocompleteFields = ['title'];
+    const options: Elastic6Option = { endpoint, indexName, idName, autocompleteFields };
     const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
     const dummy: Elastic6Service<MyModel> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
-    return { service, dummy };
+    return { service, dummy, options };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -36,7 +37,7 @@ describe('Elastic6Service', () => {
     it('should pass basic CRUD w/ dummy', async done => {
         /* eslint-disable prettier/prettier */
         //! load dummy storage service.
-        const { service, dummy } = instance();
+        const { dummy } = instance();
 
         //! check dummy data.
         expect2(await dummy.hello()).toEqual('dummy-elastic6-service:test-v3');
@@ -60,7 +61,7 @@ describe('Elastic6Service', () => {
     it('should pass basic CRUD w/ real server', async done => {
         /* eslint-disable prettier/prettier */
         //! load dummy storage service.
-        const { service, dummy } = instance();
+        const { service } = instance();
 
         //! check dummy data.
         expect2(await service.hello()).toEqual('elastic6-service:test-v3');

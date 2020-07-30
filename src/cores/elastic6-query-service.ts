@@ -40,6 +40,11 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
     }
 
     /**
+     * say hello of identity.
+     */
+    public hello = () => `elastic6-query-service:${this.options.indexName}`;
+
+    /**
      * query all by id.
      *
      * @param id
@@ -222,7 +227,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             return source as T;
         });
 
-        // highlighting result
+        // highlighting result manually
         if (param.$highlight) {
             // prepare tag name to wrap highlighted text
             const tagName = typeof param.$highlight == 'string' ? param.$highlight : 'em';
