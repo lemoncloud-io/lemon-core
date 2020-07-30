@@ -261,7 +261,7 @@ export interface AutocompleteSearchParam {
      *  - if boolean is given, turn on/off highlighting (default: false)
      *  - if string is given, replace default highlighting tags (default: 'em')
      */
-    $highlight: boolean | string;
+    $highlight?: boolean | string;
 }
 
 /**
