@@ -144,7 +144,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
-     * desceibe `settings` and `mappings` of index.
+     * describe `settings` and `mappings` of index.
      */
     public async describe() {
         const { endpoint, indexName } = this.options;
@@ -191,9 +191,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const body: any = { ...item, [idName]: id };
         this.prepareAutocompleteFields(body);
 
+        type = `${type || docType}`;
         const params: CreateDocumentParams = {
             index: indexName,
-            type: `${type || docType}`,
+            type,
             id,
             body,
         };
