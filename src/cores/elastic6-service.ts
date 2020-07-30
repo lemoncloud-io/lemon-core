@@ -478,7 +478,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                                 mapping: {
                                     type: 'text',
                                     analyzer: 'autocomplete_case_sensitive',
-                                    search_analyzer: 'standard',
+                                    search_analyzer: 'whitespace',
                                 },
                             },
                         },
