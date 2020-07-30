@@ -66,6 +66,8 @@ export class HangulService {
      * @param partial   (optional) if set true, result is true if there is at least one Korean letter in the text (default: false)
      */
     public isHangul(text: string, partial: boolean = false): boolean {
+        if (!text) return partial; // in empty string, return true if partial is false otherwise true
+
         const isHangulChar = (ch: string) => HangulService.isHangulChar(ch.charCodeAt(0));
         const charArray = [...`${text || ''}`];
         return partial ? charArray.some(isHangulChar) : charArray.every(isHangulChar);

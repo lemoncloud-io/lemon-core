@@ -73,6 +73,30 @@ describe('HangulService', () => {
         done();
     });
 
+    it('method to identity Hangul text', async done => {
+        const { service } = instance();
+
+        expect2(service.isHangul('', false)).toBe(false);
+        expect2(service.isHangul('abc', false)).toBe(false);
+        expect2(service.isHangul('123', false)).toBe(false);
+        expect2(service.isHangul('$%^', false)).toBe(false);
+        expect2(service.isHangul('가a나b다c', false)).toBe(false);
+        expect2(service.isHangul('ㄱ', false)).toBe(true);
+        expect2(service.isHangul('1q2w한글!', false)).toBe(false);
+        expect2(service.isHangul('레몬클라우드', false)).toBe(true);
+
+        expect2(service.isHangul('', true)).toBe(true);
+        expect2(service.isHangul('abc', true)).toBe(false);
+        expect2(service.isHangul('123', true)).toBe(false);
+        expect2(service.isHangul('$%^', true)).toBe(false);
+        expect2(service.isHangul('가a나b다c', true)).toBe(true);
+        expect2(service.isHangul('ㄱ', true)).toBe(true);
+        expect2(service.isHangul('1q2w한글!', true)).toBe(true);
+        expect2(service.isHangul('레몬클라우드', true)).toBe(true);
+
+        done();
+    });
+
     it('methods to analyze Hangul text', async done => {
         const { service } = instance();
 
