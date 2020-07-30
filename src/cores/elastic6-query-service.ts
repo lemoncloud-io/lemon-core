@@ -175,7 +175,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
 
         // build query body
-        const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}}`;
+        const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}`;
         const qwertyField = `${Elastic6Service.QWERTY_FIELD}.${field}`;
         const body: any = {
             query: {
@@ -192,6 +192,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
 
         // perform search
         const params = { index: indexName, type, body };
+        _log(NS, `> params =`, $U.json(params));
         const res = await client.search(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
