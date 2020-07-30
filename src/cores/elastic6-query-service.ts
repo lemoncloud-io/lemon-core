@@ -221,6 +221,29 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             return source as T;
         });
 
+        // highlighting result
+        if (param.$highlight) {
+            // prepare tag name to wrap highlighted text
+            const tagName = typeof param.$highlight == 'string' ? param.$highlight : 'em';
+            // create a regular expression which has optional whitespaces between each character
+            // e.g. 'COVID-19' => /C *O *V *I *D *- *1 *9/i
+            const regexp = new RegExp([...query.replace(/\s/g, '')].join(' *'), 'i');
+
+            // try to match regular expression with items found
+            list.map((item: any) => {
+                const target = `${item[field] || ''}`;
+                const match = target.match(regexp);
+                if (match) {
+                    item._highlight =
+                        target.slice(0, match.index) +
+                        `<${tagName}>${match[0]}</${tagName}>` +
+                        target.slice(match.index + match[0].length);
+                } else {
+                    item._highlight = target;
+                }
+            });
+        }
+
         return { list, total };
     }
 

@@ -256,6 +256,12 @@ export interface AutocompleteSearchParam {
      * 0-indexed page number (default: 0)
      */
     $page?: number; // page
+    /**
+     * highlighting
+     *  - if boolean is given, turn on/off highlighting (default: false)
+     *  - if string is given, replace default highlighting tags (default: 'em')
+     */
+    $highlight: boolean | string;
 }
 
 /**
