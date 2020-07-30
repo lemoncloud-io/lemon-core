@@ -541,7 +541,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
             //! clear mappings.
             const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
-            CLEANS.map(key => delete ES_SETTINGS.mappings._default_.properties[key]);
+            CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
         }
 
         //! returns settings.
