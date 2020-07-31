@@ -28,6 +28,23 @@ export const instance = () => {
     return { service, dummy, options };
 };
 
+export const canPerformTest = async (): Promise<boolean> => {
+    const { service } = instance();
+
+    try {
+        await service.describe();
+        return true;
+    } catch (e) {
+        // unable to access to elastic6 endpoint
+        if (GETERR(e).endsWith('unknown error')) return false;
+        // index does not exist
+        if (GETERR(e).startsWith('404 NOT FOUND')) return false;
+
+        // rethrow
+        throw e;
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('Elastic6Service', () => {
@@ -63,20 +80,17 @@ describe('Elastic6Service', () => {
         //! load dummy storage service.
         const { service } = instance();
 
-        //! check dummy data.
+        //! check service identity
         expect2(await service.hello()).toEqual('elastic6-service:test-v3');
-        // expect2(await service.describe().catch(GETERR), '!settings,!mappings').toEqual({}); // must be passed.
-        const hasError = '' + (await service.describe().catch(GETERR));
-        if (hasError.endsWith('unknown error')) return done(); // ignore!
+
+        // skip test if some prerequisites are not satisfied
+        // 1. localhost is able to access elastic6 endpoint (by tunneling)
+        // 2. index must be exist
+        if (!(await canPerformTest())) return done();
 
         //! make sure deleted.
-        const initA0 = await service.deleteItem('A0').catch(GETERR);
-        const initA1 = await service.deleteItem('A1').catch(GETERR);
-
-        //! make sure the index is ready.
-        if (initA0 == '404 index_not_found_exception - no such index') {
-            expect2(await service.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: "test-v3", shards_acknowledged: true });
-        }
+        await service.deleteItem('A0').catch(GETERR);
+        await service.deleteItem('A1').catch(GETERR);
 
         //! make sure empty index.
         expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');

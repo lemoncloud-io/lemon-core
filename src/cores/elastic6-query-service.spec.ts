@@ -40,14 +40,10 @@ describe('Elastic6QueryService', () => {
         const { elastic, search } = instance();
         /* eslint-disable prettier/prettier */
 
-        // make sure the index is ready.
-        const desc = await elastic.describe().catch(GETERR);
-        if (typeof desc == 'string' && desc.startsWith('404 NOT FOUND')) {
-            await elastic.createIndex().catch(() => {
-                console.log('ERR!');
-                // do nothing
-            });
-        }
+        // skip test if some prerequisites are not satisfied
+        // 1. localhost is able to access elastic6 endpoint (by tunneling)
+        // 2. index must be exist
+        if (!(await $elastic.canPerformTest())) return done();
 
         // prepare items
         expect2(await elastic.saveItem('1000001', { title: '선을 넘는 녀석들' }).catch(GETERR), '_id').toEqual({ _id: '1000001' });
