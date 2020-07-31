@@ -300,6 +300,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const _id = res._id;
         const _version = res._version;
         const data: T = (res && res._source) || {};
+        // delete internal (analyzed) field
+        delete data[Elastic6Service.DECOMPOSED_FIELD];
+        delete data[Elastic6Service.QWERTY_FIELD];
+
         const res2: T = { ...data, _id, _version };
         return res2;
     }
