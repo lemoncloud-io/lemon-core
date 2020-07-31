@@ -43,8 +43,8 @@ export interface Elastic6Item extends GeneralItem {
 }
 
 //! create(or get) instance.
-const instance = (endpoint: string, version?: string) => {
-    return Elastic6Service.instance(endpoint, version);
+const instance = (endpoint: string) => {
+    return Elastic6Service.instance(endpoint);
 };
 
 /**
@@ -77,8 +77,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param version   Elasticsearch version (default: '6.8')
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
      */
-    public static instance(endpoint: string, version: string = '6.8') {
-        const client = new elasticsearch.Client({ host: endpoint, apiVersion: version });
+    public static instance(endpoint: string) {
+        const client = new elasticsearch.Client({ host: endpoint });
         return { client };
     }
 
