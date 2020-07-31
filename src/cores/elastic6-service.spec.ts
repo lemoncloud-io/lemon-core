@@ -10,7 +10,7 @@
  */
 import { loadProfile } from '../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, expect2, _it } from '../common/test-helper';
+import { GETERR, expect2, _it } from '..';
 import { GeneralItem } from './core-types';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option } from './elastic6-service';
 
@@ -21,10 +21,28 @@ export const instance = () => {
     const endpoint = 'https://localhost:8443'; //NOTE - use tunneling to elastic6 endpoint.
     const indexName = 'test-v3';
     const idName = 'id';
-    const options: Elastic6Option = { endpoint, indexName, idName };
+    const autocompleteFields = ['title'];
+    const options: Elastic6Option = { endpoint, indexName, idName, autocompleteFields };
     const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
     const dummy: Elastic6Service<MyModel> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
-    return { service, dummy };
+    return { service, dummy, options };
+};
+
+export const canPerformTest = async (): Promise<boolean> => {
+    const { service } = instance();
+
+    try {
+        await service.describe();
+        return true;
+    } catch (e) {
+        // unable to access to elastic6 endpoint
+        if (GETERR(e).endsWith('unknown error')) return false;
+        // index does not exist
+        if (GETERR(e).startsWith('404 NOT FOUND')) return false;
+
+        // rethrow
+        throw e;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -36,7 +54,7 @@ describe('Elastic6Service', () => {
     it('should pass basic CRUD w/ dummy', async done => {
         /* eslint-disable prettier/prettier */
         //! load dummy storage service.
-        const { service, dummy } = instance();
+        const { dummy } = instance();
 
         //! check dummy data.
         expect2(await dummy.hello()).toEqual('dummy-elastic6-service:test-v3');
@@ -60,22 +78,19 @@ describe('Elastic6Service', () => {
     it('should pass basic CRUD w/ real server', async done => {
         /* eslint-disable prettier/prettier */
         //! load dummy storage service.
-        const { service, dummy } = instance();
+        const { service } = instance();
 
-        //! check dummy data.
+        //! check service identity
         expect2(await service.hello()).toEqual('elastic6-service:test-v3');
-        // expect2(await service.describe().catch(GETERR), '!settings,!mappings').toEqual({}); // must be passed.
-        const hasError = '' + (await service.describe().catch(GETERR));
-        if (hasError.endsWith('unknown error')) return done(); // ignore!
+
+        // skip test if some prerequisites are not satisfied
+        // 1. localhost is able to access elastic6 endpoint (by tunneling)
+        // 2. index must be exist
+        if (!(await canPerformTest())) return done();
 
         //! make sure deleted.
-        const initA0 = await service.deleteItem('A0').catch(GETERR);
-        const initA1 = await service.deleteItem('A1').catch(GETERR);
-
-        //! make sure the index is ready.
-        if (initA0 == '404 index_not_found_exception - no such index') {
-            expect2(await service.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: "test-v3", shards_acknowledged: true });
-        }
+        await service.deleteItem('A0').catch(GETERR);
+        await service.deleteItem('A1').catch(GETERR);
 
         //! make sure empty index.
         expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
