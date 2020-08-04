@@ -12,8 +12,15 @@
 import { _log, _inf, _err, $U, $_ } from '../engine/';
 const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
 
-import { GeneralItem, Elastic6SimpleQueriable, QueryResult, SimpleSearchParam } from './core-types';
+import {
+    GeneralItem,
+    Elastic6SimpleQueriable,
+    QueryResult,
+    SimpleSearchParam,
+    AutocompleteSearchParam,
+} from './core-types';
 import { Elastic6Option, $ERROR, Elastic6Service } from './elastic6-service';
+import $hangul from './hangul-service';
 import { SearchParams } from 'elasticsearch';
 
 /** ****************************************************************************************************************
@@ -29,8 +36,13 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         // eslint-disable-next-line prettier/prettier
         _inf(NS, `Elastic6QueryService(${options.indexName}/${options.idName})...`);
         if (!options.indexName) throw new Error('.indexName is required');
-        this.options = { ...options };
+        this.options = { docType: '_doc', ...options };
     }
+
+    /**
+     * say hello of identity.
+     */
+    public hello = () => `elastic6-query-service:${this.options.indexName}`;
 
     /**
      * query all by id.
@@ -40,7 +52,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      * @param isDesc
      */
     public async queryAll(id: string, limit?: number, isDesc?: boolean): Promise<QueryResult<T>> {
-        const { endpoint, indexName, idName } = this.options;
+        const { idName } = this.options;
         const param: any = {
             [idName]: id,
         };
@@ -120,6 +132,10 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             //! save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
+            // delete internal autocomplete data
+            delete source[Elastic6Service.DECOMPOSED_FIELD];
+            delete source[Elastic6Service.QWERTY_FIELD];
+
             return source as T;
         });
 
@@ -132,8 +148,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     sum_other_doc_count: docSkippedCount = 0,
                     buckets,
                 } = res.aggregations[field];
-                if (docCountError > 0)
-                    _err(NS, `> [WARN] aggregation: counts for each term are not accurate.`);
+                if (docCountError > 0) _err(NS, `> [WARN] aggregation: counts for each term are not accurate.`);
                 if (docSkippedCount > 0)
                     _err(NS, '> [WARN] aggregation: too many unique terms in the result. some terms are skipped.');
                 if (Array.isArray(buckets)) {
@@ -146,6 +161,96 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         }
 
         return result;
+    }
+
+    /**
+     * search item in Search-as-You-Type way
+     * @param param AutocompleteSearchParam
+     */
+    public async searchAutocomplete(param: AutocompleteSearchParam) {
+        const { endpoint, indexName, docType: type, autocompleteFields } = this.options;
+        const { client } = Elastic6Service.instance(endpoint);
+
+        if (!param) throw new Error('@param (SimpleSearchParam) is required');
+        if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required');
+        if (Object.keys(param.$query).length > 1) throw new Error('.query accepts only one property');
+
+        const [field, query] = Object.entries(param.$query)[0];
+        if (!field || !query) throw new Error(`.query is invalid`);
+        if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
+
+        // build query body
+        const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}`;
+        const qwertyField = `${Elastic6Service.QWERTY_FIELD}.${field}`;
+        const body: any = {
+            query: {
+                bool: {
+                    should: [
+                        { match: { [decomposedField]: $hangul.asJamoSequence(query) } },
+                        { match: { [qwertyField]: query } },
+                    ],
+                },
+            },
+        };
+        body.size = $U.N(param.$limit, 10);
+        body.from = $U.N(param.$page, 0) * body.size;
+
+        // perform search
+        const params = { index: indexName, type, body };
+        _log(NS, `> params =`, $U.json(params));
+        const res = await client.search(params).catch(
+            $ERROR.handler('search', e => {
+                _err(NS, `> search[${indexName}].err =`, e);
+                throw e;
+            }),
+        );
+        _log(NS, `> search.took =`, res.took);
+        _log(NS, `> search.hits.total =`, res.hits && res.hits.total);
+        _log(NS, `> search.hits.max_score =`, res.hits && res.hits.max_score);
+        _log(NS, `> search.hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
+
+        // extract result
+        const $hits = res.hits;
+        const hits = ($hits && $hits.hits) || [];
+        const total = $U.N($hits && $hits.total, 0);
+        const list: T[] = hits.map((_: any) => {
+            const id = _ && _._id; // id of elastic-search
+            const score = _ && _._score; // search score.
+            const source = _ && _._source; // origin data
+            //! save as internal
+            source._id = source._id || id; // attach to internal-id
+            source._score = score;
+            // delete internal autocomplete data
+            delete source[Elastic6Service.DECOMPOSED_FIELD];
+            delete source[Elastic6Service.QWERTY_FIELD];
+
+            return source as T;
+        });
+
+        // highlighting result manually
+        if (param.$highlight) {
+            // prepare tag name to wrap highlighted text
+            const tagName = typeof param.$highlight == 'string' ? param.$highlight : 'em';
+            // create a regular expression which has optional whitespaces between each character
+            // e.g. 'COVID-19' => /C *O *V *I *D *- *1 *9/i
+            const regexp = new RegExp([...query.replace(/\s/g, '')].join(' *'), 'i');
+
+            // try to match regular expression with items found
+            list.map((item: any) => {
+                const target = `${item[field] || ''}`;
+                const match = target.match(regexp);
+                if (match) {
+                    item._highlight =
+                        target.slice(0, match.index) +
+                        `<${tagName}>${match[0]}</${tagName}>` +
+                        target.slice(match.index + match[0].length);
+                } else {
+                    item._highlight = target;
+                }
+            });
+        }
+
+        return { list, total };
     }
 
     /**
