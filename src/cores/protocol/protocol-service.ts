@@ -344,10 +344,11 @@ export class MyProtocolService implements ProtocolService {
                 throw e;
             })
             .then((data: Lambda.Types.InvocationResponse) => {
-                _log(NS, `! execute[${param.service || ''}].res =`, $U.json(data));
-                const payload = data.Payload ? JSON.parse(`${data.Payload}`) : {};
-                const statusCode = $U.N(payload.statusCode || data.StatusCode, 200);
+                _log(NS, `! execute[${param.service || ''}].res =`, $U.S(data, 320, 64, ' .... '));
+                const payload = data && data.Payload ? JSON.parse(`${data.Payload}`) : {};
+                const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
                 _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
+                [200, 201].includes(statusCode) || _inf(NS, `> WARN! status[${status}] data =`, $U.S(data)); // print whole data if not 200.
                 //! safe parse payload.body.
                 const body = (() => {
                     try {
@@ -356,16 +357,16 @@ export class MyProtocolService implements ProtocolService {
                             ? JSON.parse(payload.body)
                             : payload.body;
                     } catch (e) {
-                        _log(NS, `> WARN! payload.body =`, $U.json(payload.body));
+                        _log(NS, `> WARN! payload.body =`, $U.S(payload.body));
                         return payload.body;
                     }
                 })();
-                const asTxt = (_: any): string => (_ && typeof _ == 'object' ? $U.json(_) : `${_ || ''}`);
+                //! returns
                 if (statusCode == 400 || statusCode == 404)
-                    return Promise.reject(new Error(asTxt(body) || '404 NOT FOUND'));
-                if (statusCode != 200 && statusCode != 201) {
+                    return Promise.reject(new Error($U.S(body) || '404 NOT FOUND'));
+                else if (statusCode != 200 && statusCode != 201) {
                     if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw new Error(body);
-                    throw new Error(asTxt(body) || 'Lambda Error. status:' + statusCode);
+                    throw new Error($U.S(body) || `Lambda Error. status:${statusCode}`);
                 }
                 return body;
             });

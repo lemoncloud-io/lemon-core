@@ -376,6 +376,18 @@ export class Utilities {
     public F3 = (x: any, mode: 'round' | 'floor' = 'round') => this.FN(x, 3, mode);
 
     /**
+     * convert and cut string like `abcd....z`
+     */
+    public S = (_: any, h?: number, t: number = 32, delim: string = '...'): string =>
+        [typeof _ == 'string' ? _ : this.json(_)]
+            .map(s =>
+                h && s.length > h + t
+                    ? s.substring(0, h) + delim + (s.length > h + t ? s.substring(s.length - t) : '')
+                    : s,
+            )
+            .join('');
+
+    /**
      * remove internal properties which starts with _ or $
      */
     public cleanup(node: any) {
