@@ -236,4 +236,31 @@ describe(`core/utilities.ts`, () => {
 
         done();
     });
+
+    //! test String Text
+    test('check S()', async done => {
+        const { $U } = instance();
+        const S = $U.S;
+
+        expect2(() => S(null)).toEqual('');
+        expect2(() => S(undefined)).toEqual('');
+        expect2(() => S(0)).toEqual('0');
+        expect2(() => S({ a: 1 })).toEqual('{"a":1}');
+        const msg = 'abcdefg01234567890zzzz';
+        const len = msg.length;
+        expect2(() => S(msg, 10, 4)).toEqual('abcdefg012...zzzz');
+        expect2(() => S(msg, 10, 0)).toEqual('abcdefg012...');
+        expect2(() => S(msg, len, 0)).toEqual(msg);
+        expect2(() => S(msg, len, 1)).toEqual(msg);
+        expect2(() => S(msg, len - 1, 0)).toEqual(msg.substring(0, len - 1) + '...');
+        expect2(() => S(msg, len - 2, 0)).toEqual(msg.substring(0, len - 2) + '...');
+        expect2(() => S(msg, len - 2, 1)).toEqual(msg.substring(0, len - 2) + '...z');
+        expect2(() => S(msg, len - 2, 2)).toEqual(msg.substring(0, len - 2) + 'zz');
+        expect2(() => S(msg, len - 2, 3)).toEqual(msg.substring(0, len - 2) + 'zz');
+        expect2(() => S(msg, len - 3, 3)).toEqual(msg.substring(0, len - 3) + 'zzz');
+        expect2(() => S(msg, len - 3, 2)).toEqual(msg.substring(0, len - 3) + '...zz');
+        expect2(() => S(msg, len - 3, 1)).toEqual(msg.substring(0, len - 3) + '...z');
+        expect2(() => S(msg, len - 3, 0)).toEqual(msg.substring(0, len - 3) + '...');
+        done();
+    });
 });
