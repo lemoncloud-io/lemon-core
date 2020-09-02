@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.2.6     | improve `search`, and support `cookie` in NextContext.
 | 2.2.5     | add `Access-Control-Allow-Headers` for CORS.
 | 2.2.4     | update package modules `npm update --save`.
 | 2.2.3     | support `x-lemon-language` header in identity.
