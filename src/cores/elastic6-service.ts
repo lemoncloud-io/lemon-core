@@ -22,12 +22,8 @@ import elasticsearch, {
     DeleteDocumentParams,
     UpdateDocumentParams,
 } from 'elasticsearch';
-import { loadDataYml } from '../tools/shared';
-
-/**
- * types of key
- */
-type KEY_TYPE = 'number' | 'string';
+import $hangul from './hangul-service';
+import { loadDataYml } from '../tools';
 
 /**
  * options for construction.
@@ -35,10 +31,10 @@ type KEY_TYPE = 'number' | 'string';
 export interface Elastic6Option {
     endpoint: string; // endpoint url of ES6
     indexName: string; // index-name
-    idName?: string; // id-name (optional if time-seriese)
-    idType?: KEY_TYPE; // id-type
     docType?: string; // document type (default as `_doc` in ES6)
+    idName?: string; // id-name (optional if time-seriese)
     timeSeries?: boolean; // is TIMESERIES?
+    autocompleteFields?: string[]; // fields to provide autocomplete(Search-as-You-Type) feature
 }
 
 export interface Elastic6Item extends GeneralItem {
@@ -56,9 +52,13 @@ const instance = (endpoint: string) => {
  * - basic CRUD service for Elastic Search 6
  */
 export class Elastic6Service<T extends Elastic6Item = any> {
+    // internal field name to store analyzed strings for autocomplete search
+    public static readonly DECOMPOSED_FIELD = '_decomposed';
+    public static readonly QWERTY_FIELD = '_qwerty';
+
     protected options: Elastic6Option;
+
     public constructor(options: Elastic6Option) {
-        // eslint-disable-next-line prettier/prettier
         _inf(NS, `Elastic6Service(${options.indexName}/${options.idName})...`);
         if (!options.endpoint) throw new Error('.endpoint (URL) is required');
         if (!options.indexName) throw new Error('.indexName (string) is required');
@@ -74,6 +74,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * simple instance maker.
      * @param endpoint  service-url
+     * @param version   Elasticsearch version (default: '6.8')
+     * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
      */
     public static instance(endpoint: string) {
         const client = new elasticsearch.Client({ host: endpoint });
@@ -86,8 +88,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param settings      creating settings
      */
     public async createIndex(settings?: any) {
-        const { endpoint, indexName, idName, idType, timeSeries } = this.options;
-        settings = settings || Elastic6Service.prepareSettings(indexName, idName, idType, timeSeries);
+        const { endpoint, indexName, docType, idName, timeSeries } = this.options;
+        settings = settings || Elastic6Service.prepareSettings(docType, idName, timeSeries);
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
         settings = settings || {};
@@ -95,10 +97,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         //! prepare payload
         const payload = {
             settings: {
-                index: {
-                    number_of_shards: 5,
-                    number_of_replicas: 1,
-                },
+                number_of_shards: 5,
+                number_of_replicas: 1,
             },
             ...settings,
         };
@@ -146,7 +146,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
-     * desceibe `settings` and `mappings` of index.
+     * describe `settings` and `mappings` of index.
      */
     public async describe() {
         const { endpoint, indexName } = this.options;
@@ -182,20 +182,23 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      *
      * @param id    id
      * @param item  item to save
+     * @param type  document type (default: doc-type given at construction time)
      */
     public async saveItem(id: string, item: T, type?: string): Promise<T> {
-        const { endpoint, indexName, idName, docType } = this.options;
+        const { endpoint, indexName, docType, idName } = this.options;
         const { client } = instance(endpoint);
-        // const _log = console.info;
         _log(NS, `- saveItem(${id})`);
+
+        // prepare item body and autocomplete fields
+        const body: any = { ...item, [idName]: id };
+        this.prepareAutocompleteFields(body);
 
         type = `${type || docType}`;
         const params: CreateDocumentParams = {
             index: indexName,
             type,
             id,
-            body: { ...item, [idName]: id },
-            // versionType: 'force',
+            body,
         };
         if (idName == '_id') delete params.body[idName]; // `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -236,12 +239,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const id = '';
 
         type = `${type || docType}`;
+        const body: any = { ...item };
+        this.prepareAutocompleteFields(body);
+
         _log(NS, `- pushItem(${id})`);
-        const params: IndexDocumentParams<any> = {
-            index: indexName,
-            type,
-            body: item,
-        };
+        const params: IndexDocumentParams<any> = { index: indexName, type, body };
         _log(NS, `> params[${id}] =`, $U.json(params));
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
         const res = await client.index(params).catch(
@@ -298,6 +300,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const _id = res._id;
         const _version = res._version;
         const data: T = (res && res._source) || {};
+        // delete internal (analyzed) field
+        delete data[Elastic6Service.DECOMPOSED_FIELD];
+        delete data[Elastic6Service.QWERTY_FIELD];
+
         const res2: T = { ...data, _id, _version };
         return res2;
     }
@@ -393,17 +399,15 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * prepare default setting
      * - migrated from engine-v2.
      *
-     * @param indexName     index name
+     * @param docType       document type name
      * @param idName        id-name
-     * @param idType        id-type
      * @param shards        number of shards (default 4)
      * @param replicas      number of replicas (default 1)
      * @param timeSeries    flag of TIMESERIES (default false)
      */
     public static prepareSettings(
-        indexName: string,
+        docType: string,
         idName: string,
-        idType: KEY_TYPE,
         timeSeries?: boolean,
         shards?: number,
         replicas?: number,
@@ -413,44 +417,100 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         timeSeries = timeSeries === undefined ? false : timeSeries;
 
         //! core config.
-        const CONF_ES_INDEX = indexName;
+        const CONF_ES_DOCTYPE = docType;
         const CONF_ID_NAME = idName;
         const CONF_ES_TIMESERIES = !!timeSeries;
-        const CONF_ES_VERSION = 6;
 
-        //TODO - Use Dynamic Field Template!!!..
-        //! see:https://www.elastic.co/guide/en/elasticsearch/reference/current/dynamic-templates.html
-        //!INFO! optimized for ES6.0 @180520
         const ES_SETTINGS: any = {
-            template: CONF_ES_INDEX,
             settings: {
-                index: {
-                    number_of_shards: shards,
-                    number_of_replicas: replicas,
-                    // refresh_interval: '5s',
+                number_of_shards: shards,
+                number_of_replicas: replicas,
+                analysis: {
+                    tokenizer: {
+                        hangul: {
+                            type: 'seunjeon_tokenizer',
+                            decompound: true, // 복합명사 분해
+                            deinflect: true, // 활용어의 원형 추출
+                            index_eojeol: true, // 어절 추출
+                            pos_tagging: false, // 품사 태깅
+                        },
+                        edge_30grams: {
+                            type: 'edge_ngram',
+                            min_gram: 1,
+                            max_gram: 30,
+                            token_chars: ['letter', 'digit', 'punctuation', 'symbol'],
+                        },
+                    },
+                    analyzer: {
+                        hangul: {
+                            type: 'custom',
+                            tokenizer: 'hangul',
+                            filter: ['lowercase'],
+                        },
+                        autocomplete_case_insensitive: {
+                            type: 'custom',
+                            tokenizer: 'edge_30grams',
+                            filter: ['lowercase'],
+                        },
+                        autocomplete_case_sensitive: {
+                            type: 'custom',
+                            tokenizer: 'edge_30grams',
+                            filter: ['standard'],
+                        },
+                    },
                 },
             },
             mappings: {
-                //! deprecated in 7.x
-                _default_: {
-                    // "_all": {"enabled": true},   only for ES5 (see below)
+                [CONF_ES_DOCTYPE]: {
+                    // NOTE: the order of dynamic templates are important.
                     dynamic_templates: [
+                        // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
                         {
-                            string_fields: {
-                                match: '*_multi',
+                            autocomplete: {
+                                path_match: `${Elastic6Service.DECOMPOSED_FIELD}.*`,
+                                mapping: {
+                                    type: 'text',
+                                    analyzer: 'autocomplete_case_insensitive',
+                                    search_analyzer: 'standard',
+                                },
+                            },
+                        },
+                        // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
+                        {
+                            autocomplete_qwerty: {
+                                path_match: `${Elastic6Service.QWERTY_FIELD}.*`,
+                                mapping: {
+                                    type: 'text',
+                                    analyzer: 'autocomplete_case_sensitive',
+                                    search_analyzer: 'whitespace',
+                                },
+                            },
+                        },
+                        // 3. string type ID field
+                        {
+                            string_id: {
+                                match_mapping_type: 'string',
+                                match: CONF_ID_NAME,
+                                mapping: {
+                                    type: 'keyword',
+                                    ignore_above: 256,
+                                },
+                            },
+                        },
+                        // 4. any other string fields - use Hangul analyzer and create 'keyword' sub-field
+                        {
+                            strings: {
                                 match_mapping_type: 'string',
                                 mapping: {
-                                    type: 'multi_field',
+                                    type: 'text',
+                                    analyzer: 'hangul',
+                                    search_analyzer: 'hangul',
                                     fields: {
-                                        '{name}': {
-                                            type: CONF_ES_VERSION >= 6 ? 'text' : 'string',
-                                            index: 'analyzed',
-                                            omit_norms: true,
-                                            index_options: 'docs',
-                                        },
-                                        '{name}.raw': {
-                                            type: CONF_ES_VERSION >= 6 ? 'text' : 'string',
-                                            index: 'not_analyzed',
+                                        // keyword sub-field
+                                        // 문자열 타입에 대한 템플릿을 지정하지 않으면 기본으로 ES가 '.keyword' 서브필드를 생성하나
+                                        // 문자열 타입 템플릿 재정의 시 기본으로 생성되지 않으므로 명시적으로 선언함.
+                                        keyword: {
+                                            type: 'keyword',
                                             ignore_above: 256,
                                         },
                                     },
@@ -458,14 +518,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                             },
                         },
                     ],
-                    _source: { enabled: CONF_ES_VERSION >= 6 ? true : false },
                     properties: {
                         '@version': {
-                            type: CONF_ES_VERSION >= 6 ? 'text' : 'string',
-                            index: CONF_ES_VERSION >= 6 ? false : 'not_analyzed',
+                            type: 'keyword',
+                            index: false,
                         },
-                        title: { type: CONF_ES_VERSION >= 6 ? 'text' : 'string' },
-                        name: { type: CONF_ES_VERSION >= 6 ? 'text' : 'string' },
                         created_at: {
                             type: 'date',
                             format: 'strict_date_optional_time||epoch_millis',
@@ -483,34 +540,53 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             },
         };
 
-        //! ES6 추가 구성...
-        if (!(CONF_ES_VERSION >= 6)) {
-            ES_SETTINGS.mappings._default_['all'] = { enabled: true };
-        }
-
-        //! ID가 문자열이면, 인덱스를 추가해 줌.
-        if (CONF_ID_NAME && idType == 'string') {
-            ES_SETTINGS.mappings._default_.properties[CONF_ID_NAME] = {
-                type: CONF_ES_VERSION >= 6 ? 'text' : 'string',
-                fields: {
-                    keyword: { type: 'keyword', ignore_above: 256 },
-                },
-            };
-        }
-
-        //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주위! save시 current-time 값 자동 저장)
+        //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
-            ES_SETTINGS.settings.index.refresh_interval = '5s';
-            ES_SETTINGS.mappings._default_.properties['@timestamp'] = { type: 'date', doc_values: true };
-            ES_SETTINGS.mappings._default_.properties['ip'] = { type: 'ip' };
+            ES_SETTINGS.settings.refresh_interval = '5s';
+            ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
+            ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
             //! clear mappings.
-            const CLEANS = '@version,title,created_at,updated_at,deleted_at'.split(',');
-            CLEANS.map(key => delete ES_SETTINGS.mappings._default_.properties[key]);
+            const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
+            CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
         }
 
         //! returns settings.
         return ES_SETTINGS;
+    }
+
+    /**
+     * generate autocomplete fields into the item body to be indexed
+     * @param body  item body to be saved into ES6 index
+     * @private
+     */
+    private prepareAutocompleteFields(body: any): void {
+        const { autocompleteFields } = this.options;
+
+        if (body && Array.isArray(autocompleteFields) && autocompleteFields.length > 0) {
+            body[Elastic6Service.DECOMPOSED_FIELD] = {};
+            body[Elastic6Service.QWERTY_FIELD] = {};
+
+            autocompleteFields.forEach(field => {
+                const value = body[field] as string;
+
+                if (typeof value == 'string' || value) {
+                    // 한글의 경우 자모 분해 형태와 영자판 변형 형태를 제공하고, 영문의 경우 원본 텍스트만 제공한다.
+                    // 다만 사용자가 공백/하이픈을 생략하고 입력하는 경우에 대응하기 위해 공백/하이픈을 제거한 형태를 공통으로 제공한다.
+                    if ($hangul.isHangul(value, true)) {
+                        // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
+                        const decomposed = $hangul.asJamoSequence(value);
+                        const recomposed = decomposed.replace(/[ -]/g, '');
+                        body[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
+                        // 영자판 (e.g. '레몬' -> 'fpahs')
+                        body[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
+                    } else {
+                        const recomposed = value.replace(/[ -]/g, '');
+                        body[Elastic6Service.DECOMPOSED_FIELD][field] = [value, recomposed];
+                    }
+                }
+            });
+        }
     }
 }
 

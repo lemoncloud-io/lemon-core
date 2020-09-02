@@ -178,6 +178,10 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
      */
     domain?: string;
     /**
+     * cookie string of origin request
+     */
+    cookie?: { [key: string]: string };
+    /**
      * calling depth for every handler. ( automatically increased from lambda-handler )
      */
     depth?: number;
@@ -235,6 +239,33 @@ export interface SimpleSearchParam extends GeneralItem {
     $source?: string; // returned source fields set. '*', 'obj.*', '!abc'
     $exist?: string; // check if exists
     $exists?: string; // check if exists
+}
+
+/**
+ * class: `AutocompleteSearchParam`
+ *  - Search-as-You-Type
+ */
+export interface AutocompleteSearchParam {
+    /**
+     * query object. key as field to search and value as string to match
+     */
+    $query: {
+        [field: string]: string;
+    };
+    /**
+     * maximum results in a page (default: 10)
+     */
+    $limit?: number; // limit
+    /**
+     * 0-indexed page number (default: 0)
+     */
+    $page?: number; // page
+    /**
+     * highlighting
+     *  - if boolean is given, turn on/off highlighting (default: false)
+     *  - if string is given, replace default highlighting tags (default: 'em')
+     */
+    $highlight?: boolean | string;
 }
 
 /**

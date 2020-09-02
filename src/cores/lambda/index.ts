@@ -44,7 +44,7 @@ export class LambdaModule implements EngineModule {
     private engine: LemonEngine;
     public constructor(engine?: LemonEngine) {
         this.engine = engine || $engine; // use input engine or global.
-        this.engine.register(this);
+        if (this.engine) this.engine.register(this);
 
         //! make default lambda-handler to initialize engine properly.
         const thiz = this;

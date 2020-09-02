@@ -124,17 +124,17 @@ export class Utilities {
         return Math.round(a);
     }
 
-    public json(o: any, isSorted?: any) {
+    public json(o: any, isSorted?: any): string {
         if (isSorted) {
-            var output: any = {};
+            const output: any = {};
             Object.keys(o)
                 .sort()
-                .forEach(function(key) {
+                .forEach(key => {
                     output[key] = o[key];
                 });
             o = output;
         }
-        return (o && JSON.stringify(o)) || o;
+        return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o || ''}`;
     }
 
     // timestamp value.
@@ -374,6 +374,18 @@ export class Utilities {
      * parse float by decimal point 3
      */
     public F3 = (x: any, mode: 'round' | 'floor' = 'round') => this.FN(x, 3, mode);
+
+    /**
+     * convert and cut string like `abcd....z`
+     */
+    public S = (_: any, h?: number, t: number = 32, delim: string = '...'): string =>
+        [typeof _ == 'string' ? _ : `${this.json(_) || ''}`]
+            .map(s =>
+                h && s.length > h + t
+                    ? s.substring(0, h) + delim + (s.length > h + t ? s.substring(s.length - t) : '')
+                    : s,
+            )
+            .join('');
 
     /**
      * remove internal properties which starts with _ or $
