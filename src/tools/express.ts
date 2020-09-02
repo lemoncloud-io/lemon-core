@@ -32,6 +32,7 @@ import AWS from 'aws-sdk';
 import express, { RequestHandler } from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
+import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import http from 'http';
 import * as requestIp from 'request-ip';
@@ -111,6 +112,7 @@ export const buildExpress = (
     app.use(cors());
     app.use(bodyParser.json({ limit: '10mb' })); // default limit 10mb
     app.use(bodyParser.urlencoded({ extended: true }));
+    app.use(cookieParser());
 
     //! middle ware
     const middle: RequestHandler = (req: any, res: any, next: any) => {
@@ -147,7 +149,37 @@ export const buildExpress = (
             },
         };
         _log(NS, `! req-ctx =`, $U.json(event.requestContext));
+
+        //! prepare internal-context
         const context: NextContext = { source: 'express', domain: host };
+
+        //! catch cookie
+        if (req.headers) {
+            Object.keys(req.headers).forEach(_key => {
+                const val = req.headers[_key];
+                const key = `${_key}`.toLowerCase();
+                if (key == 'cookie') {
+                    const parseCookies = (str: string) => {
+                        let rx = /([^;=\s]*)=([^;]*)/g;
+                        let obj: { [key: string]: string } = {};
+                        for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
+                        return obj;
+                    };
+                    context.cookie = parseCookies(`${Array.isArray(val) ? val.join('; ') : val || ''}`.trim());
+                }
+            });
+        }
+        if (req.cookies && typeof req.cookies == 'object') {
+            context.cookie = Object.keys(req.cookies).reduce(
+                (M: any, key: string) => {
+                    const val = req.cookies[key];
+                    M[key] = `${val || ''}`.trim();
+                    return M;
+                },
+                { ...context.cookie },
+            );
+        }
+
         const callback = (err: any, data: any) => {
             err && _err(NS, '! err@callback =', err);
             data && _inf(NS, `! res@callback[${(data && data.statusCode) || 0}] =`, $U.S(data && data.body, 1024));
@@ -168,7 +200,7 @@ export const buildExpress = (
 
         //! attach to req.
         req.$event = event;
-        req.$context = context;
+        req.$context = context; //! save the
         req.$callback = callback;
 
         //! use json parser or multer.
