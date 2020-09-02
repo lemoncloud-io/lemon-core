@@ -97,6 +97,7 @@ interface ModeMap {
 //! header names..
 const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
 const HEADER_LEMON_LANGUAGE = 'x-lemon-language';
+const HEADER_COOKIE = 'cookie';
 
 /**
  * class: LambdaWEBHandler
@@ -311,14 +312,15 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * pack the request context for Http request.
      *
      * @param event     origin Event.
-     * @param $ctx      lambda.Context
+     * @param $ctx      (optional) referenced lambda.Context
      */
     public async packContext(event: APIGatewayProxyEvent, $ctx: Context): Promise<NextContext> {
         //! prepare chain object.
         const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
         if (!event) return null;
         _log(NS, `packContext()..`);
-        _log(NS, `> reqContext=`, $U.json(reqContext));
+        _log(NS, `> reqContext=`, $U.S(reqContext, 256, 32));
+        _log(NS, `> orgContext=`, $U.S($ctx, 256, 32));
 
         //! prepare the next-context.
         const res: NextContext = { identity: null };
@@ -354,9 +356,20 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const identity: NextIdentityCognito = await _identity(headers[HEADER_LEMON_IDENTITY]);
 
         //! support prefered lanauge.
-        if (headers[HEADER_LEMON_LANGUAGE]) {
-            identity.lang = `${headers[HEADER_LEMON_LANGUAGE]}`.trim();
-        }
+        if (headers[HEADER_LEMON_LANGUAGE]) identity.lang = `${headers[HEADER_LEMON_LANGUAGE]}`.trim();
+
+        //! support cookie (string) to .cookie (object)
+        const cookie = ((cookie: string): { [key: string]: string } => {
+            cookie = `${cookie || ''}`.trim();
+            if (!cookie) return undefined;
+            const parseCookies = (str: string) => {
+                let rx = /([^;=\s]*)=([^;]*)/g;
+                let obj: { [key: string]: string } = {};
+                for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
+                return obj;
+            };
+            return parseCookies(cookie);
+        })(headers[HEADER_COOKIE]);
 
         //! translate cognito authentication to NextIdentity.
         if (reqContext.identity && reqContext.identity.cognitoIdentityPoolId !== undefined) {
@@ -378,7 +391,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const domain = `${reqContext.domainName || headers['Host'] || headers['host'] || ''}`; //! chore avoid null of headers
 
         //! save into headers and returns.
-        const context: NextContext = { ...res, identity, userAgent, clientIp, requestId, accountId, domain };
+        const context: NextContext = { ...res, identity, userAgent, clientIp, requestId, accountId, domain, cookie };
         context.source = $protocol.service.myProtocolURI(context); // self service-uri as source
         return context;
     }

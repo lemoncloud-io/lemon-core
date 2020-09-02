@@ -178,6 +178,10 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
      */
     domain?: string;
     /**
+     * cookie string of origin request
+     */
+    cookie?: { [key: string]: string };
+    /**
      * calling depth for every handler. ( automatically increased from lambda-handler )
      */
     depth?: number;
