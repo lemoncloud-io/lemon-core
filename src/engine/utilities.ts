@@ -124,7 +124,7 @@ export class Utilities {
         return Math.round(a);
     }
 
-    public json(o: any, isSorted?: any) {
+    public json(o: any, isSorted?: any): string {
         if (isSorted) {
             const output: any = {};
             Object.keys(o)
@@ -134,7 +134,7 @@ export class Utilities {
                 });
             o = output;
         }
-        return (o && JSON.stringify(o)) || o;
+        return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o || ''}`;
     }
 
     // timestamp value.
