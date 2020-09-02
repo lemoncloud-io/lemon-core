@@ -126,10 +126,10 @@ export class Utilities {
 
     public json(o: any, isSorted?: any) {
         if (isSorted) {
-            var output: any = {};
+            const output: any = {};
             Object.keys(o)
                 .sort()
-                .forEach(function(key) {
+                .forEach(key => {
                     output[key] = o[key];
                 });
             o = output;
@@ -379,7 +379,7 @@ export class Utilities {
      * convert and cut string like `abcd....z`
      */
     public S = (_: any, h?: number, t: number = 32, delim: string = '...'): string =>
-        [typeof _ == 'string' ? _ : this.json(_)]
+        [typeof _ == 'string' ? _ : `${this.json(_) || ''}`]
             .map(s =>
                 h && s.length > h + t
                     ? s.substring(0, h) + delim + (s.length > h + t ? s.substring(s.length - t) : '')
