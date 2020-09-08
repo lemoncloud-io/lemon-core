@@ -251,7 +251,8 @@ export class LambdaHandler {
         //! call main.. (it will return result or promised)
         return promise(main, event, context)
             .then(_ => {
-                if (_ !== undefined) _log(NS, '! res =', $U.json(_));
+                // if (_ !== undefined) _log(NS, '! res =', $U.json(_));
+                if (_ !== undefined) _log(NS, '! res =', $U.S(_, 320, 64, ' .... ')); //! cut result string.
                 // ((context && context.done) || callback)(null, _);
                 // return true;
                 return _;
