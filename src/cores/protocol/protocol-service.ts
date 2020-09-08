@@ -348,7 +348,7 @@ export class MyProtocolService implements ProtocolService {
                 const payload = data && data.Payload ? JSON.parse(`${data.Payload}`) : {};
                 const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
                 _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
-                [200, 201].includes(statusCode) || _inf(NS, `> WARN! status[${status}] data =`, $U.S(data)); // print whole data if not 200.
+                [200, 201].includes(statusCode) || _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(data)); // print whole data if not 200.
                 //! safe parse payload.body.
                 const body = (() => {
                     try {
