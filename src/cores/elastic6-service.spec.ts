@@ -49,6 +49,7 @@ export const canPerformTest = async (): Promise<boolean> => {
 //! main test body.
 describe('Elastic6Service', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    PROFILE && console.info(`! PROFILE =`, PROFILE);
 
     //! dummy storage service.
     it('should pass basic CRUD w/ dummy', async done => {
@@ -81,7 +82,7 @@ describe('Elastic6Service', () => {
         const { service } = instance();
 
         //! check service identity
-        expect2(await service.hello()).toEqual('elastic6-service:test-v3');
+        expect2(() => service.hello()).toEqual('elastic6-service:test-v3');
 
         // skip test if some prerequisites are not satisfied
         // 1. localhost is able to access elastic6 endpoint (by tunneling)

@@ -111,7 +111,7 @@ describe('AWSSQSService', () => {
 
         //! receive message..
         const result = await service.receiveMessage();
-        console.info(`! message-id =`, result.list[0].id);
+        // console.info(`! message-id =`, result.list[0].id);
         expect2(result.list.length).toEqual(1);
         expect2(result.list[0].data).toEqual(message);
         expect2(result.list[0].attr).toEqual(attribs);
@@ -123,7 +123,7 @@ describe('AWSSQSService', () => {
         expect2(await service.statistics(), '!delayed,!inflight').toEqual({ available: available, timeout: 30 });
 
         //! delete message
-        console.info(`! handle-id =`, result.list[0].handle);
+        // console.info(`! handle-id =`, result.list[0].handle);
         await service.deleteMessage(result.list[0].handle);
         await wait(1200);
         // expect2(await service.statistics(), '!delayed').toEqual({ available: available, inflight: 0, timeout: 30 });
