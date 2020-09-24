@@ -19,7 +19,7 @@ const safe = (f: () => {}) => {
     }
 };
 
-const $environ = (env: any): any => {
+const $environ = (env?: { [key: string]: string }): any => {
     //! convert all string.
     env =
         (env &&
@@ -35,35 +35,35 @@ const $environ = (env: any): any => {
 
 describe(`test the 'environ.ts'`, () => {
     test('check basic environ()', () => {
-        const $conf = $environ({ LS: 1, ENV: 'lemon', NODE_ENV: 'prod' });
+        const $conf = $environ({ LS: '1', ENV: 'lemon', NODE_ENV: 'prod' });
         expect2($conf, 'NAME').toEqual({ NAME: 'lemon' });
         expect2($conf, 'STAGE').toEqual({ STAGE: 'production' });
         expect2($conf, 'TS').toEqual({ TS: '0' });
     });
 
     test('check file error', () => {
-        const $conf = $environ({ LS: 1, ENV: 'anony' });
+        const $conf = $environ({ LS: '1', ENV: 'anony' });
         expect($conf.message.split(':')[0]).toEqual('FILE NOT FOUND');
     });
 
     test('check default envion', () => {
         const $conf = $environ(null);
-        expect($conf).toEqual({ LC: '1', LS: '0', NAME: 'none', STAGE: 'local', TS: '1', BACKBONE_API: '' });
+        expect($conf).toEqual({ LS: '0', LC: '1', NAME: 'none', STAGE: 'local', TS: '1', BACKBONE_API: '' });
     });
 
     test('check unknown envion.stage', () => {
-        const $conf = $environ({ LS: 1, ENV: 'lemon', STAGE: 'proxy' });
+        const $conf = $environ({ LS: '1', ENV: 'lemon', STAGE: 'proxy' });
         expect($conf.STAGE).toEqual('proxy');
     });
 
     test('check override', () => {
-        const $conf = $environ({ LS: 0, ENV: 'lemon', NAME: 'hello', STAGE: 'prod' });
+        const $conf = $environ({ LS: '1', ENV: 'lemon', NAME: 'hello', STAGE: 'prod' });
         expect($conf.NAME).toEqual('hello');
         expect($conf.STAGE).toEqual('prod');
     });
 
     test('check override', () => {
-        const $conf = $environ({ LS: 1, ENV: 'lemon', NAME: 'hello', STAGE: 'local' });
+        const $conf = $environ({ LS: '1', ENV: 'lemon', NAME: 'hello', STAGE: 'local' });
         expect($conf.NAME).toEqual('test-lemon');
         expect($conf.STAGE).toEqual('local');
         expect($conf.LIST).toEqual('a, b');

@@ -30,7 +30,7 @@ const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHt
 //! main test body.
 describe('APIService', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`
-    console.info(`! PROFILE =`, PROFILE);
+    PROFILE && console.info(`! PROFILE =`, PROFILE);
     jest.setTimeout(10000);
 
     //! via direct request.
@@ -169,7 +169,7 @@ describe('APIService', () => {
     it('should pass API w/ default env', async done => {
         //! create direct client.
         const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
-        console.info(`> BACKBONE =`, BACKBONE);
+        BACKBONE && console.info(`> BACKBONE =`, BACKBONE);
         const { service } = instance();
         /* eslint-disable prettier/prettier */
         if (BACKBONE){

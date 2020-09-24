@@ -216,6 +216,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                         const loc = message.substring(message.indexOf(' - ') + 3).trim();
                         if (loc) return redirect(loc, status);
                     }
+                    //! handle for `400 SIGNATURE - fail to verify!`. ignore report-error.
+                    if (status == 400 && message.startsWith('400 SIGNATURE')) {
+                        return failure(message, status);
+                    }
 
                     //! report error and returns
                     if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);

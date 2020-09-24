@@ -9,14 +9,23 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { EngineCore, GeneralFuntion } from './types';
-const NS = 'util';
-
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
 import QUERY_STRING from 'query-string';
 import * as uuid from 'uuid';
+const NS = 'util';
+
+const COLORS = {
+    red: '\x1b[31m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    magenta: '\x1b[35m',
+    cyan: '\x1b[36m',
+    white: '\x1b[37m',
+};
 
 /**
  * class: Utilities
@@ -137,7 +146,9 @@ export class Utilities {
         return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o || ''}`;
     }
 
-    // timestamp value.
+    /**
+     * timestamp string like `2020-02-22`
+     */
     public static timestamp(date?: undefined | number | Date, timeZone?: number): string {
         const dt = date && typeof date === 'object' ? date : date ? new Date(date) : new Date();
         const now = new Date();
@@ -159,7 +170,9 @@ export class Utilities {
         return ret;
     }
 
-    // parse timestamp to date.
+    /**
+     * parse timestamp to date.
+     */
     public static datetime(dt?: string | number | Date, timeZone?: number) {
         let ret = null;
         if (typeof dt == 'string') {
@@ -254,30 +267,21 @@ export class Utilities {
     /**
      * NameSpace Maker.
      */
-    // eslint-disable-next-line prettier/prettier
-    public NS(ns: string, color?: 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white', len?: number, delim?: string) {
+    public NS(ns: string, color?: keyof typeof COLORS, len?: number, delim?: string) {
         if (!ns) return ns;
         len = len || 4;
         len = len - ns.length;
         len = len < 0 ? 0 : len;
+        const LS = this.env('LS', '0') === '1'; // LOG SILENT (NO PRINT LOG)
         const SPACE = '           ';
         ns = SPACE.substr(0, len) + ns + (delim === undefined ? ':' : `${delim || ''}`);
-        if (color) {
-            const COLORS: any = {
-                red: '\x1b[31m',
-                green: '\x1b[32m',
-                yellow: '\x1b[33m',
-                blue: '\x1b[34m',
-                magenta: '\x1b[35m',
-                cyan: '\x1b[36m',
-                white: '\x1b[37m',
-            };
-            ns = COLORS[color] + ns + '\x1b[0m';
-        }
+        if (color && !LS) ns = COLORS[color] + ns + '\x1b[0m';
         return ns;
     }
 
-    // escape string for mysql.
+    /**
+     * escape string for mysql.
+     */
     public escape(str: string, urldecode?: any) {
         if (str === undefined) return 'NULL';
         if (this.isInteger(str)) return str;
@@ -428,14 +432,10 @@ export class Utilities {
         }, {});
     }
 
-    //! clean up all member without only KEY member.
+    /**
+     * clean up all member without only KEY member.
+     */
     public bare_node($N: any, opts?: any) {
-        // return Object.keys($N).reduce(function($n, key) {
-        // 	if(key.startsWith('_')) return $n;
-        // 	if(key.startsWith('$')) return $n;
-        // 	$n[key] = $N[key]
-        // 	return $n;
-        // }, {})
         let $n: any = {};
         $n._id = $N._id;
         $n._current_time = $N._current_time;
@@ -443,6 +443,9 @@ export class Utilities {
         return $n;
     }
 
+    /**
+     * get keys in difference.
+     */
     public diff(obj1: any, obj2: any): string[] {
         obj1 = obj1 || {};
         obj2 = obj2 || {};
@@ -464,34 +467,22 @@ export class Utilities {
 
     /**
      * calcualte node differences
-     *
-     * @param obj1
-     * @param obj2
      */
     public diff_node(obj1: any, obj2: any) {
-        let keys1: any = [],
-            keys2: any = [];
+        obj1 = obj1 || {};
+        obj2 = obj2 || {};
         const $_ = this.lodash();
-        Object.keys(obj1).forEach(key => {
-            if (key.startsWith('_')) return;
-            if (key.startsWith('$')) return;
-            keys1.push(key);
-        });
-        Object.keys(obj2).forEach(key => {
-            if (key.startsWith('_')) return;
-            if (key.startsWith('$')) return;
-            keys2.push(key);
-        });
-        const diff = keys1.reduce((result: any, key: string) => {
+        const keys1 = Object.keys(obj1).filter(key => (key.startsWith('_') || key.startsWith('$') ? false : true));
+        const keys2 = Object.keys(obj2).filter(key => (key.startsWith('_') || key.startsWith('$') ? false : true));
+        const diff = keys1.reduce((list: string[], key: string) => {
             if (!obj2.hasOwnProperty(key)) {
-                result.push(key);
+                list.push(key);
             } else if ($_.isEqual(obj1[key], obj2[key])) {
-                const resultKeyIndex = result.indexOf(key);
-                result.splice(resultKeyIndex, 1);
+                const resultKeyIndex = list.indexOf(key);
+                list.splice(resultKeyIndex, 1);
             }
-            return result;
+            return list;
         }, keys2);
-
         return diff;
     }
 
