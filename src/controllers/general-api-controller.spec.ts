@@ -67,8 +67,8 @@ describe('GeneralController', () => {
         expect2(() => storage.hello()).toEqual('typed-storage-service:test/proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
 
         //! check basic express.app
-        const $pack = loadJsonSync('package.json');
-        expect2(await request(app).get('/'), 'status,text').toEqual({ status: 200, text:`${$pack.name}/${$pack.version}` });
+        // const $pack = loadJsonSync('package.json');
+        expect2(await request(app).get('/'), 'status').toEqual({ status: 200 });
 
         //! each function mapping.
         expect2(await request(app).get('/hello/aaa'), 'status,!text,body').toEqual({ status:404, text:undefined, body:{} });
@@ -147,8 +147,8 @@ describe('GeneralController', () => {
         expect2(() => storage.hello()).toEqual('typed-storage-service:test/proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
 
         //! check basic express.app
-        const $pack = loadJsonSync('package.json');
-        expect2(await request(app).get('/'), 'status,text').toEqual({ status: 200, text:`${$pack.name}/${$pack.version}` });
+        // const $pack = loadJsonSync('package.json');
+        expect2(await request(app).get('/'), 'status').toEqual({ status: 200});
 
         //! each function mapping.
         expect2(await request(app).get('/hello/aaa'), 'status,!text,body').toEqual({ status:404, text:undefined, body:{} });
