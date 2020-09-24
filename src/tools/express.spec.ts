@@ -60,10 +60,8 @@ describe('express', () => {
         /* eslint-disable prettier/prettier */
         const app = $express.app;
         const res = await request(app).get('/');
-        expect2(res).toMatchObject({
-            status: 200,
-            text: `lemon-core/${$pack.version}`,
-        });
+        expect2(() => res.status).toEqual(200);
+        expect2(() => res.text.split('\n')[0]).toEqual(`lemon-core/${$pack.version}`);
         /* eslint-enable prettier/prettier */
         done();
     });

@@ -153,8 +153,8 @@ describe('GeneralController', () => {
         expect2(() => controller3.hello()).toEqual('general-web-controller:hello3');
 
         //! check basic express.app
-        const $pack = loadJsonSync('package.json');
-        expect2(await request(app).get('/'), 'status,text').toEqual({ status: 200, text:`${$pack.name}/${$pack.version}` });
+        // const $pack = loadJsonSync('package.json');
+        expect2(await request(app).get('/'), 'status').toEqual({ status: 200 });
 
         //! each function mapping.
         expect2(await request(app).get('/hello/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()`
@@ -182,8 +182,8 @@ describe('GeneralController', () => {
         expect2(() => controller3.hello()).toEqual('general-web-controller:hello3/general-controller:hello');
 
         //! check basic express.app
-        const $pack = loadJsonSync('package.json');
-        expect2(await request(app).get('/'), 'status,text').toEqual({ status: 200, text:`${$pack.name}/${$pack.version}` });
+        // const $pack = loadJsonSync('package.json');
+        expect2(await request(app).get('/'), 'status').toEqual({ status: 200 });
 
         //! each function mapping.
         expect2(await request(app).get('/hello/aa/world'), 'status,body').toEqual({ status:200, body:{ type:'hello', hello:'world-aa' } });     // via `getHelloWorld()`
