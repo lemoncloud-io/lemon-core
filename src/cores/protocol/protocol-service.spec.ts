@@ -236,6 +236,35 @@ describe('ProtocolService', () => {
         expect2(param2, 'body').toEqual({ body:null });
         expect2(param2.context).toEqual(context);
 
+        //! test of body-data.
+        const webhdr0 = { 'content-type':'', 'x-protocol-context':'' };
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body:'' }), 'body').toEqual({ body:'' });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body:null }), 'body').toEqual({ body:null });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body:{} as any }), 'body').toEqual({ body:{} });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body:'{}' }), 'body').toEqual({ body:{} });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body:'[]' }), 'body').toEqual({ body:[] });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body:'a=b' }), 'body').toEqual({ body:'a=b' });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body:'a%5Bb%5D=c' }), 'body').toEqual({ body:'a%5Bb%5D=c' });
+
+        const webhdr1 = { 'content-type':'application/json', 'x-protocol-context':'' };
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body:'' }), 'body').toEqual({ body:'' });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body:null }), 'body').toEqual({ body:null });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body:{} as any }), 'body').toEqual({ body:{} });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body:'{}' }), 'body').toEqual({ body:{} });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body:'[]' }), 'body').toEqual({ body:[] });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body:'a=b' }), 'body').toEqual('Unexpected token a in JSON at position 0');
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body:'a%5Bb%5D=c' }), 'body').toEqual('Unexpected token a in JSON at position 0');
+
+        const webhdr2 = { 'content-type':'application/x-www-form-urlencoded; charset=utf-8', 'x-protocol-context':'' };
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:'' }), 'body').toEqual({ body:'' });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:null }), 'body').toEqual({ body:null });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:{} as any }), 'body').toEqual({ body:{} });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:'{}' }), 'body').toEqual({ body:{} });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:'[]' }), 'body').toEqual({ body:[] });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:'a=b' }), 'body').toEqual({ body:{ a: 'b' } });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:'a%5B%5D=c' }), 'body').toEqual({ body:{ a:['c'] } });
+        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body:'a%5Bb%5D=c' }), 'body').toEqual({ body:{ a:{b:'c'} } });
+
         //! error exceptions
         expect2(() => service.web.transformToParam({ ...event2, headers: null })).toEqual('.headers is required');
         expect2(() => service.web.transformToParam({ ...event2, requestContext: null })).toEqual('.requestContext is required');

@@ -29,6 +29,8 @@ const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
+// import queryString from 'query-string';
+import queryString from 'qs';
 
 /**
  * type: MyProtocolType
@@ -580,13 +582,22 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
 
         //! extract part
         const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
+        const contType = `${headers['content-type'] || headers['Content-Type'] || ''}`.toLowerCase();
+        _log(NS, `content-type =`, contType);
         //! the path format should be `/{type}/{id}/{cmd}`
         const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || {};
         const param = event.queryStringParameters;
-        const body =
-            typeof event.body == 'string' && event.body.startsWith('{') && event.body.endsWith('}')
-                ? JSON.parse(event.body)
-                : event.body;
+        const body = ((body: any, type: string): any => {
+            const isText = body && typeof body == 'string';
+            const isJson = type.startsWith('application/json');
+            const isForm = type.startsWith('application/x-www-form-urlencoded');
+            if (isText && isJson) return JSON.parse(body);
+            if (isText && body.startsWith('{') && body.endsWith('}')) return JSON.parse(body);
+            if (isText && body.startsWith('[') && body.endsWith(']')) return JSON.parse(body);
+            // if (isText && isForm) return queryString.parse(body, { arrayFormat: 'bracket' });
+            if (isText && isForm) return queryString.parse(body);
+            return body;
+        })(event.body, contType);
 
         //! decode context (can be null)
         if (typeof headers['x-protocol-context'] == 'undefined')
@@ -607,17 +618,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId || ''}`);
 
         //! pack as protocol-param.
-        const res: ProtocolParam = {
-            service,
-            stage,
-            type,
-            mode,
-            id: $path.id,
-            cmd: $path.cmd,
-            param,
-            body,
-            context,
-        };
+        const res: ProtocolParam = { service, stage, type, mode, id: $path.id, cmd: $path.cmd, param, body, context };
         return res;
     }
 }
