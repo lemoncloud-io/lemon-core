@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.2.8     | minor changes.
 | 2.2.7     | fix `status is not defined`.
 | 2.2.6     | improve `search`, and support `cookie` in NextContext.
 | 2.2.5     | add `Access-Control-Allow-Headers` for CORS.
