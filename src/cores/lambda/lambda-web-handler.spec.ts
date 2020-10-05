@@ -46,6 +46,7 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
             next = async () => ({ hello: 'LIST' });
             break;
         case 'GET':
+        case 'POST':
             if (cmd) next = async id => ({ id, cmd, hello: `${cmd} ${id}` });
             else if (id == '0')
                 next = async id => {
@@ -78,19 +79,19 @@ class MyLemonWebController implements CoreWEBController {
 describe('LambdaWEBHandler', () => {
     //! list in web-handler
     it('should pass success GET / via web', async done => {
-        /* eslint-disable prettier/prettier */
         const { service } = instance();
         const event: any = loadJsonSync('data/sample.event.web.json');
         const id = '';
         event.pathParameters['id'] = id;
         const res = await service.handle(event, null);
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body:$U.json({ hello: 'LIST'}) });
+        expect2(res, 'body').toEqual({ body: $U.json({ hello: 'LIST' }) });
 
         //! service handlers
-        expect2(Object.keys(service.getHandlerDecoders())).toEqual([ 'hello', 'lemon' ]);   // must be maps
-        expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function');          // must be decoder function
+        expect2(Object.keys(service.getHandlerDecoders())).toEqual(['hello', 'lemon']); // must be maps
+        expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function'); // must be decoder function
 
+        /* eslint-disable prettier/prettier */
         //! GET `/lemon` controller
         event.resource = '/lemon/{id}'
         event.path = '/lemon';
@@ -110,35 +111,35 @@ describe('LambdaWEBHandler', () => {
 
     //! list via lambda-handler.
     it('should pass success GET / via lambda', async done => {
-        /* eslint-disable prettier/prettier */
+        /* eslint-enable prettier/prettier */
         const { lambda } = instance();
         const event: any = loadJsonSync('data/sample.event.web.json');
         const id = '';
         event.pathParameters['id'] = id;
         const response = await lambda.handle(event, null).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(response, 'body').toEqual({ body:$U.json({ hello: 'LIST'}) });
+        expect2(response, 'body').toEqual({ body: $U.json({ hello: 'LIST' }) });
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! GET /abc
     it('should pass success GET /abc', async done => {
-        /* eslint-disable prettier/prettier */
+        /* eslint-enable prettier/prettier */
         const { service } = instance();
         const event: any = loadJsonSync('data/sample.event.web.json');
         const id = 'abc';
         event.pathParameters['id'] = id;
         const res = await service.handle(event, null);
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body:$U.json({ id, hello: `${id}` }) });
+        expect2(res, 'body').toEqual({ body: $U.json({ id, hello: `${id}` }) });
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! GET /{id}/{cmd}
     it('should pass success GET /abc/hi', async done => {
-        /* eslint-disable prettier/prettier */
+        /* eslint-enable prettier/prettier */
         const { service } = instance();
         const event: any = loadJsonSync('data/sample.event.web.json');
         const id = 'abc';
@@ -147,36 +148,71 @@ describe('LambdaWEBHandler', () => {
         event.pathParameters['cmd'] = cmd;
         const res = await service.handle(event, null);
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body:$U.json({ id, cmd, hello: `${cmd} ${id}` }) });
+        expect2(res, 'body').toEqual({ body: $U.json({ id, cmd, hello: `${cmd} ${id}` }) });
+        expect2(res, 'headers').toEqual({
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Credentials': true,
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language',
+            },
+        });
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    //! POST /{id}/{cmd}
+    it('should pass success POST /abc/hi', async done => {
+        /* eslint-enable prettier/prettier */
+        const { service } = instance();
+        const event: any = loadJsonSync('data/sample.event.web.json');
+        const id = 'abc';
+        const cmd = 'hi';
+        const origin = 'https://api.com/';
+        event.httpMethod = 'POST';
+        event.headers['origin'] = origin;
+        event.pathParameters['id'] = id;
+        event.pathParameters['cmd'] = cmd;
+        const res = await service.handle(event, null);
+        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(res, 'body').toEqual({ body: $U.json({ id, cmd, hello: `${cmd} ${id}` }) });
+        expect2(res, 'headers').toEqual({
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': origin,
+                'Access-Control-Allow-Credentials': true,
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language',
+            },
+        });
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! GET /0 => 404
     it('should pass success GET /0 404', async done => {
-        /* eslint-disable prettier/prettier */
+        /* eslint-enable prettier/prettier */
         const { service } = instance();
         const event: any = loadJsonSync('data/sample.event.web.json');
         const id = '0';
         event.pathParameters['id'] = id;
         const res = await service.handle(event, null);
         expect2(res, 'statusCode').toEqual({ statusCode: 404 });
-        expect2(res, 'body').toEqual({ body:'404 NOT FOUND - id:0' });
+        expect2(res, 'body').toEqual({ body: '404 NOT FOUND - id:0' });
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! GET /0 => 404
     it('should pass context.identity', async done => {
-        /* eslint-disable prettier/prettier */
         const { lambda } = instance();
         const loadEventStock = (id: string): any => {
             const event = loadJsonSync('data/sample.event.web.json');
             event.pathParameters['id'] = id; // call dump paramters.
             return event;
-        }
+        };
         const id = '!';
 
+        /* eslint-disable prettier/prettier */
         //! use default cofnig.
         if (1) {
             const event = loadEventStock(id);
