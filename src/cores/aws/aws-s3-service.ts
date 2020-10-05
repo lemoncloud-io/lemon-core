@@ -52,6 +52,7 @@ export interface CoreS3Service extends CoreServices {
     getObject: (fileName: string) => Promise<any>;
     getDecodedObject: (fileName: string) => Promise<any>;
     getObjectTagging: (fileName: string) => Promise<TagSet>;
+    deleteObject: (fileName: string) => Promise<void>;
 }
 
 /** ****************************************************************************************************************
@@ -235,8 +236,8 @@ export class AWSS3Service implements CoreS3Service {
     };
 
     /**
-     * delete
-     * @param fileName
+     * delete object from bucket
+     * @param {string} fileName
      */
     public deleteObject = async (fileName: string): Promise<void> => {
         if (!fileName) throw new Error('@fileName is required!');
