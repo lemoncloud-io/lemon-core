@@ -17,8 +17,8 @@ process.env = Object.assign(process.env, {
 
 //! load $engine, and prepare dummy handler
 import { AWSS3Service, PutObjectResult } from './aws-s3-service';
-import { credentials } from '../../tools/shared';
-import { environ } from '../../common/test-helper';
+import { credentials } from '../../tools';
+import { environ } from '../..';
 
 const S3 = new AWSS3Service();
 
@@ -44,6 +44,7 @@ describe(`test service/s3-service.js`, () => {
     });
 
     test('check putObject() function', async () => {
+        if (!PROFILE) return;
         const body = JSON.stringify({ hello: 'world', lemon: true });
         let res: PutObjectResult;
         /* eslint-disable prettier/prettier */
@@ -84,6 +85,7 @@ describe(`test service/s3-service.js`, () => {
     });
 
     test('check putObjectUrl() function', async () => {
+        if (!PROFILE) return;
         let res: PutObjectResult;
         /* eslint-disable prettier/prettier */
 
@@ -116,6 +118,7 @@ describe(`test service/s3-service.js`, () => {
     });
 
     test('check getDecodedObject() function', async () => {
+        if (!PROFILE) return;
         const fileName = 'sample.json';
         const data = { hello: 'world', lemon: true };
 
