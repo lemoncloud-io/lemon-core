@@ -22,7 +22,6 @@ import {
     NextMode,
     NextIdentityCognito,
     ProtocolParam,
-    CoreConfigService,
 } from './../core-services';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
@@ -31,7 +30,10 @@ import { GETERR } from '../../common/test-helper';
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-export type ConfigService = CoreConfigService;
+//! header names..
+const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
+const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
+const HEADER_COOKIE = 'cookie';
 
 /**
  * class: `WEBController`
@@ -46,7 +48,12 @@ export interface CoreWEBController {
 /** ********************************************************************************************************************
  *  COMMON Functions.
  ** ********************************************************************************************************************/
-export const buildResponse = (statusCode: number, body: any, contentType?: string): APIGatewayProxyResult => {
+export const buildResponse = (
+    statusCode: number,
+    body: any,
+    contentType?: string,
+    origin?: string,
+): APIGatewayProxyResult => {
     const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
     contentType =
         contentType ||
@@ -60,17 +67,17 @@ export const buildResponse = (statusCode: number, body: any, contentType?: strin
         statusCode,
         headers: {
             'Content-Type': contentType,
-            'Access-Control-Allow-Origin': '*', // Required for CORS support to work
+            'Access-Control-Allow-Origin': `${origin || '*'}`, // Required for CORS support to work
             'Access-Control-Allow-Credentials': true, // Required for cookies, authorization headers with HTTPS
-            'Access-Control-Allow-Headers': 'origin, x-lemon-language', // custom headers
+            'Access-Control-Allow-Headers': `origin, ${HEADER_LEMON_LANGUAGE}`, // custom headers
         },
         body: typeof body === 'string' ? body : JSON.stringify(body),
         isBase64Encoded,
     };
 };
 
-export const success = (body: any, contentType?: string) => {
-    return buildResponse(200, body, contentType);
+export const success = (body: any, contentType?: string, origin?: string) => {
+    return buildResponse(200, body, contentType, origin);
 };
 
 export const notfound = (body: any) => {
@@ -86,18 +93,6 @@ export const redirect = (location: any, status?: number) => {
     res.headers['Location'] = location; // set location.
     return res;
 };
-
-/**
- * simple object container
- */
-interface ModeMap {
-    [key: string]: NextMode;
-}
-
-//! header names..
-const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
-const HEADER_LEMON_LANGUAGE = 'x-lemon-language';
-const HEADER_COOKIE = 'cookie';
 
 /**
  * class: LambdaWEBHandler
@@ -200,8 +195,17 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         //! start promised..
         return promised(event)
-            .then(({ param, event }) => this.handleProtocol(param, event))
-            .then(_ => success(_))
+            .then(async ({ param, event }) => {
+                const R = await this.handleProtocol(param, event);
+                //NOTE - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+                //TODO - improve in better way to override response's header.
+                const { httpMethod: method, headers } = event;
+                if (method && method != 'GET') {
+                    const origin = `${(headers && headers['origin']) || ''}`;
+                    return success(R, null, origin);
+                }
+                return success(R);
+            })
             .catch((e: any) => {
                 _err(NS, `! err =`, e instanceof Error ? e : $U.json(e));
                 const message = `${e.message || e.reason || $U.json(e)}`;
