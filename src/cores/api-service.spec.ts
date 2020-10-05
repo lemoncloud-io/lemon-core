@@ -8,10 +8,10 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, GETERR$, expect2, marshal, Filter, _it } from '../common/test-helper';
-import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
+import { loadProfile } from '../environ';
 import $engine, { $U } from '../engine';
-import environ from '../environ';
+import { GETERR, expect2 } from '../common/test-helper';
+import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
 import { loadJsonSync } from '../tools';
 
 //! api with `lemon-hello-api` in prod @lemon.
@@ -20,8 +20,8 @@ const HOST = 'hg9errxv25.execute-api.ap-northeast-2.amazonaws.com';
 const ENDPOINT = `https://${HOST}/prod`;
 
 //! build instance
-const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHttpProxy) => {
-    const type = TYPE || 'hello';
+const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHttpProxy, type?: string) => {
+    type = type || `${TYPE || 'hello'}`;
     const endpoint = ENDPOINT || '';
     const service = new APIService(type, endpoint, headers, client, proxy);
     return { service };
@@ -29,9 +29,9 @@ const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHt
 
 //! main test body.
 describe('APIService', () => {
-    //! load env via `/env/<ENV>.yml`.
-    const $env = environ(process);
-    console.info(`! BACKBONE =`, $env['BACKBONE']);
+    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    PROFILE && console.info(`! PROFILE =`, PROFILE);
+    jest.setTimeout(10000);
 
     //! via direct request.
     it('should pass API w/ direct request', async done => {
@@ -169,7 +169,7 @@ describe('APIService', () => {
     it('should pass API w/ default env', async done => {
         //! create direct client.
         const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
-        console.info(`> BACKBONE =`, BACKBONE);
+        BACKBONE && console.info(`> BACKBONE =`, BACKBONE);
         const { service } = instance();
         /* eslint-disable prettier/prettier */
         if (BACKBONE){
@@ -207,7 +207,7 @@ describe('APIService', () => {
         expect2(await proxy.doProxy('GET', undefined).catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello');
         expect2(await proxy.doProxy('GET', 'hello', '1')).toEqual({ name: 'cloud' });
         expect2(await proxy.doProxy('GET', 'lemon', '1').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/lemon/1');
-        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR)).toEqual({ name: 'world' });
+        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR), '!path').toEqual({ name: 'world' });
 
         expect2(await service.doGet(undefined)).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
         expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
@@ -222,24 +222,24 @@ describe('APIService', () => {
         done();
     });
 
-    //! mocks data w/ `world`
-    it('should pass mocks-api-service w/ mocks(world) data', async done => {
+    //! mocks data w/ `mocks(world) + service(hello)`
+    it('should pass mocks-api-service w/ mocks(world) + service(hello)', async done => {
         //! prepare mocks agent
         const proxy: ApiHttpProxy = new MocksAPIService('world', 'https://api.lemoncloud.io/hello');
         const client: APIServiceClient = new MocksAPIService('world', 'https://api.lemoncloud.io/hello');
-        const { service } = instance(null, null, proxy);
+        const { service } = instance(null, null, proxy, 'hello');
 
         /* eslint-disable prettier/prettier */
         expect2(proxy.hello()).toEqual(`mocks-api-service:https://api.lemoncloud.io/hello/world`);
         expect2(service.hello()).toEqual(`api-service:api-client:mocks-api-service:https://api.lemoncloud.io/hello/world`);
 
-        expect2(await client.doGet(undefined).catch(GETERR)).toEqual({ list: [{ name: 'lemon' }, { name: 'world' }], name: 'lemon' });
-        expect2(await client.doGet('1').catch(GETERR)).toEqual({ name: 'world' });
+        expect2(await client.doGet(undefined).catch(GETERR), '!path').toEqual({ list: [{ name: 'lemon' }, { name: 'world' }], name: 'world' });
+        expect2(await client.doGet('1').catch(GETERR), '!path').toEqual({ name: 'world' });
 
         expect2(await proxy.doProxy('GET', undefined).catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello');
-        expect2(await proxy.doProxy('GET', 'hello', '1')).toEqual({ name: 'cloud' });
+        expect2(await proxy.doProxy('GET', 'hello', '1'), '!path').toEqual({ name: 'cloud' });
         expect2(await proxy.doProxy('GET', 'lemon', '1').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/lemon/1');
-        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR)).toEqual({ name: 'world' });
+        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR), '!path').toEqual({ name: 'world' });
 
         expect2(await service.doGet(undefined)).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
         expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
@@ -250,7 +250,61 @@ describe('APIService', () => {
         expect2(await service.doGet('/1').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/hello/%2F1');
         expect2(await service.doGet('/1','h/i').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/hello/%2F1/h/i');
         /* eslint-enable prettier/prettier */
+        done();
+    });
 
+    //! mocks data w/ `mocks(world) + service(world)`
+    it('should pass mocks-api-service w/ mocks(world) + service(world)', async done => {
+        //! prepare mocks agent
+        const proxy: ApiHttpProxy = new MocksAPIService('world', 'https://api.lemoncloud.io/hello');
+        const client: APIServiceClient = new MocksAPIService('world', 'https://api.lemoncloud.io/hello');
+        const { service } = instance(null, null, proxy, 'world');
+
+        /* eslint-disable prettier/prettier */
+        expect2(proxy.hello()).toEqual(`mocks-api-service:https://api.lemoncloud.io/hello/world`);
+        expect2(service.hello()).toEqual(`api-service:api-client:mocks-api-service:https://api.lemoncloud.io/hello/world`);
+
+        expect2(await client.doGet(undefined).catch(GETERR), '!path').toEqual({ list: [{ name: 'lemon' }, { name: 'world' }], name: 'world' });
+        expect2(await client.doGet('1').catch(GETERR), '!path').toEqual({ name: 'world' });
+
+        expect2(await proxy.doProxy('GET', undefined).catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello');
+        expect2(await proxy.doProxy('GET', 'hello', '1'), '!path').toEqual({ name: 'cloud' });
+        expect2(await proxy.doProxy('GET', 'lemon', '1').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/lemon/1');
+        expect2(await proxy.doProxy('GET', 'world', '1').catch(GETERR), '!path').toEqual({ name: 'world' });
+
+        expect2(await service.doGet(undefined), '!path').toEqual({ list: [{ name: 'lemon' }, { name: 'world' }], name: 'world' });
+        expect2(await service.doGet(''), '!path').toEqual({ list: [{ name: 'lemon' }, { name: 'world' }], name: 'world' });
+        expect2(await service.doGet('0').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });
+        expect2(await service.doGet('1'), '!path').toEqual({ name: 'world' });
+        expect2(await service.doGet('1','hi').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/world/1/hi');
+        expect2(await service.doGet('/1','').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/world/%2F1/');
+        expect2(await service.doGet('/1').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/world/%2F1');
+        expect2(await service.doGet('/1','h/i').catch(GETERR)).toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/world/%2F1/h/i');
+
+        //! check query + hash path.
+        expect2(await service.doGet('0').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });
+        expect2(await service.doGet('0', null, { a:1 }).catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0?a=1' });
+        expect2(await service.doGet('0', null, { b:null }).catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0?b' });
+        expect2(await service.doGet('0', null, { c:null }).catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });   //! it will use default `/hello/world/0`
+
+        expect2(await service.doGet('0', null, { a:1 }, null).catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0?a=1' });
+        expect2(await service.doGet('0', null, { b:null }, null).catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0?b' });
+        expect2(await service.doGet('0', null, { c:null }, null).catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });
+
+        expect2(await service.doGet(null, null, null, null, 'a').catch(GETERR), 'path').toEqual({ path:'GET /hello/world#a' });
+        expect2(await service.doGet('', null, null, null, 'a').catch(GETERR), 'path').toEqual({ path:'GET /hello/world#a' });
+
+        expect2(await service.doGet('0', null, { a:1 }, null, 'a').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0?a=1#a' });
+        expect2(await service.doGet('0', null, { a:2 }, null, 'a').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });           // use default
+        expect2(await service.doGet('0', null, { a:3 }, null, 'a').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });           // use default
+        expect2(await service.doGet('X', null, { a:3 }, null, 'a').catch(GETERR), 'path').toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/world/X?a=3#a');
+
+        expect2(await service.doGet('0', null, { a:1 }, null, 'b').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0?a=1#b' });
+        expect2(await service.doGet('0', null, { a:2 }, null, 'b').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });           // use default
+        expect2(await service.doGet('0', null, { a:3 }, null, 'b').catch(GETERR), 'path').toEqual({ path:'GET /hello/world/0' });           // use default
+        expect2(await service.doGet('X', null, { a:3 }, null, 'b').catch(GETERR), 'path').toEqual('404 NOT FOUND - GET https://api.lemoncloud.io/hello/world/X?a=3#b');
+
+        /* eslint-enable prettier/prettier */
         done();
     });
 });

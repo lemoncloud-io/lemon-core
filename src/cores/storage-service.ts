@@ -287,8 +287,8 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         this.name = `${name || ''}`;
         this.idName = `${idName || 'id'}`;
         // const loadDataYml = require('../express').loadDataYml;
-        const dummy = loadDataYml(dataFile);
-        this.load(dummy.data);
+        const dummy: any = loadDataYml(dataFile);
+        this.load(dummy.data as any);
     }
 
     private buffer: { [id: string]: StorageModel } = {};

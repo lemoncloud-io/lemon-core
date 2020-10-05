@@ -9,10 +9,9 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { _log, _inf, $U } from '../engine/';
-const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
-
 import { GeneralItem } from './core-types';
 import { DynamoOption, DynamoService } from './dynamo-service';
+const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
 
 // ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
 // - NOTE: '!=' is shortcut to { not: { comparator: '=' } }
@@ -104,6 +103,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
     protected options: DynamoOption;
 
     public constructor(options: DynamoOption) {
+        // eslint-disable-next-line prettier/prettier
         _inf(NS, `DynamoScanService(${options.tableName}/${options.idName}${options.sortName ? '/' : ''}${options.sortName || ''})...`);
         if (!options.tableName) throw new Error('.tableName is required');
         if (!options.idName) throw new Error('.idName is required');

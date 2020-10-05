@@ -29,6 +29,8 @@ const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
+// import queryString from 'query-string';
+import queryString from 'qs';
 
 /**
  * type: MyProtocolType
@@ -344,10 +346,11 @@ export class MyProtocolService implements ProtocolService {
                 throw e;
             })
             .then((data: Lambda.Types.InvocationResponse) => {
-                _log(NS, `! execute[${param.service || ''}].res =`, $U.json(data));
-                const payload = data.Payload ? JSON.parse(`${data.Payload}`) : {};
-                const statusCode = $U.N(payload.statusCode || data.StatusCode, 200);
+                _log(NS, `! execute[${param.service || ''}].res =`, $U.S(data, 320, 64, ' .... '));
+                const payload = data && data.Payload ? JSON.parse(`${data.Payload}`) : {};
+                const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
                 _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
+                [200, 201].includes(statusCode) || _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(data)); // print whole data if not 200.
                 //! safe parse payload.body.
                 const body = (() => {
                     try {
@@ -356,16 +359,16 @@ export class MyProtocolService implements ProtocolService {
                             ? JSON.parse(payload.body)
                             : payload.body;
                     } catch (e) {
-                        _log(NS, `> WARN! payload.body =`, $U.json(payload.body));
+                        _log(NS, `> WARN! payload.body =`, $U.S(payload.body));
                         return payload.body;
                     }
                 })();
-                const asTxt = (_: any): string => (_ && typeof _ == 'object' ? $U.json(_) : `${_ || ''}`);
+                //! returns
                 if (statusCode == 400 || statusCode == 404)
-                    return Promise.reject(new Error(asTxt(body) || '404 NOT FOUND'));
-                if (statusCode != 200 && statusCode != 201) {
+                    return Promise.reject(new Error($U.S(body) || '404 NOT FOUND'));
+                else if (statusCode != 200 && statusCode != 201) {
                     if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw new Error(body);
-                    throw new Error(asTxt(body) || 'Lambda Error. status:' + statusCode);
+                    throw new Error($U.S(body) || `Lambda Error. status:${statusCode}`);
                 }
                 return body;
             });
@@ -579,13 +582,22 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
 
         //! extract part
         const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
+        const contType = `${headers['content-type'] || headers['Content-Type'] || ''}`.toLowerCase();
+        _log(NS, `content-type =`, contType);
         //! the path format should be `/{type}/{id}/{cmd}`
         const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || {};
         const param = event.queryStringParameters;
-        const body =
-            typeof event.body == 'string' && event.body.startsWith('{') && event.body.endsWith('}')
-                ? JSON.parse(event.body)
-                : event.body;
+        const body = ((body: any, type: string): any => {
+            const isText = body && typeof body == 'string';
+            const isJson = type.startsWith('application/json');
+            const isForm = type.startsWith('application/x-www-form-urlencoded');
+            if (isText && isJson) return JSON.parse(body);
+            if (isText && body.startsWith('{') && body.endsWith('}')) return JSON.parse(body);
+            if (isText && body.startsWith('[') && body.endsWith(']')) return JSON.parse(body);
+            // if (isText && isForm) return queryString.parse(body, { arrayFormat: 'bracket' });
+            if (isText && isForm) return queryString.parse(body);
+            return body;
+        })(event.body, contType);
 
         //! decode context (can be null)
         if (typeof headers['x-protocol-context'] == 'undefined')
@@ -606,17 +618,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId || ''}`);
 
         //! pack as protocol-param.
-        const res: ProtocolParam = {
-            service,
-            stage,
-            type,
-            mode,
-            id: $path.id,
-            cmd: $path.cmd,
-            param,
-            body,
-            context,
-        };
+        const res: ProtocolParam = { service, stage, type, mode, id: $path.id, cmd: $path.cmd, param, body, context };
         return res;
     }
 }

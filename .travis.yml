@@ -26,6 +26,7 @@ after_success:
 #- npm run release.minor
 #- git push --follow-tags origin master
 deploy:
+  edge: true
   provider: npm
   skip_cleanup: true
   email: steve@lemoncloud.io

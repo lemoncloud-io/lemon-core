@@ -100,7 +100,7 @@ describe('AWSSQSService', () => {
         const message = service.hello();
         const attribs = { hello: 'lemon', numb: 2 };
         const queueid = await service.sendMessage(message, attribs);
-        console.info(`! queue-id =`, queueid);
+        // console.info(`! queue-id =`, queueid);
         // expect2(queueid).toEqual('9b0888d7-5120-4c36-b29b-ff2cb2bedc39');
         expect2(typeof queueid + ':' + `${queueid}`.length).toEqual('string:' + '9b0888d7-5120-4c36-b29b-ff2cb2bedc39'.length);
 
@@ -111,7 +111,7 @@ describe('AWSSQSService', () => {
 
         //! receive message..
         const result = await service.receiveMessage();
-        console.info(`! message-id =`, result.list[0].id);
+        // console.info(`! message-id =`, result.list[0].id);
         expect2(result.list.length).toEqual(1);
         expect2(result.list[0].data).toEqual(message);
         expect2(result.list[0].attr).toEqual(attribs);
@@ -123,7 +123,7 @@ describe('AWSSQSService', () => {
         expect2(await service.statistics(), '!delayed,!inflight').toEqual({ available: available, timeout: 30 });
 
         //! delete message
-        console.info(`! handle-id =`, result.list[0].handle);
+        // console.info(`! handle-id =`, result.list[0].handle);
         await service.deleteMessage(result.list[0].handle);
         await wait(1200);
         // expect2(await service.statistics(), '!delayed').toEqual({ available: available, inflight: 0, timeout: 30 });

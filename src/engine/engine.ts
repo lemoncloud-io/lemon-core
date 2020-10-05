@@ -103,7 +103,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const payload = {
             service,
             message,
-            context: { stage, apiId, resourcePath, identity, domainPrefix, event },
+            context: { ...context, stage, apiId, resourcePath, identity, domainPrefix, event },
             data,
         };
 
@@ -309,22 +309,25 @@ export const do_parrallel = <T, U>(
     size = size === undefined ? 10 : size;
     pos = pos === undefined ? 0 : pos;
     result = result === undefined ? [] : result;
+    //! annonymous method of callback
+    const safeCall = (n: T, i: number) => {
+        try {
+            return callback(n, i);
+        } catch (e) {
+            return Promise.reject(e);
+        }
+    };
     // _log(NS, `! parrallel(${pos}/${size})`)
     const list = Array.isArray(param) ? param : param.list;
     const list2 = list.slice(pos, pos + size);
     const actions = list2.map((node, i): any => {
         const index = pos + i;
         try {
-            //! update this._index.
-            const R = (() => {
-                try {
-                    return callback(node, index);
-                } catch (e) {
-                    return Promise.reject(e);
-                }
-            })();
-            if (R instanceof Promise) {
-                return R.catch(e => {
+            //! error proof.
+            const R = safeCall(node, index);
+            if (R && typeof R == 'object' && R instanceof Promise) {
+                const R2: Promise<any> = R as Promise<any>; // avoid compile error.
+                return R2.catch(e => {
                     _err(`!ERR@1 node[${index}] =`, e);
                     //! make sure error instance.
                     return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));

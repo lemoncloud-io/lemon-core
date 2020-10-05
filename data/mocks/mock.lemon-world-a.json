@@ -2,7 +2,10 @@
     "!": "read world of lemon",
     "param": {
         "method": "GET",
-        "endpoint": "https://api.lemoncloud.io/hello/world"
+        "endpoint": "https://api.lemoncloud.io/hello/world",
+        "param":{
+            "a": null
+        }
     },
     "data": {
         "list": [{
@@ -12,8 +15,8 @@
                 "name": "world"
             }
         ],
-        "name": "world",
-        "path": "GET /hello/world"
+        "name": "lemon",
+        "path": "GET /hello/world?a"
     },
     "error": ""
 }

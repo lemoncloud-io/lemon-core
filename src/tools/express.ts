@@ -32,8 +32,11 @@ import AWS from 'aws-sdk';
 import express, { RequestHandler } from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
+import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import http from 'http';
+import fs from 'fs';
+
 import * as requestIp from 'request-ip';
 
 //! helper to catch header value w/o case-sensitive
@@ -111,6 +114,7 @@ export const buildExpress = (
     app.use(cors());
     app.use(bodyParser.json({ limit: '10mb' })); // default limit 10mb
     app.use(bodyParser.urlencoded({ extended: true }));
+    app.use(cookieParser());
 
     //! middle ware
     const middle: RequestHandler = (req: any, res: any, next: any) => {
@@ -147,10 +151,40 @@ export const buildExpress = (
             },
         };
         _log(NS, `! req-ctx =`, $U.json(event.requestContext));
+
+        //! prepare internal-context
         const context: NextContext = { source: 'express', domain: host };
+
+        //! catch cookie
+        if (req.headers) {
+            Object.keys(req.headers).forEach(_key => {
+                const val = req.headers[_key];
+                const key = `${_key}`.toLowerCase();
+                if (key == 'cookie') {
+                    const parseCookies = (str: string) => {
+                        let rx = /([^;=\s]*)=([^;]*)/g;
+                        let obj: { [key: string]: string } = {};
+                        for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
+                        return obj;
+                    };
+                    context.cookie = parseCookies(`${Array.isArray(val) ? val.join('; ') : val || ''}`.trim());
+                }
+            });
+        }
+        if (req.cookies && typeof req.cookies == 'object') {
+            context.cookie = Object.keys(req.cookies).reduce(
+                (M: any, key: string) => {
+                    const val = req.cookies[key];
+                    M[key] = `${val || ''}`.trim();
+                    return M;
+                },
+                { ...context.cookie },
+            );
+        }
+
         const callback = (err: any, data: any) => {
             err && _err(NS, '! err@callback =', err);
-            data && _inf(NS, `! res@callback[${(data && data.statusCode) || 0}] =`, $U.json((data && data.body) || ''));
+            data && _inf(NS, `! res@callback[${(data && data.statusCode) || 0}] =`, $U.S(data && data.body, 1024));
             let contentType = null;
             if (data.headers) {
                 Object.keys(data.headers).map(k => {
@@ -168,7 +202,7 @@ export const buildExpress = (
 
         //! attach to req.
         req.$event = event;
-        req.$context = context;
+        req.$context = context; //! save the
         req.$callback = callback;
 
         //! use json parser or multer.
@@ -202,15 +236,23 @@ export const buildExpress = (
     //! default app.
     app.get('', (req: any, res: any) => {
         //WARN! - must be matched with the `LambdaWEBHandler.handleProtocol()`.
-        const $pack = loadJsonSync('package.json');
+        const $env = (process && process.env) || {};
+        // const $pack = JSON.parse(fs.readFileSync('package.json', { encoding: 'utf8' }).toString());
+        // _log(NS, `stat =`, $stat);
+        // _log(NS, `pack =`, $pack);
+        const $stat = fs.statSync('package.json');
+        const modified = $U.ts($U.F($stat.ctimeMs, 0));
         const name = $pack.name || 'LEMON API';
         const version = $pack.version || '0.0.0';
-        // const $env: any = (process && process.env) || {};
-        // const profile = $env['NAME'] || $env['PROFILE'] || '';
-        // const stage = $env['STAGE'] || '';
-        // const info = profile && stage ? `${profile}-${stage}` : `${profile || stage}`;
-        // res.status(200).send(`${name}/${version}${info ? ':' : ''}${info}`);
-        res.status(200).send(`${name}/${version}`);
+        const core = $pack && $pack.dependencies && $pack.dependencies['lemon-core'];
+        const msgs = [
+            `${name}/${version}`,
+            `lemon-core/${core || ''}`,
+            `modified/${modified}`,
+            `env/ENV=${$env.ENV || ''} NAME=${$env.NAME || ''} STAGE=${$env.STAGE || ''}`,
+            `env/REPORT_ERROR_ARN=${$env.REPORT_ERROR_ARN || ''}`,
+        ];
+        res.status(200).send(msgs.join('\n'));
     });
 
     //! handler map.

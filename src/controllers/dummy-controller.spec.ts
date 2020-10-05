@@ -79,7 +79,7 @@ describe('DummyController', () => {
 
         //! check basic express.app
         const $pack = loadJsonSync('package.json');
-        expect2(await request(app).get('/'), 'status,text').toEqual({ status: 200, text:`${$pack.name}/${$pack.version}` });
+        expect2(await request(app).get('/'), 'status').toEqual({ status: 200 });
 
         //! test each CRUD of API
         expect2(await request(app).get(`/${type}?limit=0`), 'status,body').toEqual({ status:200, body:{ limit:0, list:[], page:1, total: 2 } });

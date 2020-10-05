@@ -9,10 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../../engine/';
-const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.
-import { doReportError } from '../../engine/';
-
+import { _log, _inf, _err, $U, doReportError } from '../../engine/';
 import {
     Handler,
     Callback,
@@ -23,9 +20,10 @@ import {
     SNSEvent,
     SQSEvent,
 } from 'aws-lambda';
-import * as $lambda from 'aws-lambda';
 import { NextContext, ProtocolParam, CoreConfigService } from './../core-services';
 import { GETERR } from '../../common/test-helper';
+import * as $lambda from 'aws-lambda';
+const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
 export type Context = $lambda.Context;
@@ -253,7 +251,8 @@ export class LambdaHandler {
         //! call main.. (it will return result or promised)
         return promise(main, event, context)
             .then(_ => {
-                if (_ !== undefined) _log(NS, '! res =', $U.json(_));
+                // if (_ !== undefined) _log(NS, '! res =', $U.json(_));
+                if (_ !== undefined) _log(NS, '! res =', $U.S(_, 320, 64, ' .... ')); //! cut result string.
                 // ((context && context.done) || callback)(null, _);
                 // return true;
                 return _;

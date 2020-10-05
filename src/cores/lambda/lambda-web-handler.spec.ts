@@ -8,14 +8,13 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, GETERR$ } from '../../common/test-helper';
 import { $U } from '../../engine/';
+import { expect2, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
-
-import * as $lambda from './lambda-handler.spec';
 import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
+import * as $lambda from './lambda-handler.spec';
 
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
     public constructor(lambda: LambdaHandler) {
@@ -171,17 +170,46 @@ describe('LambdaWEBHandler', () => {
     it('should pass context.identity', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
-        event.headers['x-lemon-identity'] = $U.json({ sid:'', uid:'guest' });
-        const id = '!'; // call dump paramters.
-        event.pathParameters['id'] = id;
-        const response = await lambda.handle(event, null).catch(GETERR$);
-        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-        const body = JSON.parse(response.body);
-        expect2(body.id, '').toEqual('!');
-        expect2(body.param, '').toEqual({ ts:'1574150700000' });
-        expect2(body.body, '').toEqual(null);
-        expect2(body.context, 'identity').toEqual({ identity:{ sid:'', uid:'guest', accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+        const loadEventStock = (id: string): any => {
+            const event = loadJsonSync('data/sample.event.web.json');
+            event.pathParameters['id'] = id; // call dump paramters.
+            return event;
+        }
+        const id = '!';
+
+        //! use default cofnig.
+        if (1) {
+            const event = loadEventStock(id);
+            const response = await lambda.handle(event, null).catch(GETERR$);
+            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+            const result = JSON.parse(response.body);
+            expect2(() => result, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
+            expect2(() => result.context, 'identity').toEqual({ identity:{ sid:undefined, uid:undefined, accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+        }
+
+        //! change identity..
+        if (1){
+            const event = loadEventStock(id);
+            event.headers['x-lemon-identity'] = $U.json({ sid:'', uid:'guest' });
+            const response = await lambda.handle(event, null).catch(GETERR$);
+            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse(response.body);
+            expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
+            expect2(() => body.context, 'identity').toEqual({ identity:{ sid:'', uid:'guest', accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+        }
+
+        //! change language..
+        if (1){
+            const event = loadEventStock(id);
+            event.headers['x-lemon-identity'] = $U.json({ sid:'', lang:'ko' });
+            event.headers['x-lemon-language'] = ' es ';
+            const response = await lambda.handle(event, null).catch(GETERR$);
+            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+            const result = JSON.parse(response.body);
+            expect2(() => result, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
+            expect2(() => result.context, 'identity').toEqual({ identity:{ sid:'', lang:'es', accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+        }
+
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -198,9 +226,7 @@ describe('LambdaWEBHandler', () => {
         const response = await lambda.handle(event, null).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         const body = JSON.parse(response.body);
-        expect2(body.id, '').toEqual('!');
-        expect2(body.param, '').toEqual({ ts:'1574150700000' });
-        expect2(body.body, '').toEqual(null);
+        expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
         expect2(body.context, '').toEqual(context);
         /* eslint-enable prettier/prettier */
         done();
@@ -218,9 +244,7 @@ describe('LambdaWEBHandler', () => {
         const response: any = await service.handle(event, context).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         const body = JSON.parse(response.body);
-        expect2(body.id, '').toEqual('!');
-        expect2(body.param, '').toEqual({ ts:'1574150700000' });
-        expect2(body.body, '').toEqual(null);
+        expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
         expect2(body.context, '').toEqual(context);
         /* eslint-enable prettier/prettier */
         done();

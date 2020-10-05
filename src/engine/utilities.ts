@@ -9,14 +9,23 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { EngineCore, GeneralFuntion } from './types';
-const NS = 'util';
-
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
 import QUERY_STRING from 'query-string';
 import * as uuid from 'uuid';
+const NS = 'util';
+
+const COLORS = {
+    red: '\x1b[31m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    magenta: '\x1b[35m',
+    cyan: '\x1b[36m',
+    white: '\x1b[37m',
+};
 
 /**
  * class: Utilities
@@ -124,20 +133,22 @@ export class Utilities {
         return Math.round(a);
     }
 
-    public json(o: any, isSorted?: any) {
+    public json(o: any, isSorted?: any): string {
         if (isSorted) {
-            var output: any = {};
+            const output: any = {};
             Object.keys(o)
                 .sort()
-                .forEach(function(key) {
+                .forEach(key => {
                     output[key] = o[key];
                 });
             o = output;
         }
-        return (o && JSON.stringify(o)) || o;
+        return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o || ''}`;
     }
 
-    // timestamp value.
+    /**
+     * timestamp string like `2020-02-22`
+     */
     public static timestamp(date?: undefined | number | Date, timeZone?: number): string {
         const dt = date && typeof date === 'object' ? date : date ? new Date(date) : new Date();
         const now = new Date();
@@ -159,7 +170,9 @@ export class Utilities {
         return ret;
     }
 
-    // parse timestamp to date.
+    /**
+     * parse timestamp to date.
+     */
     public static datetime(dt?: string | number | Date, timeZone?: number) {
         let ret = null;
         if (typeof dt == 'string') {
@@ -242,10 +255,9 @@ export class Utilities {
     /**
      * 현재 시간값 (number of milliseconds since midnight of January 1, 1970.)
      *
-     *
      * @returns {number}
      */
-    public current_time_ms(shift?: number) {
+    public current_time_ms(shift?: number): number {
         var time_shift = this.N(shift, 0);
         var ret = new Date().getTime();
         ret += time_shift;
@@ -255,30 +267,21 @@ export class Utilities {
     /**
      * NameSpace Maker.
      */
-    // eslint-disable-next-line prettier/prettier
-    public NS(ns: string, color?: 'red' | 'green' | 'yellow' | 'blue' | 'magenta' | 'cyan' | 'white', len?: number, delim?: string) {
+    public NS(ns: string, color?: keyof typeof COLORS, len?: number, delim?: string) {
         if (!ns) return ns;
         len = len || 4;
         len = len - ns.length;
         len = len < 0 ? 0 : len;
+        const LC = this.env('LC', '0') === '1'; // LINE COLORING
         const SPACE = '           ';
         ns = SPACE.substr(0, len) + ns + (delim === undefined ? ':' : `${delim || ''}`);
-        if (color) {
-            const COLORS: any = {
-                red: '\x1b[31m',
-                green: '\x1b[32m',
-                yellow: '\x1b[33m',
-                blue: '\x1b[34m',
-                magenta: '\x1b[35m',
-                cyan: '\x1b[36m',
-                white: '\x1b[37m',
-            };
-            ns = COLORS[color] + ns + '\x1b[0m';
-        }
+        if (color && !LC) ns = COLORS[color] + ns + '\x1b[0m';
         return ns;
     }
 
-    // escape string for mysql.
+    /**
+     * escape string for mysql.
+     */
     public escape(str: string, urldecode?: any) {
         if (str === undefined) return 'NULL';
         if (this.isInteger(str)) return str;
@@ -299,18 +302,26 @@ export class Utilities {
         return "'" + str + "'";
     }
 
-    // convert to integer.
+    /**
+     * check if integer
+     * @param x     any number or string
+     */
     public isInteger(x: any) {
         return typeof x === 'number' && x % 1 === 0;
     }
 
-    public N(x: any, def?: any) {
+    /**
+     * convert as integer number.
+     * @param x     any number or string
+     * @param def   default value.
+     */
+    public N(x: any, def?: number): number {
         try {
             if (x === '' || x === undefined || x === null) return def;
             if (typeof x === 'number' && x % 1 === 0) return x;
             if (typeof x == 'number') return parseInt('' + x);
             x = '0' + x;
-            x = x.startsWith('0-') ? x.substr(1) : x; // minus
+            x = x.startsWith('0-') || x.startsWith('0+') ? x.substr(1) : x; // minus
             return parseInt(x.replace(/,/gi, '').trim());
         } catch (e) {
             this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e.message || ''), e);
@@ -318,14 +329,18 @@ export class Utilities {
         }
     }
 
-    //! parse float number (like 1.01)
-    public F(x: any, def?: any) {
+    /**
+     * parse as float number (like 1.01)
+     * @param x     any number or string
+     * @param def   default value.
+     */
+    public F(x: any, def?: number): number {
         try {
             if (x === '' || x === undefined || x === null) return def;
             if (typeof x === 'number' && x % 1 === 0) return x;
             if (typeof x == 'number') return parseFloat('' + x);
             x = '0' + x;
-            x = x.startsWith('0-') ? x.substr(1) : x; // minus
+            x = x.startsWith('0-') || x.startsWith('0+') ? x.substr(1) : x; // minus
             return parseFloat(x.replace(/,/gi, '').trim());
         } catch (e) {
             this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e.message || ''), e);
@@ -333,13 +348,57 @@ export class Utilities {
         }
     }
 
-    //! remove underscore variables.
-    public cleanup($N: any) {
-        return Object.keys($N).reduce(function($N, key) {
-            if (key.startsWith('_')) delete $N[key];
-            if (key.startsWith('$')) delete $N[key];
-            return $N;
-        }, $N);
+    /**
+     * parse float by len
+     * ```
+     * FN(0.333333, 2) = 0.33
+     * ```
+     * @param x     any numbe or string
+     * @param len   decimal length
+     * @param mode  'round' | 'floor'
+     */
+    public FN(x: any, len: number, mode?: 'round' | 'floor'): number {
+        mode = mode === undefined ? 'round' : mode;
+        const DIV = [0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0];
+        if (len < 0 || len >= DIV.length) throw new Error(`@len[${len}] is out of range!`);
+        const div = DIV[len];
+        if (div <= 0) return this.N(x, 0); // as integer
+        const val = this.F(x, 0) * div;
+        const val2 = mode == 'round' ? Math.round(val) : Math.floor(val);
+        const val3 = val2 / div;
+        return val3;
+    }
+
+    /**
+     * parse float by decimal point 2
+     */
+    public F2 = (x: any, mode: 'round' | 'floor' = 'round') => this.FN(x, 2, mode);
+
+    /**
+     * parse float by decimal point 3
+     */
+    public F3 = (x: any, mode: 'round' | 'floor' = 'round') => this.FN(x, 3, mode);
+
+    /**
+     * convert and cut string like `abcd....z`
+     */
+    public S = (_: any, h?: number, t: number = 32, delim: string = '...'): string =>
+        [typeof _ == 'string' ? _ : `${this.json(_) || ''}`]
+            .map(s =>
+                h && s.length > h + t
+                    ? s.substring(0, h) + delim + (s.length > h + t ? s.substring(s.length - t) : '')
+                    : s,
+            )
+            .join('');
+
+    /**
+     * remove internal properties which starts with _ or $
+     */
+    public cleanup(node: any) {
+        return Object.keys(node).reduce(function(N, key) {
+            if (key.startsWith('_') || key.startsWith('$')) delete N[key];
+            return N;
+        }, node);
     }
 
     //! remove underscore variables.
@@ -364,24 +423,19 @@ export class Utilities {
         }, {});
     }
 
-    public copy_node($N: any, isClear?: boolean) {
+    public copy_node(node: any, isClear?: boolean) {
         isClear = isClear === undefined ? false : isClear;
-        return Object.keys($N).reduce(function($n: any, key) {
-            if (key.startsWith('_')) return $n;
-            if (key.startsWith('$')) return $n;
-            $n[key] = isClear ? null : $N[key];
-            return $n;
+        return Object.keys(node).reduce(function(N: any, key) {
+            if (key.startsWith('_') || key.startsWith('$')) return N;
+            N[key] = isClear ? null : node[key];
+            return N;
         }, {});
     }
 
-    //! clean up all member without only KEY member.
+    /**
+     * clean up all member without only KEY member.
+     */
     public bare_node($N: any, opts?: any) {
-        // return Object.keys($N).reduce(function($n, key) {
-        // 	if(key.startsWith('_')) return $n;
-        // 	if(key.startsWith('$')) return $n;
-        // 	$n[key] = $N[key]
-        // 	return $n;
-        // }, {})
         let $n: any = {};
         $n._id = $N._id;
         $n._current_time = $N._current_time;
@@ -389,6 +443,9 @@ export class Utilities {
         return $n;
     }
 
+    /**
+     * get keys in difference.
+     */
     public diff(obj1: any, obj2: any): string[] {
         obj1 = obj1 || {};
         obj2 = obj2 || {};
@@ -410,34 +467,22 @@ export class Utilities {
 
     /**
      * calcualte node differences
-     *
-     * @param obj1
-     * @param obj2
      */
     public diff_node(obj1: any, obj2: any) {
-        let keys1: any = [],
-            keys2: any = [];
+        obj1 = obj1 || {};
+        obj2 = obj2 || {};
         const $_ = this.lodash();
-        Object.keys(obj1).forEach(key => {
-            if (key.startsWith('_')) return;
-            if (key.startsWith('$')) return;
-            keys1.push(key);
-        });
-        Object.keys(obj2).forEach(key => {
-            if (key.startsWith('_')) return;
-            if (key.startsWith('$')) return;
-            keys2.push(key);
-        });
-        const diff = keys1.reduce((result: any, key: string) => {
+        const keys1 = Object.keys(obj1).filter(key => (key.startsWith('_') || key.startsWith('$') ? false : true));
+        const keys2 = Object.keys(obj2).filter(key => (key.startsWith('_') || key.startsWith('$') ? false : true));
+        const diff = keys1.reduce((list: string[], key: string) => {
             if (!obj2.hasOwnProperty(key)) {
-                result.push(key);
+                list.push(key);
             } else if ($_.isEqual(obj1[key], obj2[key])) {
-                const resultKeyIndex = result.indexOf(key);
-                result.splice(resultKeyIndex, 1);
+                const resultKeyIndex = list.indexOf(key);
+                list.splice(resultKeyIndex, 1);
             }
-            return result;
+            return list;
         }, keys2);
-
         return diff;
     }
 

@@ -9,14 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_, do_parrallel, doReportError } from '../../engine/';
-const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
-
+import { _log, _inf, _err, $U, $_, do_parrallel } from '../../engine/';
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
 import { NextContext, NextHandler } from './../core-services';
 import { LambdaHandler, SNSHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: LambdaSNSHandler
@@ -72,14 +71,15 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                         //! report call back.
                         const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
                         proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
-                        _log(NS, `> config.service =`, this.lambda.config.getService());
+                        _log(NS, `> config.service =`, this.lambda.config && this.lambda.config.getService());
                         //! check if service is in same..
-                        if (proto && proto.service == this.lambda.config.getService()) {
+                        if (proto && this.lambda.config && proto.service == this.lambda.config.getService()) {
                             proto.context.depth = $U.N(proto.context.depth, 1) + 1;
                             proto.body = body;
                             _log(NS, `! body[${index}] =`, $U.json(body));
                             return this.lambda.handleProtocol(proto).then(body => {
                                 _log(NS, `>> body[${index}].callback =`, $U.json(body));
+                                return body;
                             });
                         }
                         //! call the remote service if callback.
@@ -87,7 +87,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                     })
                     .catch(e => $doReportError(e, param.context, null, { protocol: param }));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
-                return '';
+                return typeof result == 'string' ? result : $U.json(result);
             } else {
                 //! retrieve message-attributes as `param`
                 const param = Object.keys($msg.MessageAttributes || {}).reduce(

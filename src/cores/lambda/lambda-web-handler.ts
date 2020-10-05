@@ -14,10 +14,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../../engine/';
-const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
-import { doReportError } from '../../engine/';
-
+import { _log, _inf, _err, $U, $_, doReportError } from '../../engine/';
 import {
     NextDecoder,
     NextHandler,
@@ -32,6 +29,7 @@ import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from '
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
 import $protocol from '../protocol/';
+const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
 
@@ -64,6 +62,7 @@ export const buildResponse = (statusCode: number, body: any, contentType?: strin
             'Content-Type': contentType,
             'Access-Control-Allow-Origin': '*', // Required for CORS support to work
             'Access-Control-Allow-Credentials': true, // Required for cookies, authorization headers with HTTPS
+            'Access-Control-Allow-Headers': 'origin, x-lemon-language', // custom headers
         },
         body: typeof body === 'string' ? body : JSON.stringify(body),
         isBase64Encoded,
@@ -88,18 +87,18 @@ export const redirect = (location: any, status?: number) => {
     return res;
 };
 
-/** ********************************************************************************************************************
- *  COMMON Constants
- ** ********************************************************************************************************************/
+/**
+ * simple object container
+ */
 interface ModeMap {
     [key: string]: NextMode;
 }
-//! constants config
-const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
 
-/** ********************************************************************************************************************
- *  Main Class
- ** ********************************************************************************************************************/
+//! header names..
+const HEADER_LEMON_IDENTITY = 'x-lemon-identity';
+const HEADER_LEMON_LANGUAGE = 'x-lemon-language';
+const HEADER_COOKIE = 'cookie';
+
 /**
  * class: LambdaWEBHandler
  * - default WEB Handler w/ event-listeners.
@@ -217,6 +216,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                         const loc = message.substring(message.indexOf(' - ') + 3).trim();
                         if (loc) return redirect(loc, status);
                     }
+                    //! handle for `400 SIGNATURE - fail to verify!`. ignore report-error.
+                    if (status == 400 && message.startsWith('400 SIGNATURE')) {
+                        return failure(message, status);
+                    }
 
                     //! report error and returns
                     if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
@@ -313,14 +316,15 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * pack the request context for Http request.
      *
      * @param event     origin Event.
-     * @param $ctx      lambda.Context
+     * @param $ctx      (optional) referenced lambda.Context
      */
     public async packContext(event: APIGatewayProxyEvent, $ctx: Context): Promise<NextContext> {
         //! prepare chain object.
         const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
         if (!event) return null;
         _log(NS, `packContext()..`);
-        _log(NS, `> reqContext=`, $U.json(reqContext));
+        _log(NS, `> reqContext=`, $U.S(reqContext, 256, 32));
+        _log(NS, `> orgContext=`, $U.S($ctx, 256, 32));
 
         //! prepare the next-context.
         const res: NextContext = { identity: null };
@@ -340,15 +344,36 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
         //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
         // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
-        const identity: NextIdentityCognito = await (async val => {
-            if (!val) return {};
-            return typeof val === 'string' && val.startsWith('{') && val.endsWith('}')
-                ? JSON.parse(val)
-                : { name: val };
-        })(headers[HEADER_LEMON_IDENTITY] || '').catch(e => {
-            _err(NS, '!WARN! parse.err =', e);
-            return {};
-        });
+        const _identity = async (val: string): Promise<NextIdentityCognito> => {
+            val = `${val || ''}`.trim();
+            try {
+                if (val && val.startsWith('{') && val.endsWith('}')) return JSON.parse(val);
+                _err(NS, '!WARN! identity =', val);
+            } catch (e) {
+                _err(NS, '!WARN! parse.err =', e);
+                _err(NS, '!WARN! identity =', val);
+            }
+            // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
+            const ret: any = val ? { meta: val } : {};
+            return ret as NextIdentityCognito;
+        };
+        const identity: NextIdentityCognito = await _identity(headers[HEADER_LEMON_IDENTITY]);
+
+        //! support prefered lanauge.
+        if (headers[HEADER_LEMON_LANGUAGE]) identity.lang = `${headers[HEADER_LEMON_LANGUAGE]}`.trim();
+
+        //! support cookie (string) to .cookie (object)
+        const cookie = ((cookie: string): { [key: string]: string } => {
+            cookie = `${cookie || ''}`.trim();
+            if (!cookie) return undefined;
+            const parseCookies = (str: string) => {
+                let rx = /([^;=\s]*)=([^;]*)/g;
+                let obj: { [key: string]: string } = {};
+                for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
+                return obj;
+            };
+            return parseCookies(cookie);
+        })(headers[HEADER_COOKIE]);
 
         //! translate cognito authentication to NextIdentity.
         if (reqContext.identity && reqContext.identity.cognitoIdentityPoolId !== undefined) {
@@ -367,10 +392,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const userAgent = `${(reqContext.identity && reqContext.identity.userAgent) || ''}`;
         const requestId = `${reqContext.requestId || ''}`;
         const accountId = `${reqContext.accountId || ''}`;
-        const domain = `${reqContext.domainName || event.headers['Host'] || event.headers['host'] || ''}`;
+        const domain = `${reqContext.domainName || headers['Host'] || headers['host'] || ''}`; //! chore avoid null of headers
 
         //! save into headers and returns.
-        const context: NextContext = { ...res, identity, userAgent, clientIp, requestId, accountId, domain };
+        const context: NextContext = { ...res, identity, userAgent, clientIp, requestId, accountId, domain, cookie };
         context.source = $protocol.service.myProtocolURI(context); // self service-uri as source
         return context;
     }

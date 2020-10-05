@@ -184,7 +184,7 @@ export class AWSS3Service implements CoreS3Service {
             .then(_ => _.getObject(params).promise())
             .then((data: any) => {
                 _log(NS, '> data.type =', typeof data);
-                const decoder = new StringTool.StringDecoder('UTF8');
+                const decoder = new StringTool.StringDecoder('utf8');
                 const buf = Buffer.from(data.Body || data.Body.data || '');
                 return JSON.parse(decoder.write(buf));
             })

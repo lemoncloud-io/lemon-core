@@ -11,19 +11,11 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_ } from '../engine/';
-const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
-
+import { _log, _inf, _err, $U, $_ } from '../engine/';
 import { GeneralItem, Incrementable } from './core-types';
 import { loadDataYml } from '../tools/';
-
-/** ****************************************************************************************************************
- *  Service Main
- ** ****************************************************************************************************************/
 import AWS from 'aws-sdk';
-// import dynamodb from 'dynamodb';
-// import { Query } from 'dynamodb/Query';
-// import { Scan } from 'dynamodb/Scan';
+const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type KEY_TYPE = 'number' | 'string';
 
@@ -425,8 +417,8 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         super(options);
         _log(NS, `DummyDynamoService(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');
-        const dummy = loadDataYml(dataFile);
-        this.load(dummy.data);
+        const dummy: any = loadDataYml(dataFile);
+        this.load(dummy.data as any);
     }
 
     private buffer: { [id: string]: T } = {};

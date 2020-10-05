@@ -5,7 +5,8 @@
         "endpoint": "https://api.lemoncloud.io/hello/world/1"
     },
     "data": {
-        "name": "world"
+        "name": "world",
+        "path": "GET /hello/world/1"
     },
     "error": ""
 }
