@@ -267,7 +267,7 @@ export class AWSS3Service implements CoreS3Service {
         const metadata: AWS.S3.Metadata = {
             md5: file.contentMD5,
         };
-        if (file.isRemoteFile) metadata.origin = url.format(file.url);
+        if (file.isRemoteFile) metadata.origin = file.url;
         if (file.contentType.startsWith('image')) {
             const imageMeta = await sharp(file.buffer).metadata();
             const keysToRead: (keyof sharp.Metadata)[] = [
@@ -316,17 +316,13 @@ export class AWSS3Service implements CoreS3Service {
  */
 class File {
     /**
-     * file URL (UrlObject)
-     * @readonly
-     */
-    public readonly url: url.Url;
-    /**
      * is file location remote or local
      * @readonly
      */
     public readonly isRemoteFile: boolean;
 
     // private variables
+    private readonly urlObject: url.Url;
     private _buffer: Buffer;
     private _contentType: string;
     private _contentLength: number;
@@ -339,7 +335,6 @@ class File {
     public constructor(urlString?: string) {
         const urlObject = url.parse(urlString || '');
 
-        this.url = urlObject;
         if (urlObject.protocol == 'http:' || urlObject.protocol == 'https:') {
             this.isRemoteFile = true;
         } else if (urlObject.protocol == 'file:' || !urlObject.protocol) {
@@ -347,6 +342,8 @@ class File {
         } else {
             throw new Error(`.urlString (string) has unsupported protocol [${urlObject.protocol}]`);
         }
+
+        this.urlObject = urlObject;
     }
 
     /**
@@ -359,17 +356,17 @@ class File {
         } else {
             if (this.isRemoteFile) {
                 const requestGet = util.promisify(request.get.bind(request));
-                _log(`download remote file... (${this.url.href})`);
+                _log(`download remote file... (${this.urlObject.href})`);
 
                 // 'encoding=null' is required to receive binary data
-                const { statusCode, headers, body } = await requestGet(this.url.href, { encoding: null });
+                const { statusCode, headers, body } = await requestGet(this.urlObject.href, { encoding: null });
                 if (statusCode != 200) throw new Error(`HTTP error (statusCode=${statusCode})`);
 
                 this._buffer = body;
                 this._contentType = `${headers['content-type'] || ''}`;
                 this._contentLength = $U.N(headers['content-length']);
             } else {
-                let filepath = this.url.pathname;
+                let filepath = this.urlObject.pathname;
                 if (!path.isAbsolute(filepath)) filepath = path.resolve(filepath);
 
                 _log(`read local file... (${filepath}`);
@@ -378,7 +375,7 @@ class File {
         }
 
         // ensure content-type and content-length properly set
-        const extname = path.extname(this.url.pathname);
+        const extname = path.extname(this.urlObject.pathname);
         this._contentType = this._contentType || mime.contentType(extname) || '';
         this._contentLength = this._contentLength || this.buffer.length;
         // calculate MD5 hash
@@ -387,11 +384,15 @@ class File {
         return this;
     }
 
+    public get url(): string {
+        return url.format(this.urlObject);
+    }
+
     /**
      * basename of file
      */
     public get basename(): string {
-        return path.basename(this.url.pathname || '');
+        return path.basename(this.urlObject.pathname || '');
     }
 
     /**
@@ -410,7 +411,7 @@ class File {
             }
             if (extension) return `.${extension}`;
         }
-        return path.extname(this.url.pathname || '');
+        return path.extname(this.urlObject.pathname || '');
     }
 
     /**
