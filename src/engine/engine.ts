@@ -103,7 +103,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const payload = {
             service,
             message,
-            context: { stage, apiId, resourcePath, identity, domainPrefix, event },
+            context: { ...context, stage, apiId, resourcePath, identity, domainPrefix, event },
             data,
         };
 

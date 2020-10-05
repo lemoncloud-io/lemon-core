@@ -272,10 +272,10 @@ export class Utilities {
         len = len || 4;
         len = len - ns.length;
         len = len < 0 ? 0 : len;
-        const LS = this.env('LS', '0') === '1'; // LOG SILENT (NO PRINT LOG)
+        const LC = this.env('LC', '0') === '1'; // LINE COLORING
         const SPACE = '           ';
         ns = SPACE.substr(0, len) + ns + (delim === undefined ? ':' : `${delim || ''}`);
-        if (color && !LS) ns = COLORS[color] + ns + '\x1b[0m';
+        if (color && !LC) ns = COLORS[color] + ns + '\x1b[0m';
         return ns;
     }
 
