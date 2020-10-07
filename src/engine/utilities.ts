@@ -275,7 +275,7 @@ export class Utilities {
         const LC = this.env('LC', '0') === '1'; // LINE COLORING
         const SPACE = '           ';
         ns = SPACE.substr(0, len) + ns + (delim === undefined ? ':' : `${delim || ''}`);
-        if (color && !LC) ns = COLORS[color] + ns + '\x1b[0m';
+        if (LC && COLORS[color]) ns = `${COLORS[color]}${ns}\x1b[0m`;
         return ns;
     }
 
