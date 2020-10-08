@@ -94,7 +94,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         return proto ? $protocol.service.execute(proto) : body;
                     })
                     .catch(e => $doReportError(e, param.context, null, { protocol: param }));
-                _log(NS, `> sns[${index}].res =`, $U.json(result));
+                _log(NS, `> sqs[${index}].res =`, $U.json(result));
                 return typeof result == 'string' ? result : $U.json(result);
             } else {
                 //! load data as `body`
