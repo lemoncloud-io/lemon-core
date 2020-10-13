@@ -16,25 +16,49 @@
 import { $engine, $U, _log, _inf, _err } from '../../engine';
 const NS = $U.NS('S3', 'blue');
 
+import path from 'path';
+import url from 'url';
+import fs from 'fs';
+import util from 'util';
 import AWS from 'aws-sdk';
+import request from 'request';
+import sharp from 'sharp';
+import mime from 'mime-types';
 import { v4 } from 'uuid';
-import * as StringTool from 'string_decoder';
 import { CoreServices } from '../core-services';
+
+/** ****************************************************************************************************************
+ *  Core Types.
+ ** ****************************************************************************************************************/
+export type Metadata = AWS.S3.Metadata;
 
 export interface TagSet {
     [key: string]: string;
 }
 
+export interface PutObjectResult {
+    Bucket: string;
+    Key: string;
+    Location: string;
+    ContentType: string;
+    ContentLength: number;
+    ContentMD5: string;
+    Metadata: Metadata;
+}
+
 export interface CoreS3Service extends CoreServices {
-    bucket: (target?: string) => Promise<string>;
-    putObject: (
-        body: string,
-        fileName?: string,
-        contentType?: string,
+    bucket: (target?: string) => string;
+    putObject: (body: string, fileName?: string, tags?: TagSet) => Promise<PutObjectResult>;
+    putObjectByUrl: (
+        urlString: string,
+        directory?: string,
+        preserveFileName?: boolean,
         tags?: TagSet,
-    ) => Promise<{ Bucket: string; Key: string; Location: string }>;
+    ) => Promise<PutObjectResult>;
     getObject: (fileName: string) => Promise<any>;
     getDecodedObject: (fileName: string) => Promise<any>;
+    getObjectTagging: (fileName: string) => Promise<TagSet>;
+    deleteObject: (fileName: string) => Promise<void>;
 }
 
 /** ****************************************************************************************************************
@@ -56,7 +80,7 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
 };
 
 //! get aws client for S3
-const instance = async () => {
+const instance = () => {
     const _region = region();
     const config = { region: _region };
     return new AWS.S3(config); // SQS Instance. shared one???
@@ -83,9 +107,7 @@ export class AWSS3Service implements CoreS3Service {
     /**
      * get target endpoint by name.
      */
-    public bucket = async (target?: string) => {
-        return environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
-    };
+    public bucket = (target?: string): string => environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
 
     /**
      * upload a file to S3 Bucket
@@ -102,50 +124,63 @@ export class AWSS3Service implements CoreS3Service {
      * }
      * ```
      *
-     * @param {string} bucketId
-     * @param {string} fileName
-     * @param {string} body
-     * @param {object} tags             (optional) tags to save.
+     * @param {string} body         content body
+     * @param {string} fileName     S3 path to save
+     * @param {Metadata} metadata   metadata to store
+     * @param {object} tags         (optional) tag set
      */
-    public putObject = async (body: string, fileName?: string, contentType?: string, tags?: TagSet) => {
+    public putObject = async (
+        body: string,
+        fileName?: string,
+        metadata?: Metadata,
+        tags?: TagSet,
+    ): Promise<PutObjectResult> => {
+        _log(NS, `putObject(${fileName})...`);
         if (!body) throw new Error('@body is required!');
-        _log(NS, `putObject(${fileName || ''})...`);
-        //! get unique file name.
-        fileName = fileName || `${this.nextId()}.json`;
-        contentType = contentType || 'application/json';
 
-        const Bucket = await this.bucket();
-        const params = { Bucket, Key: fileName, Body: body, ContentType: 'text/plain; charset=utf-8' };
-        const options = {
-            tags: undefined as any,
-        };
-        if (contentType) params.ContentType = contentType;
-        if (tags && typeof tags == 'object') {
-            options.tags = Object.keys(tags).reduce((L, key) => {
-                const val = tags[key];
-                L.push({ Key: key, Value: `${val}` });
-                return L;
-            }, []);
-        }
-        //! call s3.upload.
-        return instance()
-            .then(_ => _.upload(params, options).promise())
-            .then(data => {
-                const Key = (data && data.Key) || fileName;
-                const Location = (data && data.Location) || '';
-                _log(NS, `> data[${Bucket}].Key =`, Key);
-                return { Bucket, Key, Location, saved: body };
-            })
-            .catch(e => {
-                _err(NS, `! err[${Bucket}]=`, e);
-                throw e;
-            });
+        // create file object
+        fileName = fileName || `${v4()}.json`;
+        const file = await new File(fileName).load(body);
+
+        // upload
+        return this.uploadFile(file, fileName, metadata, tags);
+    };
+
+    /**
+     * upload object at given URL to S3 bucket
+     *  - support both local path and remote URL
+     *
+     * @param {string} urlString            URL or path of file
+     * @param {string} directory            target S3 directory
+     * @param {boolean} preserveFileName    (optional) use original filename if set true, otherwise UUID filename is generated (default: false)
+     * @param {Metadata} metadata           metadata to store
+     * @param {object} tags (optional)      tag set
+     */
+    public putObjectByUrl = async (
+        urlString: string,
+        directory: string = '',
+        preserveFileName: boolean = false,
+        metadata?: Metadata,
+        tags?: TagSet,
+    ): Promise<PutObjectResult> => {
+        _log(NS, `putObjectByUrl(${urlString})...`);
+        if (!urlString) throw new Error(`@urlString is required!`);
+        directory = directory || '';
+
+        // load file
+        const file = await new File(urlString).load();
+
+        // generate key using UUID
+        const fileName = preserveFileName ? file.basename : `${v4()}${file.extname}`;
+        const key = path.join(directory, fileName);
+
+        // upload
+        return this.uploadFile(file, key, metadata, tags);
     };
 
     /**
      * get a file from S3 Bucket
      *
-     * @param {string} bucketId
      * @param {string} fileName
      */
     public getObject = async (fileName: string): Promise<any> => {
@@ -155,22 +190,21 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: fileName };
 
         //! call s3.getObject.
-        // _log(NS, '> params =', params);
-        return instance()
-            .then(_ => _.getObject(params).promise())
-            .then(data => {
-                _log(NS, '> data.type =', typeof data);
-                return data as any;
-            })
-            .catch(e => {
-                _err(NS, '! err=', e);
-                throw e;
-            });
+        const s3 = instance();
+        try {
+            const data = await s3.getObject(params).promise();
+            _log(NS, '> data.type =', typeof data);
+            return data as any;
+        } catch (e) {
+            _err(NS, '! err=', e);
+            throw e;
+        }
     };
 
     /**
      * return decoded Object from bucket file.
-     * @param {string} fileName ex) 'hello-0001.json' , 'dits/hello-0001.json
+     *
+     * @param {string} fileName ex) 'hello-0001.json' , 'dist/hello-0001.json
      */
     public getDecodedObject = async (fileName: string): Promise<any> => {
         if (!fileName) throw new Error('@fileName is required!');
@@ -179,25 +213,264 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: fileName };
 
         //! call s3.getObject.
-        // _log(NS, '> params =', params);
-        return instance()
-            .then(_ => _.getObject(params).promise())
-            .then((data: any) => {
-                _log(NS, '> data.type =', typeof data);
-                const decoder = new StringTool.StringDecoder('utf8');
-                const buf = Buffer.from(data.Body || data.Body.data || '');
-                return JSON.parse(decoder.write(buf));
-            })
-            .catch(e => {
-                _err(NS, '! err=', e);
-                throw e;
-            });
+        const s3 = instance();
+        try {
+            const data = await s3.getObject(params).promise();
+            _log(NS, '> data.type =', typeof data);
+            const content = data.Body.toString();
+            return JSON.parse(content);
+        } catch (e) {
+            _err(NS, '! err=', e);
+            throw e;
+        }
     };
 
     /**
-     * get next unique-id.
+     * get tag-set of object
+     * @param {string} fileName
      */
-    public nextId = () => {
-        return v4();
+    public getObjectTagging = async (fileName: string): Promise<TagSet> => {
+        const Bucket = await this.bucket();
+        const params = { Bucket, Key: fileName };
+
+        //! call s3.getObject.
+        const s3 = instance();
+        try {
+            const data = await s3.getObjectTagging(params).promise();
+            _log(NS, `> data =`, data);
+            return data.TagSet.reduce<TagSet>((tagSet, tag) => {
+                const { Key, Value } = tag;
+                tagSet[Key] = Value;
+                return tagSet;
+            }, {});
+        } catch (e) {
+            _err(NS, '! err=', e);
+            throw e;
+        }
     };
+
+    /**
+     * delete object from bucket
+     * @param {string} fileName
+     */
+    public deleteObject = async (fileName: string): Promise<void> => {
+        if (!fileName) throw new Error('@fileName is required!');
+
+        const Bucket = await this.bucket();
+        const params = { Bucket, Key: fileName };
+
+        //! call s3.deleteObject.
+        const s3 = instance();
+        try {
+            const data = await s3.deleteObject(params).promise();
+            _log(NS, '> data =', $U.json(data));
+        } catch (e) {
+            _err(NS, '! err=', e);
+            throw e;
+        }
+    };
+
+    /**
+     * core upload logic
+     * @param {File} file   File object
+     * @param {string} key  S3 key to upload
+     * @param {Metadata} metadata   metadata to store
+     * @param {TagSet} tags (optional) tags to save
+     * @private
+     */
+    private async uploadFile(file: File, key: string, metadata?: Metadata, tags?: TagSet): Promise<PutObjectResult> {
+        // metadata
+        metadata = metadata || {};
+        metadata.md5 = file.contentMD5;
+        if (file.isRemoteFile) metadata.origin = file.url;
+        if (file.contentType.startsWith('image')) {
+            const imageMeta = await sharp(file.buffer).metadata();
+            const keysToRead: (keyof sharp.Metadata)[] = [
+                'width',
+                'height',
+                'space', // color space ('srgb', 'rgb', 'cmyk', ...)
+                'channels', // 3 for sRGB, 4 for CMYK
+                'depth', // pixel format
+                'density', // DPI
+                'orientation', // EXIF Orientation
+            ];
+            keysToRead.forEach(key => {
+                if (imageMeta[key]) metadata[key] = `${imageMeta[key]}`;
+            });
+        }
+
+        // construct upload parameters
+        const params: AWS.S3.PutObjectRequest = {
+            Bucket: this.bucket(),
+            Key: key,
+            // ACL: 'public-read',
+            Body: file.buffer,
+            ContentType: file.contentType,
+            ContentLength: file.contentLength,
+            ContentMD5: file.contentMD5,
+        };
+        _log(NS, `> params.Key =`, params.Key);
+        _log(NS, `> params.ContentType =`, params.ContentType);
+        _log(NS, `> params.ContentLength =`, params.ContentLength);
+        if (metadata) {
+            params.Metadata = metadata;
+            _log(NS, `> params.Metadata =`, $U.json(params.Metadata));
+        }
+        if (tags) {
+            params.Tagging = new URLSearchParams(tags).toString();
+            _log(NS, `> params.Tagging =`, params.Tagging);
+        }
+
+        //! call s3.upload.
+        const s3 = instance();
+        try {
+            const { Bucket, Key, Location } = await s3.upload(params).promise();
+            _log(NS, `> data[${Bucket}].Key =`, Key);
+            return {
+                Bucket,
+                Key,
+                Location,
+                ContentType: file.contentType,
+                ContentLength: file.contentLength,
+                ContentMD5: file.contentMD5,
+                Metadata: metadata,
+            };
+        } catch (e) {
+            _err(NS, `! err[${params.Bucket}] =`, e);
+            throw e;
+        }
+    }
+}
+
+/**
+ * class `File`
+ *  - util class to get content information
+ */
+class File {
+    /**
+     * is file location remote or local
+     * @readonly
+     */
+    public readonly isRemoteFile: boolean;
+
+    // private variables
+    private readonly urlObject: url.Url;
+    private _buffer: Buffer;
+    private _contentType: string;
+    private _contentLength: number;
+    private _contentMD5: string;
+
+    /**
+     * default constructor
+     * @param urlString URL or local path of file
+     */
+    public constructor(urlString?: string) {
+        const urlObject = url.parse(urlString || '');
+
+        if (urlObject.protocol == 'http:' || urlObject.protocol == 'https:') {
+            this.isRemoteFile = true;
+        } else if (urlObject.protocol == 'file:' || !urlObject.protocol) {
+            this.isRemoteFile = false;
+        } else {
+            throw new Error(`.urlString (string) has unsupported protocol [${urlObject.protocol}]`);
+        }
+
+        this.urlObject = urlObject;
+    }
+
+    /**
+     * load file content
+     * @param {string} content (optional) load content from URL if not given
+     */
+    public async load(content?: string): Promise<this> {
+        if (content) {
+            this._buffer = Buffer.from(content);
+        } else {
+            if (this.isRemoteFile) {
+                const requestGet = util.promisify(request.get.bind(request));
+                _log(NS, `download remote file... (${this.urlObject.href})`);
+
+                // 'encoding=null' is required to receive binary data
+                const { statusCode, headers, body } = await requestGet(this.urlObject.href, { encoding: null });
+                if (statusCode != 200) throw new Error(`HTTP error (statusCode=${statusCode})`);
+
+                this._buffer = body;
+                this._contentType = `${headers['content-type'] || ''}`;
+                this._contentLength = $U.N(headers['content-length']);
+            } else {
+                let filepath = this.urlObject.pathname;
+                if (!path.isAbsolute(filepath)) filepath = path.resolve(filepath);
+
+                _log(NS, `read local file... (${filepath}`);
+                this._buffer = fs.readFileSync(filepath);
+            }
+        }
+
+        // ensure content-type and content-length properly set
+        const extname = path.extname(this.urlObject.pathname);
+        this._contentType = this._contentType || mime.contentType(extname) || '';
+        this._contentLength = this._contentLength || this.buffer.length;
+        // calculate MD5 hash
+        this._contentMD5 = $U.md5(this._buffer, 'base64');
+
+        return this;
+    }
+
+    public get url(): string {
+        return url.format(this.urlObject);
+    }
+
+    /**
+     * basename of file
+     */
+    public get basename(): string {
+        return path.basename(this.urlObject.pathname || '');
+    }
+
+    /**
+     * extname of file
+     */
+    public get extname(): string {
+        if (this._contentType) {
+            // get default extension
+            let extension = mime.extension(this._contentType);
+            // prefer not to use 4-letter extension
+            if (!extension || extension.length > 3) {
+                const extensions = mime.extensions[this.contentType.split(';')[0]];
+                if (extensions && extensions.length > 1 && extensions[1].length <= 3) {
+                    extension = extensions[1];
+                }
+            }
+            if (extension) return `.${extension}`;
+        }
+        return path.extname(this.urlObject.pathname || '');
+    }
+
+    /**
+     * buffer of file content
+     */
+    public get buffer(): Buffer {
+        return this._buffer;
+    }
+
+    /**
+     * content-type of file
+     */
+    public get contentType(): string {
+        return this._contentType;
+    }
+
+    /**
+     * content-length of file
+     */
+    public get contentLength(): number {
+        return this._contentLength;
+    }
+
+    /**
+     * content-MD5 of file
+     */
+    public get contentMD5(): string {
+        return this._contentMD5;
+    }
 }

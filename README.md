@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.2.11    | improve `AWSS3Service` by adding handy method and metadata+tag handling
 | 2.2.10    | fix `Access-Control-Allow-Origin` w/ `Access-Control-Allow-Credentials: true`.
 | 2.2.9     | support `content-type:application/x-www-form-urlencoded` form data.
 | 2.2.8     | minor changes.
