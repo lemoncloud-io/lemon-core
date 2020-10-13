@@ -54,6 +54,8 @@ describe(`test service/s3-service.js`, () => {
         expect(res.Bucket).toEqual(DEF_BUCKET);
         expect(res.Key).toEqual('sample.json');
         expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
+        expect(res.ContentType).toEqual('application/json; charset=utf-8');
+        expect(res.ContentLength).toEqual(body.length);
         expect(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
@@ -65,6 +67,8 @@ describe(`test service/s3-service.js`, () => {
         expect(res.Bucket).toEqual(DEF_BUCKET);
         expect(res.Key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/);
         expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
+        expect(res.ContentType).toEqual('application/json; charset=utf-8');
+        expect(res.ContentLength).toEqual(body.length);
         expect(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
@@ -95,6 +99,8 @@ describe(`test service/s3-service.js`, () => {
         expect(res.Bucket).toEqual(DEF_BUCKET);
         expect(res.Key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.png$/);
         expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
+        expect(res.ContentType).toEqual('image/png; charset=utf-8');
+        expect(res.ContentLength).toEqual(9015);
         expect(await S3.getObject(res.Key)).toMatchObject({ ContentType: 'image/png; charset=utf-8', ContentLength: 9015, Metadata: { origin: imageUrl, width: '433', height: '78' } });
         await S3.deleteObject(res.Key);
         // w/ directory
@@ -111,6 +117,8 @@ describe(`test service/s3-service.js`, () => {
         expect(res.Bucket).toEqual(DEF_BUCKET);
         expect(res.Key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.yml$/);
         expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
+        expect(res.ContentType).toEqual('text/yaml; charset=utf-8');
+        expect(res.ContentLength).toEqual(148);
         expect(await S3.getObject(res.Key)).toMatchObject({ ContentType: 'text/yaml; charset=utf-8', ContentLength: 148 });
         await S3.deleteObject(res.Key);
 
