@@ -30,6 +30,8 @@ import { CoreServices } from '../core-services';
 /** ****************************************************************************************************************
  *  Core Types.
  ** ****************************************************************************************************************/
+export type Metadata = AWS.S3.Metadata;
+
 export interface TagSet {
     [key: string]: string;
 }
@@ -38,6 +40,10 @@ export interface PutObjectResult {
     Bucket: string;
     Key: string;
     Location: string;
+    ContentType: string;
+    ContentLength: number;
+    ContentMD5: string;
+    Metadata: Metadata;
 }
 
 export interface CoreS3Service extends CoreServices {
@@ -118,11 +124,17 @@ export class AWSS3Service implements CoreS3Service {
      * }
      * ```
      *
-     * @param {string} body     content body
-     * @param {string} fileName S3 path to save
-     * @param {object} tags     (optional) tag set
+     * @param {string} body         content body
+     * @param {string} fileName     S3 path to save
+     * @param {Metadata} metadata   metadata to store
+     * @param {object} tags         (optional) tag set
      */
-    public putObject = async (body: string, fileName?: string, tags?: TagSet): Promise<PutObjectResult> => {
+    public putObject = async (
+        body: string,
+        fileName?: string,
+        metadata?: Metadata,
+        tags?: TagSet,
+    ): Promise<PutObjectResult> => {
         _log(NS, `putObject(${fileName})...`);
         if (!body) throw new Error('@body is required!');
 
@@ -131,7 +143,7 @@ export class AWSS3Service implements CoreS3Service {
         const file = await new File(fileName).load(body);
 
         // upload
-        return this.uploadFile(file, fileName, tags);
+        return this.uploadFile(file, fileName, metadata, tags);
     };
 
     /**
@@ -141,15 +153,17 @@ export class AWSS3Service implements CoreS3Service {
      * @param {string} urlString            URL or path of file
      * @param {string} directory            target S3 directory
      * @param {boolean} preserveFileName    (optional) use original filename if set true, otherwise UUID filename is generated (default: false)
+     * @param {Metadata} metadata           metadata to store
      * @param {object} tags (optional)      tag set
      */
     public putObjectByUrl = async (
         urlString: string,
         directory: string = '',
         preserveFileName: boolean = false,
+        metadata?: Metadata,
         tags?: TagSet,
     ): Promise<PutObjectResult> => {
-        _log(NS, `putByUrl(${urlString})...`);
+        _log(NS, `putObjectByUrl(${urlString})...`);
         if (!urlString) throw new Error(`@urlString is required!`);
         directory = directory || '';
 
@@ -161,7 +175,7 @@ export class AWSS3Service implements CoreS3Service {
         const key = path.join(directory, fileName);
 
         // upload
-        return this.uploadFile(file, key, tags);
+        return this.uploadFile(file, key, metadata, tags);
     };
 
     /**
@@ -260,14 +274,14 @@ export class AWSS3Service implements CoreS3Service {
      * core upload logic
      * @param {File} file   File object
      * @param {string} key  S3 key to upload
+     * @param {Metadata} metadata   metadata to store
      * @param {TagSet} tags (optional) tags to save
      * @private
      */
-    private async uploadFile(file: File, key: string, tags?: TagSet): Promise<PutObjectResult> {
+    private async uploadFile(file: File, key: string, metadata?: Metadata, tags?: TagSet): Promise<PutObjectResult> {
         // metadata
-        const metadata: AWS.S3.Metadata = {
-            md5: file.contentMD5,
-        };
+        metadata = metadata || {};
+        metadata.md5 = file.contentMD5;
         if (file.isRemoteFile) metadata.origin = file.url;
         if (file.contentType.startsWith('image')) {
             const imageMeta = await sharp(file.buffer).metadata();
@@ -294,16 +308,33 @@ export class AWSS3Service implements CoreS3Service {
             ContentType: file.contentType,
             ContentLength: file.contentLength,
             ContentMD5: file.contentMD5,
-            Metadata: metadata,
         };
-        if (tags) params.Tagging = new URLSearchParams(tags).toString();
+        _log(NS, `> params.Key =`, params.Key);
+        _log(NS, `> params.ContentType =`, params.ContentType);
+        _log(NS, `> params.ContentLength =`, params.ContentLength);
+        if (metadata) {
+            params.Metadata = metadata;
+            _log(NS, `> params.Metadata =`, $U.json(params.Metadata));
+        }
+        if (tags) {
+            params.Tagging = new URLSearchParams(tags).toString();
+            _log(NS, `> params.Tagging =`, params.Tagging);
+        }
 
         //! call s3.upload.
         const s3 = instance();
         try {
             const { Bucket, Key, Location } = await s3.upload(params).promise();
             _log(NS, `> data[${Bucket}].Key =`, Key);
-            return { Bucket, Key, Location };
+            return {
+                Bucket,
+                Key,
+                Location,
+                ContentType: file.contentType,
+                ContentLength: file.contentLength,
+                ContentMD5: file.contentMD5,
+                Metadata: metadata,
+            };
         } catch (e) {
             _err(NS, `! err[${params.Bucket}] =`, e);
             throw e;
@@ -357,7 +388,7 @@ class File {
         } else {
             if (this.isRemoteFile) {
                 const requestGet = util.promisify(request.get.bind(request));
-                _log(`download remote file... (${this.urlObject.href})`);
+                _log(NS, `download remote file... (${this.urlObject.href})`);
 
                 // 'encoding=null' is required to receive binary data
                 const { statusCode, headers, body } = await requestGet(this.urlObject.href, { encoding: null });
@@ -370,7 +401,7 @@ class File {
                 let filepath = this.urlObject.pathname;
                 if (!path.isAbsolute(filepath)) filepath = path.resolve(filepath);
 
-                _log(`read local file... (${filepath}`);
+                _log(NS, `read local file... (${filepath}`);
                 this._buffer = fs.readFileSync(filepath);
             }
         }

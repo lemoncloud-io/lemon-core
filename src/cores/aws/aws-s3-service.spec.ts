@@ -73,7 +73,7 @@ describe(`test service/s3-service.js`, () => {
 
         // check tags
         const tags = { company: 'lemoncloud', service: 'lemon-core' };
-        res = await S3.putObject(body, 'sample.json', tags);
+        res = await S3.putObject(body, 'sample.json', null, tags);
         expect(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             TagCount: 2,
