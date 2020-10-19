@@ -384,7 +384,7 @@ class File {
      */
     public async load(content?: string): Promise<this> {
         if (content) {
-            this._buffer = Buffer.from(content);
+            this._buffer = Buffer.from(content, 'binary');
         } else {
             if (this.isRemoteFile) {
                 const requestGet = util.promisify(request.get.bind(request));
