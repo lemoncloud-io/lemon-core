@@ -146,6 +146,27 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
+     * flush search index - force store changes into search index immediately
+     */
+    public async flushIndex() {
+        const { endpoint, indexName } = this.options;
+        if (!indexName) throw new Error('@index is required!');
+        _log(NS, `- flushIndex(${indexName})`);
+
+        //! call flush index..
+        const { client } = instance(endpoint);
+        const res = await client.indices.flush({ index: indexName }).catch(
+            $ERROR.handler('flush', e => {
+                _err(NS, `> flush[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
+                throw e;
+            }),
+        );
+        _log(NS, `> flush[${indexName}] =`, $U.json(res));
+
+        return res;
+    }
+
+    /**
      * describe `settings` and `mappings` of index.
      */
     public async describe() {

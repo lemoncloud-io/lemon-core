@@ -215,7 +215,7 @@ export class DynamoService<T extends GeneralItem> {
         const { tableName, idName, sortName } = this.options;
         // _log(NS, `prepareUpdateItem(${tableName}/${id}/${sort || ''})...`);
         const Key = this.prepareItemKey(id, sort).Key;
-        const norm = (_: string) => `${_}`.replace(/[\\:\/]/g, '_');
+        const norm = (_: string) => `${_}`.replace(/[.\\:\/]/g, '_');
 
         //! prepare payload.
         const payload = $_.reduce(
