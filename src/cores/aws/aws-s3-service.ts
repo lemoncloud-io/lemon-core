@@ -19,10 +19,10 @@ const NS = $U.NS('S3', 'blue');
 import path from 'path';
 import url from 'url';
 import fs from 'fs';
-import util from 'util';
+import { promisify } from 'util';
 import AWS from 'aws-sdk';
 import request from 'request';
-import sharp from 'sharp';
+import { imageSize } from 'image-size';
 import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
@@ -124,23 +124,23 @@ export class AWSS3Service implements CoreS3Service {
      * }
      * ```
      *
-     * @param {string} body         content body
-     * @param {string} fileName     S3 path to save
-     * @param {Metadata} metadata   metadata to store
-     * @param {object} tags         (optional) tag set
+     * @param {string|Buffer} content   content body
+     * @param {string} fileName         S3 path to save
+     * @param {Metadata} metadata       metadata to store
+     * @param {object} tags             (optional) tag set
      */
     public putObject = async (
-        body: string,
+        content: string | Buffer,
         fileName?: string,
         metadata?: Metadata,
         tags?: TagSet,
     ): Promise<PutObjectResult> => {
         _log(NS, `putObject(${fileName})...`);
-        if (!body) throw new Error('@body is required!');
+        if (!content) throw new Error('@content is required!');
 
         // create file object
         fileName = fileName || `${v4()}.json`;
-        const file = await new File(fileName).load(body);
+        const file = await new File(fileName).load(content);
 
         // upload
         return this.uploadFile(file, fileName, metadata, tags);
@@ -284,19 +284,10 @@ export class AWSS3Service implements CoreS3Service {
         metadata.md5 = file.contentMD5;
         if (file.isRemoteFile) metadata.origin = file.url;
         if (file.contentType.startsWith('image')) {
-            const imageMeta = await sharp(file.buffer).metadata();
-            const keysToRead: (keyof sharp.Metadata)[] = [
-                'width',
-                'height',
-                'space', // color space ('srgb', 'rgb', 'cmyk', ...)
-                'channels', // 3 for sRGB, 4 for CMYK
-                'depth', // pixel format
-                'density', // DPI
-                'orientation', // EXIF Orientation
-            ];
-            keysToRead.forEach(key => {
-                if (imageMeta[key]) metadata[key] = `${imageMeta[key]}`;
-            });
+            const { width, height, orientation } = imageSize(file.buffer);
+            if (width !== undefined) metadata.width = `${width}`;
+            if (height !== undefined) metadata.height = `${height}`;
+            if (orientation !== undefined) metadata.orientation = `${orientation}`;
         }
 
         // construct upload parameters
@@ -380,14 +371,14 @@ class File {
 
     /**
      * load file content
-     * @param {string} content (optional) load content from URL if not given
+     * @param {string|Buffer} content (optional) load content from URL if not given
      */
-    public async load(content?: string): Promise<this> {
+    public async load(content?: string | Buffer): Promise<this> {
         if (content) {
-            this._buffer = Buffer.from(content, 'binary');
+            this._buffer = typeof content == 'string' ? Buffer.from(content, 'binary') : content;
         } else {
             if (this.isRemoteFile) {
-                const requestGet = util.promisify(request.get.bind(request));
+                const requestGet = promisify(request.get.bind(request));
                 _log(NS, `download remote file... (${this.urlObject.href})`);
 
                 // 'encoding=null' is required to receive binary data
