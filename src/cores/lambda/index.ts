@@ -25,6 +25,13 @@ export { LambdaCognitoHandler } from './lambda-cognito-handler';
 export * from './lambda-dynamo-stream-handler';
 export * from './lambda-notification-handler';
 
+//! export by group
+import * as $sns from './lambda-sns-handler';
+import * as $sqs from './lambda-sqs-handler';
+import * as $web from './lambda-web-handler';
+import * as $wss from './lambda-wss-handler';
+export { $sns, $sqs, $web, $wss };
+
 //! import default with named.
 import { LambdaHandler, Context } from './lambda-handler';
 import { LambdaWEBHandler } from './lambda-web-handler';
