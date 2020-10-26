@@ -22,7 +22,7 @@ import { environ } from '../..';
 
 const S3 = new AWSS3Service();
 
-describe(`test service/s3-service.js`, () => {
+describe(`test AWSS3Service`, () => {
     //! use `env.PROFILE`
     const PROFILE = credentials(environ('PROFILE'));
 
@@ -31,7 +31,7 @@ describe(`test service/s3-service.js`, () => {
     });
 
     test('check hello() function', async () => {
-        expect(S3.hello()).toEqual('aws-s3-service:');
+        expect(S3.hello()).toEqual(`aws-s3-service:${S3.bucket()}`);
     });
 
     test('check bucket() function', async () => {
@@ -41,6 +41,21 @@ describe(`test service/s3-service.js`, () => {
         expect(S3.bucket('TEMP_BUCKET')).toEqual('hello-bucket');
         expect(S3.bucket('MY_BUCKET')).toEqual(DEF_BUCKET);
         expect(S3.bucket('my-bucket')).toEqual('my-bucket');
+    });
+
+    test('check headObject() function', async () => {
+        if (!PROFILE) return;
+        /* eslint-disable prettier/prettier */
+
+        // if the objects not exists
+        expect(await S3.headObject('invalid-file')).toBeNull();
+        // if the objects exists
+        const json = JSON.stringify({ hello: 'world', lemon: true });
+        const { Location: fileName } = await S3.putObject(json, 'test.json');
+        expect(await S3.headObject('invalid-file')).toMatchObject({ ContentType: 'application/json; charset=utf-8', ContentLength: json.length });
+        await S3.deleteObject(fileName);
+
+        /* eslint-enable prettier/prettier */
     });
 
     test('check putObject() function', async () => {

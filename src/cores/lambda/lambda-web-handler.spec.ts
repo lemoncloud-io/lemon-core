@@ -48,6 +48,10 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
         case 'GET':
         case 'POST':
             if (cmd) next = async id => ({ id, cmd, hello: `${cmd} ${id}` });
+            else if (id == '')
+                next = async id => {
+                    throw new Error(`@id[${id}] (string) is required!`);
+                };
             else if (id == '0')
                 next = async id => {
                     throw new Error(`404 NOT FOUND - id:${id}`);
@@ -123,6 +127,21 @@ describe('LambdaWEBHandler', () => {
         done();
     });
 
+    //! GET /favicon.ico
+    it('should pass success GET /favicon.ico', async done => {
+        /* eslint-enable prettier/prettier */
+        const { service } = instance();
+        const event: any = loadJsonSync('data/sample.event.web.json');
+        event.httpMethod = 'GET';
+        event.path = '/favicon.ico';
+        const res = await service.handle(event, null);
+        expect2(() => res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(() => res.headers, 'Content-Type').toEqual({ 'Content-Type': 'image/x-icon' });
+        expect2(() => res.body.substring(0, 32)).toEqual('AAABAAEAICAAAAEAIACoEAAAFgAAACgA');
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
     //! GET /abc
     it('should pass success GET /abc', async done => {
         /* eslint-enable prettier/prettier */
@@ -188,16 +207,31 @@ describe('LambdaWEBHandler', () => {
         done();
     });
 
+    //! POST / => 400
+    it('should pass success POST / 400', async done => {
+        /* eslint-enable prettier/prettier */
+        const { service } = instance();
+        const event: any = loadJsonSync('data/sample.event.web.json');
+        event.httpMethod = 'POST';
+        event.pathParameters['id'] = '';
+        const res = await service.handle(event, null);
+        expect2(() => res, 'statusCode').toEqual({ statusCode: 400 });
+        expect2(() => res.headers, 'Content-Type').toEqual({ 'Content-Type': 'text/plain; charset=utf-8' });
+        expect2(() => res, 'body').toEqual({ body: '@id[] (string) is required!' });
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
     //! GET /0 => 404
     it('should pass success GET /0 404', async done => {
         /* eslint-enable prettier/prettier */
         const { service } = instance();
         const event: any = loadJsonSync('data/sample.event.web.json');
-        const id = '0';
-        event.pathParameters['id'] = id;
+        event.pathParameters['id'] = '0';
         const res = await service.handle(event, null);
-        expect2(res, 'statusCode').toEqual({ statusCode: 404 });
-        expect2(res, 'body').toEqual({ body: '404 NOT FOUND - id:0' });
+        expect2(() => res, 'statusCode').toEqual({ statusCode: 404 });
+        expect2(() => res.headers, 'Content-Type').toEqual({ 'Content-Type': 'text/plain; charset=utf-8' });
+        expect2(() => res, 'body').toEqual({ body: '404 NOT FOUND - id:0' });
         /* eslint-enable prettier/prettier */
         done();
     });

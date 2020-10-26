@@ -102,12 +102,36 @@ export class AWSS3Service implements CoreS3Service {
     /**
      * hello
      */
-    public hello = () => `aws-s3-service:${''}`;
+    public hello = () => `aws-s3-service:${this.bucket()}`;
 
     /**
      * get target endpoint by name.
      */
     public bucket = (target?: string): string => environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
+
+    /**
+     * retrieve metadata without returning the object
+     * @param {string} fileName
+     * @return  metadata object / null if not exists
+     */
+    public headObject = async (fileName: string): Promise<any> => {
+        if (!fileName) throw new Error('@fileName is required!');
+
+        const Bucket = this.bucket();
+        const params = { Bucket, Key: fileName };
+
+        //! call s3.getObject.
+        const s3 = instance();
+        try {
+            const data = await s3.headObject(params).promise();
+            _log(NS, '> data =', $U.json(data));
+            return data;
+        } catch (e) {
+            if (e.statusCode == 404) return null;
+            _err(NS, '! err=', e);
+            throw e;
+        }
+    };
 
     /**
      * upload a file to S3 Bucket
@@ -186,7 +210,7 @@ export class AWSS3Service implements CoreS3Service {
     public getObject = async (fileName: string): Promise<any> => {
         if (!fileName) throw new Error('@fileName is required!');
 
-        const Bucket = await this.bucket();
+        const Bucket = this.bucket();
         const params = { Bucket, Key: fileName };
 
         //! call s3.getObject.
@@ -209,7 +233,7 @@ export class AWSS3Service implements CoreS3Service {
     public getDecodedObject = async (fileName: string): Promise<any> => {
         if (!fileName) throw new Error('@fileName is required!');
 
-        const Bucket = await this.bucket();
+        const Bucket = this.bucket();
         const params = { Bucket, Key: fileName };
 
         //! call s3.getObject.
@@ -230,7 +254,7 @@ export class AWSS3Service implements CoreS3Service {
      * @param {string} fileName
      */
     public getObjectTagging = async (fileName: string): Promise<TagSet> => {
-        const Bucket = await this.bucket();
+        const Bucket = this.bucket();
         const params = { Bucket, Key: fileName };
 
         //! call s3.getObject.
@@ -256,7 +280,7 @@ export class AWSS3Service implements CoreS3Service {
     public deleteObject = async (fileName: string): Promise<void> => {
         if (!fileName) throw new Error('@fileName is required!');
 
-        const Bucket = await this.bucket();
+        const Bucket = this.bucket();
         const params = { Bucket, Key: fileName };
 
         //! call s3.deleteObject.
