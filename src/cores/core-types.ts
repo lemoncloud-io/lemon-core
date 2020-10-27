@@ -200,9 +200,9 @@ export type NextHandler<TParam = any, TResult = any, TBody = any> = (
 ) => Promise<TResult>;
 
 /**
- * Decode `NextHandler` by mode + id + cmd.
+ * Decode `NextHandler` by mode + id + cmd (+ path)
  */
-export type NextDecoder<TMode = NextMode> = (mode: TMode, id?: string, cmd?: string) => NextHandler;
+export type NextDecoder<TMode = NextMode> = (mode: TMode, id?: string, cmd?: string, path?: string) => NextHandler;
 
 /** ********************************************************************************************************************
  *  Services Interfaces
