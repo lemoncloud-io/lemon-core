@@ -146,11 +146,32 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
+     * refresh search index - refresh index to make all items searchable
+     */
+    public async refreshIndex() {
+        const { endpoint, indexName } = this.options;
+        if (!indexName) throw new Error('.indexName is required!');
+        _log(NS, `- refreshIndex(${indexName})`);
+
+        //! call refresh index..
+        const { client } = instance(endpoint);
+        const res = await client.indices.refresh({ index: indexName }).catch(
+            $ERROR.handler('refresh', e => {
+                _err(NS, `> refresh[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
+                throw e;
+            }),
+        );
+        _log(NS, `> refresh[${indexName}] =`, $U.json(res));
+
+        return res;
+    }
+
+    /**
      * flush search index - force store changes into search index immediately
      */
     public async flushIndex() {
         const { endpoint, indexName } = this.options;
-        if (!indexName) throw new Error('@index is required!');
+        if (!indexName) throw new Error('.indexName is required!');
         _log(NS, `- flushIndex(${indexName})`);
 
         //! call flush index..
