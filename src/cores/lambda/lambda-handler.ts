@@ -17,8 +17,8 @@ import {
     APIGatewayProxyResult,
     CognitoUserPoolTriggerEvent,
     DynamoDBStreamEvent,
-    SNSEvent,
-    SQSEvent,
+    SNSEvent as AWSSNSEvent,
+    SQSEvent as AWSSQSEvent,
 } from 'aws-lambda';
 import { NextContext, ProtocolParam, CoreConfigService } from './../core-services';
 import { GETERR } from '../../common/test-helper';
@@ -47,6 +47,9 @@ export interface CronEvent {
 export type WEBEvent = APIGatewayProxyEvent;
 export type WEBResult = APIGatewayProxyResult;
 export type WSSEvent = APIGatewayProxyEvent;
+export type DDSEvent = DynamoDBStreamEvent;
+export type SNSEvent = AWSSNSEvent;
+export type SQSEvent = AWSSQSEvent;
 export type WSSResult = any;
 
 //! define and export all types.
