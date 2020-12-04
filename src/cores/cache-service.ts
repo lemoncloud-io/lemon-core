@@ -11,8 +11,9 @@ import { promisify } from 'util';
 import NodeCache from 'node-cache';
 import Memcached from 'memcached';
 import IORedis, { Redis } from 'ioredis';
-import { $U, _log, _inf, _err } from '../engine';
+import { $U, _log, _inf } from '../engine';
 
+// Log namespace
 const NS = $U.NS('CACHES', 'green');
 
 /** ********************************************************************************************************************
@@ -83,23 +84,23 @@ export class CacheService {
      * factory method
      *
      * @param type  (optional) type of cache backend. following backends are available (default: 'redis')
-     *  - 'local': use local memory as cache. not suitable for Lambda based service
+     *  - 'local': volatile. not suitable for Lambda based service
      *  - 'memcached'
      *  - 'redis'
      * @param host  (optional) cache host address (default: 'localhost')
      * @param port  (optional) port # (default: default port # of cache backend)
      * @static
      */
-    public static create(
-        type: 'local' | 'memcached' | 'redis' = 'redis',
-        host: string = 'localhost',
-        port?: number,
-    ): CacheService {
+    public static create(type: 'local' | 'memcached' | 'redis' = 'redis', host?: string, port?: number): CacheService {
+        _log(NS, `constructing [${type}] cache ...`);
+        _log(NS, `> host =`, host);
+        _log(NS, `> port =`, port);
+
         let backend: CacheBackend;
 
         if (type === 'local') backend = new NodeCacheBackend();
-        else if (type === 'memcached') backend = new MemcachedBackend(`${host}:${port || 11211}`);
-        else if (type === 'redis') backend = new RedisBackend(host, port || 6379);
+        else if (type === 'memcached') backend = new MemcachedBackend(`${host || 'localhost'}:${port || 11211}`);
+        else if (type === 'redis') backend = new RedisBackend(host || 'localhost', port || 6379);
         else throw new Error(`@type [${type}] is invalid.`);
 
         return new CacheService(backend);
@@ -111,7 +112,9 @@ export class CacheService {
      * @return  true if the key is cached
      */
     public async exists(key: CacheKey): Promise<boolean> {
-        return this.backend.has(key);
+        const ret = await this.backend.has(key);
+        _log(NS, `.exists ${key} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -124,8 +127,9 @@ export class CacheService {
      */
     public async set(key: CacheKey, val: CacheValue, timeout?: number | Timeout): Promise<boolean> {
         const ttl = timeout && toTTL(timeout);
-        // return val === undefined || this.backend.set(key, val, ttl);
-        return await this.backend.set(key, val, ttl);
+        const ret = await this.backend.set(key, val, ttl);
+        _log(NS, `.set ${key} ${val} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -138,7 +142,9 @@ export class CacheService {
         const param = entries.map(({ key, val, timeout }) => {
             return { key, val, ttl: timeout && toTTL(timeout) };
         });
-        return this.backend.mset(param);
+        const ret = await this.backend.mset(param);
+        _log(NS, `.setMulti ${entries.map(entry => entry.key)} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -147,7 +153,9 @@ export class CacheService {
      * @param key
      */
     public async get(key: CacheKey): Promise<CacheValue | undefined> {
-        return await this.backend.get(key);
+        const ret = await this.backend.get(key);
+        _log(NS, `.get ${key} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -156,21 +164,26 @@ export class CacheService {
      * @param keys
      */
     public async getMulti(keys: CacheKey[]): Promise<KeyValueMap> {
-        return await this.backend.mget(keys);
+        const ret = await this.backend.mget(keys);
+        _log(NS, `.getMulti ${keys} / ret =`, ret);
+        return ret;
     }
 
     /**
      * Set the value of a key and return its old value
      */
     public async getAndSet(key: CacheKey, val: CacheValue): Promise<CacheValue | undefined> {
+        let ret: CacheValue | undefined;
+
         if (this.backend.getset) {
-            return await this.backend.getset(key, val);
+            ret = await this.backend.getset<CacheValue, CacheValue>(key, val);
         } else {
-            const oldValue = await this.backend.get(key);
-            const set = await this.backend.set(key, val);
-            if (!set) throw new Error(`getAndSet() failed`);
-            return oldValue;
+            ret = await this.backend.get<CacheValue>(key);
+            if (!(await this.backend.set<CacheValue>(key, val))) throw new Error(`getAndSet() failed`);
         }
+        _log(NS, `.getAndSet ${key} ${val} / ret =`, ret);
+
+        return ret;
     }
 
     /**
@@ -179,13 +192,17 @@ export class CacheService {
      * @param key
      */
     public async getAndDelete(key: CacheKey): Promise<CacheValue | undefined> {
+        let ret: CacheValue | undefined;
+
         if (this.backend.pop) {
-            return this.backend.pop(key);
+            ret = await this.backend.pop<CacheValue>(key);
         } else {
-            const val = await this.backend.get(key);
+            ret = await this.backend.get<CacheValue>(key);
             await this.backend.del(key);
-            return val;
         }
+        _log(NS, `.getAndDelete ${key} / ret =`, ret);
+
+        return ret;
     }
 
     /**
@@ -195,7 +212,9 @@ export class CacheService {
      * @return  true on success
      */
     public async delete(key: CacheKey): Promise<boolean> {
-        return await this.backend.del(key);
+        const ret = await this.backend.del(key);
+        _log(NS, `.delete ${key} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -206,7 +225,9 @@ export class CacheService {
      */
     public async deleteMulti(keys: CacheKey[]): Promise<boolean> {
         const promises = keys.map(key => this.backend.del(key));
-        return (await Promise.all(promises)).every(ret => ret === true);
+        const ret = (await Promise.all(promises)).every(ret => ret === true);
+        _log(NS, `.deleteMulti ${keys} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -217,7 +238,9 @@ export class CacheService {
      * @return  true on success
      */
     public async setTimeout(key: CacheKey, timeout: number | Timeout): Promise<boolean> {
-        return await this.backend.expire(key, toTTL(timeout));
+        const ret = await this.backend.expire(key, toTTL(timeout));
+        _log(NS, `.setTimeout ${key} ${timeout} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -229,7 +252,9 @@ export class CacheService {
      *  - 0 if the key has no timeout
      */
     public async getTimeout(key: CacheKey): Promise<number | undefined> {
-        return await this.backend.ttl(key);
+        const ret = await this.backend.ttl(key);
+        _log(NS, `.getTimeout ${key} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -238,7 +263,9 @@ export class CacheService {
      * @param key
      */
     public async removeTimeout(key: CacheKey): Promise<boolean> {
-        return await this.backend.expire(key, 0);
+        const ret = await this.backend.expire(key, 0);
+        _log(NS, `.removeTimeout ${key} / ret =`, ret);
+        return ret;
     }
 
     /**
@@ -249,12 +276,14 @@ export class CacheService {
      */
     private constructor(backend: CacheBackend) {
         this.backend = backend;
+        _inf(NS, `! cache-service instantiated with [${backend.name}] backend.`);
     }
 }
 
 /**
  * Get TTL from timeout
- * @param timeout   TTL(timestamp in milliseconds since epoch) or Timeout object
+ * @param timeout   timeout in seconds or Timeout object
+ * @return  remaining time to live in seconds
  */
 function toTTL(timeout: number | Timeout): number {
     switch (typeof timeout) {
@@ -268,8 +297,17 @@ function toTTL(timeout: number | Timeout): number {
             }
             return 0;
         default:
-            throw new Error(`@timeout must be number or Timeout object.`);
+            throw new Error(`@timeout (number | Timeout) is invalid.`);
     }
+}
+
+/**
+ * Get timestamp of expiration from TTL
+ * @param ttl   remaining time to live in seconds
+ * @return      timestamp in milliseconds since epoch
+ */
+function fromTTL(ttl: number): number {
+    return ttl && Date.now() + ttl * 1000;
 }
 
 /** ********************************************************************************************************************
@@ -427,6 +465,7 @@ class NodeCacheBackend implements CacheBackend {
      * CacheBackend.set implementation
      */
     public async set<T>(key: string, val: T, ttl?: number): Promise<boolean> {
+        if (val === undefined) return false;
         return this.cache.set<T>(key, val, ttl);
     }
 
@@ -441,6 +480,7 @@ class NodeCacheBackend implements CacheBackend {
      * CacheBackend.mset implementation
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
+        if (entries.some(entry => entry.val === undefined)) return false;
         return this.cache.mset<T>(entries);
     }
 
@@ -569,7 +609,11 @@ class MemcachedBackend implements CacheBackend {
      * CacheBackend.set implementation
      */
     public async set<T>(key: string, val: T, ttl: number = 0): Promise<boolean> {
-        const entry = { val, exp: ttl && Date.now() + ttl * 1000 };
+        if (val === undefined) return false;
+
+        const entry = { val, exp: fromTTL(ttl) };
+        _log(NS, `[${this.name}-backend] storing to key [${key}] =`, $U.json(entry));
+
         return await this.api.set(key, entry, ttl);
     }
 
@@ -578,6 +622,8 @@ class MemcachedBackend implements CacheBackend {
      */
     public async get<T>(key: string): Promise<T | undefined> {
         const entry = await this.api.get(key);
+        _log(NS, `[${this.name}-backend] entry fetched =`, $U.json(entry));
+
         return entry && entry.val;
     }
 
@@ -585,8 +631,16 @@ class MemcachedBackend implements CacheBackend {
      * CacheBackend.mset implementation
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
-        const promises = entries.map(({ key, val, ttl }) => this.set(key, val, ttl));
+        if (entries.some(entry => entry.val === undefined)) return false;
+
+        _log(NS, `[${this.name}-backend] storing multiple keys ...`);
+        const promises = entries.map(({ key, val, ttl }, idx) => {
+            const entry = { val, exp: fromTTL(ttl) };
+            _log(NS, ` ${idx}) key [${key}] =`, $U.json(entry));
+            return this.api.set(key, entry, ttl);
+        });
         const results = await Promise.all(promises);
+
         return results.every(result => result === true);
     }
 
@@ -595,6 +649,8 @@ class MemcachedBackend implements CacheBackend {
      */
     public async mget<T>(keys: string[]): Promise<{ [key: string]: T }> {
         const map = await this.api.getMulti(keys);
+        _log(NS, `[${this.name}-backend] entry map fetched =`, $U.json(map));
+
         Object.keys(map).forEach(key => {
             const entry = map[key];
             map[key] = entry.val;
@@ -610,12 +666,16 @@ class MemcachedBackend implements CacheBackend {
         // Memcached는 음수에 대한 incr/decr를 지원하지 않으며 0 미만으로 decr 되지 않는다.
         // 이런 이유로 sets & cas 조합을 이용해 직접 구현함
 
+        _log(NS, `[${this.name}-backend] incrementing (${increment}) to key [${key}] ...`);
+
+        // Use get/check-and-save + retry strategy for consistency
         for (let retry = 0; retry < 5; await sleep(10), retry++) {
-            const result = await this.api.gets(key); // Get entry w/ CAS
+            const result = await this.api.gets(key); // Get entry w/ CAS id
 
             if (result === undefined) {
-                // initialize to increment value if the key does not exist
-                if (await this.set(key, increment, 0)) return increment;
+                // Initialize to increment value if the key does not exist
+                if (!(await this.set(key, increment, 0))) break;
+                return increment;
             } else {
                 const { [key]: oldEntry, cas } = result;
                 if (typeof oldEntry.val !== 'number') throw new Error(`.key [${key}] has non-numeric value.`);
@@ -668,7 +728,7 @@ class MemcachedBackend implements CacheBackend {
         let saved = false;
 
         for (let retry = 0; !saved && retry < 5; await sleep(10), retry++) {
-            const result = await this.api.gets(key); // Get entry w/ CAS
+            const result = await this.api.gets(key); // Get entry w/ CAS id
             if (result === undefined) break; // If key does not exist or already expired
 
             // Refresh timeout
@@ -719,12 +779,11 @@ class RedisBackend implements CacheBackend {
      * CacheBackend.set implementation
      */
     public async set<T>(key: string, val: T, ttl?: number): Promise<boolean> {
-        if (val !== undefined) {
-            const data = JSON.stringify(val); // Serialize
-            ttl > 0 ? await this.redis.set(key, data, 'EX', ttl) : await this.redis.set(key, data);
-        }
-        // 'set' command always return OK
-        return true;
+        if (val === undefined) return false;
+
+        const data = JSON.stringify(val); // Serialize
+        ttl > 0 ? await this.redis.set(key, data, 'EX', ttl) : await this.redis.set(key, data);
+        return true; // 'set' command always return OK
     }
 
     /**
@@ -739,13 +798,14 @@ class RedisBackend implements CacheBackend {
      * CacheBackend.mset implementation
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
+        if (entries.some(entry => entry.val === undefined)) return false;
+
         // Create transaction pipeline
-        const pipeline = entries
-            .filter(entry => entry.val !== undefined)
-            .reduce((pipeline, { key, val, ttl }) => {
-                const data = JSON.stringify(val); // Serialize
-                return ttl > 0 ? pipeline.set(key, data, 'EX', ttl) : pipeline.set(key, data);
-            }, this.redis.multi());
+        //  -> MSET command를 사용할 수도 있으나 ttl 지정이 불가능하여 pipeline으로 구현함
+        const pipeline = entries.reduce((pipeline, { key, val, ttl }) => {
+            const data = JSON.stringify(val); // Serialize
+            return ttl > 0 ? pipeline.set(key, data, 'EX', ttl) : pipeline.set(key, data);
+        }, this.redis.multi());
 
         // Execute the transaction
         const results = await pipeline.exec();
@@ -784,8 +844,8 @@ class RedisBackend implements CacheBackend {
     public async pop<T>(key: string): Promise<T | undefined> {
         const [[err, data]] = await this.redis
             .multi()
-            .get(key)
-            .del(key)
+            .get(key) // read
+            .del(key) // and delete
             .exec();
         if (!err && data !== null) return JSON.parse(data);
     }
