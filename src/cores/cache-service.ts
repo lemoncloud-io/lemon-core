@@ -433,6 +433,11 @@ interface CacheBackend {
      *          - undefined if the key does not exist
      */
     ttl(key: string): Promise<number | undefined>;
+
+    /**
+     * Delete all the keys
+     */
+    flush?(): Promise<boolean>;
 }
 
 /** ********************************************************************************************************************
@@ -545,6 +550,14 @@ class NodeCacheBackend implements CacheBackend {
         const ts = this.cache.getTtl(key); // Timestamp in milliseconds
         return ts - Date.now();
     }
+
+    /**
+     * CacheBackend.flush implementation
+     */
+    public async flush(): Promise<boolean> {
+        await this.cache.flushAll();
+        return true;
+    }
 }
 
 /**
@@ -570,6 +583,7 @@ class MemcachedBackend implements CacheBackend {
         del: (key: string) => Promise<boolean>;
         items: () => Promise<Memcached.StatusData[]>;
         cachedump: (server: string, slabid: number, number: number) => Promise<Memcached.CacheDumpData[]>;
+        flush: () => Promise<boolean[]>;
     };
 
     /**
@@ -602,6 +616,7 @@ class MemcachedBackend implements CacheBackend {
                     });
                 });
             },
+            flush: promisify(memcached.flush.bind(memcached)),
         };
     }
 
@@ -750,6 +765,14 @@ class MemcachedBackend implements CacheBackend {
         const entry = await this.api.get(key); // undefined if key does not exist
         return entry?.exp && entry.exp - Date.now();
     }
+
+    /**
+     * CacheBackend.flush implementation
+     */
+    public async flush(): Promise<boolean> {
+        const results = await this.api.flush();
+        return results.every(result => result === true);
+    }
 }
 
 /**
@@ -893,6 +916,14 @@ class RedisBackend implements CacheBackend {
         const ms = await this.redis.pttl(key); // -2: key does not exist / -1: no timeout
         if (ms >= 0) return ms;
         if (ms === -1) return 0;
+    }
+
+    /**
+     * CacheBackend.flush implementation
+     */
+    public async flush(): Promise<boolean> {
+        await this.redis.flushdb();
+        return true; // 'flushdb' command always return OK
     }
 }
 
