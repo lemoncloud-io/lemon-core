@@ -75,35 +75,45 @@ export type KeyValueMap = Record<CacheKey, CacheValue>;
  */
 export class CacheService {
     /**
-     * cache backend instance
+     * Cache backend instance
      * @private
      */
     private readonly backend: CacheBackend;
 
     /**
-     * factory method
+     * Factory method
      *
      * @param type  (optional) type of cache backend. following backends are available (default: 'redis')
-     *  - 'local': volatile. not suitable for Lambda based service
-     *  - 'memcached'
-     *  - 'redis'
      * @param host  (optional) cache host address (default: 'localhost')
      * @param port  (optional) port # (default: default port # of cache backend)
      * @static
      */
-    public static create(type: 'local' | 'memcached' | 'redis' = 'redis', host?: string, port?: number): CacheService {
+    public static create(type: 'memcached' | 'redis' = 'redis', host?: string, port?: number): CacheService {
         _log(NS, `constructing [${type}] cache ...`);
         _log(NS, `> host =`, host);
         _log(NS, `> port =`, port);
 
         let backend: CacheBackend;
 
-        if (type === 'local') backend = new NodeCacheBackend();
-        else if (type === 'memcached') backend = new MemcachedBackend(`${host || 'localhost'}:${port || 11211}`);
-        else if (type === 'redis') backend = new RedisBackend(host || 'localhost', port || 6379);
-        else throw new Error(`@type [${type}] is invalid.`);
+        switch (type) {
+            case 'memcached':
+                backend = new MemcachedBackend(`${host || 'localhost'}:${port || 11211}`);
+                break;
+            case 'redis':
+                backend = new RedisBackend(host || 'localhost', port || 6379);
+                break;
+            default:
+                throw new Error(`@type [${type}] is invalid.`);
+        }
 
         return new CacheService(backend);
+    }
+
+    /**
+     * Say hello
+     */
+    public hello(): string {
+        return `cache-service:${this.backend.name}`;
     }
 
     /**
@@ -269,14 +279,37 @@ export class CacheService {
     }
 
     /**
-     * Private constructor -> use CacheService.create()
+     * Protected constructor -> use CacheService.create()
      *
      * @param backend   cache backend object
-     * @private
+     * @protected
      */
-    private constructor(backend: CacheBackend) {
+    protected constructor(backend: CacheBackend) {
         this.backend = backend;
         _inf(NS, `! cache-service instantiated with [${backend.name}] backend.`);
+    }
+}
+
+/**
+ * class `DummyCacheService`: use 'node-cache' library
+ */
+export class DummyCacheService extends CacheService {
+    /**
+     * Factory method
+     *
+     * @static
+     */
+    public static create(): DummyCacheService {
+        _log(NS, `constructing dummy cache ...`);
+        const backend = new NodeCacheBackend();
+        return new DummyCacheService(backend);
+    }
+
+    /**
+     * Say hello
+     */
+    public hello(): string {
+        return `dummy-${super.hello()}`;
     }
 }
 
