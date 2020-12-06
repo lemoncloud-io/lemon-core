@@ -128,6 +128,17 @@ export class CacheService {
     }
 
     /**
+     * List all keys
+     *
+     * @return  list of keys
+     */
+    public async keys(): Promise<string[]> {
+        const ret = await this.backend.keys();
+        _log(NS, `.keys / ret =`, ret);
+        return ret;
+    }
+
+    /**
      * Store a key
      *
      * @param key
@@ -136,6 +147,9 @@ export class CacheService {
      * @return  true on success
      */
     public async set(key: CacheKey, val: CacheValue, timeout?: number | Timeout): Promise<boolean> {
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        if (val === undefined) throw new Error(`@val (CacheValue) cannot be undefined.`);
+
         const ttl = timeout && toTTL(timeout);
         const ret = await this.backend.set(key, val, ttl);
         _log(NS, `.set ${key} ${val} / ret =`, ret);
@@ -311,6 +325,14 @@ export class DummyCacheService extends CacheService {
     public hello(): string {
         return `dummy-${super.hello()}`;
     }
+}
+
+/**
+ * function `sleep`
+ * @param ms    duration in milliseconds
+ */
+export async function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -746,8 +768,13 @@ class MemcachedBackend implements CacheBackend {
      * CacheBackend.keys implementation
      */
     public async keys(): Promise<string[]> {
+        // NOTE:
+        //  memcached는 원래 keys 기능을 지원하지 않으며
+        //  아래와 같이 cachedump를 사용하여 가능하지만 set한 key가 dump 될 때 까지 상당한 시간이 소요되는 것으로 보인다.
+        //  따라서 이 operation의 결과를 신뢰하지 않도록 한다.
+
         const item = (await this.api.items())[0];
-        if (!item) return [];
+        if (!item || Object.keys(item).length === 0) return [];
 
         const [server, slabid] = [item.server, Number(Object.keys(item)[0])];
         const number = ((item[slabid] as unknown) as Memcached.StatusData).number as number;
@@ -958,12 +985,4 @@ class RedisBackend implements CacheBackend {
         await this.redis.flushdb();
         return true; // 'flushdb' command always return OK
     }
-}
-
-/**
- * function `sleep`
- * @param ms    duration in milliseconds
- */
-async function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
