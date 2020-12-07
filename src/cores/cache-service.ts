@@ -783,7 +783,7 @@ class MemcachedBackend implements CacheBackend {
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
         _log(NS, `[${this.name}-backend] storing multiple keys ...`);
-        const promises = entries.map(({ key, val, ttl }, idx) => {
+        const promises = entries.map(({ key, val, ttl = 0 }, idx) => {
             const entry = { val, exp: fromTTL(ttl) };
             _log(NS, ` ${idx}) key [${key}] =`, $U.json(entry));
             return this.api.set(key, entry, ttl);
