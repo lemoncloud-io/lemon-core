@@ -313,13 +313,13 @@ export class CacheService {
      * @param keys
      * @return  number of deleted entries
      */
-    public async deleteMulti(keys: CacheKey[]): Promise<boolean> {
+    public async deleteMulti(keys: CacheKey[]): Promise<boolean[]> {
         const namespacedKeys = keys.map((key, idx) => {
             if (!key) throw new Error(`@key (CacheKey) is required (at @keys[${idx}]).`);
             return this.asNamespacedKey(key);
         });
         const promises = namespacedKeys.map(namespacedKey => this.backend.del(namespacedKey));
-        const ret = (await Promise.all(promises)).every(ret => ret === true);
+        const ret = await Promise.all(promises);
         _log(NS, `.deleteMulti ${namespacedKeys} / ret =`, ret);
         return ret;
     }
