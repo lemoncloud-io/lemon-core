@@ -40,6 +40,7 @@ export interface Timeout {
     /**
      * key will be expired in given Unix timestamp (seconds since epoch)
      *  - ignored if 'expireIn' is provided
+     *  - not accurate because this value is replaced to time to live in seconds using Math.ceil()
      */
     expireAt?: number;
 }
@@ -96,14 +97,14 @@ export class CacheService {
      * Factory method
      *
      * @param type  (optional) type of cache backend. following backends are available (default: 'redis')
+     * @param ns    (optional) namespace. used as cache key prefix to avoid key collision between different services (default: 'global')
      * @param host  (optional) cache host address (default: 'localhost')
      * @param port  (optional) port # (default: default port # of cache backend)
-     * @param ns    (optional) namespace. used as prefix of cache key
      * @static
      */
     public static create(
         type: 'memcached' | 'redis' = 'redis',
-        ns?: string,
+        ns: string = 'global',
         host?: string,
         port?: number,
     ): CacheService {
@@ -376,7 +377,7 @@ export class CacheService {
      */
     protected constructor(backend: CacheBackend, namespace: string) {
         this.backend = backend;
-        this.namespace = namespace || 'global';
+        this.namespace = namespace;
         _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [namespace=${namespace}]`);
     }
 
