@@ -237,6 +237,21 @@ export class CacheService {
     }
 
     /**
+     * Increment the integer value of a key
+     *
+     * @param key
+     * @param inc   number to increment
+     */
+    public async increment(key: CacheKey, inc: number): Promise<number> {
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        if (inc === undefined) throw new Error(`@inc (number) cannot be undefined.`);
+        const namespacedKey = this.asNamespacedKey(key);
+        const ret = await this.backend.incr(namespacedKey, inc);
+        _log(NS, `.increment ${namespacedKey} ${inc} / ret =`, ret);
+        return ret;
+    }
+
+    /**
      * Set the value of a key and return its old value
      */
     public async getAndSet(key: CacheKey, val: CacheValue): Promise<CacheValue | undefined> {
