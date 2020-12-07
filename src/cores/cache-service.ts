@@ -103,9 +103,9 @@ export class CacheService {
      */
     public static create(
         type: 'memcached' | 'redis' = 'redis',
+        ns?: string,
         host?: string,
         port?: number,
-        ns?: string,
     ): CacheService {
         _log(NS, `constructing [${type}] cache ...`);
         _log(NS, `> host =`, host);
@@ -374,6 +374,14 @@ export class CacheService {
  */
 export class DummyCacheService extends CacheService {
     /**
+     * Singleton node-cache backend
+     *
+     * @private
+     * @static
+     */
+    private static backend: NodeCacheBackend;
+
+    /**
      * Factory method
      *
      * @param ns    (optional) namespace. used as prefix of cache key
@@ -381,8 +389,11 @@ export class DummyCacheService extends CacheService {
      */
     public static create(ns?: string): DummyCacheService {
         _log(NS, `constructing dummy cache ...`);
-        const backend = new NodeCacheBackend();
-        return new DummyCacheService(backend, ns);
+
+        // NOTE: Use singleton backend instance
+        // because node-cache is volatile and client instance does not share keys with other instance
+        if (!DummyCacheService.backend) DummyCacheService.backend = new NodeCacheBackend();
+        return new DummyCacheService(DummyCacheService.backend, ns);
     }
 
     /**
