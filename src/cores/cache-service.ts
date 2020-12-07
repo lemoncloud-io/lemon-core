@@ -22,7 +22,7 @@ const NS = $U.NS('CACHES', 'green');
 /**
  * type `CacheKey`
  */
-export type CacheKey = string;
+export type CacheKey = string | number;
 
 /**
  * type `CacheValue`
@@ -75,10 +75,22 @@ export type KeyValueMap = Record<CacheKey, CacheValue>;
  */
 export class CacheService {
     /**
+     * Namespace delimiter
+     * @private
+     * @static
+     */
+    private static readonly NAMESPACE_DELIMITER = '::';
+
+    /**
      * Cache backend instance
      * @private
      */
     private readonly backend: CacheBackend;
+
+    /**
+     * Namespace of cache key
+     */
+    private readonly namespace: string;
 
     /**
      * Factory method
@@ -86,15 +98,21 @@ export class CacheService {
      * @param type  (optional) type of cache backend. following backends are available (default: 'redis')
      * @param host  (optional) cache host address (default: 'localhost')
      * @param port  (optional) port # (default: default port # of cache backend)
+     * @param ns    (optional) namespace. used as prefix of cache key
      * @static
      */
-    public static create(type: 'memcached' | 'redis' = 'redis', host?: string, port?: number): CacheService {
+    public static create(
+        type: 'memcached' | 'redis' = 'redis',
+        host?: string,
+        port?: number,
+        ns?: string,
+    ): CacheService {
         _log(NS, `constructing [${type}] cache ...`);
         _log(NS, `> host =`, host);
         _log(NS, `> port =`, port);
+        _log(NS, `> ns =`, ns);
 
         let backend: CacheBackend;
-
         switch (type) {
             case 'memcached':
                 backend = new MemcachedBackend(`${host || 'localhost'}:${port || 11211}`);
@@ -106,14 +124,14 @@ export class CacheService {
                 throw new Error(`@type [${type}] is invalid.`);
         }
 
-        return new CacheService(backend);
+        return new CacheService(backend, ns);
     }
 
     /**
      * Say hello
      */
     public hello(): string {
-        return `cache-service:${this.backend.name}`;
+        return `cache-service:${this.backend.name}:${this.namespace}`;
     }
 
     /**
@@ -122,8 +140,9 @@ export class CacheService {
      * @return  true if the key is cached
      */
     public async exists(key: CacheKey): Promise<boolean> {
-        const ret = await this.backend.has(key);
-        _log(NS, `.exists ${key} / ret =`, ret);
+        const namespacedKey = this.asNamespacedKey(key);
+        const ret = await this.backend.has(namespacedKey);
+        _log(NS, `.exists ${namespacedKey} / ret =`, ret);
         return ret;
     }
 
@@ -133,7 +152,12 @@ export class CacheService {
      * @return  list of keys
      */
     public async keys(): Promise<string[]> {
-        const ret = await this.backend.keys();
+        const namespacedKeys = await this.backend.keys();
+        const ret = namespacedKeys.reduce<string[]>((keys, namespacedKey) => {
+            const [namespace, key] = namespacedKey.split(CacheService.NAMESPACE_DELIMITER);
+            if (namespace === this.namespace) keys.push(key);
+            return keys;
+        }, []);
         _log(NS, `.keys / ret =`, ret);
         return ret;
     }
@@ -149,10 +173,10 @@ export class CacheService {
     public async set(key: CacheKey, val: CacheValue, timeout?: number | Timeout): Promise<boolean> {
         if (!key) throw new Error(`@key (CacheKey) is required.`);
         if (val === undefined) throw new Error(`@val (CacheValue) cannot be undefined.`);
-
+        const namespacedKey = this.asNamespacedKey(key);
         const ttl = timeout && toTTL(timeout);
-        const ret = await this.backend.set(key, val, ttl);
-        _log(NS, `.set ${key} ${val} / ret =`, ret);
+        const ret = await this.backend.set(namespacedKey, val, ttl);
+        _log(NS, `.set ${namespacedKey} ${val} / ret =`, ret);
         return ret;
     }
 
@@ -163,8 +187,14 @@ export class CacheService {
      * @return  true on success
      */
     public async setMulti(entries: CacheEntry[]): Promise<boolean> {
-        const param = entries.map(({ key, val, timeout }) => {
-            return { key, val, ttl: timeout && toTTL(timeout) };
+        const param = entries.map(({ key, val, timeout }, idx) => {
+            if (!key) throw new Error(`.key (CacheKey) is required (at @entries[${idx}]).`);
+            if (val === undefined) throw new Error(`.val (CacheValue) cannot be undefined (at @entries[${idx}]).`);
+            return {
+                key: this.asNamespacedKey(key),
+                val,
+                ttl: timeout && toTTL(timeout),
+            };
         });
         const ret = await this.backend.mset(param);
         _log(NS, `.setMulti ${entries.map(entry => entry.key)} / ret =`, ret);
@@ -177,8 +207,10 @@ export class CacheService {
      * @param key
      */
     public async get(key: CacheKey): Promise<CacheValue | undefined> {
-        const ret = await this.backend.get(key);
-        _log(NS, `.get ${key} / ret =`, ret);
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        const namespacedKey = this.asNamespacedKey(key);
+        const ret = await this.backend.get(namespacedKey);
+        _log(NS, `.get ${namespacedKey} / ret =`, ret);
         return ret;
     }
 
@@ -188,8 +220,12 @@ export class CacheService {
      * @param keys
      */
     public async getMulti(keys: CacheKey[]): Promise<KeyValueMap> {
-        const ret = await this.backend.mget(keys);
-        _log(NS, `.getMulti ${keys} / ret =`, ret);
+        const namespacedKeys = keys.map((key, idx) => {
+            if (!key) throw new Error(`@key (CacheKey) is required (at @keys[${idx}]).`);
+            return this.asNamespacedKey(key);
+        });
+        const ret = await this.backend.mget(namespacedKeys);
+        _log(NS, `.getMulti ${namespacedKeys} / ret =`, ret);
         return ret;
     }
 
@@ -197,15 +233,18 @@ export class CacheService {
      * Set the value of a key and return its old value
      */
     public async getAndSet(key: CacheKey, val: CacheValue): Promise<CacheValue | undefined> {
-        let ret: CacheValue | undefined;
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        if (val === undefined) throw new Error(`@val (CacheValue) cannot be undefined.`);
 
+        const namespacedKey = this.asNamespacedKey(key);
+        let ret: CacheValue | undefined;
         if (this.backend.getset) {
-            ret = await this.backend.getset<CacheValue, CacheValue>(key, val);
+            ret = await this.backend.getset<CacheValue, CacheValue>(namespacedKey, val);
         } else {
-            ret = await this.backend.get<CacheValue>(key);
-            if (!(await this.backend.set<CacheValue>(key, val))) throw new Error(`getAndSet() failed`);
+            ret = await this.backend.get<CacheValue>(namespacedKey);
+            if (!(await this.backend.set<CacheValue>(namespacedKey, val))) throw new Error(`getAndSet() failed`);
         }
-        _log(NS, `.getAndSet ${key} ${val} / ret =`, ret);
+        _log(NS, `.getAndSet ${namespacedKey} ${val} / ret =`, ret);
 
         return ret;
     }
@@ -216,15 +255,17 @@ export class CacheService {
      * @param key
      */
     public async getAndDelete(key: CacheKey): Promise<CacheValue | undefined> {
-        let ret: CacheValue | undefined;
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
 
+        const namespacedKey = this.asNamespacedKey(key);
+        let ret: CacheValue | undefined;
         if (this.backend.pop) {
-            ret = await this.backend.pop<CacheValue>(key);
+            ret = await this.backend.pop<CacheValue>(namespacedKey);
         } else {
-            ret = await this.backend.get<CacheValue>(key);
-            await this.backend.del(key);
+            ret = await this.backend.get<CacheValue>(namespacedKey);
+            await this.backend.del(namespacedKey);
         }
-        _log(NS, `.getAndDelete ${key} / ret =`, ret);
+        _log(NS, `.getAndDelete ${namespacedKey} / ret =`, ret);
 
         return ret;
     }
@@ -236,8 +277,10 @@ export class CacheService {
      * @return  true on success
      */
     public async delete(key: CacheKey): Promise<boolean> {
-        const ret = await this.backend.del(key);
-        _log(NS, `.delete ${key} / ret =`, ret);
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        const namespacedKey = this.asNamespacedKey(key);
+        const ret = await this.backend.del(namespacedKey);
+        _log(NS, `.delete ${namespacedKey} / ret =`, ret);
         return ret;
     }
 
@@ -248,9 +291,13 @@ export class CacheService {
      * @return  number of deleted entries
      */
     public async deleteMulti(keys: CacheKey[]): Promise<boolean> {
-        const promises = keys.map(key => this.backend.del(key));
+        const namespacedKeys = keys.map((key, idx) => {
+            if (!key) throw new Error(`@key (CacheKey) is required (at @keys[${idx}]).`);
+            return this.asNamespacedKey(key);
+        });
+        const promises = namespacedKeys.map(namespacedKey => this.backend.del(namespacedKey));
         const ret = (await Promise.all(promises)).every(ret => ret === true);
-        _log(NS, `.deleteMulti ${keys} / ret =`, ret);
+        _log(NS, `.deleteMulti ${namespacedKeys} / ret =`, ret);
         return ret;
     }
 
@@ -262,8 +309,10 @@ export class CacheService {
      * @return  true on success
      */
     public async setTimeout(key: CacheKey, timeout: number | Timeout): Promise<boolean> {
-        const ret = await this.backend.expire(key, toTTL(timeout));
-        _log(NS, `.setTimeout ${key} ${timeout} / ret =`, ret);
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        const namespacedKey = this.asNamespacedKey(key);
+        const ret = await this.backend.expire(namespacedKey, toTTL(timeout));
+        _log(NS, `.setTimeout ${namespacedKey} ${timeout} / ret =`, ret);
         return ret;
     }
 
@@ -276,8 +325,10 @@ export class CacheService {
      *  - 0 if the key has no timeout
      */
     public async getTimeout(key: CacheKey): Promise<number | undefined> {
-        const ret = await this.backend.ttl(key);
-        _log(NS, `.getTimeout ${key} / ret =`, ret);
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        const namespacedKey = this.asNamespacedKey(key);
+        const ret = await this.backend.ttl(namespacedKey);
+        _log(NS, `.getTimeout ${namespacedKey} / ret =`, ret);
         return ret;
     }
 
@@ -287,8 +338,10 @@ export class CacheService {
      * @param key
      */
     public async removeTimeout(key: CacheKey): Promise<boolean> {
-        const ret = await this.backend.expire(key, 0);
-        _log(NS, `.removeTimeout ${key} / ret =`, ret);
+        if (!key) throw new Error(`@key (CacheKey) is required.`);
+        const namespacedKey = this.asNamespacedKey(key);
+        const ret = await this.backend.expire(namespacedKey, 0);
+        _log(NS, `.removeTimeout ${namespacedKey} / ret =`, ret);
         return ret;
     }
 
@@ -296,11 +349,23 @@ export class CacheService {
      * Protected constructor -> use CacheService.create()
      *
      * @param backend   cache backend object
+     * @param namespace namespace of cache key
      * @protected
      */
-    protected constructor(backend: CacheBackend) {
+    protected constructor(backend: CacheBackend, namespace: string) {
         this.backend = backend;
-        _inf(NS, `! cache-service instantiated with [${backend.name}] backend.`);
+        this.namespace = namespace || 'global';
+        _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [namespace=${namespace}]`);
+    }
+
+    /**
+     * Get namespace prefixed cache key
+     *
+     * @param key
+     * @protected
+     */
+    protected asNamespacedKey(key: CacheKey): string {
+        return `${this.namespace}${CacheService.NAMESPACE_DELIMITER}${key}`;
     }
 }
 
@@ -311,12 +376,13 @@ export class DummyCacheService extends CacheService {
     /**
      * Factory method
      *
+     * @param ns    (optional) namespace. used as prefix of cache key
      * @static
      */
-    public static create(): DummyCacheService {
+    public static create(ns?: string): DummyCacheService {
         _log(NS, `constructing dummy cache ...`);
         const backend = new NodeCacheBackend();
-        return new DummyCacheService(backend);
+        return new DummyCacheService(backend, ns);
     }
 
     /**
@@ -488,11 +554,6 @@ interface CacheBackend {
      *          - undefined if the key does not exist
      */
     ttl(key: string): Promise<number | undefined>;
-
-    /**
-     * Delete all the keys
-     */
-    flush?(): Promise<boolean>;
 }
 
 /** ********************************************************************************************************************
@@ -525,7 +586,6 @@ class NodeCacheBackend implements CacheBackend {
      * CacheBackend.set implementation
      */
     public async set<T>(key: string, val: T, ttl?: number): Promise<boolean> {
-        if (val === undefined) return false;
         return this.cache.set<T>(key, val, ttl);
     }
 
@@ -540,7 +600,6 @@ class NodeCacheBackend implements CacheBackend {
      * CacheBackend.mset implementation
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
-        if (entries.some(entry => entry.val === undefined)) return false;
         return this.cache.mset<T>(entries);
     }
 
@@ -605,14 +664,6 @@ class NodeCacheBackend implements CacheBackend {
         const ts = this.cache.getTtl(key); // Timestamp in milliseconds
         return ts - Date.now();
     }
-
-    /**
-     * CacheBackend.flush implementation
-     */
-    public async flush(): Promise<boolean> {
-        await this.cache.flushAll();
-        return true;
-    }
 }
 
 /**
@@ -638,7 +689,6 @@ class MemcachedBackend implements CacheBackend {
         del: (key: string) => Promise<boolean>;
         items: () => Promise<Memcached.StatusData[]>;
         cachedump: (server: string, slabid: number, number: number) => Promise<Memcached.CacheDumpData[]>;
-        flush: () => Promise<boolean[]>;
     };
 
     /**
@@ -671,7 +721,6 @@ class MemcachedBackend implements CacheBackend {
                     });
                 });
             },
-            flush: promisify(memcached.flush.bind(memcached)),
         };
     }
 
@@ -679,8 +728,6 @@ class MemcachedBackend implements CacheBackend {
      * CacheBackend.set implementation
      */
     public async set<T>(key: string, val: T, ttl: number = 0): Promise<boolean> {
-        if (val === undefined) return false;
-
         const entry = { val, exp: fromTTL(ttl) };
         _log(NS, `[${this.name}-backend] storing to key [${key}] =`, $U.json(entry));
 
@@ -701,8 +748,6 @@ class MemcachedBackend implements CacheBackend {
      * CacheBackend.mset implementation
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
-        if (entries.some(entry => entry.val === undefined)) return false;
-
         _log(NS, `[${this.name}-backend] storing multiple keys ...`);
         const promises = entries.map(({ key, val, ttl }, idx) => {
             const entry = { val, exp: fromTTL(ttl) };
@@ -825,14 +870,6 @@ class MemcachedBackend implements CacheBackend {
         const entry = await this.api.get(key); // undefined if key does not exist
         return entry?.exp && entry.exp - Date.now();
     }
-
-    /**
-     * CacheBackend.flush implementation
-     */
-    public async flush(): Promise<boolean> {
-        const results = await this.api.flush();
-        return results.every(result => result === true);
-    }
 }
 
 /**
@@ -862,8 +899,6 @@ class RedisBackend implements CacheBackend {
      * CacheBackend.set implementation
      */
     public async set<T>(key: string, val: T, ttl?: number): Promise<boolean> {
-        if (val === undefined) return false;
-
         const data = JSON.stringify(val); // Serialize
         ttl > 0 ? await this.redis.set(key, data, 'EX', ttl) : await this.redis.set(key, data);
         return true; // 'set' command always return OK
@@ -881,8 +916,6 @@ class RedisBackend implements CacheBackend {
      * CacheBackend.mset implementation
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
-        if (entries.some(entry => entry.val === undefined)) return false;
-
         // Create transaction pipeline
         //  -> MSET command를 사용할 수도 있으나 ttl 지정이 불가능하여 pipeline으로 구현함
         const pipeline = entries.reduce((pipeline, { key, val, ttl }) => {
@@ -976,13 +1009,5 @@ class RedisBackend implements CacheBackend {
         const ms = await this.redis.pttl(key); // -2: key does not exist / -1: no timeout
         if (ms >= 0) return ms;
         if (ms === -1) return 0;
-    }
-
-    /**
-     * CacheBackend.flush implementation
-     */
-    public async flush(): Promise<boolean> {
-        await this.redis.flushdb();
-        return true; // 'flushdb' command always return OK
     }
 }
