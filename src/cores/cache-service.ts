@@ -83,43 +83,40 @@ export class CacheService {
     private static readonly NAMESPACE_DELIMITER = '::';
 
     /**
+     * Namespace of cache key
+     */
+    public readonly ns: string;
+
+    /**
      * Cache backend instance
      * @private
      */
     private readonly backend: CacheBackend;
 
     /**
-     * Namespace of cache key
-     */
-    private readonly namespace: string;
-
-    /**
      * Factory method
      *
-     * @param type  (optional) type of cache backend. following backends are available (default: 'redis')
-     * @param ns    (optional) namespace. used as cache key prefix to avoid key collision between different services (default: 'global')
-     * @param host  (optional) cache host address (default: 'localhost')
-     * @param port  (optional) port # (default: default port # of cache backend)
+     * @param type      (optional) type of cache backend. following backends are available (default: 'redis')
+     * @param endpoint  (optional) cache server endpoint
+     * @param ns        (optional) namespace. used as cache key prefix to avoid key collision between different services (default: 'global')
      * @static
      */
     public static create(
         type: 'memcached' | 'redis' = 'redis',
+        endpoint?: string,
         ns: string = 'global',
-        host?: string,
-        port?: number,
     ): CacheService {
         _log(NS, `constructing [${type}] cache ...`);
-        _log(NS, `> host =`, host);
-        _log(NS, `> port =`, port);
+        _log(NS, `> endpoint =`, endpoint);
         _log(NS, `> ns =`, ns);
 
         let backend: CacheBackend;
         switch (type) {
             case 'memcached':
-                backend = new MemcachedBackend(`${host || 'localhost'}:${port || 11211}`);
+                backend = new MemcachedBackend(endpoint);
                 break;
             case 'redis':
-                backend = new RedisBackend(host || 'localhost', port || 6379);
+                backend = new RedisBackend(endpoint);
                 break;
             default:
                 throw new Error(`@type [${type}] is invalid.`);
@@ -132,7 +129,7 @@ export class CacheService {
      * Say hello
      */
     public hello(): string {
-        return `cache-service:${this.backend.name}:${this.namespace}`;
+        return `cache-service:${this.backend.name}:${this.ns}`;
     }
 
     /**
@@ -155,8 +152,8 @@ export class CacheService {
     public async keys(): Promise<string[]> {
         const namespacedKeys = await this.backend.keys();
         const ret = namespacedKeys.reduce<string[]>((keys, namespacedKey) => {
-            const [namespace, key] = namespacedKey.split(CacheService.NAMESPACE_DELIMITER);
-            if (namespace === this.namespace) keys.push(key);
+            const [ns, key] = namespacedKey.split(CacheService.NAMESPACE_DELIMITER);
+            if (ns === this.ns) keys.push(key);
             return keys;
         }, []);
         _log(NS, `.keys / ret =`, ret);
@@ -372,13 +369,13 @@ export class CacheService {
      * Protected constructor -> use CacheService.create()
      *
      * @param backend   cache backend object
-     * @param namespace namespace of cache key
+     * @param ns        namespace of cache key
      * @protected
      */
-    protected constructor(backend: CacheBackend, namespace: string) {
+    protected constructor(backend: CacheBackend, ns: string) {
+        _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [ns=${ns}]`);
         this.backend = backend;
-        this.namespace = namespace;
-        _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [namespace=${namespace}]`);
+        this.ns = ns;
     }
 
     /**
@@ -388,7 +385,7 @@ export class CacheService {
      * @protected
      */
     protected asNamespacedKey(key: CacheKey): string {
-        return `${this.namespace}${CacheService.NAMESPACE_DELIMITER}${key}`;
+        return `${this.ns}${CacheService.NAMESPACE_DELIMITER}${key}`;
     }
 }
 
@@ -733,8 +730,8 @@ class MemcachedBackend implements CacheBackend {
     /**
      * Public constructor
      */
-    public constructor(location: string) {
-        const memcached = new Memcached(location);
+    public constructor(location?: string) {
+        const memcached = new Memcached(location || 'localhost:11211');
 
         // Build promisified API map
         this.api = {
@@ -925,8 +922,8 @@ class RedisBackend implements CacheBackend {
     /**
      * Public constructor
      */
-    public constructor(host: string, port: number) {
-        this.redis = new IORedis({ port, host });
+    public constructor(endpoint?: string) {
+        this.redis = new IORedis(endpoint || 'localhost:6379');
     }
 
     /**
