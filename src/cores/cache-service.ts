@@ -695,7 +695,7 @@ class NodeCacheBackend implements CacheBackend {
      */
     public async ttl(key: string): Promise<number | undefined> {
         const ts = this.cache.getTtl(key); // Timestamp in milliseconds
-        return ts - Date.now();
+        return ts && ts - Date.now();
     }
 }
 
