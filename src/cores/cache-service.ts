@@ -113,10 +113,10 @@ export class CacheService {
         let backend: CacheBackend;
         switch (type) {
             case 'memcached':
-                backend = new MemcachedBackend(endpoint);
+                backend = new MemcachedBackend(endpoint || $U.env('MEMCACHED_ENDPOINT', 'localhost:11211'));
                 break;
             case 'redis':
-                backend = new RedisBackend(endpoint);
+                backend = new RedisBackend(endpoint || $U.env('REDIS_ENDPOINT', 'localhost:6379'));
                 break;
             default:
                 throw new Error(`@type [${type}] is invalid.`);
@@ -730,8 +730,8 @@ class MemcachedBackend implements CacheBackend {
     /**
      * Public constructor
      */
-    public constructor(location?: string) {
-        const memcached = new Memcached(location || 'localhost:11211');
+    public constructor(endpoint: string) {
+        const memcached = new Memcached(endpoint);
 
         // Build promisified API map
         this.api = {
@@ -922,8 +922,8 @@ class RedisBackend implements CacheBackend {
     /**
      * Public constructor
      */
-    public constructor(endpoint?: string) {
-        this.redis = new IORedis(endpoint || 'localhost:6379');
+    public constructor(endpoint: string) {
+        this.redis = new IORedis(endpoint);
     }
 
     /**
