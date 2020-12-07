@@ -13,9 +13,9 @@ import { CacheService, DummyCacheService, sleep } from './cache-service';
 
 export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'cache-service-test') => {
     if (type === 'dummy') {
-        return { cache: DummyCacheService.create(ns) };
+        return { cache: DummyCacheService.create({ ns, defTimeout: 0 }) };
     } else {
-        return { cache: CacheService.create(type, undefined, ns) };
+        return { cache: CacheService.create({ type, ns, defTimeout: 0 }) };
     }
 };
 

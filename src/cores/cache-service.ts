@@ -20,6 +20,28 @@ const NS = $U.NS('CACHES', 'green');
  *  Exported Types
  ** ********************************************************************************************************************/
 /**
+ * type `CacheOptions`
+ */
+export interface CacheOptions {
+    /**
+     * (optional) cache backend type (default: 'redis')
+     */
+    type?: 'memcached' | 'redis';
+    /**
+     * (optional) cache server endpoint (not required for dummy-cache)
+     */
+    endpoint?: string;
+    /**
+     * (optional) namespace. used as cache key prefix to avoid key collision between different services
+     */
+    ns?: string;
+    /**
+     * (optional) default timeout of cache entries. 0 for unlimited (default: 1-day)
+     */
+    defTimeout?: number;
+}
+
+/**
  * type `CacheKey`
  */
 export type CacheKey = string | number;
@@ -76,6 +98,24 @@ export type KeyValueMap = Record<CacheKey, CacheValue>;
  */
 export class CacheService {
     /**
+     * Environment variable name for cache server endpoint
+     * @static
+     */
+    public static readonly ENV_CACHE_ENDPOINT = 'CACHE_ENDPOINT';
+
+    /**
+     * Environment variable name for default cache timeout
+     * @static
+     */
+    public static readonly ENV_CACHE_DEFAULT_TIMEOUT = 'CACHE_DEFAULT_TIMEOUT';
+
+    /**
+     * Default cache timeout
+     * @static
+     */
+    public static readonly DEF_CACHE_DEFAULT_TIMEOUT = 24 * 60 * 60; // 1-day
+
+    /**
      * Namespace delimiter
      * @private
      * @static
@@ -96,27 +136,30 @@ export class CacheService {
     /**
      * Factory method
      *
-     * @param type      (optional) type of cache backend. following backends are available (default: 'redis')
-     * @param endpoint  (optional) cache server endpoint
-     * @param ns        (optional) namespace. used as cache key prefix to avoid key collision between different services (default: 'global')
+     * @param options   (optional) cache options
      * @static
      */
-    public static create(
-        type: 'memcached' | 'redis' = 'redis',
-        endpoint?: string,
-        ns: string = 'global',
-    ): CacheService {
+    public static create(options?: CacheOptions): CacheService {
+        const type = options?.type || 'redis';
+        const endpoint = options?.endpoint || $U.env(CacheService.ENV_CACHE_ENDPOINT);
+        const ns = options?.ns || '';
+        const defTimeout = $U.N(
+            options?.defTimeout,
+            $U.N($U.env(CacheService.ENV_CACHE_DEFAULT_TIMEOUT), CacheService.DEF_CACHE_DEFAULT_TIMEOUT),
+        );
+
         _log(NS, `constructing [${type}] cache ...`);
-        _log(NS, `> endpoint =`, endpoint);
-        _log(NS, `> ns =`, ns);
+        _log(NS, ` > endpoint =`, endpoint);
+        _log(NS, ` > ns =`, ns);
+        _log(NS, ` > defTimeout =`, defTimeout);
 
         let backend: CacheBackend;
         switch (type) {
             case 'memcached':
-                backend = new MemcachedBackend(endpoint || $U.env('MEMCACHED_ENDPOINT', 'localhost:11211'));
+                backend = new MemcachedBackend(endpoint, defTimeout);
                 break;
             case 'redis':
-                backend = new RedisBackend(endpoint || $U.env('REDIS_ENDPOINT', 'localhost:6379'));
+                backend = new RedisBackend(endpoint, defTimeout);
                 break;
             default:
                 throw new Error(`@type [${type}] is invalid.`);
@@ -262,7 +305,14 @@ export class CacheService {
             ret = await this.backend.getset<CacheValue, CacheValue>(namespacedKey, val);
         } else {
             ret = await this.backend.get<CacheValue>(namespacedKey);
-            if (!(await this.backend.set<CacheValue>(namespacedKey, val))) throw new Error(`getAndSet() failed`);
+
+            // Best effort to keep remaining TTL
+            let ttl = await this.backend.ttl(namespacedKey);
+            if (ttl !== undefined) {
+                ttl = Math.ceil(ttl / 1000);
+            }
+
+            if (!(await this.backend.set<CacheValue>(namespacedKey, val, ttl))) throw new Error(`getAndSet() failed`);
         }
         _log(NS, `.getAndSet ${namespacedKey} ${val} / ret =`, ret);
 
@@ -369,10 +419,10 @@ export class CacheService {
      * Protected constructor -> use CacheService.create()
      *
      * @param backend   cache backend object
-     * @param ns        namespace of cache key
+     * @param ns        (optional) namespace of cache key (default: '')
      * @protected
      */
-    protected constructor(backend: CacheBackend, ns: string) {
+    protected constructor(backend: CacheBackend, ns: string = '') {
         _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [ns=${ns}]`);
         this.backend = backend;
         this.ns = ns;
@@ -404,15 +454,21 @@ export class DummyCacheService extends CacheService {
     /**
      * Factory method
      *
-     * @param ns    (optional) namespace. used as prefix of cache key
+     * @param options   (optional) cache options
      * @static
      */
-    public static create(ns?: string): DummyCacheService {
+    public static create(options?: CacheOptions): DummyCacheService {
+        const ns = options?.ns || '';
+        const defTimeout = $U.N(
+            options?.defTimeout,
+            $U.N($U.env(CacheService.ENV_CACHE_DEFAULT_TIMEOUT), CacheService.DEF_CACHE_DEFAULT_TIMEOUT),
+        );
+
         _log(NS, `constructing dummy cache ...`);
 
         // NOTE: Use singleton backend instance
         // because node-cache is volatile and client instance does not share keys with other instance
-        if (!DummyCacheService.backend) DummyCacheService.backend = new NodeCacheBackend();
+        if (!DummyCacheService.backend) DummyCacheService.backend = new NodeCacheBackend(defTimeout);
         return new DummyCacheService(DummyCacheService.backend, ns);
     }
 
@@ -609,8 +665,8 @@ class NodeCacheBackend implements CacheBackend {
     /**
      * Public constructor
      */
-    public constructor() {
-        this.cache = new NodeCache();
+    public constructor(defTTL: number = 0) {
+        this.cache = new NodeCache({ stdTTL: defTTL });
     }
 
     /**
@@ -723,6 +779,12 @@ class MemcachedBackend implements CacheBackend {
     };
 
     /**
+     * Default TTL as number in seconds
+     * @private
+     */
+    private readonly defTTL: number;
+
+    /**
      * backend type
      */
     public readonly name: string = 'memcached';
@@ -730,8 +792,8 @@ class MemcachedBackend implements CacheBackend {
     /**
      * Public constructor
      */
-    public constructor(endpoint: string) {
-        const memcached = new Memcached(endpoint);
+    public constructor(endpoint?: string, defTTL: number = 0) {
+        const memcached = new Memcached(endpoint || 'localhost:11211');
 
         // Build promisified API map
         this.api = {
@@ -753,12 +815,14 @@ class MemcachedBackend implements CacheBackend {
                 });
             },
         };
+        // default TTL
+        this.defTTL = defTTL;
     }
 
     /**
      * CacheBackend.set implementation
      */
-    public async set<T>(key: string, val: T, ttl: number = 0): Promise<boolean> {
+    public async set<T>(key: string, val: T, ttl: number = this.defTTL): Promise<boolean> {
         const entry = { val, exp: fromTTL(ttl) };
         _log(NS, `[${this.name}-backend] storing to key [${key}] =`, $U.json(entry));
 
@@ -780,7 +844,7 @@ class MemcachedBackend implements CacheBackend {
      */
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
         _log(NS, `[${this.name}-backend] storing multiple keys ...`);
-        const promises = entries.map(({ key, val, ttl = 0 }, idx) => {
+        const promises = entries.map(({ key, val, ttl = this.defTTL }, idx) => {
             const entry = { val, exp: fromTTL(ttl) };
             _log(NS, ` ${idx}) key [${key}] =`, $U.json(entry));
             return this.api.set(key, entry, ttl);
@@ -915,6 +979,12 @@ class RedisBackend implements CacheBackend {
     private readonly redis: Redis;
 
     /**
+     * Default TTL as number in seconds
+     * @private
+     */
+    private readonly defTTL: number;
+
+    /**
      * backend type
      */
     public readonly name: string = 'redis';
@@ -922,14 +992,15 @@ class RedisBackend implements CacheBackend {
     /**
      * Public constructor
      */
-    public constructor(endpoint: string) {
-        this.redis = new IORedis(endpoint);
+    public constructor(endpoint?: string, defTTL: number = 0) {
+        this.redis = new IORedis(endpoint || 'localhost:6379');
+        this.defTTL = defTTL;
     }
 
     /**
      * CacheBackend.set implementation
      */
-    public async set<T>(key: string, val: T, ttl?: number): Promise<boolean> {
+    public async set<T>(key: string, val: T, ttl: number = this.defTTL): Promise<boolean> {
         const data = JSON.stringify(val); // Serialize
         ttl > 0 ? await this.redis.set(key, data, 'EX', ttl) : await this.redis.set(key, data);
         return true; // 'set' command always return OK
@@ -949,7 +1020,7 @@ class RedisBackend implements CacheBackend {
     public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
         // Create transaction pipeline
         //  -> MSET command를 사용할 수도 있으나 ttl 지정이 불가능하여 pipeline으로 구현함
-        const pipeline = entries.reduce((pipeline, { key, val, ttl }) => {
+        const pipeline = entries.reduce((pipeline, { key, val, ttl = this.defTTL }) => {
             const data = JSON.stringify(val); // Serialize
             return ttl > 0 ? pipeline.set(key, data, 'EX', ttl) : pipeline.set(key, data);
         }, this.redis.multi());
