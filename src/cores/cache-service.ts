@@ -224,7 +224,14 @@ export class CacheService {
             if (!key) throw new Error(`@key (CacheKey) is required (at @keys[${idx}]).`);
             return this.asNamespacedKey(key);
         });
-        const ret = await this.backend.mget(namespacedKeys);
+        const map = await this.backend.mget(namespacedKeys);
+
+        // Remove namespace prefix from keys
+        const ret = Object.entries(map).reduce<KeyValueMap>((newMap, [namespacedKey, val]) => {
+            const key = namespacedKey.split(CacheService.NAMESPACE_DELIMITER)[1];
+            newMap[key] = val;
+            return newMap;
+        }, {});
         _log(NS, `.getMulti ${namespacedKeys} / ret =`, ret);
         return ret;
     }
