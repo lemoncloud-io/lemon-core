@@ -390,6 +390,6 @@ export class DummyRedisStorageService<T extends StorageModel> extends RedisStora
  * function `sleep`
  * @param ms    duration in milliseconds
  */
-export async function sleep(ms: number): Promise<void> {
+async function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
