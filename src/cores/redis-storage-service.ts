@@ -158,6 +158,8 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
 
             const results = await pipeline.exec(); // Unlock, null if the key has been changed
             if (results) {
+                RedisStorageService.throwIfTransactionError(results);
+
                 const ret = this.deserialize(data);
                 _log(NS, `> readOrCreate[${id}(created)].ret =`, $U.json(ret));
                 return ret;
@@ -166,7 +168,7 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
 
         const message = `transaction max retries exceeded.`;
         _err(NS, `> readOrCreate[${id}].err =`, message);
-        throw new Error(`redis error: ${message}`);
+        throw new Error(`redis transaction error: ${message}`);
     }
 
     /**
@@ -181,12 +183,17 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
 
         const key = this.asKey(id);
         const data = this.serialize({ ...model, id });
+
+        // Create transaction pipeline
         const pipeline = this.redis
             .multi()
             .del(key) // TODO: 만약 save의 overwrite 정책이 기존 존재하는 키는 유지하는 것이라면 del()은 제거해야 함
             .hset(key, data);
         if (this.ttl > 0) pipeline.expire(key, this.ttl);
-        await pipeline.exec();
+
+        // Execute transaction
+        const results = await pipeline.exec();
+        RedisStorageService.throwIfTransactionError(results);
 
         const ret = this.deserialize(data);
         _log(NS, `> save[${id}].ret =`, $U.json(ret));
@@ -235,16 +242,13 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
 
         const key = this.asKey(id);
 
-        // Execute pipeline
+        // Execute transaction
         const results = await this.redis
             .multi()
             .hgetall(key) // Read
             .del(key) // And delete
             .exec();
-        if (!results) throw new Error(`delete[${id}] failed: transaction error.`);
-
-        const err = results.find(result => result[0] !== null)?.[0];
-        if (err) throw new Error(`redis error: ${err.message}`);
+        RedisStorageService.throwIfTransactionError(results);
 
         const data = results[0][1];
         if (Object.keys(data).length > 0) {
@@ -290,7 +294,7 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
     }
 
     /**
-     * update key w/ check-and-save behavior and retries
+     * Update key w/ check-and-save behavior and retries
      * @param id
      * @param update    (optional) model to update
      * @param increment (optional) model to increment
@@ -324,12 +328,26 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
             if (this.ttl > 0) pipeline.expire(key, this.ttl);
 
             const results = await pipeline.exec(); // Unlock, null if the key has been changed
-            if (results) return this.deserialize(data);
+            if (results) {
+                RedisStorageService.throwIfTransactionError(results);
+                return this.deserialize(data);
+            }
         }
 
         const message = `transaction max retries exceeded.`;
         _err(NS, `> updateCAS[${id}].err =`, message);
         throw new Error(`redis error: ${message}`);
+    }
+
+    /**
+     * Check transaction results and throw if error occurred
+     * @param results   transaction pipeline execution results
+     * @private
+     */
+    private static throwIfTransactionError(results: [Error | null, any][]): void {
+        if (!results) throw new Error(`redis transaction failed: transaction aborted by key modification.`);
+        const err = results.map(result => result[0]).find(err => err !== null);
+        if (err) throw new Error(`redis transaction failed: ${err.message}`);
     }
 }
 
