@@ -1025,10 +1025,10 @@ class RedisBackend implements CacheBackend {
             return ttl > 0 ? pipeline.set(key, data, 'EX', ttl) : pipeline.set(key, data);
         }, this.redis.multi());
 
-        // Execute the transaction
-        const results = await pipeline.exec();
+        // Execute transaction
+        await pipeline.exec(); // Always OK
 
-        return results.every(result => result[0] === null); // 'set' command always return OK except error is thrown
+        return true;
     }
 
     /**
