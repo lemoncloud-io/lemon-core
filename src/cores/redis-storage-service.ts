@@ -378,6 +378,9 @@ export class DummyRedisStorageService<T extends StorageModel> extends RedisStora
         return `dummy-redis-storage-service`;
     }
 
+    /**
+     * Delete all data in database
+     */
     public async truncate(): Promise<void> {
         await this.redis.flushdb();
     }
