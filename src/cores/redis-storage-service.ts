@@ -181,71 +181,26 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
     /**
      * Update existing model and create if id does not exist
      * @param id
-     * @param update
-     * @param increment
+     * @param update    model to update
+     * @param increment (optional) model to increment
      */
     public async update(id: string, update: T, increment?: T): Promise<T> {
         if (!id) throw new Error(`@id is required.`);
         if (!update) throw new Error(`@update is required.`);
-
-        const key = this.asKey(id);
-        const data = this.serialize({ ...update, id });
-
-        // Construct transaction pipeline
-        const pipeline = this.redis.multi().hset(key, data);
-        if (increment) {
-            for (const [field, value] of Object.entries(increment)) {
-                pipeline.hincrby(key, field, value);
-            }
-        }
-        if (this.ttl > 0) pipeline.expire(key, this.ttl);
-        pipeline.hgetall(key); // Acquire final data
-
-        // Execute pipeline
-        const results = await pipeline.exec();
-        if (!results) throw new Error(`update[${id}] failed: redis transaction error.`);
-
-        const err = results.find(result => result[0] !== null)?.[0];
-        if (err) throw new Error(`redis error: ${err.message}`);
-
-        const updated = results[results.length - 1][1]; // Result of 'hgetall'
-        return this.deserialize(updated);
+        return await this.updateCAS(id, update, increment);
     }
 
     /**
      * Increment the integer value of a key
      *
      * @param id
-     * @param increment
-     * @param update
+     * @param increment model to increment
+     * @param update    (optional) model to update
      */
     public async increment(id: string, increment: T, update?: T): Promise<T> {
         if (!id) throw new Error(`@id is required.`);
         if (!increment) throw new Error(`@increment is required.`);
-
-        const key = this.asKey(id);
-
-        // Construct transaction pipeline
-        const pipeline = this.redis.multi();
-        for (const [field, value] of Object.entries(increment)) {
-            pipeline.hincrby(key, field, value);
-        }
-        if (update) {
-            const data = this.serialize(update);
-            pipeline.hset(key, data);
-        }
-        if (this.ttl > 0) pipeline.expire(key, this.ttl);
-        pipeline.hgetall(key); // Acquire final data
-
-        // Execute pipeline
-        const results = await pipeline.exec();
-        if (!results) throw new Error(`increment[${id}] failed: transaction error.`);
-
-        const err = results.find(result => result[0] !== null)?.[0];
-        if (err) throw new Error(`redis error: ${err.message}`);
-
-        const updated = results[results.length - 1][1]; // Result of 'hgetall'
-        return this.deserialize(updated);
+        return await this.updateCAS(id, update, increment);
     }
 
     /**
@@ -309,6 +264,47 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
             model[field] = JSON.parse(value);
             return model;
         }, {});
+    }
+
+    /**
+     * update key w/ check-and-save behavior and retries
+     * @param id
+     * @param update    (optional) model to update
+     * @param increment (optional) model to increment
+     * @private
+     */
+    private async updateCAS(id: string, update?: T, increment?: T): Promise<T> {
+        const key = this.asKey(id);
+
+        // Use watch and transaction to avoid race conditions
+        for (let retry = 0; retry < RedisStorageService.CAS_MAX_RETRIES; await sleep(20), retry++) {
+            await this.redis.watch(key); // Lock
+
+            // Evaluate new model to store
+            const curData = await this.redis.hgetall(key); // {} if the key does not exist
+            const curModel = this.deserialize(curData);
+            const newModel = Object.assign(curModel, update); // Merge
+            if (increment) {
+                for (const [field, value] of Object.entries(increment)) {
+                    const key = field as keyof StorageModel;
+                    if (key in newModel && typeof newModel[key] !== 'number') {
+                        await this.redis.unwatch(); // Unlock
+                        throw new Error(`@increment tries to increment non-numeric field [${field}].`);
+                    }
+                    newModel[key] = (newModel[key] || 0) + value;
+                }
+            }
+
+            // Execute pipeline
+            const data = this.serialize({ ...newModel, id });
+            const pipeline = this.redis.multi().hset(key, data);
+            if (this.ttl > 0) pipeline.expire(key, this.ttl);
+
+            const results = await pipeline.exec(); // Unlock, null if the key has been changed
+            if (results) return this.deserialize(data);
+        }
+
+        throw new Error(`redis error: transaction max retries exceeded.`);
     }
 }
 
