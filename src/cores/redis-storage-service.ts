@@ -139,7 +139,7 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
         const key = this.asKey(id);
 
         // check-and-save w/ retries to avoid race conditions
-        for (let retry = 0; retry < RedisStorageService.CAS_MAX_RETRIES; await sleep(20), retry++) {
+        for (let retry = 0; retry < RedisStorageService.CAS_MAX_RETRIES; await sleep(10), retry++) {
             await this.redis.watch(key); // Lock
             let data = await this.redis.hgetall(key); // {} if the key does not exist
 
@@ -265,7 +265,7 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
      * @param id
      * @protected
      */
-    protected asKey(id: string): string {
+    public asKey(id: string): string {
         return `${this.tableName}::${id}`;
     }
 
@@ -274,9 +274,9 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
      * @param model
      * @protected
      */
-    protected serialize(model: T): Record<string, string> {
+    public serialize(model: T): Record<string, string> {
         return Object.entries(model).reduce<Record<string, string>>((data, [key, val]) => {
-            data[key] = JSON.stringify(val as any);
+            if (val !== undefined) data[key] = JSON.stringify(val);
             return data;
         }, {});
     }
@@ -286,7 +286,7 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
      * @param data
      * @protected
      */
-    protected deserialize(data: Record<string, string>): T {
+    public deserialize(data: Record<string, string>): T {
         return Object.entries(data).reduce<any>((model, [field, value]) => {
             model[field] = JSON.parse(value);
             return model;
@@ -304,39 +304,59 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
         const key = this.asKey(id);
 
         // Use watch and transaction to avoid race conditions
-        for (let retry = 0; retry < RedisStorageService.CAS_MAX_RETRIES; await sleep(20), retry++) {
+        for (let retry = 0; retry < RedisStorageService.CAS_MAX_RETRIES; await sleep(10), retry++) {
             await this.redis.watch(key); // Lock
 
-            // Evaluate new model to store
-            const curData = await this.redis.hgetall(key); // {} if the key does not exist
-            const curModel = this.deserialize(curData);
-            const newModel = Object.assign(curModel, update); // Merge
-            if (increment) {
-                for (const [field, value] of Object.entries(increment)) {
-                    const key = field as keyof StorageModel;
-                    if (key in newModel && typeof newModel[key] !== 'number') {
-                        await this.redis.unwatch(); // Unlock
-                        throw new Error(`@increment tries to increment non-numeric field [${field}].`);
-                    }
-                    newModel[key] = (newModel[key] || 0) + value;
+            try {
+                // Evaluate new model to store
+                const curData = await this.redis.hgetall(key); // {} if the key does not exist
+                const curModel = this.deserialize(curData);
+                const newModel = this.prepareUpdatedModel(curModel, update, increment);
+
+                // Create transaction pipeline
+                const data = this.serialize({ ...newModel, id });
+                const pipeline = this.redis.multi().hset(key, data);
+                if (this.ttl > 0) pipeline.expire(key, this.ttl);
+
+                // Execute transaction
+                const results = await pipeline.exec(); // Unlock, null if the key has been changed
+                if (results) {
+                    RedisStorageService.throwIfTransactionError(results);
+                    return this.deserialize(data);
                 }
-            }
 
-            // Execute pipeline
-            const data = this.serialize({ ...newModel, id });
-            const pipeline = this.redis.multi().hset(key, data);
-            if (this.ttl > 0) pipeline.expire(key, this.ttl);
-
-            const results = await pipeline.exec(); // Unlock, null if the key has been changed
-            if (results) {
-                RedisStorageService.throwIfTransactionError(results);
-                return this.deserialize(data);
+                // Retry until max retry count reached
+            } catch (e) {
+                await this.redis.unwatch(); // Unlock explicitly
+                throw e; // Rethrow
             }
         }
 
         const message = `transaction max retries exceeded.`;
         _err(NS, `> updateCAS[${id}].err =`, message);
         throw new Error(`redis error: ${message}`);
+    }
+
+    /**
+     * Prepare new model - original model + update + increment
+     * @param orig
+     * @param update
+     * @param increment
+     * @private
+     */
+    private prepareUpdatedModel(orig: T, update?: T, increment?: T): T {
+        const updated = Object.assign(orig, update);
+        if (increment) {
+            for (const [field, value] of Object.entries(increment)) {
+                const key = field as keyof StorageModel;
+                const oldVal = updated[key] || orig[key] || 0;
+                if (typeof oldVal !== 'number') {
+                    throw new Error(`.${key} is non-numeric field and cannot be incremented.`);
+                }
+                updated[key] = oldVal + value;
+            }
+        }
+        return updated;
     }
 
     /**
@@ -353,6 +373,7 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
 
 /**
  * class `DummyRedisStorageService`
+ *  - Use local redis server and non-default logical database
  */
 export class DummyRedisStorageService<T extends StorageModel> extends RedisStorageService<T> {
     /**
@@ -367,7 +388,7 @@ export class DummyRedisStorageService<T extends StorageModel> extends RedisStora
     public constructor() {
         super({
             endpoint: 'localhost:6379',
-            tableName: ++DummyRedisStorageService.dbIndex, // Open new DB
+            tableName: ++DummyRedisStorageService.dbIndex, // Open non-default DB
         });
     }
 
