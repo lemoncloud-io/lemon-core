@@ -212,8 +212,11 @@ export class DynamoService<T extends GeneralItem> {
      * @param $increment    increment set.
      */
     public prepareUpdateItem(id: string, sort: any, $update: T, $increment: Incrementable) {
+        const debug = 0 ? true : false;
         const { tableName, idName, sortName } = this.options;
-        // _log(NS, `prepareUpdateItem(${tableName}/${id}/${sort || ''})...`);
+        debug && _log(NS, `prepareUpdateItem(${tableName}/${id}/${sort || ''})...`);
+        debug && $update && _log(NS, `> $update =`, $U.json($update));
+        debug && $increment && _log(NS, `> $increment =`, $U.json($increment));
         const Key = this.prepareItemKey(id, sort).Key;
         const norm = (_: string) => `${_}`.replace(/[.\\:\/]/g, '_');
 
@@ -229,7 +232,7 @@ export class DynamoService<T extends GeneralItem> {
                 memo.ExpressionAttributeNames[`#${key2}`] = key;
                 memo.ExpressionAttributeValues[`:${key2}`] = value === '' ? null : value;
                 memo.UpdateExpression.push(`#${key2} = :${key2}`);
-                // _log(NS, '>> ' + `#${key} :=`, typeof value, $U.json(value));
+                debug && _log(NS, '>> ' + `#${key} :=`, typeof value, $U.json(value));
                 return memo;
             },
             {
@@ -248,11 +251,20 @@ export class DynamoService<T extends GeneralItem> {
             $_.reduce(
                 $increment,
                 (memo: any, value: any, key: string) => {
-                    memo.ExpressionAttributeNames[`#${key}`] = key;
-                    memo.ExpressionAttributeValues[`:${key}`] = value;
-                    memo.ExpressionAttributeValues[`:${key}0`] = 0;
-                    memo.UpdateExpression.push(`#${key} = if_not_exists(#${key}, :${key}0) + :${key}`);
-                    // _log(NS, '>> ' + `#${key} = #${key} + :${value}`);
+                    if (!Array.isArray(value)) {
+                        memo.ExpressionAttributeNames[`#${key}`] = key;
+                        memo.ExpressionAttributeValues[`:${key}`] = value;
+                        memo.ExpressionAttributeValues[`:${key}0`] = 0;
+                        memo.UpdateExpression.push(`#${key} = if_not_exists(#${key}, :${key}0) + :${key}`);
+                        debug && _log(NS, '>> ' + `#${key} = #${key} + :${value}`);
+                    } else {
+                        //! support to append [] into array.
+                        memo.ExpressionAttributeNames[`#${key}`] = key; // target attribute name
+                        memo.ExpressionAttributeValues[`:${key}`] = value; // list to append like `[1,2,3]`
+                        memo.ExpressionAttributeValues[`:${key}0`] = []; // empty array if not exists.
+                        memo.UpdateExpression.push(`#${key} = list_append(if_not_exists(#${key}, :${key}0), :${key})`);
+                        debug && _log(NS, '>> ' + `#${key} = #${key} + [${value.join(',')}]`);
+                    }
                     return memo;
                 },
                 payload,
