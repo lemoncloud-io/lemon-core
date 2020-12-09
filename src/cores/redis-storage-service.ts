@@ -46,9 +46,12 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
      * Environment variable name for redis server endpoint
      * @static
      */
-    public static readonly ENV_REDIS_ENDPOINT = 'REDIS_ENDPOINT';
-    public static readonly ENV_REDIS_TABLE = 'REDIS_TABLE';
+    public static readonly ENV_REDIS_ENDPOINT = 'MY_REDIS_ENDPOINT';
 
+    /**
+     * Maximum retry count of check-and-save behavior
+     * @static
+     */
     public static readonly CAS_MAX_RETRIES = 5;
 
     /**
@@ -78,13 +81,13 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
         const defTimeout = $U.N(options?.defTimeout, 0);
 
         if (typeof options.tableName === 'number') {
-            // Open in non default database (for dummy use)
+            // For dummy: open in non-default database (db index > 0)
             this.redis = new IORedis(options.endpoint, { db: options.tableName });
             this.tableName = 'dummy';
         } else {
-            // Open in default database w/ virtual table
+            // For normal usage: open in default database (db index = 0) w/ virtual table
             const endpoint = options.endpoint || $U.env(RedisStorageService.ENV_REDIS_ENDPOINT);
-            const tableName = options.tableName || $U.env(RedisStorageService.ENV_REDIS_TABLE);
+            const tableName = options.tableName;
             if (!endpoint) throw new Error(`.endpoint (URL) is required.`);
             if (!tableName) throw new Error(`.tableName (string) is required.`);
             this.redis = new IORedis(endpoint, { keyPrefix: tableName });
@@ -115,7 +118,9 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
         const key = this.asKey(id);
         const data = await this.redis.hgetall(key); // {} if the key does not exist
         if (Object.keys(data).length > 0) {
-            return this.deserialize(data);
+            const ret = this.deserialize(data);
+            _log(NS, `> read[${id}].ret =`, $U.json(ret));
+            return ret;
         }
 
         throw new Error(`404 NOT FOUND - ${this.tableName}/${id}`);
@@ -141,7 +146,9 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
             // 1. Return if a model found
             if (Object.keys(data).length > 0) {
                 await this.redis.unwatch(); // Unlock
-                return this.deserialize(data);
+                const ret = this.deserialize(data);
+                _log(NS, `> readOrCreate[${id}(read)].ret =`, $U.json(ret));
+                return ret;
             }
 
             // 2. Otherwise try to create a new model
@@ -150,10 +157,16 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
             if (this.ttl > 0) pipeline.expire(key, this.ttl);
 
             const results = await pipeline.exec(); // Unlock, null if the key has been changed
-            if (results) return this.deserialize(data);
+            if (results) {
+                const ret = this.deserialize(data);
+                _log(NS, `> readOrCreate[${id}(created)].ret =`, $U.json(ret));
+                return ret;
+            }
         }
 
-        throw new Error(`readOrCreate[${id}] failed: transaction max retries exceeded.`);
+        const message = `transaction max retries exceeded.`;
+        _err(NS, `> readOrCreate[${id}].err =`, message);
+        throw new Error(`redis error: ${message}`);
     }
 
     /**
@@ -170,12 +183,14 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
         const data = this.serialize({ ...model, id });
         const pipeline = this.redis
             .multi()
-            .del(key)
+            .del(key) // TODO: 만약 save의 overwrite 정책이 기존 존재하는 키는 유지하는 것이라면 del()은 제거해야 함
             .hset(key, data);
         if (this.ttl > 0) pipeline.expire(key, this.ttl);
-
         await pipeline.exec();
-        return this.deserialize(data);
+
+        const ret = this.deserialize(data);
+        _log(NS, `> save[${id}].ret =`, $U.json(ret));
+        return ret;
     }
 
     /**
@@ -187,7 +202,10 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
     public async update(id: string, update: T, increment?: T): Promise<T> {
         if (!id) throw new Error(`@id is required.`);
         if (!update) throw new Error(`@update is required.`);
-        return await this.updateCAS(id, update, increment);
+
+        const ret = await this.updateCAS(id, update, increment);
+        _log(NS, `> update[${id}].ret =`, $U.json(ret));
+        return ret;
     }
 
     /**
@@ -200,7 +218,10 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
     public async increment(id: string, increment: T, update?: T): Promise<T> {
         if (!id) throw new Error(`@id is required.`);
         if (!increment) throw new Error(`@increment is required.`);
-        return await this.updateCAS(id, update, increment);
+
+        const ret = await this.updateCAS(id, update, increment);
+        _log(NS, `> increment[${id}].ret =`, $U.json(ret));
+        return ret;
     }
 
     /**
@@ -227,7 +248,9 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
 
         const data = results[0][1];
         if (Object.keys(data).length > 0) {
-            return this.deserialize(data);
+            const ret = this.deserialize(data);
+            _log(NS, `> delete[${id}].ret =`, $U.json(ret));
+            return ret;
         }
 
         throw new Error(`404 NOT FOUND - ${this.tableName}/${id}`);
@@ -304,7 +327,9 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
             if (results) return this.deserialize(data);
         }
 
-        throw new Error(`redis error: transaction max retries exceeded.`);
+        const message = `transaction max retries exceeded.`;
+        _err(NS, `> updateCAS[${id}].err =`, message);
+        throw new Error(`redis error: ${message}`);
     }
 }
 
