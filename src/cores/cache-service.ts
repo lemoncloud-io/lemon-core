@@ -176,6 +176,13 @@ export class CacheService {
     }
 
     /**
+     * Close backend and connection
+     */
+    public async close(): Promise<void> {
+        await this.backend.close();
+    }
+
+    /**
      * Check whether the key is cached
      *
      * @return  true if the key is cached
@@ -642,6 +649,11 @@ interface CacheBackend {
      *          - undefined if the key does not exist
      */
     ttl(key: string): Promise<number | undefined>;
+
+    /**
+     * Close connection(s) to the cache server
+     */
+    close(): Promise<void>;
 }
 
 /** ********************************************************************************************************************
@@ -752,6 +764,13 @@ class NodeCacheBackend implements CacheBackend {
         const ts = this.cache.getTtl(key); // Timestamp in milliseconds
         return ts && ts - Date.now();
     }
+
+    /**
+     * CacheBackend.close implementation
+     */
+    public async close(): Promise<void> {
+        this.cache.close();
+    }
 }
 
 /**
@@ -777,6 +796,7 @@ class MemcachedBackend implements CacheBackend {
         del: (key: string) => Promise<boolean>;
         items: () => Promise<Memcached.StatusData[]>;
         cachedump: (server: string, slabid: number, number: number) => Promise<Memcached.CacheDumpData[]>;
+        end: () => void;
     };
 
     /**
@@ -815,6 +835,7 @@ class MemcachedBackend implements CacheBackend {
                     });
                 });
             },
+            end: memcached.end.bind(memcached),
         };
         // default TTL
         this.defTTL = defTTL;
@@ -966,6 +987,13 @@ class MemcachedBackend implements CacheBackend {
         const entry = await this.api.get(key); // undefined if key does not exist
         return entry?.exp && entry.exp - Date.now();
     }
+
+    /**
+     * CacheBackend.close implementation
+     */
+    public async close(): Promise<void> {
+        this.api.end();
+    }
 }
 
 /**
@@ -1112,5 +1140,12 @@ class RedisBackend implements CacheBackend {
         const ms = await this.redis.pttl(key); // -2: key does not exist / -1: no timeout
         if (ms >= 0) return ms;
         if (ms === -1) return 0;
+    }
+
+    /**
+     * CacheBackend.close implementation
+     */
+    public async close(): Promise<void> {
+        await this.redis.quit();
     }
 }

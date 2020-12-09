@@ -25,9 +25,12 @@ export async function isLocalCacheAvailable(type: 'memcached' | 'redis'): Promis
 
     return new Promise(resolve => {
         const socket = net.createConnection({ port, host });
-        socket.setTimeout(300);
+        socket.setTimeout(200);
         socket
-            .on('connect', () => resolve(true))
+            .on('connect', () => {
+                socket.destroy();
+                resolve(true);
+            })
             .on('timeout', () => resolve(false))
             .on('error', () => resolve(false));
     });
@@ -41,6 +44,7 @@ describe('DummyCacheService', () => {
         expect2(() => cache instanceof CacheService).toBeTruthy();
         expect2(() => cache instanceof DummyCacheService).toBeTruthy();
         expect2(() => cache.hello()).toEqual('dummy-cache-service:node-cache:cache-service-test');
+        await cache.close();
         done();
     });
 
@@ -107,6 +111,9 @@ describe('DummyCacheService', () => {
         expect2(await cacheA2.get('c').catch(GETERR)).toEqual(1);
         expect2(await cacheB.get('c').catch(GETERR)).toEqual(2);
 
+        await cacheA1.close();
+        await cacheA2.close();
+        await cacheB.close();
         done();
     });
 
@@ -154,6 +161,7 @@ describe('DummyCacheService', () => {
         // failed: undefined value
         expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
 
+        await cache.close();
         done();
     });
 
@@ -182,6 +190,7 @@ describe('DummyCacheService', () => {
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         /* eslint-enable prettier/prettier */
+        await cache.close();
         done();
     });
 
@@ -200,6 +209,7 @@ describe('DummyCacheService', () => {
         expect2(await cache.exists('a').catch(GETERR)).toEqual(false);
         expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
 
+        await cache.close();
         done();
     });
 
@@ -247,6 +257,7 @@ describe('DummyCacheService', () => {
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         /* eslint-enable prettier/prettier */
+        await cache.close();
         done();
     });
 });
@@ -257,6 +268,7 @@ describe('CacheService - Memcached', () => {
         expect2(() => cache instanceof CacheService).toBeTruthy();
         expect2(() => cache instanceof DummyCacheService).toBeFalsy();
         expect2(() => cache.hello()).toEqual('cache-service:memcached:cache-service-test');
+        await cache.close();
         done();
     });
 
@@ -308,6 +320,7 @@ describe('CacheService - Memcached', () => {
         // failed: undefined value
         expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
 
+        await cache.close();
         done();
     });
 
@@ -337,6 +350,7 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         /* eslint-enable prettier/prettier */
+        await cache.close();
         done();
     });
 
@@ -355,6 +369,7 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.exists('a').catch(GETERR)).toEqual(false);
         expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
 
+        await cache.close();
         done();
     });
 
@@ -401,6 +416,7 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         /* eslint-enable prettier/prettier */
+        await cache.close();
         done();
     });
 });
@@ -411,6 +427,7 @@ describe('CacheService - Redis', () => {
         expect2(() => cache instanceof CacheService).toBeTruthy();
         expect2(() => cache instanceof DummyCacheService).toBeFalsy();
         expect2(() => cache.hello()).toEqual('cache-service:redis:cache-service-test');
+        await cache.close();
         done();
     });
 
@@ -462,6 +479,7 @@ describe('CacheService - Redis', () => {
         // failed: undefined value
         expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
 
+        await cache.close();
         done();
     });
 
@@ -491,6 +509,7 @@ describe('CacheService - Redis', () => {
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         /* eslint-enable prettier/prettier */
+        await cache.close();
         done();
     });
 
@@ -509,6 +528,7 @@ describe('CacheService - Redis', () => {
         expect2(await cache.exists('a').catch(GETERR)).toEqual(false);
         expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
 
+        await cache.close();
         done();
     });
 
@@ -555,6 +575,7 @@ describe('CacheService - Redis', () => {
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         /* eslint-enable prettier/prettier */
+        await cache.close();
         done();
     });
 });

@@ -108,6 +108,13 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
     }
 
     /**
+     * Disconnect from redis
+     */
+    public async quit(): Promise<void> {
+        await this.redis.quit();
+    }
+
+    /**
      * Read model by id
      *
      * @param id

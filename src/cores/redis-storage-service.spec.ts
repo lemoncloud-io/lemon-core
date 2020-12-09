@@ -28,6 +28,7 @@ describe('RedisStorageService', () => {
         expect2(() => service instanceof RedisStorageService).toBeTruthy();
         expect2(() => service instanceof DummyRedisStorageService).toBeTruthy();
         expect2(() => service.hello()).toEqual('dummy-redis-storage-service');
+        await service.quit();
         done();
     });
 
@@ -53,6 +54,7 @@ describe('RedisStorageService', () => {
         expect2(() => service.deserialize(data)).toEqual({ type: 'test' });
 
         /* eslint-enable prettier/prettier */
+        await service.quit();
         done();
     });
 
@@ -95,6 +97,7 @@ describe('RedisStorageService', () => {
         expect2(await service.delete('b').catch(GETERR)).toEqual(`404 NOT FOUND - dummy/b`);
 
         /* eslint-enable prettier/prettier */
+        await service.quit();
         done();
     });
 });
