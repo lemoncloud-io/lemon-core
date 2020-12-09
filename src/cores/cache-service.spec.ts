@@ -8,18 +8,18 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import net from 'net';
-import { expect2, GETERR } from '..';
-import { CacheService, DummyCacheService, sleep } from './cache-service';
+import { expect2, GETERR, _it } from '..';
+import { CacheService, DummyCacheService, sleep, toTTL, fromTTL } from './cache-service';
 
 export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'cache-service-test') => {
     if (type === 'dummy') {
         return { cache: DummyCacheService.create({ ns, defTimeout: 0 }) };
     } else {
-        return { cache: CacheService.create({ type, ns, defTimeout: 0 }) };
+        return { cache: CacheService.create({ type, ns, defTimeout: 0 }) }; // use local cache server
     }
 };
 
-async function isCacheAvailable(type: 'memcached' | 'redis'): Promise<boolean> {
+export async function isLocalCacheAvailable(type: 'memcached' | 'redis'): Promise<boolean> {
     const host = 'localhost';
     const port = type == 'memcached' ? 11211 : 6379;
 
@@ -41,6 +41,31 @@ describe('DummyCacheService', () => {
         expect2(() => cache instanceof CacheService).toBeTruthy();
         expect2(() => cache instanceof DummyCacheService).toBeTruthy();
         expect2(() => cache.hello()).toEqual('dummy-cache-service:node-cache:cache-service-test');
+        done();
+    });
+
+    it('TTL conversion', async done => {
+        // toTTL(): seconds -> seconds
+        expect2(() => toTTL(10)).toBe(10);
+        expect2(() => toTTL(10)).toBe(10);
+        expect2(() => toTTL(null)).toBe(0);
+        // toTTL(): .expireIn -> seconds
+        expect2(() => toTTL({ expireIn: 10 })).toBe(10);
+        // toTTL(): .expireAt -> seconds
+        expect2(() => toTTL({ expireAt: Date.now() + 750 })).toBe(1);
+        expect2(() => toTTL({ expireAt: Date.now() + 1250 })).toBe(2);
+        expect2(() => toTTL({ expireAt: Date.now() + 2800 })).toBe(3);
+        // toTTL(): error handling
+        expect2(() => toTTL(undefined)).toBe(`@timeout (number | Timeout) is invalid.`);
+        expect2(() => toTTL({ expireIn: {} as any })).toBe(`@timeout (number | Timeout) is invalid.`);
+        expect2(() => toTTL({ expireAt: '' as any })).toBe(`@timeout (number | Timeout) is invalid.`);
+
+        // fromTTL():
+        expect2(() => fromTTL(0)).toBe(0); // 0 means no timeout
+        expect2(() => fromTTL(null)).toBe(0);
+        expect2(() => fromTTL(undefined)).toBe(0);
+        expect2(() => fromTTL(3)).toBeGreaterThan(Date.now() + 2000); // 3 seconds from now
+
         done();
     });
 
@@ -178,7 +203,7 @@ describe('DummyCacheService', () => {
         done();
     });
 
-    it('TTL', async done => {
+    _it('TTL', async done => {
         const { cache } = instance('dummy');
         /* eslint-disable prettier/prettier */
 
@@ -236,7 +261,7 @@ describe('CacheService - Memcached', () => {
     });
 
     it('set/get/exists/delete', async done => {
-        if (!(await isCacheAvailable('memcached'))) return done();
+        if (!(await isLocalCacheAvailable('memcached'))) return done();
         const { cache } = instance('memcached', 'TC01');
 
         // setup test
@@ -287,7 +312,7 @@ describe('CacheService - Memcached', () => {
     });
 
     it('setMulti/getMulti/deleteMulti', async done => {
-        if (!(await isCacheAvailable('memcached'))) return done();
+        if (!(await isLocalCacheAvailable('memcached'))) return done();
         const { cache } = instance('memcached', 'TC02');
         /* eslint-disable prettier/prettier */
 
@@ -316,7 +341,7 @@ describe('CacheService - Memcached', () => {
     });
 
     it('getAndSet/getAndDelete', async done => {
-        if (!(await isCacheAvailable('memcached'))) return done();
+        if (!(await isLocalCacheAvailable('memcached'))) return done();
         const { cache } = instance('memcached', 'TC03');
 
         // setup test
@@ -333,8 +358,8 @@ describe('CacheService - Memcached', () => {
         done();
     });
 
-    it('TTL', async done => {
-        if (!(await isCacheAvailable('memcached'))) return done();
+    _it('TTL', async done => {
+        if (!(await isLocalCacheAvailable('memcached'))) return done();
         const { cache } = instance('memcached', 'TC04');
         /* eslint-disable prettier/prettier */
 
@@ -390,7 +415,7 @@ describe('CacheService - Redis', () => {
     });
 
     it('set/get/exists/delete', async done => {
-        if (!(await isCacheAvailable('redis'))) return done();
+        if (!(await isLocalCacheAvailable('redis'))) return done();
         const { cache } = instance('redis', 'TC01');
 
         // setup test
@@ -441,7 +466,7 @@ describe('CacheService - Redis', () => {
     });
 
     it('setMulti/getMulti/deleteMulti', async done => {
-        if (!(await isCacheAvailable('redis'))) return done();
+        if (!(await isLocalCacheAvailable('redis'))) return done();
         const { cache } = instance('redis', 'TC02');
         /* eslint-disable prettier/prettier */
 
@@ -470,7 +495,7 @@ describe('CacheService - Redis', () => {
     });
 
     it('getAndSet/getAndDelete', async done => {
-        if (!(await isCacheAvailable('redis'))) return done();
+        if (!(await isLocalCacheAvailable('redis'))) return done();
         const { cache } = instance('redis', 'TC03');
 
         // setup test
@@ -487,8 +512,8 @@ describe('CacheService - Redis', () => {
         done();
     });
 
-    it('TTL', async done => {
-        if (!(await isCacheAvailable('redis'))) return done();
+    _it('TTL', async done => {
+        if (!(await isLocalCacheAvailable('redis'))) return done();
         const { cache } = instance('redis', 'TC04');
         /* eslint-disable prettier/prettier */
 

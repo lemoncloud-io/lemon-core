@@ -493,20 +493,21 @@ export async function sleep(ms: number): Promise<void> {
  * @param timeout   timeout in seconds or Timeout object
  * @return  remaining time to live in seconds
  */
-function toTTL(timeout: number | Timeout): number {
+export function toTTL(timeout: number | Timeout): number {
     switch (typeof timeout) {
         case 'number':
             return timeout;
         case 'object':
-            if ('expireIn' in timeout) return timeout.expireIn;
-            if ('expireAt' in timeout) {
+            if (!timeout) return 0;
+            const { expireIn, expireAt } = timeout;
+            if (typeof expireIn === 'number') return expireIn;
+            if (typeof expireAt === 'number') {
                 const msTTL = timeout.expireAt - Date.now();
                 return Math.ceil(msTTL / 1000);
             }
-            return 0;
-        default:
-            throw new Error(`@timeout (number | Timeout) is invalid.`);
+            break;
     }
+    throw new Error(`@timeout (number | Timeout) is invalid.`);
 }
 
 /**
@@ -514,8 +515,8 @@ function toTTL(timeout: number | Timeout): number {
  * @param ttl   remaining time to live in seconds
  * @return      timestamp in milliseconds since epoch
  */
-function fromTTL(ttl: number): number {
-    return ttl && Date.now() + ttl * 1000;
+export function fromTTL(ttl: number): number {
+    return ttl > 0 ? Date.now() + ttl * 1000 : 0;
 }
 
 /** ********************************************************************************************************************
