@@ -38,6 +38,7 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
             next = async () => ({ hello: 'LIST' });
             break;
         case 'GET':
+            //TODO - serve binary like `/favicon.ico`
         case 'POST':
             if (false) false;
             else if (id == '0') next = async id => { throw new Error(`404 NOT FOUND - id:${id}`); };

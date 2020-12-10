@@ -17,8 +17,8 @@ import {
     APIGatewayProxyResult,
     CognitoUserPoolTriggerEvent,
     DynamoDBStreamEvent,
-    SNSEvent,
-    SQSEvent,
+    SNSEvent as AWSSNSEvent,
+    SQSEvent as AWSSQSEvent,
 } from 'aws-lambda';
 import { NextContext, ProtocolParam, CoreConfigService } from './../core-services';
 import { GETERR } from '../../common/test-helper';
@@ -47,6 +47,9 @@ export interface CronEvent {
 export type WEBEvent = APIGatewayProxyEvent;
 export type WEBResult = APIGatewayProxyResult;
 export type WSSEvent = APIGatewayProxyEvent;
+export type DDSEvent = DynamoDBStreamEvent;
+export type SNSEvent = AWSSNSEvent;
+export type SQSEvent = AWSSQSEvent;
 export type WSSResult = any;
 
 //! define and export all types.
@@ -61,7 +64,7 @@ export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
 export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
 export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
 
-export type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'cron' | 'cognito' | 'dynamo-stream' | 'notification';
+export type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'dds' | 'cron' | 'cognito' | 'dynamo-stream' | 'notification';
 
 /**
  * class: `LambdaHandlerService`
@@ -147,8 +150,10 @@ export class LambdaHandler {
      * @param handler   handler of service
      */
     public setHandler(type: HandlerType, handler: LambdaHandlerService | Handler) {
+        let key = `${type || ''}`.toLowerCase().trim();
+        key = key === 'dynamo-stream' ? 'dds' : key;
         // console.info(`! set-handler[${type}] =`, typeof handler);
-        this._map[type] = handler;
+        if (key) this._map[key] = handler;
     }
 
     //! Find Service By Event
@@ -185,7 +190,7 @@ export class LambdaHandler {
                 const ddb: any[] = records.filter((_: any) => (_.dynamodb ? true : false)); // via dynamodb
                 if (sns.length) return 'sns';
                 if (sqs.length) return 'sqs';
-                if (ddb.length) return 'dynamo-stream';
+                if (ddb.length) return 'dds';
             }
         }
     };

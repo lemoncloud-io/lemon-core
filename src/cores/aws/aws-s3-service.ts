@@ -322,7 +322,7 @@ export class AWSS3Service implements CoreS3Service {
             Body: file.buffer,
             ContentType: file.contentType,
             ContentLength: file.contentLength,
-            ContentMD5: file.contentMD5,
+            // ContentMD5: file.contentMD5, // raise error when S3 library explicitly uses multipart upload because the file is big
         };
         _log(NS, `> params.Key =`, params.Key);
         _log(NS, `> params.ContentType =`, params.ContentType);

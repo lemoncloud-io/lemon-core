@@ -198,20 +198,20 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      */
     public async update(id: string, model: T, incrementals?: T): Promise<T> {
         const fields = this._fields || [];
-        const data: MyGeneral = fields.reduce((N: any, key) => {
+        const $U: MyGeneral = fields.reduce((N: any, key) => {
             const val = (model as any)[key];
             if (val !== undefined) N[key] = val;
             return N;
         }, {});
         /* eslint-disable prettier/prettier */
-        const increments: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
+        const $I: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
             const val = (incrementals as any)[key];
             if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
             M[key] = val;
             return M;
         }, {});
         /* eslint-enable prettier/prettier */
-        const ret: any = await this.$dynamo.updateItem(id, undefined, data, increments);
+        const ret: any = await this.$dynamo.updateItem(id, undefined, $U, $I);
         return ret as T;
     }
 
@@ -237,21 +237,19 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
         }, {});
         const $I: Incrementable = fields.reduce((N: any, key) => {
             const val = (model as any)[key];
-            // if (val !== undefined && typeof val !== 'number') throw new Error(`number is required at key:${key}`);
             if (val !== undefined) {
                 const org = ($org as any)[key];
                 //! check type matched!
                 if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
                     throw new Error(`.${key} (${val}) should be number!`);
                 //! if not exists, update it.
-                if (org === undefined) $U[key] = val;
-                else if (typeof val !== 'number') $U[key] = val;
+                if (org === undefined && typeof val === 'number') N[key] = val;
+                else if (typeof val !== 'number' && !Array.isArray(val)) $U[key] = val;
                 else N[key] = val;
             }
             return N;
         }, {});
-        const _KN = <T>(U: T) => (Object.keys(U) ? U : null);
-        const ret: any = await this.$dynamo.updateItem(id, undefined, _KN($U), _KN($I));
+        const ret: any = await this.$dynamo.updateItem(id, undefined, $U, $I);
         return ret as T;
     }
 

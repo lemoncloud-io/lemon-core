@@ -23,8 +23,12 @@ export * from './controllers/';
 import engine from './engine/';
 import cores from './cores/';
 
+import * as lib from './lib/';
 import * as tools from './tools/';
-import * as controllers from './tools/';
+import * as controllers from './controllers/';
+
+//! export as named.
+export { lib, tools };
 
 //! export as default.
 export default { engine, cores, tools, controllers };

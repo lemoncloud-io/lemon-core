@@ -32,6 +32,78 @@ export const instance = () => {
 //! main test body.
 describe('DynamoService', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    //! test prepareUpdateItem
+    describe('UpdateExpression', () => {
+        const { dummy } = instance();
+        const id = '00';
+        const sort: string | number = null;
+        let payload: any;
+
+        it('update', () => {
+            /* eslint-disable prettier/prettier */
+
+            payload = dummy.prepareUpdateItem(id, sort, {});
+            expect2(() => payload.UpdateExpression).toBe('');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({});
+            expect2(() => payload.ExpressionAttributeValues).toEqual({});
+
+            payload = dummy.prepareUpdateItem(id, sort, { myField: 'str' });
+            expect2(() => payload.UpdateExpression).toBe('SET #myField = :myField');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField': 'myField' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField': 'str' });
+
+            payload = dummy.prepareUpdateItem(id, sort, { fieldA: 1, fieldB: ['l', 'i', 's', 't'] });
+            expect2(() => payload.UpdateExpression).toBe('SET #fieldA = :fieldA, #fieldB = :fieldB');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#fieldA': 'fieldA', '#fieldB': 'fieldB' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':fieldA': 1, ':fieldB': ['l', 'i', 's', 't'] });
+
+            /* eslint-enable prettier/prettier */
+        });
+
+        it('increment number', () => {
+            /* eslint-disable prettier/prettier */
+
+            payload = dummy.prepareUpdateItem(id, sort, {}, { myField: 1 });
+            expect2(() => payload.UpdateExpression).toBe('ADD #myField :myField');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField': 'myField' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField': 1 });
+
+            payload = dummy.prepareUpdateItem(id, sort, { fieldA: 'str' }, { fieldB: -1 });
+            expect2(() => payload.UpdateExpression).toBe('SET #fieldA = :fieldA ADD #fieldB :fieldB');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#fieldA': 'fieldA', '#fieldB': 'fieldB' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':fieldA': 'str', ':fieldB': -1 });
+
+            /* eslint-enable prettier/prettier */
+        });
+
+        it('list append/replace/remove', () => {
+            /* eslint-disable prettier/prettier */
+
+            payload = dummy.prepareUpdateItem(id, sort, {}, { myField: [3, 1] } as any);
+            expect2(() => payload.UpdateExpression).toBe('SET #myField = list_append(if_not_exists(#myField, :myField_0), :myField)');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField': 'myField' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField': [3, 1], ':myField_0': [] });
+
+            payload = dummy.prepareUpdateItem(id, sort, { fieldA: { setIndex: [[1, 'a'], [3, 3]] } });
+            expect2(() => payload.UpdateExpression).toBe('SET #fieldA[1] = :fieldA_0_, #fieldA[3] = :fieldA_1_');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#fieldA': 'fieldA' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':fieldA_0_': 'a', ':fieldA_1_': 3 });
+
+            payload = dummy.prepareUpdateItem(id, sort, { fieldA: { removeIndex: [2, 3] } });
+            expect2(() => payload.UpdateExpression).toBe('REMOVE #fieldA[2], #fieldA[3]');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#fieldA': 'fieldA' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({});
+
+            // all together
+            payload = dummy.prepareUpdateItem(id, sort, { fieldA: [1, null], fieldC: { removeIndex: [1] }, fieldD: { setIndex: [[3, 3]] } }, { fieldB: [2, 4] });
+            expect2(() => payload.UpdateExpression).toBe('SET #fieldA = :fieldA, #fieldD[3] = :fieldD_0_, #fieldB = list_append(if_not_exists(#fieldB, :fieldB_0), :fieldB) REMOVE #fieldC[1]');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#fieldA': 'fieldA', '#fieldB': 'fieldB', '#fieldC': 'fieldC', '#fieldD': 'fieldD' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':fieldA': [1, null], ':fieldB': [2, 4], ':fieldB_0': [], ':fieldD_0_': 3 });
+
+            /* eslint-enable prettier/prettier */
+        });
+    });
+
     //! dummy storage service.
     describe('DummyDynamoService', () => {
         //! load dummy storage service.
