@@ -14,7 +14,7 @@ import IORedis, { Redis } from 'ioredis';
 import { $U, _log, _inf } from '../engine';
 
 // Log namespace
-const NS = $U.NS('CACHES', 'green');
+const NS = $U.NS('CCHS', 'green');
 
 /** ********************************************************************************************************************
  *  Exported Types

@@ -86,6 +86,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 2.2.14    | support `CacheService`, and support appending entry into list in `Dynamo`.
 | 2.2.13    | improve `LambdaWEBHandler` to support custom web-response including headers.
 | 2.2.12    | fix `AWSS3Service` to use pure JS image library because of AWS compatibility issue
 | 2.2.11    | improve `AWSS3Service` by adding handy method and metadata+tag handling
