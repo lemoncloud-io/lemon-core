@@ -32,6 +32,16 @@ export interface DynamoOption {
     // deletedAt?: boolean | string; // flag (or overrided name).
 }
 
+/**
+ * type `Updatable`: parameter for updateItem
+ *  - update field
+ *  - 'setIndex': array of [index, value] - replace elements in list field
+ *  - 'removeIndex': array of indices - remove elements from list field
+ */
+export interface Updatable {
+    [key: string]: GeneralItem['key'] | { setIndex: [number, string | number][] } | { removeIndex: number[] };
+}
+
 //! create(or get) instance.
 const instance = () => {
     const region = 'ap-northeast-2';
@@ -211,7 +221,7 @@ export class DynamoService<T extends GeneralItem> {
      * @param $update       update set
      * @param $increment    increment set.
      */
-    public prepareUpdateItem(id: string, sort: any, $update: T, $increment: Incrementable) {
+    public prepareUpdateItem(id: string, sort: any, $update: Updatable, $increment?: Incrementable) {
         const debug = 0 ? true : false;
         const { tableName, idName, sortName } = this.options;
         debug && _log(NS, `prepareUpdateItem(${tableName}/${id}/${sort || ''})...`);
@@ -226,19 +236,38 @@ export class DynamoService<T extends GeneralItem> {
             (memo: any, value: any, key: string) => {
                 //! ignore if key
                 if (key === idName || key === sortName) return memo;
-                value = normalize(value);
-                //! prepare update-expression.
                 const key2 = norm(key);
-                memo.ExpressionAttributeNames[`#${key2}`] = key;
-                memo.ExpressionAttributeValues[`:${key2}`] = value === '' ? null : value;
-                memo.UpdateExpression.push(`#${key2} = :${key2}`);
-                debug && _log(NS, '>> ' + `#${key} :=`, typeof value, $U.json(value));
+                value = normalize(value);
+                if (Array.isArray(value.setIndex)) {
+                    //! support set items in list
+                    value.setIndex.forEach(([idx, value]: [number, string | number], seq: number) => {
+                        if (idx !== undefined && value !== undefined) {
+                            memo.ExpressionAttributeNames[`#${key2}`] = key;
+                            memo.ExpressionAttributeValues[`:${key2}_${seq}_`] = value;
+                            memo.UpdateExpression.SET.push(`#${key2}[${idx}] = :${key2}_${seq}_`);
+                        }
+                    });
+                } else if (Array.isArray(value.removeIndex)) {
+                    //! support removing items from list
+                    value.removeIndex.forEach((idx: number) => {
+                        if (idx !== undefined) {
+                            memo.ExpressionAttributeNames[`#${key2}`] = key2;
+                            memo.UpdateExpression.REMOVE.push(`#${key2}[${idx}]`);
+                        }
+                    });
+                } else {
+                    //! prepare update-expression.
+                    memo.ExpressionAttributeNames[`#${key2}`] = key;
+                    memo.ExpressionAttributeValues[`:${key2}`] = value === '' ? null : value;
+                    memo.UpdateExpression.SET.push(`#${key2} = :${key2}`);
+                    debug && _log(NS, '>> ' + `#${key} :=`, typeof value, $U.json(value));
+                }
                 return memo;
             },
             {
                 TableName: tableName,
                 Key,
-                UpdateExpression: [],
+                UpdateExpression: { SET: [], REMOVE: [], ADD: [], DELETE: [] },
                 ExpressionAttributeNames: {},
                 ExpressionAttributeValues: {},
                 ConditionExpression: null, // "size(a) > :num "
@@ -250,28 +279,35 @@ export class DynamoService<T extends GeneralItem> {
             //! increment field.
             $_.reduce(
                 $increment,
-                (memo: any, value: any, key: string) => {
+                (memo: any, value: number | (string | number)[], key: string) => {
+                    const key2 = norm(key);
                     if (!Array.isArray(value)) {
-                        memo.ExpressionAttributeNames[`#${key}`] = key;
-                        memo.ExpressionAttributeValues[`:${key}`] = value;
-                        memo.ExpressionAttributeValues[`:${key}0`] = 0;
-                        memo.UpdateExpression.push(`#${key} = if_not_exists(#${key}, :${key}0) + :${key}`);
-                        debug && _log(NS, '>> ' + `#${key} = #${key} + :${value}`);
+                        memo.ExpressionAttributeNames[`#${key2}`] = key;
+                        memo.ExpressionAttributeValues[`:${key2}`] = value;
+                        memo.UpdateExpression.ADD.push(`#${key2} :${key2}`);
+                        debug && _log(NS, '>> ' + `#${key2} = #${key2} + :${value}`);
                     } else {
-                        //! support to append [] into array.
-                        memo.ExpressionAttributeNames[`#${key}`] = key; // target attribute name
-                        memo.ExpressionAttributeValues[`:${key}`] = value; // list to append like `[1,2,3]`
-                        memo.ExpressionAttributeValues[`:${key}0`] = []; // empty array if not exists.
-                        memo.UpdateExpression.push(`#${key} = list_append(if_not_exists(#${key}, :${key}0), :${key})`);
-                        debug && _log(NS, '>> ' + `#${key} = #${key} + [${value.join(',')}]`);
+                        memo.ExpressionAttributeNames[`#${key2}`] = key; // target attribute name
+                        memo.ExpressionAttributeValues[`:${key2}`] = value; // list to append like `[1,2,3]`
+                        memo.ExpressionAttributeValues[`:${key2}_0`] = []; // empty array if not exists.
+                        memo.UpdateExpression.SET.push(
+                            `#${key2} = list_append(if_not_exists(#${key2}, :${key2}_0), :${key2})`,
+                        );
+                        debug && _log(NS, '>> ' + `#${key2} = #${key2} + ${value}`);
                     }
                     return memo;
                 },
                 payload,
             );
         }
-        //! build final expression.
-        payload.UpdateExpression = 'SET ' + payload.UpdateExpression.join(', ');
+        //! build final update expression.
+        payload.UpdateExpression = Object.keys(payload.UpdateExpression) // ['SET', 'REMOVE', 'ADD', 'DELETE']
+            .map(actionName => {
+                const actions: string[] = payload.UpdateExpression[actionName];
+                return actions.length > 0 ? `${actionName} ${actions.join(', ')}` : ''; // e.g 'SET #a = :a, #b = :b'
+            })
+            .filter(exp => exp.length > 0)
+            .join(' ');
         _log(NS, `> UpdateExpression[${id}] =`, payload.UpdateExpression);
         return payload;
     }
@@ -395,9 +431,16 @@ export class DynamoService<T extends GeneralItem> {
      *
      * @param id
      * @param sort
+     * @param updates
+     * @param increments
      */
-    public async updateItem(id: string, sort: string | number, updates: T, increments?: Incrementable): Promise<T> {
-        const { tableName, idName, sortName } = this.options;
+    public async updateItem(
+        id: string,
+        sort: string | number,
+        updates: Updatable,
+        increments?: Incrementable,
+    ): Promise<T> {
+        const { idName } = this.options;
         // _log(NS, `updateItem(${id})...`);
         const payload = this.prepareUpdateItem(id, sort, updates, increments);
         return instance()

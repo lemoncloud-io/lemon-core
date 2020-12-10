@@ -15,7 +15,12 @@
  * - properties to support atomic increments
  */
 export interface Incrementable {
-    [key: string]: number;
+    /**
+     * fields to increment
+     *  - number: increment number field
+     *  - (string | number)[]: append to list(array) field
+     */
+    [key: string]: number | (string | number)[];
 }
 
 /**
