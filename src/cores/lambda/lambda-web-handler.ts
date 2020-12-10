@@ -286,6 +286,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const MODE: NextMode = `${param.mode || 'GET'}` as NextMode;
         const ID = `${param.id || ''}`;
         const CMD = `${param.cmd || ''}`;
+        const PATH = `${(event && event.path) || ''}`;
         const $param = param.param;
         const $body = param.body;
         const context = param.context;
@@ -318,9 +319,9 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             if (!decoder) return null;
 
             //! use decoder() to find target.
-            if (typeof decoder == 'function') return decoder(MODE, ID, CMD);
+            if (typeof decoder == 'function') return (decoder as NextDecoder)(MODE, ID, CMD, PATH);
             else if (typeof decoder == 'object') {
-                const func = (decoder as CoreWEBController).decode(MODE, ID, CMD);
+                const func = (decoder as CoreWEBController).decode(MODE, ID, CMD, PATH);
                 if (!func) return null; // avoid 'null' error.
                 const next: NextHandler = (i, p, b, c) => func.call(decoder, i, p, b, c);
                 return next;
@@ -329,7 +330,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         })(this._handlers[TYPE]);
 
         //! if no next, then report error.
-        if (!next) {
+        if (!next || typeof next != 'function') {
             _err(NS, `! WARN ! MISSING NEXT-HANDLER. event=`, $U.json(event));
             throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
         }
