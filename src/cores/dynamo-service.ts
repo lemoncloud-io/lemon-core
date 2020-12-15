@@ -238,7 +238,7 @@ export class DynamoService<T extends GeneralItem> {
                 if (key === idName || key === sortName) return memo;
                 const key2 = norm(key);
                 value = normalize(value);
-                if (Array.isArray(value.setIndex)) {
+                if (value.setIndex && Array.isArray(value.setIndex)) {
                     //! support set items in list
                     value.setIndex.forEach(([idx, value]: [number, string | number], seq: number) => {
                         if (idx !== undefined && value !== undefined) {
@@ -247,7 +247,7 @@ export class DynamoService<T extends GeneralItem> {
                             memo.UpdateExpression.SET.push(`#${key2}[${idx}] = :${key2}_${seq}_`);
                         }
                     });
-                } else if (Array.isArray(value.removeIndex)) {
+                } else if (value.removeIndex && Array.isArray(value.removeIndex)) {
                     //! support removing items from list
                     value.removeIndex.forEach((idx: number) => {
                         if (idx !== undefined) {
