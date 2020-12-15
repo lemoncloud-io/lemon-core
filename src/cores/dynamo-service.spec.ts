@@ -67,6 +67,11 @@ describe('DynamoService', () => {
             expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField': 'myField' });
             expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField': 'str' });
 
+            payload = dummy.prepareUpdateItem(id, sort, { fieldA: 'str', fieldB: null });
+            expect2(() => payload.UpdateExpression).toBe('SET #fieldA = :fieldA, #fieldB = :fieldB');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#fieldA': 'fieldA', '#fieldB': 'fieldB' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':fieldA': 'str', ':fieldB': null });
+
             payload = dummy.prepareUpdateItem(id, sort, { fieldA: 1, fieldB: ['l', 'i', 's', 't'] });
             expect2(() => payload.UpdateExpression).toBe('SET #fieldA = :fieldA, #fieldB = :fieldB');
             expect2(() => payload.ExpressionAttributeNames).toEqual({ '#fieldA': 'fieldA', '#fieldB': 'fieldB' });
