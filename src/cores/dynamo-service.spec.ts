@@ -39,6 +39,16 @@ describe('DynamoService', () => {
         const sort: string | number = null;
         let payload: any;
 
+        //! nomalizer.
+        it('should pass normalize()', () => {
+            const normalize = DynamoService.normalize;
+            expect2(() => normalize('')).toEqual(null);
+            expect2(() => normalize('a')).toEqual('a');
+
+            expect2(() => normalize({ a: '' })).toEqual({ a: null });
+            expect2(() => normalize({ a: 'a' })).toEqual({ a: 'a' });
+        });
+
         it('update', () => {
             /* eslint-disable prettier/prettier */
 
@@ -46,6 +56,16 @@ describe('DynamoService', () => {
             expect2(() => payload.UpdateExpression).toBe('');
             expect2(() => payload.ExpressionAttributeNames).toEqual({});
             expect2(() => payload.ExpressionAttributeValues).toEqual({});
+
+            payload = dummy.prepareUpdateItem(id, sort, { myField: '' });  //! check '' empty string value.
+            expect2(() => payload.UpdateExpression).toBe('SET #myField = :myField');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField': 'myField' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField': null });
+
+            payload = dummy.prepareUpdateItem(id, sort, { myField: 'str' });
+            expect2(() => payload.UpdateExpression).toBe('SET #myField = :myField');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField': 'myField' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField': 'str' });
 
             payload = dummy.prepareUpdateItem(id, sort, { fieldA: 'str', fieldB: null });
             expect2(() => payload.UpdateExpression).toBe('SET #fieldA = :fieldA, #fieldB = :fieldB');
