@@ -154,6 +154,6 @@ export const marshal = <T>(
 export const waited = async (t: number = 200) =>
     new Promise(resolve => {
         setTimeout(() => {
-            resolve();
+            resolve(undefined);
         }, t);
     });

@@ -368,6 +368,11 @@ class File {
      */
     public readonly isRemoteFile: boolean;
 
+    /**
+     * default encoding of string.
+     */
+    public readonly ENCODING: BufferEncoding = 'utf8';
+
     // private variables
     private readonly urlObject: url.Url;
     private _buffer: Buffer;
@@ -399,7 +404,7 @@ class File {
      */
     public async load(content?: string | Buffer): Promise<this> {
         if (content) {
-            this._buffer = typeof content == 'string' ? Buffer.from(content, 'binary') : content;
+            this._buffer = typeof content === 'string' ? Buffer.from(content, this.ENCODING) : content;
         } else {
             if (this.isRemoteFile) {
                 const requestGet = promisify(request.get.bind(request));
