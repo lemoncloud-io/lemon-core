@@ -16,15 +16,18 @@ process.env = Object.assign(process.env, {
 });
 
 //! load $engine, and prepare dummy handler
+import { loadProfile } from '../../environ';
+import { GETERR } from '../../common/test-helper';
 import { AWSS3Service, PutObjectResult } from './aws-s3-service';
-import { credentials } from '../../tools';
-import { environ } from '../..';
+// import { credentials } from '../../tools';
+// import { environ } from '../..';
 
 const S3 = new AWSS3Service();
 
 describe(`test AWSS3Service`, () => {
     //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = loadProfile(process); // override process.env.
+    PROFILE && console.info('! PROFILE=', PROFILE);
 
     test('check name() function', async () => {
         expect(S3.name()).toEqual('S3');
@@ -52,7 +55,8 @@ describe(`test AWSS3Service`, () => {
         // if the objects exists
         const json = JSON.stringify({ hello: 'world', lemon: true });
         const { Location: fileName } = await S3.putObject(json, 'test.json');
-        expect(await S3.headObject('invalid-file')).toMatchObject({ ContentType: 'application/json; charset=utf-8', ContentLength: json.length });
+        // expect(await S3.headObject('invalid-file').catch(GETERR)).toMatchObject({ ContentType: 'application/json; charset=utf-8', ContentLength: json.length });
+        expect(await S3.headObject('invalid-file').catch(GETERR)).toEqual(null);
         await S3.deleteObject(fileName);
 
         /* eslint-enable prettier/prettier */
@@ -60,7 +64,8 @@ describe(`test AWSS3Service`, () => {
 
     test('check putObject() function', async () => {
         if (!PROFILE) return;
-        const body = JSON.stringify({ hello: 'world', lemon: true });
+        const json = { hello: 'world', lemon: true, name: '한글!' };
+        const body = JSON.stringify(json);
         let res: PutObjectResult;
         /* eslint-disable prettier/prettier */
 
@@ -70,7 +75,7 @@ describe(`test AWSS3Service`, () => {
         expect(res.Key).toEqual('sample.json');
         expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
         expect(res.ContentType).toEqual('application/json; charset=utf-8');
-        expect(res.ContentLength).toEqual(body.length);
+        expect(res.ContentLength).toEqual(body.length + 4);  // +2 due to unicode for hangul
         expect(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
@@ -83,7 +88,7 @@ describe(`test AWSS3Service`, () => {
         expect(res.Key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/);
         expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
         expect(res.ContentType).toEqual('application/json; charset=utf-8');
-        expect(res.ContentLength).toEqual(body.length);
+        expect(res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
         expect(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),

@@ -324,7 +324,7 @@ export class AWSS3Service implements CoreS3Service {
             ContentLength: file.contentLength,
             // ContentMD5: file.contentMD5, // raise error when S3 library explicitly uses multipart upload because the file is big
         };
-        _log(NS, `> params.Key =`, params.Key);
+        _log(NS, `> params.Key =`, $U.json(params.Key));
         _log(NS, `> params.ContentType =`, params.ContentType);
         _log(NS, `> params.ContentLength =`, params.ContentLength);
         if (metadata) {
@@ -340,7 +340,7 @@ export class AWSS3Service implements CoreS3Service {
         const s3 = instance();
         try {
             const { Bucket, Key, Location } = await s3.upload(params).promise();
-            _log(NS, `> data[${Bucket}].Key =`, Key);
+            _log(NS, `> data[${Bucket}].Key =`, $U.json(Key));
             return {
                 Bucket,
                 Key,
@@ -367,6 +367,11 @@ class File {
      * @readonly
      */
     public readonly isRemoteFile: boolean;
+
+    /**
+     * default encoding of string.
+     */
+    public readonly ENCODING: BufferEncoding = 'utf8';
 
     // private variables
     private readonly urlObject: url.Url;
@@ -399,7 +404,7 @@ class File {
      */
     public async load(content?: string | Buffer): Promise<this> {
         if (content) {
-            this._buffer = typeof content == 'string' ? Buffer.from(content, 'binary') : content;
+            this._buffer = typeof content === 'string' ? Buffer.from(content, this.ENCODING) : content;
         } else {
             if (this.isRemoteFile) {
                 const requestGet = promisify(request.get.bind(request));
