@@ -30,7 +30,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'sns' : undefined);
-        _log(NS, `LambdaSNSHandler()..`);
+        // _log(NS, `LambdaSNSHandler()..`);
     }
 
     protected listeners: NextHandler[] = [];

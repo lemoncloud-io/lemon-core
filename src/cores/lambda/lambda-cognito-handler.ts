@@ -26,7 +26,7 @@ export class LambdaCognitoHandler extends LambdaSubHandler<CognitoHandler> {
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'cognito' : undefined);
-        _log(NS, `LambdaCognitoHandler()..`);
+        // _log(NS, `LambdaCognitoHandler()..`);
     }
 
     public addListener() {}

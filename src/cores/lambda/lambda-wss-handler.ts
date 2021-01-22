@@ -57,7 +57,7 @@ export class LambdaWSSHandler extends LambdaSubHandler<WSSHandler> {
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'wss' : undefined);
-        _log(NS, `LambdaWSSHandler()..`);
+        // _log(NS, `LambdaWSSHandler()..`);
     }
 
     public addListener() {}

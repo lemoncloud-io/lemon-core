@@ -205,7 +205,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'web' : undefined);
-        _log(NS, `LambdaWEBHandler()..`);
+        // _log(NS, `LambdaWEBHandler()..`);
     }
 
     /**
