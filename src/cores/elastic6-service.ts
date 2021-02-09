@@ -62,8 +62,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _inf(NS, `Elastic6Service(${options.indexName}/${options.idName})...`);
         if (!options.endpoint) throw new Error('.endpoint (URL) is required');
         if (!options.indexName) throw new Error('.indexName (string) is required');
-        // if (!options.idName) throw new Error('.idName (string) is required');
-        this.options = { docType: '_doc', ...options };
+
+        // default option values: docType='_doc', idName='$id'
+        this.options = { docType: '_doc', idName: '$id', ...options };
     }
 
     /**
