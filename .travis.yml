@@ -1,14 +1,17 @@
+# travis auto-build script.
+# TODO - migrate to github action.
+#
+# @copyright 2021 lemoncloud.io
 language: node_js
 sudo: false
 node_js:
-  # - 8   # due to EOL v8.
-  - 10
+  - 10      # min version to support
 branches:
   only:
   - master
   - develop
 install:
-- npm install
+- npm ci    # use package-lock.
 cache:
   bundler: true
   directories:
