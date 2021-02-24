@@ -27,6 +27,30 @@ const COLORS = {
     white: '\x1b[37m',
 };
 
+interface JwtHeader {
+    alg: string;
+    typ?: string;
+    kid?: string;
+    jku?: string;
+    x5u?: string;
+    x5t?: string;
+}
+
+type Algorithm =
+    | 'HS256'
+    | 'HS384'
+    | 'HS512'
+    | 'RS256'
+    | 'RS384'
+    | 'RS512'
+    | 'ES256'
+    | 'ES384'
+    | 'ES512'
+    | 'PS256'
+    | 'PS384'
+    | 'PS512'
+    | 'none';
+
 /**
  * class: Utilities
  * - various functions
@@ -684,6 +708,22 @@ export class Utilities {
                     throw new Error('400 INVALID PASSWD - invalid json string!');
                 var $msg = JSON.parse(data) || {};
                 return $msg.val;
+            };
+        })();
+    };
+
+    /**
+     * builder for `JWTHelper`
+     * @param passcode string for verification.
+     */
+    public readonly jwt$ = <T = any>(passcode?: string) => {
+        return new (class JWTHelper {
+            public constructor() {}
+            public decode = (token: string): T & JwtHeader => {
+                return null;
+            };
+            public verify = (token: string, algorithm?: Algorithm): T & JwtHeader => {
+                return null;
             };
         })();
     };

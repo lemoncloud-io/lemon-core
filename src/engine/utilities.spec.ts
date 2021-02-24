@@ -261,6 +261,13 @@ describe(`core/utilities.ts`, () => {
         expect2(() => S(msg, len - 3, 2)).toEqual(msg.substring(0, len - 3) + '...zz');
         expect2(() => S(msg, len - 3, 1)).toEqual(msg.substring(0, len - 3) + '...z');
         expect2(() => S(msg, len - 3, 0)).toEqual(msg.substring(0, len - 3) + '...');
+
+        done();
+    });
+
+    //! test JWTHelper
+    test('check JWTHelper()', async done => {
+        const { $U } = instance();
         done();
     });
 });
