@@ -19,8 +19,7 @@ cache:
 script:
 - npm test
 env:
-- CODECOV_TOKEN="b487da44-3cf0-457f-8a0d-320959ca7ab7"
-- TZ="Asia/Seoul"   # fix for `$U.ts(...)` w/ time-zone.
+- CODECOV_TOKEN="b487da44-3cf0-457f-8a0d-320959ca7ab7" TZ="Asia/Seoul"   # TZ for `$U.ts(...)` w/ time-zone.
 after_success:
 - "./node_modules/.bin/codecov"
 - npm run build
