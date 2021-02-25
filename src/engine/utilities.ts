@@ -726,6 +726,8 @@ export class Utilities {
      */
     public readonly jwt = <T = any>(passcode?: string, current_ms?: number) => {
         const $ = jwt;
+        const $U = this;
+
         /**
          * main class.
          */
@@ -765,9 +767,13 @@ export class Utilities {
              *
              * @param token
              * @param algorithm
+             * @throws `jwt expired` if exp has expired!.
              */
             public verify = (token: string, algorithm: JwtAlgorithm = 'HS256'): T & JwtCommon => {
-                const verified: any = $.verify(token, passcode, { algorithms: [algorithm] });
+                const verified = $.verify(token, passcode, { algorithms: [algorithm] }) as T & JwtCommon;
+                const cur = $U.N(current_ms, 0);
+                const exp = $U.N(verified?.exp, 0) * 1000;
+                if (cur > 0 && exp > 0 && exp < current_ms) throw new Error(`jwt expired at ${$U.ts(exp)}`);
                 return verified;
             };
         })();

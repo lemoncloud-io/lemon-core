@@ -294,6 +294,26 @@ describe(`core/utilities.ts`, () => {
         expect2(() => jwt2.decode(token)).toEqual({ name, iat });
         expect2(() => jwt2.verify(token)).toEqual('invalid signature');
 
+        //! test expired.
+        const token2 = jwt2.encode({ name, exp: iat + 1 });
+        expect2(() => jwt2.decode(token2)).toEqual({ name, iat, exp: iat + 1 });
+        expect2(() => jwt2.verify(token2)).toEqual(`jwt expired`); //! due to real current-time.
+
+        //! make jwt3 w/ current + 5sec
+        const curr = $U.current_time_ms() + 5 * 1000;
+        const jwt3 = $U.jwt('!', curr);
+        const token3 = jwt3.encode({ name, exp: Math.floor((curr + 1000) / 1000) });
+        const expected3 = {
+            name,
+            iat: Math.floor((curr + 0) / 1000),
+            exp: Math.floor((curr + 1000) / 1000),
+        };
+        expect2(() => jwt3.decode(token3)).toEqual({ ...expected3 });
+        expect2(() => jwt3.verify(token3)).toEqual({ ...expected3 });
+
+        const jwt3A = $U.jwt('!', curr + 5000);
+        expect2(() => jwt3A.verify(token3)).toEqual(`jwt expired at ${$U.ts(expected3.exp * 1000)}`); //! due to real current-time.
+
         done();
     });
 });
