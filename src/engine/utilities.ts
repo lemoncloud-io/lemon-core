@@ -14,6 +14,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
 import QUERY_STRING from 'query-string';
+import jwt from 'jsonwebtoken';
 import * as uuid from 'uuid';
 const NS = 'util';
 
@@ -27,16 +28,23 @@ const COLORS = {
     white: '\x1b[37m',
 };
 
-interface JwtHeader {
-    alg: string;
-    typ?: string;
-    kid?: string;
-    jku?: string;
-    x5u?: string;
-    x5t?: string;
+export interface JwtCommon {
+    /**
+     * expired at
+     */
+    exp?: number;
+    /**
+     * issued at
+     * = Math.floor(current_ms / 1000)
+     */
+    iat?: number;
+    /**
+     * issuer name.
+     */
+    iss?: string;
 }
 
-type Algorithm =
+export type JwtAlgorithm =
     | 'HS256'
     | 'HS384'
     | 'HS512'
@@ -716,14 +724,51 @@ export class Utilities {
      * builder for `JWTHelper`
      * @param passcode string for verification.
      */
-    public readonly jwt$ = <T = any>(passcode?: string) => {
+    public readonly jwt = <T = any>(passcode?: string, current_ms?: number) => {
+        const $ = jwt;
+        /**
+         * main class.
+         */
         return new (class JWTHelper {
             public constructor() {}
-            public decode = (token: string): T & JwtHeader => {
-                return null;
+            /**
+             * use `jsonwebtoken` directly.
+             */
+            public readonly $ = $;
+
+            /**
+             * encode object to token string
+             * - Synchronous Sign with default (HS256: HMAC SHA256)
+             *
+             * @param data object
+             * @param algorithm algorithm to use
+             */
+            public encode = (data: T & JwtCommon, algorithm: JwtAlgorithm = 'HS256'): string => {
+                data = current_ms ? { ...data, iat: Math.floor(current_ms / 1000) } : data;
+                const token = $.sign(data, passcode, { algorithm });
+                return token;
             };
-            public verify = (token: string, algorithm?: Algorithm): T & JwtHeader => {
-                return null;
+
+            /**
+             * decode token string
+             *
+             * @param token string
+             */
+            public decode = (token: string): T & JwtCommon => {
+                const N = $.decode(token) as T & JwtCommon;
+                return N;
+            };
+
+            /**
+             * verify token
+             * - Synchronous Verify with default (HS256: HMAC SHA256)
+             *
+             * @param token
+             * @param algorithm
+             */
+            public verify = (token: string, algorithm: JwtAlgorithm = 'HS256'): T & JwtCommon => {
+                const verified: any = $.verify(token, passcode, { algorithms: [algorithm] });
+                return verified;
             };
         })();
     };

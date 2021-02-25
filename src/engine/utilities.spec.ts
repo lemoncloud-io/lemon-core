@@ -268,6 +268,32 @@ describe(`core/utilities.ts`, () => {
     //! test JWTHelper
     test('check JWTHelper()', async done => {
         const { $U } = instance();
+        const current = 1 ? 1614241198963 : $U.current_time_ms();
+
+        expect2(() => current).toEqual(1614241198963);
+        expect2(() => $U.ts(current)).toEqual('2021-02-25 17:19:58');
+        const iat = Math.floor(current / 1000);
+
+        //! build jwt handler.
+        const jwt = $U.jwt('#', current);
+
+        const name = 'jwt-helper';
+        const token = jwt.encode({ name });
+        expect2(() => token).toEqual(
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoiand0LWhlbHBlciIsImlhdCI6MTYxNDI0MTE5OH0.qV76eCxU5m_tcvPS4di07qM8bXaB7ss6Dt84hg-ESEI',
+        );
+        expect2(() => jwt.decode(token)).toEqual({ name, iat });
+        expect2(() => jwt.decode(token.replace(/0/g, '1')), 'name').toEqual({ name: 'jwu-helper' });
+        expect2(() => jwt.$.decode(token)).toEqual({ name, iat });
+
+        expect2(() => jwt.verify(token)).toEqual({ name, iat });
+        expect2(() => jwt.verify(token.replace(/0/g, '1')), 'name').toEqual('invalid signature');
+
+        //! build jwt2 w/ wrong pass
+        const jwt2 = $U.jwt('!', current);
+        expect2(() => jwt2.decode(token)).toEqual({ name, iat });
+        expect2(() => jwt2.verify(token)).toEqual('invalid signature');
+
         done();
     });
 });
