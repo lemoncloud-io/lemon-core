@@ -1,6 +1,3 @@
-# recommended but not necessary
-package-lock.json
-
 # serverless
 .serverless
 .serverless/

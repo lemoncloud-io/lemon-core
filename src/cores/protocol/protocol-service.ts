@@ -78,7 +78,7 @@ export class MyProtocolService implements ProtocolService {
      * @param   config      config-service to use (for debug)
      */
     public constructor(service?: string, config?: ConfigService) {
-        _log(NS, `MyProtocolService()..`);
+        // _log(NS, `MyProtocolService()..`);
         this.selfService = `${service || ''}`;
         this.config = config ? config : $conf.config; // use default config-service.
     }

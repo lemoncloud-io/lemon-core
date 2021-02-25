@@ -14,6 +14,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
 import QUERY_STRING from 'query-string';
+import jwt from 'jsonwebtoken';
 import * as uuid from 'uuid';
 const NS = 'util';
 
@@ -26,6 +27,37 @@ const COLORS = {
     cyan: '\x1b[36m',
     white: '\x1b[37m',
 };
+
+export interface JwtCommon {
+    /**
+     * expired at
+     */
+    exp?: number;
+    /**
+     * issued at
+     * = Math.floor(current_ms / 1000)
+     */
+    iat?: number;
+    /**
+     * issuer name.
+     */
+    iss?: string;
+}
+
+export type JwtAlgorithm =
+    | 'HS256'
+    | 'HS384'
+    | 'HS512'
+    | 'RS256'
+    | 'RS384'
+    | 'RS512'
+    | 'ES256'
+    | 'ES384'
+    | 'ES512'
+    | 'PS256'
+    | 'PS384'
+    | 'PS512'
+    | 'none';
 
 /**
  * class: Utilities
@@ -684,6 +716,65 @@ export class Utilities {
                     throw new Error('400 INVALID PASSWD - invalid json string!');
                 var $msg = JSON.parse(data) || {};
                 return $msg.val;
+            };
+        })();
+    };
+
+    /**
+     * builder for `JWTHelper`
+     * @param passcode string for verification.
+     */
+    public readonly jwt = <T = any>(passcode?: string, current_ms?: number) => {
+        const $ = jwt;
+        const $U = this;
+
+        /**
+         * main class.
+         */
+        return new (class JWTHelper {
+            public constructor() {}
+            /**
+             * use `jsonwebtoken` directly.
+             */
+            public readonly $ = $;
+
+            /**
+             * encode object to token string
+             * - Synchronous Sign with default (HS256: HMAC SHA256)
+             *
+             * @param data object
+             * @param algorithm algorithm to use
+             */
+            public encode = (data: T & JwtCommon, algorithm: JwtAlgorithm = 'HS256'): string => {
+                data = current_ms ? { ...data, iat: Math.floor(current_ms / 1000) } : data;
+                const token = $.sign(data, passcode, { algorithm });
+                return token;
+            };
+
+            /**
+             * decode token string
+             *
+             * @param token string
+             */
+            public decode = (token: string): T & JwtCommon => {
+                const N = $.decode(token) as T & JwtCommon;
+                return N;
+            };
+
+            /**
+             * verify token
+             * - Synchronous Verify with default (HS256: HMAC SHA256)
+             *
+             * @param token
+             * @param algorithm
+             * @throws `jwt expired` if exp has expired!.
+             */
+            public verify = (token: string, algorithm: JwtAlgorithm = 'HS256'): T & JwtCommon => {
+                const verified = $.verify(token, passcode, { algorithms: [algorithm] }) as T & JwtCommon;
+                const cur = $U.N(current_ms, 0);
+                const exp = $U.N(verified?.exp, 0) * 1000;
+                if (cur > 0 && exp > 0 && exp < current_ms) throw new Error(`jwt expired at ${$U.ts(exp)}`);
+                return verified;
             };
         })();
     };

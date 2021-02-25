@@ -261,6 +261,59 @@ describe(`core/utilities.ts`, () => {
         expect2(() => S(msg, len - 3, 2)).toEqual(msg.substring(0, len - 3) + '...zz');
         expect2(() => S(msg, len - 3, 1)).toEqual(msg.substring(0, len - 3) + '...z');
         expect2(() => S(msg, len - 3, 0)).toEqual(msg.substring(0, len - 3) + '...');
+
+        done();
+    });
+
+    //! test JWTHelper
+    test('check JWTHelper()', async done => {
+        const { $U } = instance();
+        const current = 1 ? 1614241198963 : $U.current_time_ms();
+
+        expect2(() => current).toEqual(1614241198963);
+        expect2(() => $U.ts(current)).toEqual('2021-02-25 17:19:58');
+        const iat = Math.floor(current / 1000);
+
+        //! build jwt handler.
+        const jwt = $U.jwt('#', current);
+
+        const name = 'jwt-helper';
+        const token = jwt.encode({ name });
+        expect2(() => token).toEqual(
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoiand0LWhlbHBlciIsImlhdCI6MTYxNDI0MTE5OH0.qV76eCxU5m_tcvPS4di07qM8bXaB7ss6Dt84hg-ESEI',
+        );
+        expect2(() => jwt.decode(token)).toEqual({ name, iat });
+        expect2(() => jwt.decode(token.replace(/0/g, '1')), 'name').toEqual({ name: 'jwu-helper' });
+        expect2(() => jwt.$.decode(token)).toEqual({ name, iat });
+
+        expect2(() => jwt.verify(token)).toEqual({ name, iat });
+        expect2(() => jwt.verify(token.replace(/0/g, '1')), 'name').toEqual('invalid signature');
+
+        //! build jwt2 w/ wrong pass
+        const jwt2 = $U.jwt('!', current);
+        expect2(() => jwt2.decode(token)).toEqual({ name, iat });
+        expect2(() => jwt2.verify(token)).toEqual('invalid signature');
+
+        //! test expired.
+        const token2 = jwt2.encode({ name, exp: iat + 1 });
+        expect2(() => jwt2.decode(token2)).toEqual({ name, iat, exp: iat + 1 });
+        expect2(() => jwt2.verify(token2)).toEqual(`jwt expired`); //! due to real current-time.
+
+        //! make jwt3 w/ current + 5sec
+        const curr = $U.current_time_ms() + 5 * 1000;
+        const jwt3 = $U.jwt('!', curr);
+        const token3 = jwt3.encode({ name, exp: Math.floor((curr + 1000) / 1000) });
+        const expected3 = {
+            name,
+            iat: Math.floor((curr + 0) / 1000),
+            exp: Math.floor((curr + 1000) / 1000),
+        };
+        expect2(() => jwt3.decode(token3)).toEqual({ ...expected3 });
+        expect2(() => jwt3.verify(token3)).toEqual({ ...expected3 });
+
+        const jwt3A = $U.jwt('!', curr + 5000);
+        expect2(() => jwt3A.verify(token3)).toEqual(`jwt expired at ${$U.ts(expected3.exp * 1000)}`); //! due to real current-time.
+
         done();
     });
 });

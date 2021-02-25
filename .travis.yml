@@ -1,14 +1,17 @@
+# travis auto-build script.
+# TODO - migrate to github action.
+#
+# @copyright 2021 lemoncloud.io
 language: node_js
 sudo: false
 node_js:
-  # - 8   # due to EOL v8.
-  - 10
+  - 10      # min version to support
 branches:
   only:
   - master
   - develop
 install:
-- npm install
+- npm ci    # use package-lock.
 cache:
   bundler: true
   directories:
@@ -16,7 +19,7 @@ cache:
 script:
 - npm test
 env:
-- CODECOV_TOKEN="b487da44-3cf0-457f-8a0d-320959ca7ab7"
+- CODECOV_TOKEN="b487da44-3cf0-457f-8a0d-320959ca7ab7" TZ="Asia/Seoul"   # TZ for `$U.ts(...)` w/ time-zone.
 after_success:
 - "./node_modules/.bin/codecov"
 - npm run build

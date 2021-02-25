@@ -30,7 +30,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'sqs' : undefined);
-        _log(NS, `LambdaSQSHandler()..`);
+        // _log(NS, `LambdaSQSHandler()..`);
     }
 
     protected listeners: NextHandler[] = [];

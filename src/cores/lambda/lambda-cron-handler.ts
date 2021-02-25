@@ -33,7 +33,7 @@ export class LambdaCronHandler extends LambdaSubHandler<CronHandler> {
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'cron' : undefined);
-        _log(NS, `LambdaCronHandler()..`);
+        // _log(NS, `LambdaCronHandler()..`);
     }
 
     protected listeners: CronNextHandler[] = [];

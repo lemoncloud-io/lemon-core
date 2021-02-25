@@ -68,7 +68,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
      */
     public constructor(lambda: LambdaHandler, register?: boolean) {
         super(lambda, register ? 'dds' : undefined);
-        _log(NS, `LambdaDynamoStreamHandler()..`);
+        // _log(NS, `LambdaDynamoStreamHandler()..`);
     }
 
     protected listeners: DynamoStreamNextHandler[] = [];
