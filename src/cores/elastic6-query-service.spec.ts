@@ -35,6 +35,69 @@ describe('Elastic6QueryService', () => {
         done();
     });
 
+    // autocomplete indexing
+    it('autocomplete indexing', async done => {
+        const { elastic, search } = instance();
+        /* eslint-disable prettier/prettier */
+
+        try {
+            await elastic.deleteItem('D01');
+        } catch {}
+
+        // saveItem should update incrementally
+        expect2(await elastic.saveItem('D01', { title: 'titleA' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
+        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleA', name: undefined });
+        expect2(await elastic.saveItem('D01', { name: 'name' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
+        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleA', name: 'name'});
+        expect2(await elastic.saveItem('D01', { title: 'titleB' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
+        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleB', name: 'name' });
+        await elastic.refreshIndex();
+
+        // should be searchable by both title and name
+        expect2(await search.searchAutocomplete({ $query: { title: 't' } }).catch(GETERR), 'total').toEqual({ total: 1 });
+        expect2(await search.searchAutocomplete({ $query: { name: 'n' } }).catch(GETERR), 'total').toEqual({ total: 1 });
+        // title autocomplete field should be updated properly
+        expect2(await search.searchAutocomplete({ $query: { title: 'titleA' } }).catch(GETERR), 'total').toEqual({ total: 0 });
+        expect2(await search.searchAutocomplete({ $query: { title: 'titleB' } }).catch(GETERR), 'total').toEqual({ total: 1 });
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
+    // autocomplete search
+    it('autocomplete search', async done => {
+        const { elastic, search } = instance();
+        /* eslint-disable prettier/prettier */
+
+        // skip test if some prerequisites are not satisfied
+        // 1. localhost is able to access elastic6 endpoint (by tunneling)
+        // 2. index must be exist
+        if (!(await $elastic.canPerformTest())) return done();
+
+        // prepare items
+        expect2(await elastic.saveItem('AC001', { type: 'member', title: 'Senior Director', name: 'Marvin' }).catch(GETERR), '_id').toEqual({ _id: 'AC001' });
+        expect2(await elastic.saveItem('AC002', { type: 'member', title: 'Senior Software Engineer', name: 'Vickie' }).catch(GETERR), '_id').toEqual({ _id: 'AC002' });
+        expect2(await elastic.saveItem('AC003', { type: 'member', title: 'Software Developer', name: 'Gabriel' }).catch(GETERR), '_id').toEqual({ _id: 'AC003' });
+        expect2(await elastic.saveItem('AC004', { type: 'member', title: 'Designer', name: 'Cindy' }).catch(GETERR), '_id').toEqual({ _id: 'AC004' });
+        expect2(await elastic.saveItem('AC005', { type: 'department', title: 'Account' }).catch(GETERR), '_id').toEqual({ _id: 'AC005' });
+        expect2(await elastic.saveItem('AC006', { type: 'department', title: 'Software Lab' }).catch(GETERR), '_id').toEqual({ _id: 'AC006' });
+        expect2(await elastic.saveItem('AC007', { type: 'department', title: 'Design Lab' }).catch(GETERR), '_id').toEqual({ _id: 'AC007' });
+        await elastic.refreshIndex();
+
+        // check query
+        expect2(await search.searchAutocomplete({ $query: { title: 'Sof' } }), 'total').toEqual({ total: 3 }); // Senior Software Engineer, Software Developer, Software Lab
+        expect2(await search.searchAutocomplete({ $query: { title: 'de' } }), 'total').toEqual({ total: 3 }); // Software Developer, Designer, Design Lab
+        expect2(await search.searchAutocomplete({ $query: { title: 'or' } }), 'total').toEqual({ total: 0 });
+        expect2(await search.searchAutocomplete({ $query: { title: 'e' } }), 'total').toEqual({ total: 1 }); // Senior Software Engineer
+        // check filter
+        expect2(await search.searchAutocomplete({ $query: { title: 'Sof' }, $filter: { type: 'member' } }), 'total').toEqual({ total: 2 }); // Senior Software Engineer, Software Developer
+        expect2(await search.searchAutocomplete({ $query: { title: 'de' }, $filter: { type: 'member' } }), 'total').toEqual({ total: 2 }); // Software Developer, Designer
+        expect2(await search.searchAutocomplete({ $query: { title: 'de' }, $filter: { type: 'department' } }), 'total').toEqual({ total: 1 }); // Design Lab
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
     // search quality
     it('check search quality', async done => {
         const { elastic, search } = instance();
