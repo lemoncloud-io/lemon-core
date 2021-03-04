@@ -21,7 +21,7 @@ export const instance = () => {
     const endpoint = 'https://localhost:8443'; //NOTE - use tunneling to elastic6 endpoint.
     const indexName = 'test-v3';
     const idName = 'id';
-    const autocompleteFields = ['title'];
+    const autocompleteFields = ['title', 'name'];
     const options: Elastic6Option = { endpoint, indexName, idName, autocompleteFields };
     const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
     const dummy: Elastic6Service<MyModel> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
@@ -31,6 +31,8 @@ export const instance = () => {
 export const canPerformTest = async (): Promise<boolean> => {
     const { service } = instance();
 
+    // cond 1. localhost is able to access elastic6 endpoint (by tunneling)
+    // cond 2. index must be exist
     try {
         await service.describe();
         return true;

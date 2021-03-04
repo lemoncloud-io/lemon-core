@@ -252,7 +252,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 _log(NS, `> save[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 if (`${e.message}`.startsWith('409 version_conflict_engine_exception')) {
                     //! try to update document...
-                    const params = { index: indexName, type, id, body: { doc: item } };
+                    delete body[idName]; // do set id while update
+                    const params = { index: indexName, type, id, body: { doc: body } };
                     return client.update(params);
                 }
                 throw e;

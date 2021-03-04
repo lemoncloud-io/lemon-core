@@ -7,7 +7,6 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { $U } from '../engine';
 import { expect2, GETERR } from '../common/test-helper';
 import {
     CoreModel,
@@ -93,8 +92,9 @@ describe('ModelManager', () => {
         const { manager, current } = instance();
 
         /* eslint-disable prettier/prettier */
-        expect2(manager.hello()).toEqual('user/typed-storage-service:user/proxy-storage-service:dummy-storage-service:dummy-user-data/id');
+        expect2(manager.hello()).toEqual('typed-storage-service:user/proxy-storage-service:dummy-storage-service:dummy-user-data/id');
         expect2(manager.parent.hello()).toEqual('dummy-storage-maker:TT/dummy-user-data.yml');
+        expect2(manager.type).toBe('user');
         expect2(manager.current).toBe(current);
 
         done();

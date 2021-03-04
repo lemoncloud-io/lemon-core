@@ -86,7 +86,8 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
-| 2.2.17    | support `$U.jwt(passcode).encode(...)` w/ `jsonwebtoken`.
+| 2.2.19    | fix an issue and add filtering feature for `ES6 autocomplete search`.
+| 2.2.18    | support `$U.jwt(passcode).encode(...)` w/ `jsonwebtoken`.
 | 2.2.16    | hot-fix `utf8 encoding of json` in `AWS.S3`.
 | 2.2.15    | hot-fix `Cannot read property 'setIndex' of null` in `Dynamo`.
 | 2.2.14    | support `CacheService`, and support appending entry into list in `Dynamo`.

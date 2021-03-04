@@ -31,7 +31,6 @@ export abstract class AbstractManager<
     ModelType extends string
 > extends GeneralModelFilter<T, ModelType> {
     public readonly NS: string;
-    public readonly type: ModelType;
     public readonly parent: S;
     public readonly storage: TypedStorageService<T, ModelType>;
     public readonly $unique: UniqueFieldManager<T, ModelType>;
@@ -48,7 +47,6 @@ export abstract class AbstractManager<
     protected constructor(type: ModelType, parent: S, fields: string[], uniqueField?: string, ns?: string) {
         super(fields);
         this.NS = ns === undefined ? NS : ns;
-        this.type = type;
         this.parent = parent;
         this.storage = parent.makeStorageService(type, fields, this);
         this.$unique = uniqueField ? this.storage.makeUniqueFieldManager(uniqueField) : null;
@@ -57,7 +55,14 @@ export abstract class AbstractManager<
     /**
      * hello of this service-identity
      */
-    public hello = () => `${this.type}/${this.storage.hello()}`;
+    public hello = () => this.storage.hello();
+
+    /**
+     * type getter
+     */
+    public get type(): ModelType {
+        return this.storage.type;
+    }
 
     /**
      * prepare default model when creation
@@ -91,7 +96,7 @@ export abstract class AbstractManager<
         if (isCreate) return this.storage.readOrCreate(id, this.prepareDefault($def));
         // otherwise just try to read model and throw 404 if it does not exist
         return this.storage.read(id).catch(e => {
-            if (`${e.message || e}`.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - ${this.type}:${id}`);
+            if (`${e.message || e}`.startsWith('404 NOT FOUND')) e = new Error(`404 NOT FOUND - ${this.type}:${id}`);
             throw e;
         });
     }
@@ -127,7 +132,7 @@ export abstract class AbstractManager<
         if (!id) throw new Error(`@id is required!`);
 
         return this.storage.read(id).catch(e => {
-            if (`${e.message}`.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - ${this.type}:${id}`);
+            if (`${e.message}`.startsWith('404 NOT FOUND')) e = new Error(`404 NOT FOUND - ${this.type}:${id}`);
             throw e;
         });
     }
