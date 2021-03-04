@@ -35,6 +35,35 @@ describe('Elastic6QueryService', () => {
         done();
     });
 
+    // autocomplete indexing
+    it('autocomplete indexing', async done => {
+        const { elastic, search } = instance();
+        /* eslint-disable prettier/prettier */
+
+        try {
+            await elastic.deleteItem('D01');
+        } catch {}
+
+        // saveItem should update incrementally
+        expect2(await elastic.saveItem('D01', { title: 'titleA' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
+        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleA', name: undefined });
+        expect2(await elastic.saveItem('D01', { name: 'name' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
+        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleA', name: 'name'});
+        expect2(await elastic.saveItem('D01', { title: 'titleB' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
+        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleB', name: 'name' });
+        await elastic.refreshIndex();
+
+        // should be searchable by both title and name
+        expect2(await search.searchAutocomplete({ $query: { title: 't' } }).catch(GETERR), 'total').toEqual({ total: 1 });
+        expect2(await search.searchAutocomplete({ $query: { name: 'n' } }).catch(GETERR), 'total').toEqual({ total: 1 });
+        // title autocomplete field should be updated properly
+        expect2(await search.searchAutocomplete({ $query: { title: 'titleA' } }).catch(GETERR), 'total').toEqual({ total: 0 });
+        expect2(await search.searchAutocomplete({ $query: { title: 'titleB' } }).catch(GETERR), 'total').toEqual({ total: 1 });
+
+        /* eslint-enable prettier/prettier */
+        done();
+    });
+
     // autocomplete search
     it('autocomplete search', async done => {
         const { elastic, search } = instance();
