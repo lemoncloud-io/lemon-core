@@ -528,9 +528,6 @@ describe('ProxyStorageService', () => {
 
             //! try to update another to 'bbb'
             expect2(await $unique.updateLookup({ ...bbb }, 'BBB').catch(GETERR), 'id,type,name').toEqual('400 DUPLICATED NAME - name[BBB] is duplicated to test[aaa]');     // change to 'BBB' w/o changing model.
-            await storage.delete($unique.asLookupId('CCC'));
-            expect2(await $unique.updateLookup({ ...bbb, name:'AAA' }, 'AAA').catch(GETERR), 'id,type').toEqual({ id:'bbb', type:'test' });
-            expect2(await $unique.findOrCreate('AAA'), 'id,type').toEqual({ id:'bbb', type:'test' })
         }
 
         /* eslint-enable prettier/prettier */
