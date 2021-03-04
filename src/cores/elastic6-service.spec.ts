@@ -31,6 +31,8 @@ export const instance = () => {
 export const canPerformTest = async (): Promise<boolean> => {
     const { service } = instance();
 
+    // cond 1. localhost is able to access elastic6 endpoint (by tunneling)
+    // cond 2. index must be exist
     try {
         await service.describe();
         return true;
