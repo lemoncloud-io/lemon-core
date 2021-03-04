@@ -173,12 +173,12 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
 
         // validate parameters
         if (!param) throw new Error('@param (AutocompleteSearchParam) is required');
-        if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required.');
-        if (Object.keys(param.$query).length > 1) throw new Error('.query accepts only one property.');
+        if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required');
+        if (Object.keys(param.$query).length > 1) throw new Error('.query accepts only one property');
 
         const [field, query] = Object.entries(param.$query)[0];
         if (!field || !query) throw new Error(`.query is invalid`);
-        if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field.`);
+        if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
 
         // build query body
         const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}`;
