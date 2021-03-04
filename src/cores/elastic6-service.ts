@@ -233,8 +233,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- saveItem(${id})`);
 
         // prepare item body and autocomplete fields
+        this.prepareAutocompleteFields(item);
         const body: any = { ...item, [idName]: id };
-        this.prepareAutocompleteFields(body);
 
         type = `${type || docType}`;
         const params: CreateDocumentParams = {
@@ -282,8 +282,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const id = '';
 
         type = `${type || docType}`;
+        this.prepareAutocompleteFields(item);
         const body: any = { ...item };
-        this.prepareAutocompleteFields(body);
 
         _log(NS, `- pushItem(${id})`);
         const params: IndexDocumentParams<any> = { index: indexName, type, body };
