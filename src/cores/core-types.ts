@@ -258,6 +258,12 @@ export interface AutocompleteSearchParam {
         [field: string]: string;
     };
     /**
+     * additional filter object.
+     */
+    $filter?: {
+        [field: string]: string;
+    };
+    /**
      * maximum results in a page (default: 10)
      */
     $limit?: number; // limit

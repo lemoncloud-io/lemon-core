@@ -171,13 +171,14 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         const { endpoint, indexName, docType: type, autocompleteFields } = this.options;
         const { client } = Elastic6Service.instance(endpoint);
 
-        if (!param) throw new Error('@param (SimpleSearchParam) is required');
-        if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required');
-        if (Object.keys(param.$query).length > 1) throw new Error('.query accepts only one property');
+        // validate parameters
+        if (!param) throw new Error('@param (AutocompleteSearchParam) is required');
+        if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required.');
+        if (Object.keys(param.$query).length > 1) throw new Error('.query accepts only one property.');
 
         const [field, query] = Object.entries(param.$query)[0];
         if (!field || !query) throw new Error(`.query is invalid`);
-        if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
+        if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field.`);
 
         // build query body
         const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}`;
@@ -189,9 +190,15 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                         { match: { [decomposedField]: $hangul.asJamoSequence(query) } },
                         { match: { [qwertyField]: query } },
                     ],
+                    minimum_should_match: 1,
                 },
             },
         };
+        if (param.$filter) {
+            body.query.bool.filter = Object.entries(param.$filter).map(([field, filter]) => {
+                return { term: { [field]: filter } };
+            });
+        }
         body.size = $U.N(param.$limit, 10);
         body.from = $U.N(param.$page, 0) * body.size;
 
