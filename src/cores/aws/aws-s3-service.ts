@@ -36,8 +36,8 @@ export interface PutObjectResult {
     ETag: string;
     Bucket: string;
     Key: string;
-    ContentType: string;
     ContentLength: number;
+    ContentType: string;
     Metadata: Metadata;
 }
 
@@ -45,9 +45,9 @@ export interface CoreS3Service extends CoreServices {
     bucket: (target?: string) => string;
     putObject: (body: string, key?: string, metadata?: Metadata, tags?: TagSet) => Promise<PutObjectResult>;
     getObject: (key: string) => Promise<any>;
-    getDecodedObject: (fileName: string) => Promise<any>;
-    getObjectTagging: (fileName: string) => Promise<TagSet>;
-    deleteObject: (fileName: string) => Promise<void>;
+    getDecodedObject: (key: string) => Promise<any>;
+    getObjectTagging: (key: string) => Promise<TagSet>;
+    deleteObject: (key: string) => Promise<void>;
 }
 
 /** ****************************************************************************************************************
@@ -100,14 +100,14 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * retrieve metadata without returning the object
-     * @param {string} fileName
+     * @param {string} key
      * @return  metadata object / null if not exists
      */
-    public headObject = async (fileName: string): Promise<any> => {
-        if (!fileName) throw new Error('@fileName is required!');
+    public headObject = async (key: string): Promise<any> => {
+        if (!key) throw new Error('@key is required!');
 
         const Bucket = this.bucket();
-        const params = { Bucket, Key: fileName };
+        const params = { Bucket, Key: key };
 
         //! call s3.getObject.
         const s3 = instance();
@@ -205,13 +205,13 @@ export class AWSS3Service implements CoreS3Service {
     /**
      * return decoded Object from bucket file.
      *
-     * @param {string} fileName ex) 'hello-0001.json' , 'dist/hello-0001.json
+     * @param {string} key  ex) 'hello-0001.json' , 'dist/hello-0001.json
      */
-    public getDecodedObject = async (fileName: string): Promise<any> => {
-        if (!fileName) throw new Error('@fileName is required!');
+    public getDecodedObject = async (key: string): Promise<any> => {
+        if (!key) throw new Error('@key is required!');
 
         const Bucket = this.bucket();
-        const params = { Bucket, Key: fileName };
+        const params = { Bucket, Key: key };
 
         //! call s3.getObject.
         const s3 = instance();
@@ -228,11 +228,11 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * get tag-set of object
-     * @param {string} fileName
+     * @param {string} key
      */
-    public getObjectTagging = async (fileName: string): Promise<TagSet> => {
+    public getObjectTagging = async (key: string): Promise<TagSet> => {
         const Bucket = this.bucket();
-        const params = { Bucket, Key: fileName };
+        const params = { Bucket, Key: key };
 
         //! call s3.getObject.
         const s3 = instance();
@@ -252,13 +252,13 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * delete object from bucket
-     * @param {string} fileName
+     * @param {string} key
      */
-    public deleteObject = async (fileName: string): Promise<void> => {
-        if (!fileName) throw new Error('@fileName is required!');
+    public deleteObject = async (key: string): Promise<void> => {
+        if (!key) throw new Error('@key is required!');
 
         const Bucket = this.bucket();
-        const params = { Bucket, Key: fileName };
+        const params = { Bucket, Key: key };
 
         //! call s3.deleteObject.
         const s3 = instance();
@@ -338,17 +338,17 @@ class S3PutObjectRequestBuilder {
      */
     public asParams(): AWS.S3.PutObjectRequest {
         let { Body, Bucket, ContentLength, ContentType, Key, Metadata, Tagging } = this;
+
+        // generate object key if not specified
+        //  - generate UUID filename
+        //  - get extension from content-type or use 'json'
         if (!Key) {
-            // generate object key if not specified
-            //  - generate UUID filename
-            //  - get extension from content-type or use '.json'
-            let extname = '.json';
-            if (this.ContentType) {
-                const ext = mime.extension(this.ContentType);
-                if (ext) extname = `.${ext}`;
-            }
-            Key = `${v4()}${extname}`;
+            const ext = (this.ContentType && mime.extension(this.ContentType)) || 'json';
+            Key = `${v4()}.${ext}`;
         }
+        // generate content-type if not specified
+        if (!ContentType) ContentType = this.getContentType(Key);
+
         return { Bucket, Key, Body, ContentLength, ContentType, Metadata, Tagging };
     }
 
