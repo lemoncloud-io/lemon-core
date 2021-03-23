@@ -36,9 +36,9 @@ export interface PutObjectResult {
     ETag: string;
     Bucket: string;
     Key: string;
-    ContentLength: number;
-    ContentType: string;
-    Metadata: Metadata;
+    ContentLength?: number;
+    ContentType?: string;
+    Metadata?: Metadata;
 }
 
 export interface CoreS3Service extends CoreServices {
@@ -315,12 +315,14 @@ class S3PutObjectRequestBuilder {
      * @param metadata  key-value dictionary (only string is allowed for values.)
      */
     public setMetadata(metadata: Metadata): this {
-        this.Metadata = {
-            ...this.Metadata,
-            ...metadata,
-        };
-        if (metadata['Content-Type']) this.ContentType = metadata['Content-Type'];
-        else if (metadata['Origin']) this.ContentType = this.getContentType(metadata['origin'] ?? metadata['Origin']);
+        if (metadata['Content-Type']) {
+            this.ContentType = metadata['Content-Type'];
+            delete metadata['Content-Type'];
+        } else if (metadata.origin) {
+            this.ContentType = this.getContentType(metadata.origin);
+        }
+
+        this.Metadata = { md5: this.Metadata.md5, ...metadata }; // preserve 'md5' field
         return this;
     }
 
