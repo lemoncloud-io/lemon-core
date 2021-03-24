@@ -651,6 +651,7 @@ export const $ERROR = {
                 else if (error.root_cause) return error.root_cause;
                 return error;
             } else if (e.response) {
+                //TODO - improve error handler due to `Unexpected token } in JSON at position 60` @210323
                 const error =
                     typeof e.response == 'string' && e.response.startsWith('{') ? JSON.parse(e.response) : e.response;
                 if (error.root_cause && Array.isArray(error.root_cause)) return error.root_cause[0];
