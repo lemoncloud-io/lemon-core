@@ -530,9 +530,10 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
     public transformToEvent(uri: string, param: ProtocolParam): APIGatewayProxyEvent {
         const mode: NextMode = `${param.mode || ''}` as NextMode;
         const httpMethod = mode == 'LIST' ? 'GET' : mode || 'GET';
+        const type = `${param.type || ''}`;
         const id = mode == 'LIST' ? null : `${param.id || ''}`;
         const cmd = mode == 'LIST' ? null : `${param.cmd || ''}`;
-        const path = MyProtocolService.asPath(param.type, id, cmd);
+        const path = MyProtocolService.asPath(type, id, cmd);
         const stage = `${param.stage || ''}`;
 
         //NOTE - must validate request with `requestId` + `accountId`.
@@ -552,7 +553,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             },
             path,
             httpMethod,
-            pathParameters: { id, cmd },
+            pathParameters: { type, id, cmd },
             queryStringParameters: param.param,
             requestContext: {
                 ...$ctx,
