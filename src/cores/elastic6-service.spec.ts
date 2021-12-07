@@ -60,7 +60,7 @@ describe('Elastic6Service', () => {
         const { dummy } = instance();
 
         //! check dummy data.
-        expect2(await dummy.hello()).toEqual('dummy-elastic6-service:test-v3');
+        expect2(() => dummy.hello()).toEqual('dummy-elastic6-service:test-v3');
         expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: 'account', name: 'lemon' });
         expect2(await dummy.readItem('A1'), 'id,type,name').toEqual({ id: 'A1', type: 'account', name: 'Hong' });

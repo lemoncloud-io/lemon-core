@@ -23,6 +23,7 @@ const instance = () => {
 //! main test body.
 describe('Elastic6QueryService', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    PROFILE && console.info('! PROFILE =', PROFILE);
     jest.setTimeout(10000);
 
     // service identity
@@ -38,13 +39,53 @@ describe('Elastic6QueryService', () => {
 
     // test buildQueryBody()
     it('should pass buildQueryBody()', async done => {
-        const { search } = instance();
+        const { search, elastic } = instance();
 
         expect2(() => search.buildQueryBody({ _x: 0, a: 1 })).toEqual({
             query: { query_string: { query: 'a:1' } },
         });
         expect2(() => search.buildQueryBody({ '!a': 2, b: '3,4', c: '' })).toEqual({
             query: { query_string: { query: 'a:(NOT 2) AND b:(3 OR 4) AND c:""' } },
+        });
+
+        if (!(await canPerformTest())) return done();
+
+        //! low-level search
+        expect2(await elastic.saveItem('T000001', { title: 'T#1' }).catch(GETERR), '_id').toEqual({ _id: 'T000001' });
+        expect2(
+            await search.search({
+                query: { bool: { filter: [{ term: { id: 'T000001' } }] } },
+                _source: ['id', 'title'],
+                sort: [{ id: 'asc' }],
+            }),
+            '!took',
+        ).toEqual({
+            _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
+            hits: {
+                hits: [
+                    {
+                        _id: 'T000001',
+                        _index: 'test-v3',
+                        _score: null,
+                        _source: {
+                            id: 'T000001',
+                            title: 'T#1',
+                        },
+                        _type: '_doc',
+                        sort: ['T000001'], //! sort 설정이 있을 경우에만 있음.
+                    },
+                ],
+                max_score: null,
+                total: 1,
+            },
+            timed_out: false,
+        });
+
+        //! simple-search
+        expect2(await search.searchSimple({ id: 'T000001', $source: 'id,title' })).toEqual({
+            list: [{ _id: 'T000001', _score: 1.5404451, id: 'T000001', title: 'T#1' }],
+            total: 1,
+            last: undefined,
         });
 
         done();

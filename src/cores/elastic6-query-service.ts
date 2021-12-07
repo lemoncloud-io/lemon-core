@@ -97,34 +97,37 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      *
      * @param param     search param
      */
-    public async searchSimple(param: SimpleSearchParam, searchType?: SearchType) {
+    public async searchSimple(param: SimpleSearchParam) {
         if (!param) throw new Error('@param (SimpleSearchParam) is required');
         const { indexName } = this.options;
         _log(NS, `- searchSimple(${indexName})....`);
         _log(NS, `> param =`, $U.json(param));
         //! build query body.
-        const payload = this.buildQueryBody(param);
-        return this.search(payload, searchType);
+        const body = this.buildQueryBody(param);
+        //! search via client
+        const res = await this.search(body);
+        //! convert to query-result.
+        return this.asQueryResult(body, res);
     }
 
     /**
      * search with raw query language.
+     *
      * @param body SearchBody.
      * @returns results.
      */
     public async search(body: SearchBody, searchType?: SearchType) {
-        if (!body) throw new Error('@payload (SearchBody) is required');
+        if (!body) throw new Error('@body (SearchBody) is required');
         const { endpoint, indexName, docType } = this.options;
         const { client } = Elastic6Service.instance(endpoint);
-        _log(NS, `- search(${indexName})....`);
-        _log(NS, `> payload =`, $U.json(body));
+        _log(NS, `- search(${indexName}, ${searchType || ''})....`);
+        _log(NS, `> body =`, $U.json(body));
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
-        const size = $U.N(body.size, 10);
         const params: SearchParams = { index: indexName, type, body, searchType };
-        _log(NS, `> params[${tmp}] =`, $U.json(params));
-        const res = await client.search(params).catch(
+        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
+        const $res = await client.search(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
                 throw e;
@@ -132,19 +135,32 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         );
         // {"took":6,"timed_out":false,"_shards":{"total":4,"successful":4,"skipped":0,"failed":0},"hits":{"total":1,"max_score":0.2876821,"hits":[{"_index":"test-v3","_type":"_doc","_id":"aaa","_score":0.2876821,"_source":{"name":"AAA","@id":"aaa","a":-3,"b":-2}}]}}
         // _log(NS, `> search[${id}].res =`, $U.json(res));
-        _log(NS, `> search[${tmp}].took =`, res.took);
-        _log(NS, `> search[${tmp}].hits.total =`, res.hits && res.hits.total);
-        _log(NS, `> search[${tmp}].hits.max_score =`, res.hits && res.hits.max_score);
-        _log(NS, `> search[${tmp}].hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
+        _log(NS, `> search[${tmp}].took =`, $res.took);
+        _log(NS, `> search[${tmp}].hits.total =`, $res.hits?.total);
+        _log(NS, `> search[${tmp}].hits.max_score =`, $res.hits?.max_score);
+        _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
 
+        //! return raw results.
+        return $res;
+    }
+
+    /**
+     * convert result as `QueryResult`
+     * @param body the query body requested
+     * @param res the result
+     * @returns QueryResult
+     */
+    public asQueryResult(body: SearchBody, res: any): QueryResult<T> {
+        const size = $U.N(body?.size, 10);
         //! extract for result.
-        const $hits = res.hits;
+        const $hits = res?.hits;
         const hits = ($hits && $hits.hits) || [];
         const total = $U.N($hits && $hits.total, 0);
-        const list: T[] = hits.map((_: any) => {
-            const id = _ && _._id; // id of elastic-search
-            const score = _ && _._score; // search score.
-            const source = _ && _._source; // origin data
+        const last = hits.length === size ? hits[size - 1]?.sort : undefined;
+        const list: T[] = hits.map((N: any) => {
+            const id = N && N._id; // id of elastic-search
+            const score = N && N._score; // search score.
+            const source = N && N._source; // origin data
             //! save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
@@ -155,9 +171,8 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             return source as T;
         });
 
-        const last = res.hits.hits.length === size ? res.hits.hits[size - 1]?.sort : undefined;
         const result: QueryResult<T> = { list, total, last };
-        if (res.aggregations) {
+        if (res?.aggregations) {
             const $aggregations = res.aggregations || {};
             result.aggregations = Object.keys($aggregations).reduce((aggrs, field) => {
                 const {
