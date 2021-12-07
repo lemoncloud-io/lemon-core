@@ -36,6 +36,20 @@ describe('Elastic6QueryService', () => {
         done();
     });
 
+    // test buildQueryBody()
+    it('should pass buildQueryBody()', async done => {
+        const { search } = instance();
+
+        expect2(() => search.buildQueryBody({ _x: 0, a: 1 })).toEqual({
+            query: { query_string: { query: 'a:1' } },
+        });
+        expect2(() => search.buildQueryBody({ '!a': 2, b: '3,4', c: '' })).toEqual({
+            query: { query_string: { query: 'a:(NOT 2) AND b:(3 OR 4) AND c:""' } },
+        });
+
+        done();
+    });
+
     // autocomplete indexing
     it('autocomplete indexing', async done => {
         const { elastic, search } = instance();

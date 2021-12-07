@@ -274,138 +274,137 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         let $H = ''; // Highlight
 
         //! build query.
-        const queries = $_.reduce(
-            param,
-            (list: any[], val: any, key: string) => {
-                // ignore internal values.
-                if (key.startsWith('_')) return list;
+        const queries = Object.keys(param).reduce((list: string[], key: string): string[] => {
+            let val = param[key as keyof SimpleSearchParam];
+            // ignore internal values.
+            if (key.startsWith('_')) return list;
 
-                // _log(NS, `>> param[${key}] = `, val);
-                if (key === '$query') {
-                    $query = { query: typeof val === 'object' ? val : JSON.parse(val) };
-                } else if (key === '$limit') {
-                    $limit = $U.N(val, 0);
-                } else if (key === '$page') {
-                    $page = $U.N(val, 0);
-                } else if (key === '$Q') {
-                    if (!val) {
-                        //NOP;
-                    } else if (typeof val === 'object') {
-                        // ONLY IF object. use it as raw query.
-                        $query = val;
-                    } else if (typeof val === 'string' && val.startsWith('{') && val.endsWith('}')) {
-                        // might be the json data.
-                        $query = JSON.parse(val);
-                    } else if (typeof val === 'string') {
-                        // might be query string.
-                        //! escape queries..
-                        // + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /
-                        // val = val.replace(/([\(\)])/ig,'\\$1');	    //TODO - 이걸 무시하면, 중복 조건 검색에 문제가 생김, 하여 일단 안하는걸루. @180828.
-                        list.push(`(${val})`);
-                    }
-                } else if (key === '$A') {
-                    $A = `${val}`.trim(); // ',' delimited terms to count
-                } else if (key === '$O') {
-                    $O = `${val}`.trim(); // ',' delimited terms to order
-                } else if (key === '$H') {
-                    $H = `${val}`.trim(); // ',' delimited terms to highlight
-                } else if (key === '$source') {
-                    // returned source fields set. '*', 'obj.*', '!abc'
-                    if (val === '*') {
-                        // all.
-                        $source = '*';
-                    } else if (val && val.indexOf && val.indexOf(',')) {
-                        // string array set.
-                        let vals: string[] = val.split(',') || [];
-                        let $includes: string[] = [];
-                        let $excludes: string[] = [];
-                        vals.forEach(val => {
-                            val = `${val || ''}`.trim();
-                            if (!val) return;
-                            if (val.startsWith('!')) {
-                                $excludes.push(val.substr(1));
-                            } else {
-                                $includes.push(val);
-                            }
-                        });
-                        $source = { includes: $includes, excludes: $excludes };
-                    } else {
-                        $source = val;
-                    }
-                } else if (key === '$exist' || key === '$exists') {
-                    (val.split(',') || []).forEach((val: any) => {
+            // _log(NS, `>> param[${key}] = `, val);
+            if (key === '$query') {
+                $query = {
+                    query: typeof val === 'object' ? val : typeof val === 'string' ? JSON.parse(val) : `${val || ''}`,
+                };
+            } else if (key === '$limit') {
+                $limit = $U.N(val, 0);
+            } else if (key === '$page') {
+                $page = $U.N(val, 0);
+            } else if (key === '$Q') {
+                if (!val) {
+                    //NOP;
+                } else if (typeof val === 'object') {
+                    // ONLY IF object. use it as raw query.
+                    $query = val;
+                } else if (typeof val === 'string' && val.startsWith('{') && val.endsWith('}')) {
+                    // might be the json data.
+                    $query = JSON.parse(val);
+                } else if (typeof val === 'string') {
+                    // might be query string.
+                    //! escape queries..
+                    // + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /
+                    // val = val.replace(/([\(\)])/ig,'\\$1');	    //TODO - 이걸 무시하면, 중복 조건 검색에 문제가 생김, 하여 일단 안하는걸루. @180828.
+                    list.push(`(${val})`);
+                }
+            } else if (key === '$A') {
+                $A = `${val}`.trim(); // ',' delimited terms to count
+            } else if (key === '$O') {
+                $O = `${val}`.trim(); // ',' delimited terms to order
+            } else if (key === '$H') {
+                $H = `${val}`.trim(); // ',' delimited terms to highlight
+            } else if (key === '$source') {
+                // returned source fields set. '*', 'obj.*', '!abc'
+                if (val === '*') {
+                    // all.
+                    $source = '*';
+                } else if (typeof val === 'string' && val.indexOf !== undefined) {
+                    // string array set.
+                    let vals: string[] = val.split(',') || [];
+                    let $includes: string[] = [];
+                    let $excludes: string[] = [];
+                    vals.forEach(val => {
                         val = `${val || ''}`.trim();
                         if (!val) return;
                         if (val.startsWith('!')) {
-                            list.push('NOT _exists_:' + val.substr(1));
+                            $excludes.push(val.substr(1));
                         } else {
-                            list.push('_exists_:' + val);
+                            $includes.push(val);
                         }
                     });
+                    $source = { includes: $includes, excludes: $excludes };
                 } else {
-                    //! escape if there is ' ' except like '(a AND B)'
-                    const escape_val = (val: string): string | string[] => {
-                        if (val === '') {
-                            val = '"' + val + '"';
-                        } else if (val && typeof val === 'string') {
-                            if (val.startsWith('(') && val.endsWith(')')) {
-                                // nop
-                            } else if (val.startsWith('"') && val.endsWith('"')) {
-                                // must be string block
-                                return val;
-                            } else if (val.indexOf(',') > 0) {
-                                // list of array.
-                                return val.split(',').map(s => {
-                                    return (s || '').trim();
-                                });
-                            } else if (
-                                // special chars
-                                val.indexOf(' ') >= 0 ||
-                                val.indexOf('\n') >= 0 ||
-                                val.indexOf(':') >= 0 ||
-                                val.indexOf('\\') >= 0 ||
-                                val.indexOf('#') >= 0 ||
-                                val.indexOf('^') >= 0
-                            ) {
-                                val = val.replace(/([\"\'])/gi, '\\$1'); // replace '"' -> '\"'
-                                val = '"' + val + '"';
-                            }
-                        }
-                        return val;
-                    };
-                    val = escape_val(val);
-
-                    //! add to query-list.
-                    if (key.startsWith('!')) {
-                        if (val) {
-                            if (Array.isArray(val)) {
-                                const vals = val.map(_ => escape_val(_));
-                                list.push(key.substr(1) + ':(NOT (' + vals.join(' OR ') + '))');
-                            } else {
-                                list.push(key.substr(1) + ':(NOT ' + val + ')');
-                            }
-                        } else {
-                            list.push('_exists_:' + key.substr(1));
-                        }
-                    } else if (key.startsWith('#')) {
-                        // projection.
-                        $source = $source || { includes: [], excludes: [] };
-                        if ($source && $source.includes) {
-                            $source.includes.push(key.substr(1));
-                        }
-                    } else if (val === undefined) {
-                        //! nop
-                    } else if (val && Array.isArray(val)) {
-                        // list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
-                        list.push(`${key}:` + '(' + val.map(val => `${escape_val(val)}`).join(' OR ') + ')');
-                    } else {
-                        list.push(`${key}:${val}`);
-                    }
+                    $source = val;
                 }
-                return list;
-            },
-            [],
-        );
+            } else if (key === '$exist' || key === '$exists') {
+                (Array.isArray(val) ? val : `${val}`.split(',') || []).forEach((val: any) => {
+                    val = `${val || ''}`.trim();
+                    if (!val) return;
+                    if (val.startsWith('!')) {
+                        list.push('NOT _exists_:' + val.substr(1));
+                    } else {
+                        list.push('_exists_:' + val);
+                    }
+                });
+            } else {
+                //! escape if there is ' ' except like '(a AND B)'
+                const escape_val = (val: any): string | string[] => {
+                    if (typeof val === 'string' && val === '') {
+                        return '"' + val + '"';
+                    } else if (val && typeof val === 'string') {
+                        if (val.startsWith('(') && val.endsWith(')')) {
+                            // nop
+                        } else if (val.startsWith('"') && val.endsWith('"')) {
+                            // must be string block
+                            return val;
+                        } else if (val.indexOf(',') > 0) {
+                            // list of array.
+                            return val.split(',').map(s => {
+                                return (s || '').trim();
+                            });
+                        } else if (
+                            // special chars
+                            val.indexOf(' ') >= 0 ||
+                            val.indexOf('\n') >= 0 ||
+                            val.indexOf(':') >= 0 ||
+                            val.indexOf('\\') >= 0 ||
+                            val.indexOf('#') >= 0 ||
+                            val.indexOf('^') >= 0
+                        ) {
+                            const str = val.replace(/([\"\'])/gi, '\\$1'); // replace '"' -> '\"'
+                            return '"' + str + '"';
+                        }
+                    }
+                    return val;
+                };
+                val = escape_val(val);
+
+                //! add to query-list.
+                if (key.startsWith('!')) {
+                    if (val) {
+                        if (Array.isArray(val)) {
+                            const vals = val.map((_: any) => escape_val(_));
+                            list.push(key.substr(1) + ':(NOT (' + vals.join(' OR ') + '))');
+                        } else {
+                            list.push(key.substr(1) + ':(NOT ' + val + ')');
+                        }
+                    } else {
+                        list.push('_exists_:' + key.substr(1));
+                    }
+                } else if (key.startsWith('#')) {
+                    // projection.
+                    $source = $source || { includes: [], excludes: [] };
+                    if ($source && $source.includes) {
+                        $source.includes.push(key.substr(1));
+                    }
+                } else if (val === undefined) {
+                    //! nop
+                } else if (val && Array.isArray(val)) {
+                    // list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
+                    list.push(`${key}:` + '(' + val.map((val: any) => `${escape_val(val)}`).join(' OR ') + ')');
+                } else {
+                    list.push(`${key}:${val}`);
+                }
+            }
+            return list;
+        }, []);
 
         //! prepare returned body.
         const $body: any = $query
