@@ -5,23 +5,26 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2021-12-07 support SearchBody
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, $_ } from '../engine/';
-const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
-
 import {
     GeneralItem,
     Elastic6SimpleQueriable,
     QueryResult,
     SimpleSearchParam,
     AutocompleteSearchParam,
+    SearchBody,
 } from './core-types';
 import { Elastic6Option, $ERROR, Elastic6Service } from './elastic6-service';
 import $hangul from './hangul-service';
 import { SearchParams } from 'elasticsearch';
+const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
+
+export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
 /** ****************************************************************************************************************
  *  Service Main
@@ -94,20 +97,33 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      *
      * @param param     search param
      */
-    public async searchSimple(param: SimpleSearchParam) {
+    public async searchSimple(param: SimpleSearchParam, searchType?: SearchType) {
         if (!param) throw new Error('@param (SimpleSearchParam) is required');
+        const { indexName } = this.options;
+        _log(NS, `- searchSimple(${indexName})....`);
+        _log(NS, `> param =`, $U.json(param));
+        //! build query body.
+        const payload = this.buildQueryBody(param);
+        return this.search(payload, searchType);
+    }
+
+    /**
+     * search with raw query language.
+     * @param body SearchBody.
+     * @returns results.
+     */
+    public async search(body: SearchBody, searchType?: SearchType) {
+        if (!body) throw new Error('@payload (SearchBody) is required');
         const { endpoint, indexName, docType } = this.options;
         const { client } = Elastic6Service.instance(endpoint);
         _log(NS, `- search(${indexName})....`);
-        _log(NS, `> param =`, $U.json(param));
+        _log(NS, `> payload =`, $U.json(body));
 
-        //! build query body.
-        const payload = this.buildQueryBody(param);
-
-        const id = '';
-        const type = `${docType}`;
-        const params: SearchParams = { index: indexName, type, body: payload };
-        _log(NS, `> params[${id}] =`, $U.json(params));
+        const tmp = docType ? docType : '';
+        const type: string = docType ? `${docType}` : undefined;
+        const size = $U.N(body.size, 10);
+        const params: SearchParams = { index: indexName, type, body, searchType };
+        _log(NS, `> params[${tmp}] =`, $U.json(params));
         const res = await client.search(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
@@ -116,10 +132,10 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         );
         // {"took":6,"timed_out":false,"_shards":{"total":4,"successful":4,"skipped":0,"failed":0},"hits":{"total":1,"max_score":0.2876821,"hits":[{"_index":"test-v3","_type":"_doc","_id":"aaa","_score":0.2876821,"_source":{"name":"AAA","@id":"aaa","a":-3,"b":-2}}]}}
         // _log(NS, `> search[${id}].res =`, $U.json(res));
-        _log(NS, `> search[${id}].took =`, res.took);
-        _log(NS, `> search[${id}].hits.total =`, res.hits && res.hits.total);
-        _log(NS, `> search[${id}].hits.max_score =`, res.hits && res.hits.max_score);
-        _log(NS, `> search[${id}].hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
+        _log(NS, `> search[${tmp}].took =`, res.took);
+        _log(NS, `> search[${tmp}].hits.total =`, res.hits && res.hits.total);
+        _log(NS, `> search[${tmp}].hits.max_score =`, res.hits && res.hits.max_score);
+        _log(NS, `> search[${tmp}].hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
 
         //! extract for result.
         const $hits = res.hits;
@@ -139,7 +155,8 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             return source as T;
         });
 
-        const result: QueryResult<T> = { list, total };
+        const last = res.hits.hits.length === size ? res.hits.hits[size - 1]?.sort : undefined;
+        const result: QueryResult<T> = { list, total, last };
         if (res.aggregations) {
             const $aggregations = res.aggregations || {};
             result.aggregations = Object.keys($aggregations).reduce((aggrs, field) => {
@@ -263,7 +280,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
     /**
      * build query parameter from search param.
      */
-    public buildQueryBody = (param: SimpleSearchParam) => {
+    public buildQueryBody = (param: SimpleSearchParam): SearchBody => {
         //! parameters.
         let $query = null;
         let $source: any = null;

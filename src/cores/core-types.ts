@@ -6,6 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version
  * @date        2020-01-03 support cognito-identity
+ * @date        2021-12-07 support SearchBody
  *
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -210,7 +211,7 @@ export type NextHandler<TParam = any, TResult = any, TBody = any> = (
 export type NextDecoder<TMode = NextMode> = (mode: TMode, id?: string, cmd?: string, path?: string) => NextHandler;
 
 /** ********************************************************************************************************************
- *  Services Interfaces
+ *  Search Services
  ** ********************************************************************************************************************/
 
 /**
@@ -228,7 +229,74 @@ export interface QueryResult<T> {
     limit?: number;
     // terms aggregations
     aggregations?: any;
+    // last keys.
+    last?: any;
 }
+
+/**
+ * 쿼리의 각 항목의 값들
+ */
+export type QueryTerm =
+    | string
+    | number
+    | string[]
+    | number[]
+    | { query: string | number | string[] | number[]; operator?: 'and' | 'or'; slop?: number }
+    | { query: { query_string: { default_field?: string; query: string } } };
+
+/**
+ * 검색 쿼리 항목.
+ */
+export interface SearchQuery {
+    term?: { [key: string]: QueryTerm };
+    match?: { [key: string]: QueryTerm };
+    match_phrase?: { [key: string]: QueryTerm };
+    exists?: { field: string };
+    range?: {
+        [key: string]: {
+            gt?: string | number;
+            gte?: string | number;
+            lt?: string | number;
+            lte?: string | number;
+            // like "dd/MM/yyyy||yyyy"
+            format?: string;
+        };
+    };
+}
+
+/**
+ * type of search body
+ */
+/* eslint-disable @typescript-eslint/indent */
+export interface SearchBody {
+    size?: number;
+    search_after?: (string | number)[];
+    query:
+        | SearchQuery
+        | {
+              bool?: {
+                  filter?: SearchQuery[];
+                  must?: SearchQuery[];
+                  must_not?: SearchQuery[];
+                  should?: SearchQuery[];
+                  minimum_should_match?: number;
+              };
+          };
+    sort?:
+        | string
+        | string[]
+        | { [key: string]: 'asc' | 'desc' }[]
+        | {
+              [key: string]: {
+                  order: 'asc' | 'desc';
+                  missing?: '_last';
+              };
+          };
+    _source?: string[];
+    aggs?: any;
+}
+/* eslint-enable @typescript-eslint/indent */
+
 /**
  * class: `SimpleSearchParam`
  * - simplified search param with json object.
@@ -237,7 +305,7 @@ export interface SimpleSearchParam extends GeneralItem {
     $query?: string | any; // low query object.
     $limit?: number; // limit
     $page?: number; // page
-    $Q?: string; // simple inline query
+    $Q?: string | any; // simple inline query
     $A?: string; // aggregation.
     $O?: string; // ordering.
     $H?: string; // highlight.
