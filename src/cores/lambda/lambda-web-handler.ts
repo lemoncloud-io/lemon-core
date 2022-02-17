@@ -115,7 +115,7 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
     if (event && event.headers && !event.headers['x-protocol-context'])
         event.headers['x-protocol-context'] = $ctx ? $U.json($ctx) : null;
     const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
-    _log(NS, '! protocol-param =', $U.json(param));
+    _log(NS, '! protocol-param =', $U.json({ ...param, body: undefined })); // hide `.body` in log.
 
     //! returns object..
     return { event, param };
