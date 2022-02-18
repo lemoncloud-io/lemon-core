@@ -245,12 +245,29 @@ export type QueryTerm =
     | { query: { query_string: { default_field?: string; query: string } } };
 
 /**
+ * 정렬(sort)에 쓰이는 항목.
+ */
+/* eslint-disable @typescript-eslint/indent */
+export type SortTerm =
+    | string
+    | { [key: string]: 'asc' | 'desc' }
+    | {
+          [key: string]: {
+              order?: 'asc' | 'desc';
+              missing?: '_last' | '_first';
+          };
+      };
+/* eslint-enable @typescript-eslint/indent */
+
+/**
  * 검색 쿼리 항목.
  */
 export interface SearchQuery {
     term?: { [key: string]: QueryTerm };
+    terms?: { [key: string]: QueryTerm };
     match?: { [key: string]: QueryTerm };
     match_phrase?: { [key: string]: QueryTerm };
+    prefix?: { [key: string]: QueryTerm };
     exists?: { field: string };
     range?: {
         [key: string]: {
@@ -262,40 +279,27 @@ export interface SearchQuery {
             format?: string;
         };
     };
+    bool?: {
+        filter?: SearchQuery | SearchQuery[];
+        must?: SearchQuery | SearchQuery[];
+        must_not?: SearchQuery | SearchQuery[];
+        should?: SearchQuery | SearchQuery[];
+        minimum_should_match?: number;
+    };
 }
 
 /**
  * type of search body
  */
-/* eslint-disable @typescript-eslint/indent */
 export interface SearchBody {
     size?: number;
+    from?: number;
     search_after?: (string | number)[];
-    query:
-        | SearchQuery
-        | {
-              bool?: {
-                  filter?: SearchQuery[];
-                  must?: SearchQuery[];
-                  must_not?: SearchQuery[];
-                  should?: SearchQuery[];
-                  minimum_should_match?: number;
-              };
-          };
-    sort?:
-        | string
-        | string[]
-        | { [key: string]: 'asc' | 'desc' }[]
-        | {
-              [key: string]: {
-                  order: 'asc' | 'desc';
-                  missing?: '_last';
-              };
-          };
+    query: SearchQuery;
+    sort?: SortTerm | SortTerm[];
     _source?: string[];
     aggs?: any;
 }
-/* eslint-enable @typescript-eslint/indent */
 
 /**
  * class: `SimpleSearchParam`
