@@ -16,24 +16,29 @@ import { GeneralItem } from './core-types';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
 import { SearchBody } from '.';
 
-interface MyModel extends GeneralItem {
-    id?: string;
-}
+/**
+ * default endpoints url.
+ * - use ssh tunneling to make connection to real server instance.
+ */
 const ENDPOINTS = {
     '6.2': 'https://localhost:8443',
     '6.8': 'https://localhost:8683',
     '7.1': 'https://localhost:9683',
 };
-type VERSIONS = keyof typeof ENDPOINTS;
+export type VERSIONS = keyof typeof ENDPOINTS;
 
-export const instance = (version: VERSIONS = '6.2') => {
+interface MyModel extends GeneralItem {
+    id?: string;
+}
+export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, indexName?: string) => {
     //NOTE - use tunneling to elastic6 endpoint.
     const endpoint = ENDPOINTS[version];
     if (!endpoint) throw new Error(`@version[${version}] is not supported!`);
-    const indexName = `test-v${version}`;
+    // const indexName = `test-v${version}`;
+    indexName = indexName ?? `test-v${version}`;
     const idName = '$id'; //! global unique id-name in same index.
     const docType = '_doc'; //! must be `_doc`.
-    const autocompleteFields = 1 ? null : ['title', 'name'];
+    const autocompleteFields = useAutoComplete ? ['title', 'name'] : null;
     const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
     const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
     const dummy: Elastic6Service<MyModel> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);

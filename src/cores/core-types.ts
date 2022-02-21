@@ -286,6 +286,15 @@ export interface SearchQuery {
         should?: SearchQuery | SearchQuery[];
         minimum_should_match?: number;
     };
+    query_string?: { query: string };
+}
+
+export interface HighlightTerm {
+    fields?: {
+        [key: string]: {
+            type?: 'unified' | string;
+        };
+    };
 }
 
 /**
@@ -296,6 +305,7 @@ export interface SearchBody {
     from?: number;
     search_after?: (string | number)[];
     query?: SearchQuery;
+    highlight?: HighlightTerm;
     sort?: SortTerm | SortTerm[];
     _source?: string[];
     aggs?: any;

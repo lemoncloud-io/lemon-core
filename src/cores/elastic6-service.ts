@@ -26,6 +26,8 @@ const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
+export type SearchResponse = elasticsearch.SearchResponse<any>;
+
 /**
  * options for construction.
  */
@@ -71,11 +73,9 @@ export interface Elastic6Item extends GeneralItem {
     _score?: number;
 }
 
-//! create(or get) instance.
-const instance = (endpoint: string) => {
-    return Elastic6Service.instance(endpoint);
-};
-
+/**
+ * convert to string.
+ */
 const _S = (v: any, def: string = '') =>
     typeof v === 'string' ? v : v === undefined || v === null ? def : typeof v === 'object' ? $U.json(v) : `${v}`;
 
@@ -88,27 +88,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public static readonly DECOMPOSED_FIELD = '_decomposed';
     public static readonly QWERTY_FIELD = '_qwerty';
 
-    protected options: Elastic6Option;
+    protected _options: Elastic6Option;
     public readonly _client: elasticsearch.Client;
-
-    public constructor(options: Elastic6Option) {
-        _inf(NS, `Elastic6Service(${options.indexName}/${options.idName})...`);
-        if (!options.endpoint) throw new Error('.endpoint (URL) is required');
-        if (!options.indexName) throw new Error('.indexName (string) is required');
-
-        // default option values: docType='_doc', idName='$id'
-        const { client } = Elastic6Service.instance(options.endpoint);
-        this.options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
-        this._client = client;
-    }
-
-    /**
-     * say hello of identity.
-     */
-    public hello = () => `elastic6-service:${this.options.indexName}:${this.version}`;
 
     /**
      * simple instance maker.
+     *
+     * ```js
+     * const { client } = Elastic6Service.instance(endpoint);
+     * ```
+     *
      * @param endpoint  service-url
      * @param version   Elasticsearch version (default: '6.8')
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
@@ -119,10 +108,36 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
+     * default constuctor w/ options.
+     * @param options { endpoint, indexName } is required.
+     */
+    public constructor(options: Elastic6Option) {
+        _inf(NS, `Elastic6Service(${options.indexName}/${options.idName})...`);
+        if (!options.endpoint) throw new Error('.endpoint (URL) is required');
+        if (!options.indexName) throw new Error('.indexName (string) is required');
+
+        // default option values: docType='_doc', idName='$id'
+        const { client } = Elastic6Service.instance(options.endpoint);
+        this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
+        this._client = client;
+    }
+
+    /**
+     * say hello of identity.
+     */
+    public hello = () => `elastic6-service:${this.options.indexName}:${this.version}`;
+
+    /**
      * get the client instance.
      */
     public get client(): elasticsearch.Client {
         return this._client;
+    }
+    /**
+     * get the current options.
+     */
+    public get options(): Elastic6Option {
+        return this._options;
     }
 
     public get version(): number {
@@ -134,11 +149,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * list of index
      */
     public async listIndices() {
-        const { endpoint } = this.options;
         _log(NS, `- listIndices()`);
 
         //! call create index..
-        const { client } = instance(endpoint);
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.cat.indices({ format: 'json' });
         _log(NS, `> indices =`, $U.json(res));
         if (!Array.isArray(res)) throw new Error(`@result<${typeof res}> is invalid - expected: any[]!`);
@@ -340,10 +355,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
-        this.prepareAutocompleteFields(body);
+        const body2 = this.popullateAutocompleteFields(body);
 
         type = `${type || docType}`;
-        const params: CreateDocumentParams = { index: indexName, type, id, body };
+        const params: CreateDocumentParams = { index: indexName, type, id, body: body2 };
         if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
 
@@ -353,8 +368,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 const msg = GETERR(e);
                 //! try to update document..
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
-                    delete body[idName]; // do set id while update
-                    return this.updateItem(id, item);
+                    delete body2[idName]; // do set id while update
+                    return this.updateItem(id, body2);
                 }
                 throw e;
             }),
@@ -384,10 +399,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         type = `${type || docType}`;
         const body: any = { ...item };
-        this.prepareAutocompleteFields(body);
+        const body2 = this.popullateAutocompleteFields(body);
 
         _log(NS, `- pushItem(${id})`);
-        const params: IndexDocumentParams<any> = { index: indexName, type, body };
+        const params: IndexDocumentParams<any> = { index: indexName, type, body: body2 };
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
@@ -406,7 +421,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const _id = res._id;
         const _version = res._version;
-        const res2: T = { ...item, _id, _version };
+        const res2: T = { ...body, _id, _version };
         return res2;
     }
 
@@ -549,7 +564,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * run search and get the raw response.
      */
-    public async searchRaw(body: SearchBody, searchType?: SearchType) {
+    public async searchRaw(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
         if (!body) throw new Error('@body (SearchBody) is required');
         const { indexName, docType } = this.options;
         _log(NS, `- search(${indexName}, ${searchType || ''})....`);
@@ -561,7 +576,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
         const client = this.client;
-        const $res = await client.search(params).catch(
+        const $res: SearchResponse = await client.search(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
                 throw e;
@@ -742,7 +757,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: ['standard'],
+                            filter: version < 7.0 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
                         },
                     },
                 },
@@ -780,16 +795,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param body  item body to be saved into ES6 index
      * @private
      */
-    private prepareAutocompleteFields(body: any): void {
+    private popullateAutocompleteFields<T = any>(body: T): T {
         const { autocompleteFields } = this.options;
-
-        if (body && Array.isArray(autocompleteFields) && autocompleteFields.length > 0) {
-            body[Elastic6Service.DECOMPOSED_FIELD] = {};
-            body[Elastic6Service.QWERTY_FIELD] = {};
-
-            autocompleteFields.forEach(field => {
-                const value = body[field] as string;
-
+        const isAutoComplete = autocompleteFields && Array.isArray(autocompleteFields) && autocompleteFields.length > 0;
+        if (!isAutoComplete) return body;
+        return autocompleteFields.reduce<T>(
+            (N, field) => {
+                const value = (body as any)[field] as string;
                 if (typeof value == 'string' || value) {
                     // 한글의 경우 자모 분해 형태와 영자판 변형 형태를 제공하고, 영문의 경우 원본 텍스트만 제공한다.
                     // 다만 사용자가 공백/하이픈을 생략하고 입력하는 경우에 대응하기 위해 공백/하이픈을 제거한 형태를 공통으로 제공한다.
@@ -797,16 +809,18 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
                         const decomposed = $hangul.asJamoSequence(value);
                         const recomposed = decomposed.replace(/[ -]/g, '');
-                        body[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
+                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
                         // 영자판 (e.g. '레몬' -> 'fpahs')
-                        body[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
+                        (N as any)[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
                     } else {
                         const recomposed = value.replace(/[ -]/g, '');
-                        body[Elastic6Service.DECOMPOSED_FIELD][field] = [value, recomposed];
+                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [value, recomposed];
                     }
                 }
-            });
-        }
+                return N;
+            },
+            { ...body, [Elastic6Service.DECOMPOSED_FIELD]: {}, [Elastic6Service.QWERTY_FIELD]: {} },
+        );
     }
 }
 

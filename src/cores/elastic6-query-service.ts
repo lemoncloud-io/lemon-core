@@ -19,27 +19,32 @@ import {
     AutocompleteSearchParam,
     SearchBody,
 } from './core-types';
-import { Elastic6Option, $ERROR, Elastic6Service } from './elastic6-service';
+import { Elastic6Service, SearchType } from './elastic6-service';
 import $hangul from './hangul-service';
-import { SearchParams } from 'elasticsearch';
 const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
 
-export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
-
-/** ****************************************************************************************************************
- *  Service Main
- ** ****************************************************************************************************************/
 /**
  * class: `Elastic6QueryService`
  * - support simple query like range search.
  */
 export class Elastic6QueryService<T extends GeneralItem> implements Elastic6SimpleQueriable<T> {
-    protected options: Elastic6Option;
-    public constructor(options: Elastic6Option) {
-        // eslint-disable-next-line prettier/prettier
-        _inf(NS, `Elastic6QueryService(${options.indexName}/${options.idName})...`);
+    protected readonly service: Elastic6Service;
+
+    /**
+     * use query w/ the given search-service.
+     * @param service the origin search-service to use.
+     */
+    public constructor(service: Elastic6Service) {
+        const options = service.options;
         if (!options.indexName) throw new Error('.indexName is required');
-        this.options = { docType: '_doc', ...options };
+        this.service = service;
+    }
+
+    /**
+     * get options
+     */
+    protected get options() {
+        return this.service.options;
     }
 
     /**
@@ -118,30 +123,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      */
     public async search(body: SearchBody, searchType?: SearchType) {
         if (!body) throw new Error('@body (SearchBody) is required');
-        const { endpoint, indexName, docType } = this.options;
-        const { client } = Elastic6Service.instance(endpoint);
-        _log(NS, `- search(${indexName}, ${searchType || ''})....`);
-        _log(NS, `> body =`, $U.json(body));
-
-        const tmp = docType ? docType : '';
-        const type: string = docType ? `${docType}` : undefined;
-        const params: SearchParams = { index: indexName, type, body, searchType };
-        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
-        const $res = await client.search(params).catch(
-            $ERROR.handler('search', e => {
-                _err(NS, `> search[${indexName}].err =`, e);
-                throw e;
-            }),
-        );
-        // {"took":6,"timed_out":false,"_shards":{"total":4,"successful":4,"skipped":0,"failed":0},"hits":{"total":1,"max_score":0.2876821,"hits":[{"_index":"test-v3","_type":"_doc","_id":"aaa","_score":0.2876821,"_source":{"name":"AAA","@id":"aaa","a":-3,"b":-2}}]}}
-        // _log(NS, `> search[${id}].res =`, $U.json(res));
-        _log(NS, `> search[${tmp}].took =`, $res.took);
-        _log(NS, `> search[${tmp}].hits.total =`, $res.hits?.total);
-        _log(NS, `> search[${tmp}].hits.max_score =`, $res.hits?.max_score);
-        _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
-
-        //! return raw results.
-        return $res;
+        return this.service.searchRaw(body, searchType);
     }
 
     /**
@@ -153,11 +135,11 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
     public asQueryResult(body: SearchBody, res: any): QueryResult<T> {
         const size = $U.N(body?.size, 10);
         //! extract for result.
-        const $hits = res?.hits;
-        const hits = ($hits && $hits.hits) || [];
-        const total = $U.N($hits && $hits.total, 0);
-        const last = hits.length === size ? hits[size - 1]?.sort : undefined;
-        const list: T[] = hits.map((N: any) => {
+        const hits = res?.hits;
+        if (typeof hits !== 'object') throw new Error(`.hits (object) is required - hists:${$U.json(hits)}`);
+        const total = $U.N(typeof (hits.total as any)?.value === 'number' ? (hits.total as any)?.value : hits.total, 0); // since v7.x
+        const last = hits?.hits.length === size ? hits.hits[size - 1]?.sort : undefined;
+        const list: T[] = ((hits && hits.hits) || []).map((N: any) => {
             const id = N && N._id; // id of elastic-search
             const score = N && N._score; // search score.
             const source = N && N._source; // origin data
@@ -167,7 +149,6 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             // delete internal autocomplete data
             delete source[Elastic6Service.DECOMPOSED_FIELD];
             delete source[Elastic6Service.QWERTY_FIELD];
-
             return source as T;
         });
 
@@ -196,13 +177,12 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
     }
 
     /**
-     * search item in Search-as-You-Type way
+     * convert `AutocompleteSearchParam` to `SearchBody`
      * @param param AutocompleteSearchParam
+     * @returns SearchBody
      */
-    public async searchAutocomplete(param: AutocompleteSearchParam) {
-        const { endpoint, indexName, docType: type, autocompleteFields } = this.options;
-        const { client } = Elastic6Service.instance(endpoint);
-
+    public asSearchBody(param: AutocompleteSearchParam) {
+        const { autocompleteFields } = this.options;
         // validate parameters
         if (!param) throw new Error('@param (AutocompleteSearchParam) is required');
         if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required');
@@ -215,7 +195,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         // build query body
         const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}`;
         const qwertyField = `${Elastic6Service.QWERTY_FIELD}.${field}`;
-        const body: any = {
+        const body: SearchBody = {
             query: {
                 bool: {
                     should: [
@@ -233,40 +213,20 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         }
         body.size = $U.N(param.$limit, 10);
         body.from = $U.N(param.$page, 0) * body.size;
+        return { field, query, body };
+    }
 
-        // perform search
-        const params = { index: indexName, type, body };
-        _log(NS, `> params =`, $U.json(params));
-        const res = await client.search(params).catch(
-            $ERROR.handler('search', e => {
-                _err(NS, `> search[${indexName}].err =`, e);
-                throw e;
-            }),
-        );
-        _log(NS, `> search.took =`, res.took);
-        _log(NS, `> search.hits.total =`, res.hits && res.hits.total);
-        _log(NS, `> search.hits.max_score =`, res.hits && res.hits.max_score);
-        _log(NS, `> search.hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
-
-        // extract result
-        const $hits = res.hits;
-        const hits = ($hits && $hits.hits) || [];
-        const total = $U.N($hits && $hits.total, 0);
-        const list: T[] = hits.map((_: any) => {
-            const id = _ && _._id; // id of elastic-search
-            const score = _ && _._score; // search score.
-            const source = _ && _._source; // origin data
-            //! save as internal
-            source._id = source._id || id; // attach to internal-id
-            source._score = score;
-            // delete internal autocomplete data
-            delete source[Elastic6Service.DECOMPOSED_FIELD];
-            delete source[Elastic6Service.QWERTY_FIELD];
-
-            return source as T;
-        });
+    /**
+     * search item in Search-as-You-Type way
+     * @param param AutocompleteSearchParam
+     */
+    public async searchAutocomplete(param: AutocompleteSearchParam) {
+        const { field, query, body } = this.asSearchBody(param);
+        const res = await this.service.searchRaw(body);
+        const result = this.asQueryResult(body, res);
 
         // highlighting result manually
+        let list = result.list;
         if (param.$highlight) {
             // prepare tag name to wrap highlighted text
             const tagName = typeof param.$highlight == 'string' ? param.$highlight : 'em';
@@ -275,21 +235,25 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             const regexp = new RegExp([...query.replace(/\s/g, '')].join(' *'), 'i');
 
             // try to match regular expression with items found
-            list.map((item: any) => {
-                const target = `${item[field] || ''}`;
-                const match = target.match(regexp);
-                if (match) {
-                    item._highlight =
-                        target.slice(0, match.index) +
-                        `<${tagName}>${match[0]}</${tagName}>` +
-                        target.slice(match.index + match[0].length);
-                } else {
-                    item._highlight = target;
-                }
-            });
+            list = result.list.map(
+                (item: any): T => {
+                    const target = `${item[field] || ''}`;
+                    const match = target.match(regexp);
+                    if (match) {
+                        item._highlight =
+                            target.slice(0, match.index) +
+                            `<${tagName}>${match[0]}</${tagName}>` +
+                            target.slice(match.index + match[0].length);
+                    } else {
+                        item._highlight = target;
+                    }
+                    return item;
+                },
+            );
         }
 
-        return { list, total };
+        //! finally, override list.
+        return { ...result, list };
     }
 
     /**
@@ -439,7 +403,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         }, []);
 
         //! prepare returned body.
-        const $body: any = $query
+        const $body: SearchBody = $query
             ? $query
             : (queries.length && { query: { query_string: { query: queries.join(' AND ') } } }) || {}; // $query 이게 있으면 그냥 이걸 이용.
 

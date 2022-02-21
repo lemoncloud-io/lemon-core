@@ -8,15 +8,16 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../environ';
-import { GETERR, expect2 } from '..';
-import * as $elastic from './elastic6-service.spec';
+import { GETERR, expect2, waited } from '..';
 import { Elastic6QueryService } from './elastic6-query-service';
-import { canPerformTest } from './elastic6-service.spec';
+import { VERSIONS } from './elastic6-service.spec';
+import * as $elastic from './elastic6-service.spec';
 
-const instance = () => {
-    const { service: elastic, options } = $elastic.instance();
-    const search: Elastic6QueryService<any> = new Elastic6QueryService(options);
-    return { elastic, search, options };
+const instance = (indexName = 'test-v4') => {
+    const version = ['6.2', '6.8', '7.1'][0] as VERSIONS;
+    const { service: elastic, options } = $elastic.instance(version, true, indexName);
+    const search: Elastic6QueryService<any> = new Elastic6QueryService(elastic);
+    return { elastic, search, options, indexName };
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,22 +25,23 @@ const instance = () => {
 describe('Elastic6QueryService', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`
     PROFILE && console.info('! PROFILE =', PROFILE);
-    jest.setTimeout(10000);
+    jest.setTimeout(120000);
 
     // service identity
     it('should pass basic CRUD w/ dummy', async done => {
         const { elastic, search, options } = instance();
         /* eslint-disable prettier/prettier */
-        expect2(() => elastic.hello()).toEqual('elastic6-service:test-v3');
-        expect2(() => search.hello()).toEqual('elastic6-query-service:test-v3');
-        expect2(() => options, 'idName,autocompleteFields').toEqual({ idName: 'id', autocompleteFields: ['title', 'name'] });
+        const { version } = options;
+        expect2(() => elastic.hello()).toEqual(`elastic6-service:test-v4:${version}`);
+        expect2(() => search.hello()).toEqual(`elastic6-query-service:test-v4`);
+        expect2(() => options, 'idName,autocompleteFields').toEqual({ idName: '$id', autocompleteFields: ['title', 'name'] });
         /* eslint-enable prettier/prettier */
         done();
     });
 
     // test buildQueryBody()
     it('should pass buildQueryBody()', async done => {
-        const { search, elastic } = instance();
+        const { search } = instance();
 
         expect2(() => search.buildQueryBody({ _x: 0, a: 1 })).toEqual({
             query: { query_string: { query: 'a:1' } },
@@ -48,88 +50,20 @@ describe('Elastic6QueryService', () => {
             query: { query_string: { query: 'a:(NOT 2) AND b:(3 OR 4) AND c:""' } },
         });
 
-        if (!(await canPerformTest())) return done();
-
-        //! low-level search
-        expect2(await elastic.saveItem('T000001', { title: 'T#1' }).catch(GETERR), '_id').toEqual({ _id: 'T000001' });
-        expect2(
-            await search.search({
-                query: { bool: { filter: [{ term: { id: 'T000001' } }] } },
-                _source: ['id', 'title'],
-                sort: [{ id: 'asc' }],
-            }),
-            '!took',
-        ).toEqual({
-            _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-            hits: {
-                hits: [
-                    {
-                        _id: 'T000001',
-                        _index: 'test-v3',
-                        _score: null,
-                        _source: {
-                            id: 'T000001',
-                            title: 'T#1',
-                        },
-                        _type: '_doc',
-                        sort: ['T000001'], //! sort 설정이 있을 경우에만 있음.
-                    },
-                ],
-                max_score: null,
-                total: 1,
-            },
-            timed_out: false,
-        });
-
-        //! simple-search
-        expect2(await search.searchSimple({ id: 'T000001', $source: 'id,title' })).toEqual({
-            list: [{ _id: 'T000001', _score: 1.5404451, id: 'T000001', title: 'T#1' }],
-            total: 1,
-            last: undefined,
-        });
-
-        done();
-    });
-
-    // autocomplete indexing
-    it('autocomplete indexing', async done => {
-        const { elastic, search } = instance();
-        /* eslint-disable prettier/prettier */
-
-        // skip test if some prerequisites are not satisfied
-        if (!(await canPerformTest())) return done();
-        try {
-            await elastic.deleteItem('D01');
-        } catch {}
-
-        // saveItem should update incrementally
-        expect2(await elastic.saveItem('D01', { title: 'titleA' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
-        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleA', name: undefined });
-        expect2(await elastic.saveItem('D01', { name: 'name' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
-        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleA', name: 'name'});
-        expect2(await elastic.saveItem('D01', { title: 'titleB' }).catch(GETERR), '_id').toEqual({ _id: 'D01' });
-        expect2(await elastic.readItem('D01').catch(GETERR), 'title,name').toEqual({ title: 'titleB', name: 'name' });
-        await elastic.refreshIndex();
-
-        // should be searchable by both title and name
-        expect2(await search.searchAutocomplete({ $query: { title: 'title' } }).catch(GETERR), 'total').toEqual({ total: 1 });
-        expect2(await search.searchAutocomplete({ $query: { name: 'na' } }).catch(GETERR), 'total').toEqual({ total: 1 });
-        // title autocomplete field should be updated properly
-        expect2(await search.searchAutocomplete({ $query: { title: 'titleA' } }).catch(GETERR), 'total').toEqual({ total: 0 });
-        expect2(await search.searchAutocomplete({ $query: { title: 'titleB' } }).catch(GETERR), 'total').toEqual({ total: 1 });
-
-        /* eslint-enable prettier/prettier */
         done();
     });
 
     // autocomplete search
-    it('autocomplete search', async done => {
-        const { elastic, search } = instance();
+    it('should pass autocomplete search', async done => {
+        const { elastic, search, indexName } = instance('test-autocomplete-v4');
+        if (!PROFILE) return done();
+
+        //! make sure if index is ready.
+        const $old = await elastic.findIndex(indexName);
+        if (!$old) expect2(await elastic.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: indexName });
+        await waited(200);
+
         /* eslint-disable prettier/prettier */
-
-        // skip test if some prerequisites are not satisfied
-        if (!(await canPerformTest())) return done();
-
         // prepare items
         expect2(await elastic.saveItem('AC001', { type: 'member', title: 'Senior Director', name: 'Marvin' }).catch(GETERR), '_id').toEqual({ _id: 'AC001' });
         expect2(await elastic.saveItem('AC002', { type: 'member', title: 'Senior Software Engineer', name: 'Vickie' }).catch(GETERR), '_id').toEqual({ _id: 'AC002' });
@@ -138,7 +72,8 @@ describe('Elastic6QueryService', () => {
         expect2(await elastic.saveItem('AC005', { type: 'department', title: 'Account' }).catch(GETERR), '_id').toEqual({ _id: 'AC005' });
         expect2(await elastic.saveItem('AC006', { type: 'department', title: 'Software Lab' }).catch(GETERR), '_id').toEqual({ _id: 'AC006' });
         expect2(await elastic.saveItem('AC007', { type: 'department', title: 'Design Lab' }).catch(GETERR), '_id').toEqual({ _id: 'AC007' });
-        await elastic.refreshIndex();
+        expect2(await elastic.refreshIndex().catch(GETERR), '!_shards').toEqual({});
+        await waited(200);
 
         // check query
         expect2(await search.searchAutocomplete({ $query: { title: 'Sof' } }), 'total').toEqual({ total: 3 }); // Senior Software Engineer, Software Developer, Software Lab
@@ -155,13 +90,20 @@ describe('Elastic6QueryService', () => {
     });
 
     // search quality
-    it('check search quality', async done => {
-        const { elastic, search } = instance();
+    it('should pass check search quality', async done => {
+        const { elastic, search, indexName } = instance('test-quality-v4');
+        if (!PROFILE) return done();
+
+        //! make sure if index is ready.
+        const $old = await elastic.findIndex(indexName);
+        if ($old) {
+            expect2(await elastic.destroyIndex()).toEqual({ acknowledged: true, index: indexName });
+            await waited(200);
+        }
+        expect2(await elastic.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: indexName });
+        await waited(200);
+
         /* eslint-disable prettier/prettier */
-
-        // skip test if some prerequisites are not satisfied
-        if (!(await canPerformTest())) return done();
-
         // prepare items
         expect2(await elastic.saveItem('1000001', { title: '선을 넘는 녀석들' }).catch(GETERR), '_id').toEqual({ _id: '1000001' });
         expect2(await elastic.saveItem('1000002', { title: '맛있는 녀석들' }).catch(GETERR), '_id').toEqual({ _id: '1000002' });
@@ -173,9 +115,14 @@ describe('Elastic6QueryService', () => {
         });
 
         // test normal search
+        const cmprStr = (a: string, b: string) => a > b ? 1 : a < b ? -1 : 0;
         const normalSearch = async (query: string) => {
-            const res = await search.searchSimple({ title: query });
-            return (res.list && res.list.map(item => item.title)) || [];
+            try {
+                const res = await search.searchSimple({ title: query });
+                return res?.list?.map(item => item.title).sort(cmprStr) || [];
+            } catch(e){
+                return GETERR(e);
+            }
         };
         expect2(await normalSearch('선')).toEqual(['선을 넘는 녀석들']);
         expect2(await normalSearch('을')).toEqual([]);
@@ -199,8 +146,12 @@ describe('Elastic6QueryService', () => {
 
         // test autocomplete search w/ highlighting
         const autocompleteSearch = async (query: string) => {
-            const res = await search.searchAutocomplete({ $query: { title: query }, $highlight: true });
-            return (res.list && res.list.map(item => ([item.title, item._highlight]))) || [];
+            try {
+                const res = await search.searchAutocomplete({ $query: { title: query }, $highlight: true });
+                return res?.list?.map(item => ([item.title, item._highlight])).sort((A, B) => cmprStr(A[0], B[0])) || [];
+            } catch(e){
+                return GETERR(e);
+            }
         };
         expect2(await autocompleteSearch('ㅅ')).toEqual([['선을 넘는 녀석들', '선을 넘는 녀석들']]);
         expect2(await autocompleteSearch('서')).toEqual([['선을 넘는 녀석들', '선을 넘는 녀석들']]);
@@ -240,8 +191,12 @@ describe('Elastic6QueryService', () => {
 
         // test autocomplete search - alphabet sequence by typing Korean
         const autocompleteSearch2 = async (query: string) => {
-            const res = await search.searchAutocomplete({ $query: { title: query }, $highlight: false });
-            return (res.list && res.list.map(item => item.title)) || [];
+            try{
+                const res = await search.searchAutocomplete({ $query: { title: query }, $highlight: false });
+                return res?.list?.map(item => item.title).sort(cmprStr) || [];
+            } catch(e){
+                return GETERR(e);
+            }
         };
         expect2(await autocompleteSearch2('tjs')).toEqual(['선을 넘는 녀석들']);
         expect2(await autocompleteSearch2('tjsd')).toEqual(['선을 넘는 녀석들']);
@@ -249,8 +204,8 @@ describe('Elastic6QueryService', () => {
         expect2(await autocompleteSearch2('sjasm')).toEqual(['선을 넘는 녀석들']);
         expect2(await autocompleteSearch2('smssu')).toEqual([]);
         expect2(await autocompleteSearch2('tjremf')).toEqual([]);
-        expect2(await autocompleteSearch2('sutj')).toEqual(['선을 넘는 녀석들', '맛있는 녀석들']);
-        expect2(await autocompleteSearch2('sutjr')).toEqual(['선을 넘는 녀석들', '맛있는 녀석들']);
+        expect2(await autocompleteSearch2('sutj')).toEqual(['맛있는 녀석들', '선을 넘는 녀석들']);
+        expect2(await autocompleteSearch2('sutjr')).toEqual(['맛있는 녀석들', '선을 넘는 녀석들']);
         expect2(await autocompleteSearch2('ehadi')).toEqual([]);
         expect2(await autocompleteSearch2('Ehadi')).toEqual(['똠얌꿍 끓이는 법']);
 
