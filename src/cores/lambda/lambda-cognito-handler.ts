@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U, $_ } from '../../engine/';
+import { $engine, _log, _inf, _err, $U } from '../../engine/';
 import { LambdaHandler, CognitoHandler, LambdaSubHandler } from './lambda-handler';
 const NS = $U.NS('HCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
 

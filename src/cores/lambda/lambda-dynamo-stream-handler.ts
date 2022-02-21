@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $_, $U, do_parrallel } from '../../engine/';
+import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
 import { DynamoDBRecord } from 'aws-lambda';
 import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { NextHandler } from '../core-types';

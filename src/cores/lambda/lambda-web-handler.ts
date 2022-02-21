@@ -14,7 +14,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_, doReportError } from '../../engine/';
+import { _log, _inf, _err, $U, doReportError } from '../../engine/';
 import {
     NextDecoder,
     NextHandler,

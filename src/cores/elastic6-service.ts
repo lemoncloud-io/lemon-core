@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../engine/';
+import { _log, _inf, _err, $U } from '../engine/';
 import { GeneralItem, Incrementable, SearchBody } from './core-types';
 import elasticsearch, {
     CreateDocumentParams,

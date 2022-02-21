@@ -13,7 +13,7 @@
  *  Common Headers
  ** ********************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../engine/';
+import { _log, _inf, _err, $U } from '../engine/';
 import { NextHandler, NextMode } from '../cores/core-types';
 import { DummyDynamoService } from '../cores/dynamo-service';
 import { GeneralController } from './general-controller';
