@@ -76,13 +76,6 @@ export class Utilities {
         this.name = `${NS}-utils`;
     }
 
-    protected lodash() {
-        // use underscore util.
-        const $_ = this._$._;
-        if (!$_) throw new Error('$_(lodash) is required!');
-        return $_;
-    }
-
     //! some helper function.s
     public get_env(name: string, def_val?: string): any {
         if (typeof this._$.environ === 'function') return this._$.environ(name, def_val);
@@ -481,12 +474,11 @@ export class Utilities {
     public diff(obj1: any, obj2: any): string[] {
         obj1 = obj1 || {};
         obj2 = obj2 || {};
-        const $_ = this.lodash();
         const diff = Object.keys(obj1)
             .reduce((result, key) => {
                 if (!obj2.hasOwnProperty(key)) {
                     result.push(key);
-                } else if ($_.isEqual(obj1[key], obj2[key])) {
+                } else if (this.isEqual(obj1[key], obj2[key])) {
                     const resultKeyIndex = result.indexOf(key);
                     result.splice(resultKeyIndex, 1);
                 }
@@ -498,18 +490,133 @@ export class Utilities {
     }
 
     /**
+     * check if equal between 2 object.
+     * - inspired from `underscore` module originally, and optimized for compartibility.
+     */
+    protected isEqual(obj1: any, obj2: any) {
+        const keys = Object.keys;
+        function tagTester(name: string) {
+            return function(obj: any) {
+                return toString.call(obj) === '[object ' + name + ']';
+            };
+        }
+        const isFunction = tagTester('Function');
+        function _has(obj: any, path: string) {
+            return obj != null && Object.hasOwnProperty.call(obj, path);
+        }
+        // Internal recursive comparison function for `isEqual`.
+        function eq(a: any, b: any, aStack?: any, bStack?: any) {
+            // Identical objects are equal. `0 === -0`, but they aren't identical.
+            // See the [Harmony `egal` proposal](https://wiki.ecmascript.org/doku.php?id=harmony:egal).
+            if (a === b) return a !== 0 || 1 / a === 1 / b;
+            // `null` or `undefined` only equal to itself (strict comparison).
+            if (a == null || b == null) return false;
+            // `NaN`s are equivalent, but non-reflexive.
+            if (a !== a) return b !== b;
+            // Exhaust primitive checks
+            let type = typeof a;
+            if (type !== 'function' && type !== 'object' && typeof b != 'object') return false;
+            return deepEq(a, b, aStack, bStack);
+        }
+        // Internal recursive comparison function for `isEqual`.
+        function deepEq(a: any, b: any, aStack: any, bStack: any) {
+            // Compare `[[Class]]` names.
+            let className = toString.call(a);
+            if (className !== toString.call(b)) return false;
+            switch (className) {
+                // Strings, numbers, regular expressions, dates, and booleans are compared by value.
+                case '[object RegExp]':
+                // RegExps are coerced to strings for comparison (Note: '' + /a/i === '/a/i')
+                case '[object String]':
+                    // Primitives and their corresponding object wrappers are equivalent; thus, `"5"` is
+                    // equivalent to `new String("5")`.
+                    return '' + a === '' + b;
+                case '[object Number]':
+                    // `NaN`s are equivalent, but non-reflexive.
+                    // Object(NaN) is equivalent to NaN.
+                    if (+a !== +a) return +b !== +b;
+                    // An `egal` comparison is performed for other numeric values.
+                    return +a === 0 ? 1 / +a === 1 / b : +a === +b;
+                case '[object Date]':
+                case '[object Boolean]':
+                    // Coerce dates and booleans to numeric primitive values. Dates are compared by their
+                    // millisecond representations. Note that invalid dates with millisecond representations
+                    // of `NaN` are not equivalent.
+                    return +a === +b;
+            }
+            let areArrays = className === '[object Array]';
+            if (!areArrays) {
+                if (typeof a != 'object' || typeof b != 'object') return false;
+                // Objects with different constructors are not equivalent, but `Object`s or `Array`s
+                // from different frames are.
+                var aCtor = a.constructor,
+                    bCtor = b.constructor;
+                if (
+                    aCtor !== bCtor &&
+                    !(isFunction(aCtor) && aCtor instanceof aCtor && isFunction(bCtor) && bCtor instanceof bCtor) &&
+                    'constructor' in a &&
+                    'constructor' in b
+                ) {
+                    return false;
+                }
+            }
+            // Assume equality for cyclic structures. The algorithm for detecting cyclic
+            // structures is adapted from ES 5.1 section 15.12.3, abstract operation `JO`.
+            // Initializing stack of traversed objects.
+            // It's done here since we only need them for objects and arrays comparison.
+            aStack = aStack || [];
+            bStack = bStack || [];
+            var length = aStack.length;
+            while (length--) {
+                // Linear search. Performance is inversely proportional to the number of
+                // unique nested structures.
+                if (aStack[length] === a) return bStack[length] === b;
+            }
+            // Add the first object to the stack of traversed objects.
+            aStack.push(a);
+            bStack.push(b);
+            // Recursively compare objects and arrays.
+            if (areArrays) {
+                // Compare array lengths to determine if a deep comparison is necessary.
+                length = a.length;
+                if (length !== b.length) return false;
+                // Deep compare the contents, ignoring non-numeric properties.
+                while (length--) {
+                    if (!eq(a[length], b[length], aStack, bStack)) return false;
+                }
+            } else {
+                // Deep compare objects.
+                var _keys = keys(a),
+                    key;
+                length = _keys.length;
+                // Ensure that both objects contain the same number of properties before comparing deep equality.
+                if (keys(b).length !== length) return false;
+                while (length--) {
+                    // Deep compare each member
+                    key = _keys[length];
+                    if (!(_has(b, key) && eq(a[key], b[key], aStack, bStack))) return false;
+                }
+            }
+            // Remove the first object from the stack of traversed objects.
+            aStack.pop();
+            bStack.pop();
+            return true;
+        }
+        return eq(obj1, obj2);
+    }
+
+    /**
      * calcualte node differences
      */
     public diff_node(obj1: any, obj2: any) {
         obj1 = obj1 || {};
         obj2 = obj2 || {};
-        const $_ = this.lodash();
         const keys1 = Object.keys(obj1).filter(key => (key.startsWith('_') || key.startsWith('$') ? false : true));
         const keys2 = Object.keys(obj2).filter(key => (key.startsWith('_') || key.startsWith('$') ? false : true));
         const diff = keys1.reduce((list: string[], key: string) => {
             if (!obj2.hasOwnProperty(key)) {
                 list.push(key);
-            } else if ($_.isEqual(obj1[key], obj2[key])) {
+            } else if (this.isEqual(obj1[key], obj2[key])) {
                 const resultKeyIndex = list.indexOf(key);
                 list.splice(resultKeyIndex, 1);
             }
