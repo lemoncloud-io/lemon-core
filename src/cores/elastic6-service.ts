@@ -4,6 +4,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2022-02-21 optimized error handler, and search.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -29,14 +30,41 @@ export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
  * options for construction.
  */
 export interface Elastic6Option {
-    endpoint: string; // endpoint url of ES6
-    indexName: string; // index-name
-    docType?: string; // document type (default as `_doc` in ES6)
-    idName?: string; // id-name (optional if time-seriese)
-    timeSeries?: boolean; // is TIMESERIES?
-    autocompleteFields?: string[]; // fields to provide autocomplete(Search-as-You-Type) feature
+    /**
+     * endpoint url of ES6
+     */
+    endpoint: string;
+    /**
+     * index-name
+     */
+    indexName: string;
+    /**
+     * document type (default as `_doc` in ES6)
+     * - it must be `_doc` since ES6.x
+     */
+    docType?: string;
+    /**
+     * id-name (optional if time-seriese)
+     */
+    idName?: string;
+    /**
+     * is TIMESERIES data?
+     */
+    timeSeries?: boolean;
+    /**
+     * (optional) version of engine.
+     * - (default) 6.8
+     */
+    version?: string;
+    /**
+     * fields to provide autocomplete(Search-as-You-Type) feature
+     */
+    autocompleteFields?: string[];
 }
 
+/**
+ * common type of item
+ */
 export interface Elastic6Item extends GeneralItem {
     _id?: string;
     _version?: number;
@@ -70,14 +98,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         // default option values: docType='_doc', idName='$id'
         const { client } = Elastic6Service.instance(options.endpoint);
-        this.options = { docType: '_doc', idName: '$id', ...options };
+        this.options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
         this._client = client;
     }
 
     /**
      * say hello of identity.
      */
-    public hello = () => `elastic6-service:${this.options.indexName}`;
+    public hello = () => `elastic6-service:${this.options.indexName}:${this.version}`;
 
     /**
      * simple instance maker.
@@ -93,8 +121,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * get the client instance.
      */
-    public get client() {
+    public get client(): elasticsearch.Client {
         return this._client;
+    }
+
+    public get version(): number {
+        const ver = $U.F(this.options.version, 6.8);
+        return ver;
     }
 
     /**
@@ -145,11 +178,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param settings      creating settings
      */
     public async createIndex(settings?: any) {
-        const { indexName, docType, idName, timeSeries } = this.options;
-        settings = settings || Elastic6Service.prepareSettings(docType, idName, timeSeries);
+        const { indexName, docType, idName, timeSeries, version } = this.options;
+        settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
-        settings = settings || {};
 
         //! prepare payload
         const payload = {
@@ -466,39 +498,39 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param item      item to update
      */
     public async updateItem(id: string, item: T, increments?: Incrementable): Promise<T> {
-        const { indexName, docType } = this.options;
+        const { indexName, docType, idName } = this.options;
         const type = `${docType}`;
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
         //! prepare params.
         const params: UpdateDocumentParams = { index: indexName, type, id, body: { doc: item } };
+        const version = this.version;
         if (increments) {
             //! it will create if not exists.
-            params.body.upsert = { ...increments, [indexName]: id };
-            const scripts: string[] = $_.reduce(
-                increments,
-                (L: any, val: any, key: string) => {
-                    L.push(`ctx._source.${key} += ${val}`);
-                    return L;
-                },
-                [],
-            );
-            params.body.lang = 'painless';
+            params.body.upsert = { ...increments, [idName]: id };
+            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
+                L.push(`ctx._source.${key} += ${val}`);
+                return L;
+            }, []);
+            if (version < 7.0) params.body.lang = 'painless';
             params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.update(params).catch(
-            $ERROR.handler('update', e => {
+            $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
                 //! id 아이템이 없을 경우 발생함.
                 if (msg.startsWith('404 DOCUMENT MISSING')) throw new Error(`404 NOT FOUND - id:${id}`);
                 //! 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
                 if (msg.startsWith('400 REMOTE TRANSPORT')) throw new Error(`400 INVALID FIELD - id:${id}`);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
-                throw e;
+                if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
+                if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
+                if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
+                throw E;
             }),
             // $ERROR.throwAsJson,
         );
@@ -578,22 +610,104 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param replicas      number of replicas (default 1)
      * @param timeSeries    flag of TIMESERIES (default false)
      */
-    public static prepareSettings(
-        docType: string,
-        idName: string,
-        timeSeries?: boolean,
-        shards?: number,
-        replicas?: number,
-    ) {
-        shards = shards === undefined ? 4 : shards;
-        replicas = replicas === undefined ? 1 : replicas;
-        timeSeries = timeSeries === undefined ? false : timeSeries;
+    public static prepareSettings(params: {
+        docType: string;
+        idName: string;
+        version?: string;
+        timeSeries?: boolean;
+        shards?: number;
+        replicas?: number;
+    }) {
+        const docType: string = params.docType === undefined ? '_doc' : params.docType;
+        const idName: string = params.idName === undefined ? '$id' : params.idName;
+        const version: number = $U.F(params.version === undefined ? '6.8' : params.version);
+        const shards: number = params.shards === undefined ? 4 : params.shards;
+        const replicas: number = params.replicas === undefined ? 1 : params.replicas;
+        const timeSeries: boolean = params.timeSeries === undefined ? false : params.timeSeries;
 
         //! core config.
         const CONF_ES_DOCTYPE = docType;
         const CONF_ID_NAME = idName;
         const CONF_ES_TIMESERIES = !!timeSeries;
 
+        const ES_MAPPINGS = {
+            // NOTE: the order of dynamic templates are important.
+            dynamic_templates: [
+                // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
+                {
+                    autocomplete: {
+                        path_match: `${Elastic6Service.DECOMPOSED_FIELD}.*`,
+                        mapping: {
+                            type: 'text',
+                            analyzer: 'autocomplete_case_insensitive',
+                            search_analyzer: 'standard',
+                        },
+                    },
+                },
+                // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
+                {
+                    autocomplete_qwerty: {
+                        path_match: `${Elastic6Service.QWERTY_FIELD}.*`,
+                        mapping: {
+                            type: 'text',
+                            analyzer: 'autocomplete_case_sensitive',
+                            search_analyzer: 'whitespace',
+                        },
+                    },
+                },
+                // 3. string type ID field
+                {
+                    string_id: {
+                        match_mapping_type: 'string',
+                        match: CONF_ID_NAME,
+                        mapping: {
+                            type: 'keyword',
+                            ignore_above: 256,
+                        },
+                    },
+                },
+                // 4. any other string fields - use Hangul analyzer and create 'keyword' sub-field
+                {
+                    strings: {
+                        match_mapping_type: 'string',
+                        mapping: {
+                            type: 'text',
+                            analyzer: 'hangul',
+                            search_analyzer: 'hangul',
+                            fields: {
+                                // keyword sub-field
+                                // 문자열 타입에 대한 템플릿을 지정하지 않으면 기본으로 ES가 '.keyword' 서브필드를 생성하나
+                                // 문자열 타입 템플릿 재정의 시 기본으로 생성되지 않으므로 명시적으로 선언함.
+                                keyword: {
+                                    type: 'keyword',
+                                    ignore_above: 256,
+                                },
+                            },
+                        },
+                    },
+                },
+            ],
+            properties: {
+                '@version': {
+                    type: 'keyword',
+                    index: false,
+                },
+                created_at: {
+                    type: 'date',
+                    format: 'strict_date_optional_time||epoch_millis',
+                },
+                updated_at: {
+                    type: 'date',
+                    format: 'strict_date_optional_time||epoch_millis',
+                },
+                deleted_at: {
+                    type: 'date',
+                    format: 'strict_date_optional_time||epoch_millis',
+                },
+            },
+        };
+
+        //! default settings.
         const ES_SETTINGS: any = {
             settings: {
                 number_of_shards: shards,
@@ -633,95 +747,28 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                     },
                 },
             },
-            mappings: {
-                [CONF_ES_DOCTYPE]: {
-                    // NOTE: the order of dynamic templates are important.
-                    dynamic_templates: [
-                        // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
-                        {
-                            autocomplete: {
-                                path_match: `${Elastic6Service.DECOMPOSED_FIELD}.*`,
-                                mapping: {
-                                    type: 'text',
-                                    analyzer: 'autocomplete_case_insensitive',
-                                    search_analyzer: 'standard',
-                                },
-                            },
-                        },
-                        // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
-                        {
-                            autocomplete_qwerty: {
-                                path_match: `${Elastic6Service.QWERTY_FIELD}.*`,
-                                mapping: {
-                                    type: 'text',
-                                    analyzer: 'autocomplete_case_sensitive',
-                                    search_analyzer: 'whitespace',
-                                },
-                            },
-                        },
-                        // 3. string type ID field
-                        {
-                            string_id: {
-                                match_mapping_type: 'string',
-                                match: CONF_ID_NAME,
-                                mapping: {
-                                    type: 'keyword',
-                                    ignore_above: 256,
-                                },
-                            },
-                        },
-                        // 4. any other string fields - use Hangul analyzer and create 'keyword' sub-field
-                        {
-                            strings: {
-                                match_mapping_type: 'string',
-                                mapping: {
-                                    type: 'text',
-                                    analyzer: 'hangul',
-                                    search_analyzer: 'hangul',
-                                    fields: {
-                                        // keyword sub-field
-                                        // 문자열 타입에 대한 템플릿을 지정하지 않으면 기본으로 ES가 '.keyword' 서브필드를 생성하나
-                                        // 문자열 타입 템플릿 재정의 시 기본으로 생성되지 않으므로 명시적으로 선언함.
-                                        keyword: {
-                                            type: 'keyword',
-                                            ignore_above: 256,
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    ],
-                    properties: {
-                        '@version': {
-                            type: 'keyword',
-                            index: false,
-                        },
-                        created_at: {
-                            type: 'date',
-                            format: 'strict_date_optional_time||epoch_millis',
-                        },
-                        updated_at: {
-                            type: 'date',
-                            format: 'strict_date_optional_time||epoch_millis',
-                        },
-                        deleted_at: {
-                            type: 'date',
-                            format: 'strict_date_optional_time||epoch_millis',
-                        },
-                    },
-                },
-            },
+            //! since 7.x. no mapping for types.
+            mappings: version < 7.0 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
         };
 
         //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
-            ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
+            if (version < 7.0) {
+                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
+                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
-            //! clear mappings.
-            const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
-            CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
+                //! clear mappings.
+                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
+                CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
+            } else {
+                ES_SETTINGS.mappings.properties['@timestamp'] = { type: 'date', doc_values: true };
+                ES_SETTINGS.mappings.properties['ip'] = { type: 'ip' };
+
+                //! clear mappings.
+                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
+                CLEANS.map(key => delete ES_SETTINGS.properties[key]);
+            }
         }
 
         //! returns settings.

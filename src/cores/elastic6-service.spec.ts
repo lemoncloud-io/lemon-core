@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-25 initial version with dummy serivce
+ * @date        2022-02-21 optimized error handler, and search.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -18,14 +19,22 @@ import { SearchBody } from '.';
 interface MyModel extends GeneralItem {
     id?: string;
 }
-export const instance = (version = 4) => {
+const ENDPOINTS = {
+    '6.2': 'https://localhost:8443',
+    '6.8': 'https://localhost:8683',
+    '7.1': 'https://localhost:9683',
+};
+type VERSIONS = keyof typeof ENDPOINTS;
+
+export const instance = (version: VERSIONS = '6.2') => {
     //NOTE - use tunneling to elastic6 endpoint.
-    const endpoint = 'https://localhost:8443';
+    const endpoint = ENDPOINTS[version];
+    if (!endpoint) throw new Error(`@version[${version}] is not supported!`);
     const indexName = `test-v${version}`;
     const idName = '$id'; //! global unique id-name in same index.
     const docType = '_doc'; //! must be `_doc`.
     const autocompleteFields = 1 ? null : ['title', 'name'];
-    const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields };
+    const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
     const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
     const dummy: Elastic6Service<MyModel> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
     return { service, dummy, options };
@@ -59,10 +68,10 @@ describe('Elastic6Service', () => {
     it('should pass basic CRUD w/ dummy', async done => {
         /* eslint-disable prettier/prettier */
         //! load dummy storage service.
-        const { dummy } = instance(3);
+        const { dummy } = instance();
 
         //! check dummy data.
-        expect2(() => dummy.hello()).toEqual('dummy-elastic6-service:test-v3');
+        expect2(() => dummy.hello()).toEqual('dummy-elastic6-service:test-v6.2');
         expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ $id: 'A0', type: 'account', name: 'lemon' });
         expect2(await dummy.readItem('A1'), '$id,type,name').toEqual({ $id: 'A1', type: 'account', name: 'Hong' });
@@ -163,16 +172,21 @@ describe('Elastic6Service', () => {
 
     //! test with real server
     it('should pass basic CRUD w/ real server (ES6.2~7.x)', async done => {
-        //! load dummy storage service.
-        const { service, options } = instance(4);
-        const { indexName, idName } = options;
-        expect2(() => service.hello()).toEqual(`elastic6-service:${indexName}`);
-        expect2(() => idName).toEqual('$id');
-        expect2(() => indexName).toEqual('test-v4');
+        jest.setTimeout(12000);
         const PASS = (e: any) => e;
 
-        const $old = await service.findIndex(indexName);
+        //! load dummy storage service.
+        const ver = ['6.2', '6.8', '7.1'][2] as VERSIONS;
+        const { service, options } = instance(ver);
+        const { indexName, idName } = options;
+
+        expect2(() => service.hello()).toEqual(`elastic6-service:${indexName}:${ver}`);
+        expect2(() => idName).toEqual('$id');
+        expect2(() => indexName).toEqual(`test-v${ver}`);
+        expect2(() => service.version).toEqual(parseFloat(ver));
+
         //! make sure the index destroyed.
+        const $old = await service.findIndex(indexName);
         if ($old) {
             expect2(() => $old, 'index').toEqual({ index: indexName });
             expect2(await service.destroyIndex()).toEqual({ acknowledged: true, index: indexName });
@@ -184,15 +198,15 @@ describe('Elastic6Service', () => {
         // expect2(await service.flushIndex().catch(PASS)).toEqual();
         // expect2(await service.describe().catch(PASS)).toEqual();
 
-        expect2(await service.destroyIndex().catch(GETERR)).toEqual('404 NOT FOUND - index:test-v4');
-        expect2(await service.refreshIndex().catch(GETERR)).toEqual('404 NOT FOUND - index:test-v4');
-        expect2(await service.flushIndex().catch(GETERR)).toEqual('404 NOT FOUND - index:test-v4');
-        expect2(await service.describe().catch(GETERR)).toEqual('404 NOT FOUND - index:test-v4');
+        expect2(await service.destroyIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.refreshIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.flushIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
 
         //! make sure the index created
-        expect2(await service.createIndex()).toEqual({ acknowledged: true, index: indexName });
+        expect2(await service.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: indexName });
         await waited(200);
-        expect2(await service.createIndex().catch(GETERR)).toEqual('400 IN USE - index:test-v4');
+        expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
 
         //! for debugging.
         // expect2(await service.readItem('A0').catch(PASS)).toEqual();
@@ -217,11 +231,19 @@ describe('Elastic6Service', () => {
             _version: 3,
             type: 'test',
         });
-        expect2(await service.updateItem('A0', null, { count: 1 }).catch(GETERR)).toEqual('400 INVALID FIELD - id:A0');
+
+        //! try to increment fields
+        expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
+            service.version < 7 ? '400 INVALID FIELD - id:A0' : '400 ILLEGAL ARGUMENT - failed to execute script',
+        );
         expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
             _id: 'A0',
             _version: 4,
             count: 0,
+        });
+        expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({
+            _id: 'A0',
+            _version: 5,
         });
 
         //! save A1
@@ -269,7 +291,7 @@ describe('Elastic6Service', () => {
                 hits: [
                     {
                         _id: 'A0',
-                        _index: 'test-v4',
+                        _index: indexName,
                         _score: null,
                         _source: { $id: 'A0', name: 'a0', type: 'test', count: 0 },
                         _type: '_doc',
@@ -277,7 +299,7 @@ describe('Elastic6Service', () => {
                     },
                 ],
                 max_score: null,
-                total: 2,
+                total: service.version < 7 ? 2 : { relation: 'eq', value: 2 },
             },
             aggregations: {
                 test: {
@@ -315,7 +337,7 @@ describe('Elastic6Service', () => {
 
         ///////////////////////////
         //! try to delete(cleanup).
-        expect2(await service.deleteItem('A0').catch(GETERR)).toEqual({ _id: 'A0', _version: 5 });
+        expect2(await service.deleteItem('A0').catch(GETERR)).toEqual({ _id: 'A0', _version: 6 });
         expect2(await service.deleteItem('A1').catch(GETERR)).toEqual({ _id: 'A1', _version: 2 });
 
         //! done.
