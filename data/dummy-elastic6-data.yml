@@ -1,10 +1,10 @@
 # dummy data for ticketing internal test!
 data:
-  - id: A0
+  - $id: A0
     type: account
     name: lemon
 
-  - id: A1
+  - $id: A1
     type: account
     name: Hong
     last: 0

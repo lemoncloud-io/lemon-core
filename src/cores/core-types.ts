@@ -295,7 +295,7 @@ export interface SearchBody {
     size?: number;
     from?: number;
     search_after?: (string | number)[];
-    query: SearchQuery;
+    query?: SearchQuery;
     sort?: SortTerm | SortTerm[];
     _source?: string[];
     aggs?: any;

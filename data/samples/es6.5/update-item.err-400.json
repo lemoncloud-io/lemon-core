@@ -1,0 +1,8 @@
+{
+    "!": "error of service.updateItem('A0', { type: 'test' }, { count: 1 }",
+    "body": "{\"doc\":{\"type\":\"test\"},\"upsert\":{\"count\":1,\"test-v4\":\"A0\"},\"lang\":\"painless\",\"script\":\"ctx._source.count += 1\"}",
+    "path": "/test-v4/_doc/A0/_update",
+    "query": {},
+    "response": "{\"error\":{\"root_cause\":[{\"type\":\"action_request_validation_exception\",\"reason\":\"Validation Failed: 1: can't provide both script and doc;\"}],\"type\":\"action_request_validation_exception\",\"reason\":\"Validation Failed: 1: can't provide both script and doc;\"},\"status\":400}",
+    "statusCode": 400
+}

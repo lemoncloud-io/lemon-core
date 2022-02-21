@@ -9,21 +9,21 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, $_ } from '../engine/';
-const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
-
-/** ****************************************************************************************************************
- *  Service Main
- ** ****************************************************************************************************************/
-import { GeneralItem, Incrementable } from './core-types';
+import { GeneralItem, Incrementable, SearchBody } from './core-types';
 import elasticsearch, {
     CreateDocumentParams,
     IndexDocumentParams,
     GetParams,
     DeleteDocumentParams,
     UpdateDocumentParams,
+    SearchParams,
 } from 'elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../tools';
+import { GETERR } from '../common/test-helper';
+const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
+
+export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
 /**
  * options for construction.
@@ -40,12 +40,16 @@ export interface Elastic6Option {
 export interface Elastic6Item extends GeneralItem {
     _id?: string;
     _version?: number;
+    _score?: number;
 }
 
 //! create(or get) instance.
 const instance = (endpoint: string) => {
     return Elastic6Service.instance(endpoint);
 };
+
+const _S = (v: any, def: string = '') =>
+    typeof v === 'string' ? v : v === undefined || v === null ? def : typeof v === 'object' ? $U.json(v) : `${v}`;
 
 /**
  * class: `Elastic6Service`
@@ -57,6 +61,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public static readonly QWERTY_FIELD = '_qwerty';
 
     protected options: Elastic6Option;
+    public readonly _client: elasticsearch.Client;
 
     public constructor(options: Elastic6Option) {
         _inf(NS, `Elastic6Service(${options.indexName}/${options.idName})...`);
@@ -64,7 +69,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!options.indexName) throw new Error('.indexName (string) is required');
 
         // default option values: docType='_doc', idName='$id'
+        const { client } = Elastic6Service.instance(options.endpoint);
         this.options = { docType: '_doc', idName: '$id', ...options };
+        this._client = client;
     }
 
     /**
@@ -84,12 +91,61 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
+     * get the client instance.
+     */
+    public get client() {
+        return this._client;
+    }
+
+    /**
+     * list of index
+     */
+    public async listIndices() {
+        const { endpoint } = this.options;
+        _log(NS, `- listIndices()`);
+
+        //! call create index..
+        const { client } = instance(endpoint);
+        const res = await client.cat.indices({ format: 'json' });
+        _log(NS, `> indices =`, $U.json(res));
+        if (!Array.isArray(res)) throw new Error(`@result<${typeof res}> is invalid - expected: any[]!`);
+
+        // {"docs.count": "84", "docs.deleted": "7", "health": "green", "index": "dev-eureka-alarms-v1", "pri": "5", "pri.store.size": "234.3kb", "rep": "1", "status": "open", "store.size": "468.6kb", "uuid": "xPp-Sx86SgmhAWxT3cGAFw"}
+        const list = res.map(N => ({
+            pri: $U.N(N['pri']),
+            rep: $U.N(N['rep']),
+            docsCount: $U.N(N['docs.count']),
+            docsDeleted: $U.N(N['docs.deleted']),
+            health: _S(N['health']),
+            index: _S(N['index']),
+            status: _S(N['status']),
+            uuid: _S(N['uuid']),
+            priStoreSize: _S(N['pri.store.size']),
+            storeSize: _S(N['store.size']),
+        }));
+
+        //! returns.
+        return { list };
+    }
+
+    /**
+     * find the index by name
+     */
+    public async findIndex(indexName?: string) {
+        indexName = indexName || this.options.indexName;
+        _log(NS, `- findIndex(${indexName})`);
+        const { list } = await this.listIndices();
+        const found = list.findIndex(N => N.index == indexName);
+        return found >= 0 ? list[found] : null;
+    }
+
+    /**
      * create index by name
      *
      * @param settings      creating settings
      */
     public async createIndex(settings?: any) {
-        const { endpoint, indexName, docType, idName, timeSeries } = this.options;
+        const { indexName, docType, idName, timeSeries } = this.options;
         settings = settings || Elastic6Service.prepareSettings(docType, idName, timeSeries);
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
@@ -106,61 +162,74 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> settings[${indexName}] = `, $U.json(payload));
 
         //! call create index..
-        const { client } = instance(endpoint);
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.indices.create({ index: indexName, body: payload }).catch(
             $ERROR.handler('create', e => {
-                _err(NS, `> create[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
-                if (`${e.message}`.startsWith('400 resource_already_exists_exception'))
-                    throw new Error(`400 IN USE - index:${indexName}`);
+                const msg = GETERR(e);
+                if (msg.startsWith('400 RESOURCE ALREADY EXISTS')) throw new Error(`400 IN USE - index:${indexName}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         _log(NS, `> create[${indexName}] =`, $U.json(res));
         _log(NS, `> create[${indexName}].acknowledged =`, res.acknowledged); // true
         _log(NS, `> create[${indexName}].index =`, res.index); // index
         _log(NS, `> create[${indexName}].shards_acknowledged =`, res.shards_acknowledged); // true
-        return res;
+
+        //! build result.
+        return {
+            index: res.index,
+            acknowledged: res.acknowledged,
+        };
     }
 
     /**
      * destroy search index
      */
     public async destroyIndex() {
-        const { endpoint, indexName } = this.options;
+        const { indexName } = this.options;
         if (!indexName) new Error('@index is required!');
         _log(NS, `- destroyIndex(${indexName})`);
 
         //! call create index..
-        const { client } = instance(endpoint);
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.indices.delete({ index: indexName }).catch(
             $ERROR.handler('destroy', e => {
-                _err(NS, `> destory[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
-                if (`${e.message}`.startsWith('404 index_not_found_exception'))
-                    throw new Error(`404 NOT FOUND - index:${indexName}`);
+                const msg = GETERR(e);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         _log(NS, `> destroy[${indexName}] =`, $U.json(res));
         _log(NS, `> destroy[${indexName}].acknowledged =`, res.acknowledged); // true
 
-        return res;
+        return {
+            index: res.index || indexName,
+            acknowledged: res.acknowledged,
+        };
     }
 
     /**
      * refresh search index - refresh index to make all items searchable
      */
     public async refreshIndex() {
-        const { endpoint, indexName } = this.options;
+        const { indexName } = this.options;
         if (!indexName) throw new Error('.indexName is required!');
         _log(NS, `- refreshIndex(${indexName})`);
 
         //! call refresh index..
-        const { client } = instance(endpoint);
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.indices.refresh({ index: indexName }).catch(
             $ERROR.handler('refresh', e => {
-                _err(NS, `> refresh[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
+                const msg = GETERR(e);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         _log(NS, `> refresh[${indexName}] =`, $U.json(res));
 
@@ -171,17 +240,20 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * flush search index - force store changes into search index immediately
      */
     public async flushIndex() {
-        const { endpoint, indexName } = this.options;
+        const { indexName } = this.options;
         if (!indexName) throw new Error('.indexName is required!');
         _log(NS, `- flushIndex(${indexName})`);
 
         //! call flush index..
-        const { client } = instance(endpoint);
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.indices.flush({ index: indexName }).catch(
             $ERROR.handler('flush', e => {
-                _err(NS, `> flush[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
+                const msg = GETERR(e);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         _log(NS, `> flush[${indexName}] =`, $U.json(res));
 
@@ -192,19 +264,20 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * describe `settings` and `mappings` of index.
      */
     public async describe() {
-        const { endpoint, indexName } = this.options;
+        const { indexName } = this.options;
         //! call create index..
-        const { client } = instance(endpoint);
         _log(NS, `- describe(${indexName})`);
 
         //! read settings.
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.indices.getSettings({ index: indexName }).catch(
             $ERROR.handler('describe', e => {
-                _err(NS, `> describe[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
-                if (`${e.message}`.startsWith('404 index_not_found_exception'))
-                    throw new Error(`404 NOT FOUND - index:${indexName}`);
+                const msg = GETERR(e);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         _log(NS, `> settings[${indexName}] =`, $U.json(res));
         const settings: any = (res[indexName] && res[indexName].settings) || {};
@@ -228,36 +301,32 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param type  document type (default: doc-type given at construction time)
      */
     public async saveItem(id: string, item: T, type?: string): Promise<T> {
-        const { endpoint, indexName, docType, idName } = this.options;
-        const { client } = instance(endpoint);
+        const { indexName, docType, idName } = this.options;
         _log(NS, `- saveItem(${id})`);
+        // const { client } = instance(endpoint);
+        const client = this.client;
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
         this.prepareAutocompleteFields(body);
 
         type = `${type || docType}`;
-        const params: CreateDocumentParams = {
-            index: indexName,
-            type,
-            id,
-            body,
-        };
-        if (idName == '_id') delete params.body[idName]; // `_id` is reserved in ES6.
+        const params: CreateDocumentParams = { index: indexName, type, id, body };
+        if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
         const res = await client.create(params).catch(
             $ERROR.handler('save', e => {
-                _log(NS, `> save[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
-                if (`${e.message}`.startsWith('409 version_conflict_engine_exception')) {
-                    //! try to update document...
+                const msg = GETERR(e);
+                //! try to update document..
+                if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
                     delete body[idName]; // do set id while update
-                    const params = { index: indexName, type, id, body: { doc: body } };
-                    return client.update(params);
+                    return this.updateItem(id, item);
                 }
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":1,"result":"created","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":0,"_primary_term":1}
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":1,"result":"noop","_shards":{"total":0,"successful":0,"failed":0}}
@@ -268,7 +337,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const _version: number = $U.N(res._version, 0);
         const _id: string = res._id;
-        const res2: T = { ...item, _id, _version };
+        const res2: T = { ...body, _id, _version };
         return res2;
     }
 
@@ -278,8 +347,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param item  item to push
      */
     public async pushItem(item: T, type?: string): Promise<T> {
-        const { endpoint, indexName, docType } = this.options;
-        const { client } = instance(endpoint);
+        const { indexName, docType } = this.options;
         const id = '';
 
         type = `${type || docType}`;
@@ -289,7 +357,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- pushItem(${id})`);
         const params: IndexDocumentParams<any> = { index: indexName, type, body };
         _log(NS, `> params[${id}] =`, $U.json(params));
+
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.index(params).catch(
             $ERROR.handler('index', e => {
                 _err(NS, `> index[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
@@ -314,8 +385,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param views     projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
-        const { endpoint, indexName, docType } = this.options;
-        const { client } = instance(endpoint);
+        const { indexName, docType } = this.options;
         const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
@@ -329,12 +399,15 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             params._source = fields;
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.get(params).catch(
             $ERROR.handler('read', e => {
-                _err(NS, `> read[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
-                if (`${e.message}`.startsWith('404 Not Found')) throw new Error(`404 NOT FOUND - id:${id}`);
+                const msg = GETERR(e);
+                if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"found":true,"_source":{"name":"haha"}}
         _log(NS, `> read[${id}].res =`, $U.json(res));
@@ -343,7 +416,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const _id = res._id;
         const _version = res._version;
-        const data: T = (res && res._source) || {};
+        const data: T = (res as any)?._source || {};
         // delete internal (analyzed) field
         delete data[Elastic6Service.DECOMPOSED_FIELD];
         delete data[Elastic6Service.QWERTY_FIELD];
@@ -358,19 +431,21 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param id        item-id
      */
     public async deleteItem(id: string): Promise<T> {
-        const { endpoint, indexName, docType } = this.options;
-        const { client } = instance(endpoint);
+        const { indexName, docType } = this.options;
         const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
         const params: DeleteDocumentParams = { index: indexName, type, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.delete(params).catch(
-            $ERROR.handler('delete', e => {
-                _err(NS, `> delete[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
-                if (`${e.message}`.startsWith('404 Not Found')) throw new Error(`404 NOT FOUND - id:${id}`);
+            $ERROR.handler('read', e => {
+                const msg = GETERR(e);
+                if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":3,"result":"deleted","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":4,"_primary_term":1}
         _log(NS, `> delete[${id}].res =`, $U.json(res));
@@ -379,7 +454,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const _id = res._id;
         const _version = res._version;
-        const data: T = (res && res._source) || {};
+        const data: T = (res as any)?._source || {};
         const res2: T = { ...data, _id, _version };
         return res2;
     }
@@ -391,8 +466,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param item      item to update
      */
     public async updateItem(id: string, item: T, increments?: Incrementable): Promise<T> {
-        const { endpoint, indexName, docType } = this.options;
-        const { client } = instance(endpoint);
+        const { indexName, docType } = this.options;
         const type = `${docType}`;
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
@@ -414,18 +488,19 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
+        // const { client } = instance(endpoint);
+        const client = this.client;
         const res = await client.update(params).catch(
             $ERROR.handler('update', e => {
-                _err(NS, `> update[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
+                const msg = GETERR(e);
                 //! id 아이템이 없을 경우 발생함.
-                if (`${e.message}`.startsWith('404 document_missing_exception'))
-                    throw new Error(`404 NOT FOUND - id:${id}`);
+                if (msg.startsWith('404 DOCUMENT MISSING')) throw new Error(`404 NOT FOUND - id:${id}`);
                 //! 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
-                if (`${e.message}`.startsWith('400 remote_transport_exception'))
-                    throw new Error(`400 INVALID FIELD - id:${id}`);
-                if (`${e.message}`.startsWith('404 Not Found')) throw new Error(`404 NOT FOUND - id:${id}`);
+                if (msg.startsWith('400 REMOTE TRANSPORT')) throw new Error(`400 INVALID FIELD - id:${id}`);
+                if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 throw e;
             }),
+            // $ERROR.throwAsJson,
         );
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"updated","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":8,"_primary_term":1}
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"noop","_shards":{"total":0,"successful":0,"failed":0}}
@@ -437,6 +512,60 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const _version = res._version;
         const res2: T = { ...item, _id, _version };
         return res2;
+    }
+
+    /**
+     * run search and get the raw response.
+     */
+    public async searchRaw(body: SearchBody, searchType?: SearchType) {
+        if (!body) throw new Error('@body (SearchBody) is required');
+        const { indexName, docType } = this.options;
+        _log(NS, `- search(${indexName}, ${searchType || ''})....`);
+        _log(NS, `> body =`, $U.json(body));
+
+        const tmp = docType ? docType : '';
+        const type: string = docType ? `${docType}` : undefined;
+        const params: SearchParams = { index: indexName, type, body, searchType };
+        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
+        // const { client } = instance(endpoint);
+        const client = this.client;
+        const $res = await client.search(params).catch(
+            $ERROR.handler('search', e => {
+                _err(NS, `> search[${indexName}].err =`, e);
+                throw e;
+            }),
+        );
+        // {"took":6,"timed_out":false,"_shards":{"total":4,"successful":4,"skipped":0,"failed":0},"hits":{"total":1,"max_score":0.2876821,"hits":[{"_index":"test-v3","_type":"_doc","_id":"aaa","_score":0.2876821,"_source":{"name":"AAA","@id":"aaa","a":-3,"b":-2}}]}}
+        // _log(NS, `> search[${id}].res =`, $U.json(res));
+        _log(NS, `> search[${tmp}].took =`, $res.took);
+        _log(NS, `> search[${tmp}].hits.total =`, $res.hits?.total);
+        _log(NS, `> search[${tmp}].hits.max_score =`, $res.hits?.max_score);
+        _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
+
+        //! return raw results.
+        return $res;
+    }
+
+    /**
+     * run search, and get the formatmted response.
+     */
+    public async search(body: SearchBody, searchType?: SearchType) {
+        const size = $U.N(body.size, 0);
+        const response = await this.searchRaw(body, searchType);
+        // return w/ transformed id
+        const hits = response.hits;
+        if (typeof hits !== 'object') throw new Error(`.hits (object) is required - hits:${$U.json(hits)}`);
+        //NOTE - ES6.8 w/ OS1.1
+        return {
+            total: typeof (hits.total as any)?.value === 'number' ? (hits.total as any)?.value : hits.total,
+            list: hits.hits.map(hit => ({
+                ...(hit._source as any),
+                _id: hit._id,
+                _score: hit._score,
+            })),
+            last: hits.hits.length === size && size > 0 ? hits.hits[size - 1]?.sort : undefined,
+            aggregations: response.aggregations,
+        };
     }
 
     /**
@@ -634,101 +763,102 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 }
 
+interface ErrorReason {
+    status: number;
+    message: string;
+    reason: {
+        status: number;
+        type: string;
+        reason: string;
+        cause: any;
+    };
+}
+
 /**
  * error samples
  */
 export const $ERROR = {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    handler: (name: string, cb?: (e: Error) => any) => (e: any) => {
-        _err(NS, `! err[${name}]@a =`, e instanceof Error, $U.json(e));
-        const status = `${e.statusCode || ''}`;
-        const message = `${e.message || e.msg || ''}`;
-        const error = ((e: any) => {
-            if (!e) return {};
-            if (e.body && e.body.error) {
-                const error = e.body.error;
-                if (error.root_cause && Array.isArray(error.root_cause)) return error.root_cause[0];
-                else if (error.root_cause) return error.root_cause;
-                return error;
-            } else if (e.response) {
-                //TODO - improve error handler due to `Unexpected token } in JSON at position 60` @210323
-                const error =
-                    typeof e.response == 'string' && e.response.startsWith('{') ? JSON.parse(e.response) : e.response;
-                if (error.root_cause && Array.isArray(error.root_cause)) return error.root_cause[0];
-                else if (error.root_cause) return error.root_cause;
-                return error;
-            } else {
-                const type = e.statusCode || e.status || 0;
-                const reason = e.displayName || e.msg;
-                const path = e.path || '';
-                return { type, reason, path, message };
-            }
-        })(e);
-        error.status = error.status || status;
-        error.message = error.message || message;
-        //! print the unknown type exception
-        if (!error || error.status) {
-            // _err(NS, `! err[${name}]@b =`, e instanceof Error, $U.json(e));
-            // _err(NS, `> err[${name}]@c =`, $U.json(error));
-            // _err(NS, `> error[${name}].type =`, error.type);
-            // _err(NS, `> error[${name}].reason =`, error.reason);
-            // _err(NS, `> error[${name}].message =`, error.message);
+    asJson: (e: any) => {
+        if (e instanceof Error) {
+            const err = e;
+            const str = JSON.stringify(err, Object.getOwnPropertyNames(err));
+            return JSON.parse(str);
         }
-        //! build Error instance.
-        const $e = new Error(
-            `${error.status} ${error.type || error.reason || error.message} - ${error.reason || error.message}`,
-        );
-        if (cb) return cb($e);
+        return e;
+    },
+    throwAsJson: (e: any) => {
+        throw $ERROR.asJson(e);
+    },
+    parseMeta: <T extends { type?: string; value?: any; error?: string; list?: any[]; [key: string]: any }>(
+        meta: any,
+    ): T => {
+        if (typeof meta === 'string' && meta) {
+            try {
+                if (meta.startsWith('[') && meta.endsWith(']')) {
+                    const list: any[] = JSON.parse(meta);
+                    const $ret: any = { list };
+                    return $ret as T;
+                } else if (meta.startsWith('{') && meta.endsWith('}')) {
+                    return JSON.parse(meta) as T;
+                } else {
+                    const $ret: any = { type: 'string', value: meta };
+                    return $ret;
+                }
+            } catch (e) {
+                const $ret: any = { type: 'string', value: meta, error: GETERR(e) };
+                return $ret;
+            }
+        } else if (meta === null || meta === undefined) {
+            return null;
+        } else if (typeof meta === 'object') {
+            return meta as T;
+        } else {
+            const type = typeof meta;
+            const $ret: any = { type, value: meta };
+            return $ret;
+        }
+    },
+    asError: (e: any): ErrorReason => {
+        const E = $ERROR.asJson(e);
+        const status = `${E.statusCode || ''}`;
+        const message = `${E.message || E.msg || ''}`;
+        const reason = ((E: any) => {
+            // const body = $ERROR.parseMeta<any>(E.body); // it must be the body of request
+            const $res = $ERROR.parseMeta<any>(E.response);
+
+            //! find the root-cause.
+            const pic1 = (N: any[] | any, i = 0) => (N && Array.isArray(N) ? N[i] : N);
+            const cause: any = pic1($res?.error?.root_cause);
+            const status = $U.N($res.error?.status || $res.status);
+            const reason = _S(
+                $res.error?.reason,
+                $res.found === false || $res.result === 'not_found' ? 'NOT FOUND' : '',
+            );
+            const type = _S(cause?.type)
+                .toUpperCase()
+                .split('_')
+                .slice(0, -1)
+                .join(' ');
+            return { status, reason, cause, type: type || reason };
+        })(E);
+        //! FINAL. convert to error-object.
+        return {
+            status: $U.N(status, reason.status),
+            message: message || reason.reason,
+            reason,
+        };
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    handler: <T = any>(name: string, cb?: (e: Error, E?: ErrorReason) => T) => (e: any): T => {
+        const E = $ERROR.asError(e);
+        //! unknown error found..
+        if (!E?.status) {
+            _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
+            throw e;
+        }
+        const $e = new Error(`${E.status} ${E.reason.type} - ${E.message}`);
+        if (cb) return cb($e, E);
         throw $e;
-    },
-    index_not_found_exception: {
-        msg:
-            '[index_not_found_exception] no such index, with { resource.type="index_or_alias" & resource.id="test-v2" & index_uuid="_na_" & index="test-v2" }',
-        path: '/test-v2',
-        query: {},
-        statusCode: 404,
-        response:
-            '{"error":{"root_cause":[{"type":"index_not_found_exception","reason":"no such index","resource.type":"index_or_alias","resource.id":"test-v2","index_uuid":"_na_","index":"test-v2"}],"type":"index_not_found_exception","reason":"no such index","resource.type":"index_or_alias","resource.id":"test-v2","index_uuid":"_na_","index":"test-v2"},"status":404}',
-    },
-    resource_already_exists_exception: {
-        msg:
-            '[resource_already_exists_exception] index [test-v2/R_X1Daw7S0e8qIh_W3M-Fg] already exists, with { index_uuid="R_X1Daw7S0e8qIh_W3M-Fg" & index="test-v2" }',
-        path: '/test-v2',
-        query: {},
-        body:
-            '{"settings":{"index":{"number_of_shards":4,"number_of_replicas":1}},"template":"test-v2","mappings":{"_default_":{"dynamic_templates":[{"string_fields":{"match":"*_multi","match_mapping_type":"string","mapping":{"type":"multi_field","fields":{"{name}":{"type":"text","index":"analyzed","omit_norms":true,"index_options":"docs"},"{name}.raw":{"type":"text","index":"not_analyzed","ignore_above":256}}}}}],"_source":{"enabled":true},"properties":{"@version":{"type":"text","index":false},"title":{"type":"text"},"name":{"type":"text"},"created_at":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"updated_at":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"deleted_at":{"type":"date","format":"strict_date_optional_time||epoch_millis"},"@id":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}}}',
-        statusCode: 400,
-        response:
-            '{"error":{"root_cause":[{"type":"resource_already_exists_exception","reason":"index [test-v2/R_X1Daw7S0e8qIh_W3M-Fg] already exists","index_uuid":"R_X1Daw7S0e8qIh_W3M-Fg","index":"test-v2"}],"type":"resource_already_exists_exception","reason":"index [test-v2/R_X1Daw7S0e8qIh_W3M-Fg] already exists","index_uuid":"R_X1Daw7S0e8qIh_W3M-Fg","index":"test-v2"},"status":400}',
-    },
-    not_found: {
-        msg: 'Not Found',
-        path: '/test-v3/_doc/bbb',
-        query: {},
-        statusCode: 404,
-        response: '{"_index":"test-v3","_type":"_doc","_id":"bbb","found":false}',
-    },
-    action_request_validation_exception: {
-        msg: '[action_request_validation_exception] Validation Failed: 1: script or doc is missing;',
-        path: '/test-v3/_doc/aaa/_update',
-        query: {},
-        statusCode: 400,
-        response:
-            '{"error":{"root_cause":[{"type":"action_request_validation_exception","reason":"Validation Failed: 1: script or doc is missing;"}],"type":"action_request_validation_exception","reason":"Validation Failed: 1: script or doc is missing;"},"status":400}',
-    },
-    remote_transport_exception: {
-        msg: '[remote_transport_exception] [rt8LrQT][x.x.x.x:9300][indices:data/write/update[s]]',
-        path: '/test-v3/_doc/aaa/_update',
-        query: {},
-        body: '{"upsert":{"count":2,"a":5},"script":"ctx._source.count += 2,ctx._source.a += 5"}',
-        statusCode: 400,
-        response:
-            '{"error":{"root_cause":[{"type":"remote_transport_exception","reason":"[rt8LrQT][x.x.x.x:9300][indices:data/write/update[s]]"}],"type":"illegal_argument_exception","reason":"failed to execute script","caused_by":{"type":"script_exception","reason":"compile error","script_stack":["ctx._source.count += 2,ctx._source.a += 5","                      ^---- HERE"],"script":"ctx._source.count += 2,ctx._source.a += 5","lang":"painless","caused_by":{"type":"illegal_argument_exception","reason":"unexpected token [\',\'] was expecting one of [{<EOF>, \';\'}]."}}},"status":400}',
-    },
-    version_conflict_engine_exception: {
-        '!': '가끔씩 update할때 나는것 같음! 개선 필요 @191121',
-        msg:
-            '[version_conflict_engine_exception] [item][TTDfu-tfwfoE0CFuQ=]: version conflict, current version [3] is different than the one provided [2], with { index_uuid="GxCGaNZoSZuoDFTmWfjqtg" & shard="4" & index="clusters-v1" }',
     },
 };
 
@@ -783,7 +913,7 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
 
     public async updateItem(id: string, updates: T, increments?: Incrementable): Promise<T> {
         const org = await this.readItem(id);
-        const item = { ...org, ...updates, _version: Number(org._version) + 1 };
+        const item = { ...org, ...updates, _version: Number(org._version || 0) + 1 };
         if (increments) {
             //TODO - support increments in dummy.
         }
