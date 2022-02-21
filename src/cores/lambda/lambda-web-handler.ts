@@ -243,17 +243,11 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public getHandlerDecoders(): { [key: string]: NextDecoder } {
         //! copy
-        // return { ...this._handlers };
-        const map: any = $_.reduce(
-            this._handlers,
-            (M: any, val: any, key: string) => {
-                if (typeof val == 'function') M[key] = val;
-                else M[key] = (m: any, i: any, c: any) => (val as CoreWEBController).decode(m, i, c);
-                return M;
-            },
-            {},
-        );
-        return map;
+        return Object.entries(this._handlers).reduce<{ [key: string]: NextDecoder }>((M, [key, val]) => {
+            if (typeof val == 'function') M[key] = val;
+            else M[key] = (m: any, i: any, c: any) => (val as CoreWEBController).decode(m, i, c);
+            return M;
+        }, {});
     }
 
     /**

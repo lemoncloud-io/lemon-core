@@ -440,8 +440,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (views) {
             const fields: string[] = [];
             const is_array = Array.isArray(views);
-            $_.each(views, (v: string, k: string) => {
-                fields.push(is_array ? v : k);
+            const keys = is_array ? views : Object.keys(views);
+            keys.forEach((k: string) => {
+                fields.push(k);
             });
             params._source = fields;
         }

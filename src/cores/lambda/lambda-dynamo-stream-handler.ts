@@ -109,14 +109,10 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             //! 이제 변경된 데이터를 추적해서, 이후 처리 지원. (update 는 호출만되어도 이벤트가 발생하게 됨)
             const diff = eventName === 'MODIFY' ? $U.diff($old, $new) : [];
             const node = $new || $old || {}; // make sure not null.
-            const prev = $_.reduce(
-                diff,
-                (M: any, key: any) => {
-                    M[key] = $old[key];
-                    return M;
-                },
-                {},
-            );
+            const prev = diff.reduce<any>((M: any, key: any) => {
+                M[key] = $old[key];
+                return M;
+            }, {});
 
             //! prepare next-handler's param & body.
             const param: DynamoStreamParam = { region, eventId, eventName, tableName };
@@ -197,16 +193,12 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                 //! clear data.
                 const res = await service.deleteItem(_id); // ignore error.
                 _log(NS, `> deleted[${_id}] =`, $U.json(res));
-            } else if (diff && diff.length) {
+            } else if (diff && Array.isArray(diff) && diff.length) {
                 //! try to update in advance, then save.
-                const $upt = $_.reduce(
-                    diff,
-                    (M: any, key: string) => {
-                        M[key] = item[key];
-                        return M;
-                    },
-                    {},
-                );
+                const $upt = diff.reduce<any>((M: any, key: string) => {
+                    M[key] = item[key];
+                    return M;
+                }, {});
                 _log(NS, `> updates[${_id}] =`, $U.json($upt));
                 const res = await service.updateItem(_id, $upt).catch((e: Error) => {
                     if (`${e.message}`.startsWith('404 NOT FOUND')) return service.saveItem(_id, item);
