@@ -1,0 +1,70 @@
+{
+    "message": "version_conflict_engine_exception",
+    "meta": {
+        "body": {
+            "error": {
+                "index": "test-v7.1",
+                "index_uuid": "C47qhbMoQB-QJmjvgh3LBA",
+                "reason": "[A0]: version conflict, document already exists (current version [2])",
+                "root_cause": [{
+                    "index": "test-v7.1",
+                    "index_uuid": "C47qhbMoQB-QJmjvgh3LBA",
+                    "reason": "[A0]: version conflict, document already exists (current version [2])",
+                    "shard": "2",
+                    "type": "version_conflict_engine_exception"
+                }],
+                "shard": "2",
+                "type": "version_conflict_engine_exception"
+            },
+            "status": 409
+        },
+        "headers": {
+            "access-control-allow-origin": "*",
+            "connection": "keep-alive",
+            "content-length": "429",
+            "content-type": "application/json; charset=UTF-8",
+            "date": "Tue, 22 Feb 2022 06:46:27 GMT"
+        },
+        "meta": {
+            "aborted": false,
+            "attempts": 0,
+            "connection": {
+                "_openRequests": 0,
+                "deadCount": 0,
+                "headers": {},
+                "id": "https://localhost:9683/",
+                "resurrectTimeout": 0,
+                "roles": {
+                    "data": true,
+                    "ingest": true,
+                    "master": true,
+                    "ml": false
+                },
+                "status": "alive",
+                "url": "https://localhost:9683/"
+            },
+            "context": null,
+            "name": "elasticsearch-js",
+            "request": {
+                "id": 10,
+                "options": {},
+                "params": {
+                    "body": "{\"type\":\"\",\"name\":\"a0\",\"$id\":\"A0\"}",
+                    "headers": {
+                        "content-length": "34",
+                        "content-type": "application/json",
+                        "user-agent": "elasticsearch-js/7.12.0 (darwin 21.2.0-x64; Node.js v12.22.7)",
+                        "x-elastic-client-meta": "es=7.12.0,js=12.22.7,t=7.12.0,hc=12.22.7"
+                    },
+                    "method": "PUT",
+                    "path": "/test-v7.1/_doc/A0/_create",
+                    "querystring": "",
+                    "timeout": 30000
+                }
+            }
+        },
+        "statusCode": 409
+    },
+    "name": "ResponseError",
+    "stack": "ResponseError: version_conflict_engine_exception\nat onBody (/Users/dujung/Documents/Projects/M2/lemon-core/node_modules/@elastic/elasticsearch/lib/Transport.js:337:23)\nat IncomingMessage.onEnd (/Users/dujung/Documents/Projects/M2/lemon-core/node_modules/@elastic/elasticsearch/lib/Transport.js:264:11)\nat IncomingMessage.emit (events.js:326:22)\nat IncomingMessage.EventEmitter.emit (domain.js:483:12)\nat endReadableNT (_stream_readable.js:1241:12)\nat processTicksAndRejections (internal/process/task_queues.js:84:21)"
+}

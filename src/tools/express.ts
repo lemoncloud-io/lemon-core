@@ -65,9 +65,7 @@ export const buildExpress = (
      ** ****************************************************************************************************************/
     //! re-use core modules.
     const $U = $engine.U;
-    const $_ = $engine._;
     if (!$U) throw new Error('$U(utilities) is required!');
-    if (!$_) throw new Error('$_(lodash) is required!');
 
     //! load common(log) functions
     const useEngineLog = !!1; //NOTE - turn off to print log in jest test.

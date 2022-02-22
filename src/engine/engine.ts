@@ -7,7 +7,7 @@
  *
  * ```js
  * //! import core engine like this.
- * import { $engine, _log, _inf, _err, $U, $_ } from '../core/engine';
+ * import { $engine, _log, _inf, _err, $U } from '../core/engine';
  * const NS = $U.NS(name, 'yellow');
  * _inf(NS, `! model[${name}] is ready..`);
  * ```
@@ -19,6 +19,7 @@
  * @date        2019-08-06 improved type helper with `lemon-engine#2.2.3`
  * @date        2019-08-08 improved `$api().do(event, context, callback)`.
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2022-02-21 remove `$_` the lodash libs.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */

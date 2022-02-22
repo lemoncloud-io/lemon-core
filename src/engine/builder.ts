@@ -6,6 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2018-05-23 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2022-02-22 cleanup lodash export `_`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -242,7 +243,6 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
             public readonly inf: GeneralFuntion = _inf;
             public readonly err: GeneralFuntion = _err;
             public readonly U: Utilities;
-            public readonly _: any = _;
             public readonly $console: EngineConsole = $console;
             public ts: (date?: number | Date, timeZone?: number) => string = build_ts({ console: $console });
             public dt: (time?: string | number | Date, timeZone?: number) => Date = Utilities.datetime;

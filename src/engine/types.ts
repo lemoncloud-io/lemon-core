@@ -41,10 +41,6 @@ export interface EngineCore {
      */
     U: Utilities;
     /**
-     * lodash library
-     */
-    _: any; // = require('lodash/core')
-    /**
      * get environment value.
      */
     environ: (name: string, defValue?: string | boolean | number | undefined) => string | boolean | number | undefined;

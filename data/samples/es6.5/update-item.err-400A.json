@@ -1,0 +1,8 @@
+{
+    "!": "thrown as service.updateItem('A0', null, { count: 1 })",
+    "body": "{\"upsert\":{\"count\":1,\"test-v4\":\"A0\"},\"lang\":\"painless\",\"script\":\"ctx._source.count += 1\"}",
+    "path": "/test-v4/_doc/A0/_update",
+    "query": {},
+    "response": "{\"error\":{\"root_cause\":[{\"type\":\"remote_transport_exception\",\"reason\":\"[41hifW8][x.x.x.x:9300][indices:data/write/update[s]]\"}],\"type\":\"illegal_argument_exception\",\"reason\":\"failed to execute script\",\"caused_by\":{\"type\":\"script_exception\",\"reason\":\"runtime error\",\"script_stack\":[\"ctx._source.count += 1\",\"                     ^---- HERE\"],\"script\":\"ctx._source.count += 1\",\"lang\":\"painless\",\"caused_by\":{\"type\":\"null_pointer_exception\",\"reason\":null}}},\"status\":400}",
+    "statusCode": 400
+}

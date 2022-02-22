@@ -156,9 +156,9 @@ export class AWSSNSService implements CoreSnsService {
             return sns
                 .publish(params)
                 .promise()
-                .then(result => {
-                    _log(NS, `> result[${arn}] =`, result);
-                    return (result && result.MessageId) || '';
+                .then(res => {
+                    _log(NS, `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
+                    return (res && res.MessageId) || '';
                 })
                 .catch(e => {
                     _err(NS, '! err=', e);

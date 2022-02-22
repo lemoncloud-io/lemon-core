@@ -11,7 +11,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../engine/';
+import { _log, _inf, _err, $U } from '../engine/';
 import { GeneralItem, Incrementable } from './core-types';
 import { loadDataYml } from '../tools/';
 import AWS from 'aws-sdk';
@@ -236,9 +236,8 @@ export class DynamoService<T extends GeneralItem> {
         const norm = (_: string) => `${_}`.replace(/[.\\:\/]/g, '_');
 
         //! prepare payload.
-        const payload = $_.reduce(
-            $update,
-            (memo: any, value: any, key: string) => {
+        let payload = Object.entries($update).reduce(
+            (memo: any, [key, value]: any[]) => {
                 //! ignore if key
                 if (key === idName || key === sortName) return memo;
                 const key2 = norm(key);
@@ -282,28 +281,24 @@ export class DynamoService<T extends GeneralItem> {
         //! prepare increment update.
         if ($increment) {
             //! increment field.
-            $_.reduce(
-                $increment,
-                (memo: any, value: number | (string | number)[], key: string) => {
-                    const key2 = norm(key);
-                    if (!Array.isArray(value)) {
-                        memo.ExpressionAttributeNames[`#${key2}`] = key;
-                        memo.ExpressionAttributeValues[`:${key2}`] = value;
-                        memo.UpdateExpression.ADD.push(`#${key2} :${key2}`);
-                        debug && _log(NS, '>> ' + `#${key2} = #${key2} + :${value}`);
-                    } else {
-                        memo.ExpressionAttributeNames[`#${key2}`] = key; // target attribute name
-                        memo.ExpressionAttributeValues[`:${key2}`] = value; // list to append like `[1,2,3]`
-                        memo.ExpressionAttributeValues[`:${key2}_0`] = []; // empty array if not exists.
-                        memo.UpdateExpression.SET.push(
-                            `#${key2} = list_append(if_not_exists(#${key2}, :${key2}_0), :${key2})`,
-                        );
-                        debug && _log(NS, '>> ' + `#${key2} = #${key2} + ${value}`);
-                    }
-                    return memo;
-                },
-                payload,
-            );
+            payload = Object.entries($increment).reduce((memo: any, [key, value]) => {
+                const key2 = norm(key);
+                if (!Array.isArray(value)) {
+                    memo.ExpressionAttributeNames[`#${key2}`] = key;
+                    memo.ExpressionAttributeValues[`:${key2}`] = value;
+                    memo.UpdateExpression.ADD.push(`#${key2} :${key2}`);
+                    debug && _log(NS, '>> ' + `#${key2} = #${key2} + :${value}`);
+                } else {
+                    memo.ExpressionAttributeNames[`#${key2}`] = key; // target attribute name
+                    memo.ExpressionAttributeValues[`:${key2}`] = value; // list to append like `[1,2,3]`
+                    memo.ExpressionAttributeValues[`:${key2}_0`] = []; // empty array if not exists.
+                    memo.UpdateExpression.SET.push(
+                        `#${key2} = list_append(if_not_exists(#${key2}, :${key2}_0), :${key2})`,
+                    );
+                    debug && _log(NS, '>> ' + `#${key2} = #${key2} + ${value}`);
+                }
+                return memo;
+            }, payload);
         }
         //! build final update expression.
         payload.UpdateExpression = Object.keys(payload.UpdateExpression) // ['SET', 'REMOVE', 'ADD', 'DELETE']
