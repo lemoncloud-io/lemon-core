@@ -14,7 +14,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_, doReportError } from '../../engine/';
+import { _log, _inf, _err, $U, doReportError } from '../../engine/';
 import {
     NextDecoder,
     NextHandler,
@@ -115,7 +115,7 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
     if (event && event.headers && !event.headers['x-protocol-context'])
         event.headers['x-protocol-context'] = $ctx ? $U.json($ctx) : null;
     const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
-    _log(NS, '! protocol-param =', $U.json(param));
+    _log(NS, '! protocol-param =', $U.json({ ...param, body: undefined })); // hide `.body` in log.
 
     //! returns object..
     return { event, param };
@@ -243,17 +243,11 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public getHandlerDecoders(): { [key: string]: NextDecoder } {
         //! copy
-        // return { ...this._handlers };
-        const map: any = $_.reduce(
-            this._handlers,
-            (M: any, val: any, key: string) => {
-                if (typeof val == 'function') M[key] = val;
-                else M[key] = (m: any, i: any, c: any) => (val as CoreWEBController).decode(m, i, c);
-                return M;
-            },
-            {},
-        );
-        return map;
+        return Object.entries(this._handlers).reduce<{ [key: string]: NextDecoder }>((M, [key, val]) => {
+            if (typeof val == 'function') M[key] = val;
+            else M[key] = (m: any, i: any, c: any) => (val as CoreWEBController).decode(m, i, c);
+            return M;
+        }, {});
     }
 
     /**

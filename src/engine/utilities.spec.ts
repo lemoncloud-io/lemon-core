@@ -133,6 +133,12 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $U.diff(null, { b: 1 })).toEqual(['b']);
         expect2(() => $U.diff({ a: 1 }, { b: 1 })).toEqual(['a', 'b']);
         expect2(() => $U.diff({ a: 1 }, { a: 1 })).toEqual([]);
+        expect2(() => $U.diff({ a: {} }, { a: {} })).toEqual([]);
+        expect2(() => $U.diff({ a: {} }, { a: { b: 1 } })).toEqual(['a']);
+        expect2(() => $U.diff({ a: { b: null } }, { a: { b: 1 } })).toEqual(['a']);
+        expect2(() => $U.diff({ a: { b: 1, a: 0 } }, { a: { a: 0, b: 1 } })).toEqual([]);
+        expect2(() => $U.diff({ a: [0] }, { a: [null] })).toEqual(['a']);
+        expect2(() => $U.diff({ a: [0] }, { a: {} })).toEqual(['a']);
 
         done();
     });

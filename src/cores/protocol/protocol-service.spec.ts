@@ -189,7 +189,7 @@ describe('ProtocolService', () => {
         expect2(uri).toEqual('web://lemon-hello-api-dev-lambda/test/abc');
         expect2(service.transformEvent(uri, param), 'headers').toEqual({ headers:{ "x-protocol-context": "{}" }});
         expect2(service.transformEvent(uri, param), 'httpMethod,path').toEqual({ httpMethod:'GET', path:'/test/abc' });
-        expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({ pathParameters:{ id, cmd:'' } });
+        expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({ pathParameters:{ id, cmd:'', type: 'test' } });
         const requestContext = { accountId: '', httpMethod: 'GET', identity: null as any, path: '/test/abc', requestId: '', stage: '' };
         expect2(service.transformEvent(uri, param), 'requestContext').toEqual({ requestContext });
 
@@ -214,7 +214,7 @@ describe('ProtocolService', () => {
         expect2(uri).toEqual('web://0908@lemon-metrics-api-dev-lambda/metrics/0');
         expect2(service.transformEvent(uri, param), 'headers').toEqual({ headers:{ "x-protocol-context": JSON.stringify(context) }});
         expect2(service.transformEvent(uri, param), 'httpMethod,path').toEqual({ httpMethod:'GET', path });
-        expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({ pathParameters:{ id, cmd:'' } });
+        expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({ pathParameters:{ id, cmd:'', type:'metrics' } });
         const requestContext = { accountId: '0908', httpMethod: 'GET', identity: null as any, path, requestId: 'xxxx', stage: '' };
         expect2(service.transformEvent(uri, param), 'requestContext').toEqual({ requestContext });
 

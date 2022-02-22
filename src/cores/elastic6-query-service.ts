@@ -5,38 +5,46 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2021-12-07 support SearchBody
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, $_ } from '../engine/';
-const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
-
+import { _log, _inf, _err, $U } from '../engine/';
 import {
     GeneralItem,
     Elastic6SimpleQueriable,
     QueryResult,
     SimpleSearchParam,
     AutocompleteSearchParam,
+    SearchBody,
 } from './core-types';
-import { Elastic6Option, $ERROR, Elastic6Service } from './elastic6-service';
+import { Elastic6Service, SearchType } from './elastic6-service';
 import $hangul from './hangul-service';
-import { SearchParams } from 'elasticsearch';
+const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
 
-/** ****************************************************************************************************************
- *  Service Main
- ** ****************************************************************************************************************/
 /**
  * class: `Elastic6QueryService`
  * - support simple query like range search.
  */
 export class Elastic6QueryService<T extends GeneralItem> implements Elastic6SimpleQueriable<T> {
-    protected options: Elastic6Option;
-    public constructor(options: Elastic6Option) {
-        // eslint-disable-next-line prettier/prettier
-        _inf(NS, `Elastic6QueryService(${options.indexName}/${options.idName})...`);
+    protected readonly service: Elastic6Service;
+
+    /**
+     * use query w/ the given search-service.
+     * @param service the origin search-service to use.
+     */
+    public constructor(service: Elastic6Service) {
+        const options = service.options;
         if (!options.indexName) throw new Error('.indexName is required');
-        this.options = { docType: '_doc', ...options };
+        this.service = service;
+    }
+
+    /**
+     * get options
+     */
+    protected get options() {
+        return this.service.options;
     }
 
     /**
@@ -96,51 +104,56 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      */
     public async searchSimple(param: SimpleSearchParam) {
         if (!param) throw new Error('@param (SimpleSearchParam) is required');
-        const { endpoint, indexName, docType } = this.options;
-        const { client } = Elastic6Service.instance(endpoint);
-        _log(NS, `- search(${indexName})....`);
+        const { indexName } = this.options;
+        _log(NS, `- searchSimple(${indexName})....`);
         _log(NS, `> param =`, $U.json(param));
-
         //! build query body.
-        const payload = this.buildQueryBody(param);
+        const body = this.buildQueryBody(param);
+        //! search via client
+        const res = await this.search(body);
+        //! convert to query-result.
+        return this.asQueryResult(body, res);
+    }
 
-        const id = '';
-        const type = `${docType}`;
-        const params: SearchParams = { index: indexName, type, body: payload };
-        _log(NS, `> params[${id}] =`, $U.json(params));
-        const res = await client.search(params).catch(
-            $ERROR.handler('search', e => {
-                _err(NS, `> search[${indexName}].err =`, e);
-                throw e;
-            }),
-        );
-        // {"took":6,"timed_out":false,"_shards":{"total":4,"successful":4,"skipped":0,"failed":0},"hits":{"total":1,"max_score":0.2876821,"hits":[{"_index":"test-v3","_type":"_doc","_id":"aaa","_score":0.2876821,"_source":{"name":"AAA","@id":"aaa","a":-3,"b":-2}}]}}
-        // _log(NS, `> search[${id}].res =`, $U.json(res));
-        _log(NS, `> search[${id}].took =`, res.took);
-        _log(NS, `> search[${id}].hits.total =`, res.hits && res.hits.total);
-        _log(NS, `> search[${id}].hits.max_score =`, res.hits && res.hits.max_score);
-        _log(NS, `> search[${id}].hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
+    /**
+     * search with raw query language.
+     *
+     * @param body SearchBody.
+     * @returns results.
+     */
+    public async search(body: SearchBody, searchType?: SearchType) {
+        if (!body) throw new Error('@body (SearchBody) is required');
+        return this.service.searchRaw(body, searchType);
+    }
 
+    /**
+     * convert result as `QueryResult`
+     * @param body the query body requested
+     * @param res the result
+     * @returns QueryResult
+     */
+    public asQueryResult(body: SearchBody, res: any): QueryResult<T> {
+        const size = $U.N(body?.size, 10);
         //! extract for result.
-        const $hits = res.hits;
-        const hits = ($hits && $hits.hits) || [];
-        const total = $U.N($hits && $hits.total, 0);
-        const list: T[] = hits.map((_: any) => {
-            const id = _ && _._id; // id of elastic-search
-            const score = _ && _._score; // search score.
-            const source = _ && _._source; // origin data
+        const hits = res?.hits;
+        if (typeof hits !== 'object') throw new Error(`.hits (object) is required - hists:${$U.json(hits)}`);
+        const total = $U.N(typeof (hits.total as any)?.value === 'number' ? (hits.total as any)?.value : hits.total, 0); // since v7.x
+        const last = hits?.hits.length === size ? hits.hits[size - 1]?.sort : undefined;
+        const list: T[] = ((hits && hits.hits) || []).map((N: any) => {
+            const id = N && N._id; // id of elastic-search
+            const score = N && N._score; // search score.
+            const source = N && N._source; // origin data
             //! save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
             // delete internal autocomplete data
             delete source[Elastic6Service.DECOMPOSED_FIELD];
             delete source[Elastic6Service.QWERTY_FIELD];
-
             return source as T;
         });
 
-        const result: QueryResult<T> = { list, total };
-        if (res.aggregations) {
+        const result: QueryResult<T> = { list, total, last };
+        if (res?.aggregations) {
             const $aggregations = res.aggregations || {};
             result.aggregations = Object.keys($aggregations).reduce((aggrs, field) => {
                 const {
@@ -164,13 +177,12 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
     }
 
     /**
-     * search item in Search-as-You-Type way
+     * convert `AutocompleteSearchParam` to `SearchBody`
      * @param param AutocompleteSearchParam
+     * @returns SearchBody
      */
-    public async searchAutocomplete(param: AutocompleteSearchParam) {
-        const { endpoint, indexName, docType: type, autocompleteFields } = this.options;
-        const { client } = Elastic6Service.instance(endpoint);
-
+    public asSearchBody(param: AutocompleteSearchParam) {
+        const { autocompleteFields } = this.options;
         // validate parameters
         if (!param) throw new Error('@param (AutocompleteSearchParam) is required');
         if (!param.$query || !Object.keys(param.$query).length) throw new Error('.query is required');
@@ -183,7 +195,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         // build query body
         const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}`;
         const qwertyField = `${Elastic6Service.QWERTY_FIELD}.${field}`;
-        const body: any = {
+        const body: SearchBody = {
             query: {
                 bool: {
                     should: [
@@ -201,40 +213,20 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         }
         body.size = $U.N(param.$limit, 10);
         body.from = $U.N(param.$page, 0) * body.size;
+        return { field, query, body };
+    }
 
-        // perform search
-        const params = { index: indexName, type, body };
-        _log(NS, `> params =`, $U.json(params));
-        const res = await client.search(params).catch(
-            $ERROR.handler('search', e => {
-                _err(NS, `> search[${indexName}].err =`, e);
-                throw e;
-            }),
-        );
-        _log(NS, `> search.took =`, res.took);
-        _log(NS, `> search.hits.total =`, res.hits && res.hits.total);
-        _log(NS, `> search.hits.max_score =`, res.hits && res.hits.max_score);
-        _log(NS, `> search.hits.hits[0] =`, res.hits && $U.json(res.hits.hits[0]));
-
-        // extract result
-        const $hits = res.hits;
-        const hits = ($hits && $hits.hits) || [];
-        const total = $U.N($hits && $hits.total, 0);
-        const list: T[] = hits.map((_: any) => {
-            const id = _ && _._id; // id of elastic-search
-            const score = _ && _._score; // search score.
-            const source = _ && _._source; // origin data
-            //! save as internal
-            source._id = source._id || id; // attach to internal-id
-            source._score = score;
-            // delete internal autocomplete data
-            delete source[Elastic6Service.DECOMPOSED_FIELD];
-            delete source[Elastic6Service.QWERTY_FIELD];
-
-            return source as T;
-        });
+    /**
+     * search item in Search-as-You-Type way
+     * @param param AutocompleteSearchParam
+     */
+    public async searchAutocomplete(param: AutocompleteSearchParam) {
+        const { field, query, body } = this.asSearchBody(param);
+        const res = await this.service.searchRaw(body);
+        const result = this.asQueryResult(body, res);
 
         // highlighting result manually
+        let list = result.list;
         if (param.$highlight) {
             // prepare tag name to wrap highlighted text
             const tagName = typeof param.$highlight == 'string' ? param.$highlight : 'em';
@@ -243,27 +235,31 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             const regexp = new RegExp([...query.replace(/\s/g, '')].join(' *'), 'i');
 
             // try to match regular expression with items found
-            list.map((item: any) => {
-                const target = `${item[field] || ''}`;
-                const match = target.match(regexp);
-                if (match) {
-                    item._highlight =
-                        target.slice(0, match.index) +
-                        `<${tagName}>${match[0]}</${tagName}>` +
-                        target.slice(match.index + match[0].length);
-                } else {
-                    item._highlight = target;
-                }
-            });
+            list = result.list.map(
+                (item: any): T => {
+                    const target = `${item[field] || ''}`;
+                    const match = target.match(regexp);
+                    if (match) {
+                        item._highlight =
+                            target.slice(0, match.index) +
+                            `<${tagName}>${match[0]}</${tagName}>` +
+                            target.slice(match.index + match[0].length);
+                    } else {
+                        item._highlight = target;
+                    }
+                    return item;
+                },
+            );
         }
 
-        return { list, total };
+        //! finally, override list.
+        return { ...result, list };
     }
 
     /**
      * build query parameter from search param.
      */
-    public buildQueryBody = (param: SimpleSearchParam) => {
+    public buildQueryBody = (param: SimpleSearchParam): SearchBody => {
         //! parameters.
         let $query = null;
         let $source: any = null;
@@ -274,141 +270,140 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         let $H = ''; // Highlight
 
         //! build query.
-        const queries = $_.reduce(
-            param,
-            (list: any[], val: any, key: string) => {
-                // ignore internal values.
-                if (key.startsWith('_')) return list;
+        const queries = Object.keys(param).reduce((list: string[], key: string): string[] => {
+            let val = param[key as keyof SimpleSearchParam];
+            // ignore internal values.
+            if (key.startsWith('_')) return list;
 
-                // _log(NS, `>> param[${key}] = `, val);
-                if (key === '$query') {
-                    $query = { query: typeof val === 'object' ? val : JSON.parse(val) };
-                } else if (key === '$limit') {
-                    $limit = $U.N(val, 0);
-                } else if (key === '$page') {
-                    $page = $U.N(val, 0);
-                } else if (key === '$Q') {
-                    if (!val) {
-                        //NOP;
-                    } else if (typeof val === 'object') {
-                        // ONLY IF object. use it as raw query.
-                        $query = val;
-                    } else if (typeof val === 'string' && val.startsWith('{') && val.endsWith('}')) {
-                        // might be the json data.
-                        $query = JSON.parse(val);
-                    } else if (typeof val === 'string') {
-                        // might be query string.
-                        //! escape queries..
-                        // + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /
-                        // val = val.replace(/([\(\)])/ig,'\\$1');	    //TODO - 이걸 무시하면, 중복 조건 검색에 문제가 생김, 하여 일단 안하는걸루. @180828.
-                        list.push(`(${val})`);
-                    }
-                } else if (key === '$A') {
-                    $A = `${val}`.trim(); // ',' delimited terms to count
-                } else if (key === '$O') {
-                    $O = `${val}`.trim(); // ',' delimited terms to order
-                } else if (key === '$H') {
-                    $H = `${val}`.trim(); // ',' delimited terms to highlight
-                } else if (key === '$source') {
-                    // returned source fields set. '*', 'obj.*', '!abc'
-                    if (val === '*') {
-                        // all.
-                        $source = '*';
-                    } else if (val && val.indexOf && val.indexOf(',')) {
-                        // string array set.
-                        let vals: string[] = val.split(',') || [];
-                        let $includes: string[] = [];
-                        let $excludes: string[] = [];
-                        vals.forEach(val => {
-                            val = `${val || ''}`.trim();
-                            if (!val) return;
-                            if (val.startsWith('!')) {
-                                $excludes.push(val.substr(1));
-                            } else {
-                                $includes.push(val);
-                            }
-                        });
-                        $source = { includes: $includes, excludes: $excludes };
-                    } else {
-                        $source = val;
-                    }
-                } else if (key === '$exist' || key === '$exists') {
-                    (val.split(',') || []).forEach((val: any) => {
+            // _log(NS, `>> param[${key}] = `, val);
+            if (key === '$query') {
+                $query = {
+                    query: typeof val === 'object' ? val : typeof val === 'string' ? JSON.parse(val) : `${val || ''}`,
+                };
+            } else if (key === '$limit') {
+                $limit = $U.N(val, 0);
+            } else if (key === '$page') {
+                $page = $U.N(val, 0);
+            } else if (key === '$Q') {
+                if (!val) {
+                    //NOP;
+                } else if (typeof val === 'object') {
+                    // ONLY IF object. use it as raw query.
+                    $query = val;
+                } else if (typeof val === 'string' && val.startsWith('{') && val.endsWith('}')) {
+                    // might be the json data.
+                    $query = JSON.parse(val);
+                } else if (typeof val === 'string') {
+                    // might be query string.
+                    //! escape queries..
+                    // + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /
+                    // val = val.replace(/([\(\)])/ig,'\\$1');	    //TODO - 이걸 무시하면, 중복 조건 검색에 문제가 생김, 하여 일단 안하는걸루. @180828.
+                    list.push(`(${val})`);
+                }
+            } else if (key === '$A') {
+                $A = `${val}`.trim(); // ',' delimited terms to count
+            } else if (key === '$O') {
+                $O = `${val}`.trim(); // ',' delimited terms to order
+            } else if (key === '$H') {
+                $H = `${val}`.trim(); // ',' delimited terms to highlight
+            } else if (key === '$source') {
+                // returned source fields set. '*', 'obj.*', '!abc'
+                if (val === '*') {
+                    // all.
+                    $source = '*';
+                } else if (typeof val === 'string' && val.indexOf !== undefined) {
+                    // string array set.
+                    let vals: string[] = val.split(',') || [];
+                    let $includes: string[] = [];
+                    let $excludes: string[] = [];
+                    vals.forEach(val => {
                         val = `${val || ''}`.trim();
                         if (!val) return;
                         if (val.startsWith('!')) {
-                            list.push('NOT _exists_:' + val.substr(1));
+                            $excludes.push(val.substr(1));
                         } else {
-                            list.push('_exists_:' + val);
+                            $includes.push(val);
                         }
                     });
+                    $source = { includes: $includes, excludes: $excludes };
                 } else {
-                    //! escape if there is ' ' except like '(a AND B)'
-                    const escape_val = (val: string): string | string[] => {
-                        if (val === '') {
-                            val = '"' + val + '"';
-                        } else if (val && typeof val === 'string') {
-                            if (val.startsWith('(') && val.endsWith(')')) {
-                                // nop
-                            } else if (val.startsWith('"') && val.endsWith('"')) {
-                                // must be string block
-                                return val;
-                            } else if (val.indexOf(',') > 0) {
-                                // list of array.
-                                return val.split(',').map(s => {
-                                    return (s || '').trim();
-                                });
-                            } else if (
-                                // special chars
-                                val.indexOf(' ') >= 0 ||
-                                val.indexOf('\n') >= 0 ||
-                                val.indexOf(':') >= 0 ||
-                                val.indexOf('\\') >= 0 ||
-                                val.indexOf('#') >= 0 ||
-                                val.indexOf('^') >= 0
-                            ) {
-                                val = val.replace(/([\"\'])/gi, '\\$1'); // replace '"' -> '\"'
-                                val = '"' + val + '"';
-                            }
-                        }
-                        return val;
-                    };
-                    val = escape_val(val);
-
-                    //! add to query-list.
-                    if (key.startsWith('!')) {
-                        if (val) {
-                            if (Array.isArray(val)) {
-                                const vals = val.map(_ => escape_val(_));
-                                list.push(key.substr(1) + ':(NOT (' + vals.join(' OR ') + '))');
-                            } else {
-                                list.push(key.substr(1) + ':(NOT ' + val + ')');
-                            }
-                        } else {
-                            list.push('_exists_:' + key.substr(1));
-                        }
-                    } else if (key.startsWith('#')) {
-                        // projection.
-                        $source = $source || { includes: [], excludes: [] };
-                        if ($source && $source.includes) {
-                            $source.includes.push(key.substr(1));
-                        }
-                    } else if (val === undefined) {
-                        //! nop
-                    } else if (val && Array.isArray(val)) {
-                        // list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
-                        list.push(`${key}:` + '(' + val.map(val => `${escape_val(val)}`).join(' OR ') + ')');
-                    } else {
-                        list.push(`${key}:${val}`);
-                    }
+                    $source = val;
                 }
-                return list;
-            },
-            [],
-        );
+            } else if (key === '$exist' || key === '$exists') {
+                (Array.isArray(val) ? val : `${val}`.split(',') || []).forEach((val: any) => {
+                    val = `${val || ''}`.trim();
+                    if (!val) return;
+                    if (val.startsWith('!')) {
+                        list.push('NOT _exists_:' + val.substr(1));
+                    } else {
+                        list.push('_exists_:' + val);
+                    }
+                });
+            } else {
+                //! escape if there is ' ' except like '(a AND B)'
+                const escape_val = (val: any): string | string[] => {
+                    if (typeof val === 'string' && val === '') {
+                        return '"' + val + '"';
+                    } else if (val && typeof val === 'string') {
+                        if (val.startsWith('(') && val.endsWith(')')) {
+                            // nop
+                        } else if (val.startsWith('"') && val.endsWith('"')) {
+                            // must be string block
+                            return val;
+                        } else if (val.indexOf(',') > 0) {
+                            // list of array.
+                            return val.split(',').map(s => {
+                                return (s || '').trim();
+                            });
+                        } else if (
+                            // special chars
+                            val.indexOf(' ') >= 0 ||
+                            val.indexOf('\n') >= 0 ||
+                            val.indexOf(':') >= 0 ||
+                            val.indexOf('\\') >= 0 ||
+                            val.indexOf('#') >= 0 ||
+                            val.indexOf('^') >= 0
+                        ) {
+                            const str = val.replace(/([\"\'])/gi, '\\$1'); // replace '"' -> '\"'
+                            return '"' + str + '"';
+                        }
+                    }
+                    return val;
+                };
+                val = escape_val(val);
+
+                //! add to query-list.
+                if (key.startsWith('!')) {
+                    if (val) {
+                        if (Array.isArray(val)) {
+                            const vals = val.map((_: any) => escape_val(_));
+                            list.push(key.substr(1) + ':(NOT (' + vals.join(' OR ') + '))');
+                        } else {
+                            list.push(key.substr(1) + ':(NOT ' + val + ')');
+                        }
+                    } else {
+                        list.push('_exists_:' + key.substr(1));
+                    }
+                } else if (key.startsWith('#')) {
+                    // projection.
+                    $source = $source || { includes: [], excludes: [] };
+                    if ($source && $source.includes) {
+                        $source.includes.push(key.substr(1));
+                    }
+                } else if (val === undefined) {
+                    //! nop
+                } else if (val && Array.isArray(val)) {
+                    // list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
+                    list.push(`${key}:` + '(' + val.map((val: any) => `${escape_val(val)}`).join(' OR ') + ')');
+                } else {
+                    list.push(`${key}:${val}`);
+                }
+            }
+            return list;
+        }, []);
 
         //! prepare returned body.
-        const $body: any = $query
+        const $body: SearchBody = $query
             ? $query
             : (queries.length && { query: { query_string: { query: queries.join(' AND ') } } }) || {}; // $query 이게 있으면 그냥 이걸 이용.
 

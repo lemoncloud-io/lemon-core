@@ -132,6 +132,7 @@ describe('DynamoService', () => {
         it('should pass basic CRUD', async done => {
             //! check dummy data.
             expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
+
             /* eslint-disable prettier/prettier */
             expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
             expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });

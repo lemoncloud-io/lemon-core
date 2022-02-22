@@ -1,0 +1,6 @@
+{
+    "path": "/test-v4",
+    "query": {},
+    "response": "{\"error\":{\"root_cause\":[{\"type\":\"remote_transport_exception\",\"reason\":\"[41hifW8][x.x.x.x:9300][indices:admin/delete]\"}],\"type\":\"illegal_argument_exception\",\"reason\":\"Cannot delete indices that are being snapshotted: [[test-v4/FiYAvUZvQyCtf0z_3MnHQQ]]. Try again after snapshot finishes or cancel the currently running snapshot.\"},\"status\":400}",
+    "statusCode": 400
+}

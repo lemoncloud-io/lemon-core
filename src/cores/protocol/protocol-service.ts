@@ -519,9 +519,9 @@ export class MyProtocolService implements ProtocolService {
  * - transformer for `WEB` Handler
  */
 export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayProxyEvent, APIGatewayProxyEvent> {
-    private service: MyProtocolService;
-    public constructor(service: MyProtocolService) {
-        this.service = service;
+    // private service: MyProtocolService;
+    public constructor(service?: MyProtocolService) {
+        // this.service = service;
     }
     /**
      * transform param to event

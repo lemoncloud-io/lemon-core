@@ -1,0 +1,8 @@
+{
+    "!": "thrown when id exists already, and try to create()",
+    "body": "{\"type\":\"\",\"name\":\"a0\",\"$id\":\"A0\",\"_decomposed\":{\"name\":[\"a0\",\"a0\"]},\"_qwerty\":{}}",
+    "path": "/test-v4/_doc/A0/_create",
+    "query": {},
+    "response": "{\"error\":{\"root_cause\":[{\"type\":\"version_conflict_engine_exception\",\"reason\":\"[_doc][A0]: version conflict, document already exists (current version [1])\",\"index_uuid\":\"pkIOiXWWTECof0jLLicdmQ\",\"shard\":\"2\",\"index\":\"test-v4\"}],\"type\":\"version_conflict_engine_exception\",\"reason\":\"[_doc][A0]: version conflict, document already exists (current version [1])\",\"index_uuid\":\"pkIOiXWWTECof0jLLicdmQ\",\"shard\":\"2\",\"index\":\"test-v4\"},\"status\":409}",
+    "statusCode": 409
+}

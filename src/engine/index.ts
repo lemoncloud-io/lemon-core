@@ -13,6 +13,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2018-05-23 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2022-02-21 remove `$_` the lodash libs.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -23,9 +24,7 @@ export const $engine: LemonEngine = buildEngine(global, { env: process.env });
 
 //! re-use core modules.
 export const $U = $engine.U;
-export const $_ = $engine._;
 if (!$U) throw new Error('$U(utilities) is required!');
-if (!$_) throw new Error('$_(lodash) is required!');
 
 //! export common(log) functions
 export const _log = $engine.log;

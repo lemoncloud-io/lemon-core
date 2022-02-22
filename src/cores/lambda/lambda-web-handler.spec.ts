@@ -84,7 +84,7 @@ describe('LambdaWEBHandler', () => {
     //! list in web-handler
     it('should pass success GET / via web', async done => {
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = '';
         event.pathParameters['id'] = id;
         const res = await service.handle(event, null);
@@ -117,7 +117,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass success GET / via lambda', async done => {
         /* eslint-enable prettier/prettier */
         const { lambda } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = '';
         event.pathParameters['id'] = id;
         const response = await lambda.handle(event, null).catch(GETERR$);
@@ -131,7 +131,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass success GET /favicon.ico', async done => {
         /* eslint-enable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         event.httpMethod = 'GET';
         event.path = '/favicon.ico';
         const res = await service.handle(event, null);
@@ -146,7 +146,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass success GET /abc', async done => {
         /* eslint-enable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = 'abc';
         event.pathParameters['id'] = id;
         const res = await service.handle(event, null);
@@ -160,7 +160,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass success GET /abc/hi', async done => {
         /* eslint-enable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = 'abc';
         const cmd = 'hi';
         event.pathParameters['id'] = id;
@@ -184,7 +184,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass success POST /abc/hi', async done => {
         /* eslint-enable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = 'abc';
         const cmd = 'hi';
         const origin = 'https://api.com/';
@@ -211,7 +211,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass success POST / 400', async done => {
         /* eslint-enable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         event.httpMethod = 'POST';
         event.pathParameters['id'] = '';
         const res = await service.handle(event, null);
@@ -226,7 +226,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass success GET /0 404', async done => {
         /* eslint-enable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         event.pathParameters['id'] = '0';
         const res = await service.handle(event, null);
         expect2(() => res, 'statusCode').toEqual({ statusCode: 404 });
@@ -240,7 +240,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass context.identity', async done => {
         const { lambda } = instance();
         const loadEventStock = (id: string): any => {
-            const event = loadJsonSync('data/sample.event.web.json');
+            const event = loadJsonSync('data/samples/events/sample.event.web.json');
             event.pathParameters['id'] = id; // call dump paramters.
             return event;
         };
@@ -288,7 +288,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass packContext() via lambda protocol', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
         event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
@@ -306,7 +306,7 @@ describe('LambdaWEBHandler', () => {
     it('should pass packContext() via lambda protocol', async done => {
         /* eslint-disable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.web.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
         // event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.

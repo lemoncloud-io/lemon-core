@@ -1,0 +1,6 @@
+{
+    "path": "/test-v4/_doc/A0",
+    "query": {},
+    "response": "{\"_index\":\"test-v4\",\"_type\":\"_doc\",\"_id\":\"A0\",\"found\":false}",
+    "statusCode": 404
+}

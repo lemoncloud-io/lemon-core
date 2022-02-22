@@ -87,7 +87,7 @@ export const expect2 = (test: any, view?: string): any => {
  * @param callback
  */
 export const _it = (name: string, callback?: (done?: any) => any) => {
-    it(`ignore! ${name}`, done => done());
+    it(`ignore! ${name}`, (done: any) => done());
 };
 
 /**

@@ -1,0 +1,7 @@
+{
+    "!": "thrown when no index",
+    "path": "/test-v4/_refresh",
+    "query": {},
+    "response": "{\"error\":{\"root_cause\":[{\"type\":\"index_not_found_exception\",\"reason\":\"no such index\",\"resource.type\":\"index_or_alias\",\"resource.id\":\"test-v4\",\"index_uuid\":\"_na_\",\"index\":\"test-v4\"}],\"type\":\"index_not_found_exception\",\"reason\":\"no such index\",\"resource.type\":\"index_or_alias\",\"resource.id\":\"test-v4\",\"index_uuid\":\"_na_\",\"index\":\"test-v4\"},\"status\":404}",
+    "statusCode": 404
+}

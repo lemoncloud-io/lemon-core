@@ -32,7 +32,7 @@ describe('LambdaCronHandler', () => {
     it('should pass handler listener', async done => {
         /* eslint-disable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.cron.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.cron.json');
         event.cron.name = 'hello';      // override name.
         let data: any;
         service.addListener(async (id, param, body, context) => {

@@ -1,0 +1,7 @@
+{
+    "body": "{\"doc\":{}}",
+    "path": "/test-v4/_doc/A0/_update",
+    "query": {},
+    "response": "{\"error\":{\"root_cause\":[{\"type\":\"document_missing_exception\",\"reason\":\"[_doc][A0]: document missing\",\"index_uuid\":\"FdxjlmEsTyqkD3mC2WkT6A\",\"shard\":\"2\",\"index\":\"test-v4\"}],\"type\":\"document_missing_exception\",\"reason\":\"[_doc][A0]: document missing\",\"index_uuid\":\"FdxjlmEsTyqkD3mC2WkT6A\",\"shard\":\"2\",\"index\":\"test-v4\"},\"status\":404}",
+    "statusCode": 404
+}

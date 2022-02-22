@@ -1,0 +1,10 @@
+{
+    "message": "index_not_found_exception",
+    "meta": {
+        "meta": {
+            "name": "elasticsearch-js"
+        }
+    },
+    "name": "ResponseError",
+    "stack": "ResponseError: index_not_found_exception\nat onBody(/Users/dujung / Documents / Projects / M2 / lemon - core / node_modules / @elastic / elasticsearch / lib / Transport.js: 337: 23)\nat IncomingMessage.onEnd(/Users/dujung / Documents / Projects / M2 / lemon - core / node_modules / @elastic / elasticsearch / lib / Transport.js: 264: 11)\nat IncomingMessage.emit(events.js: 326: 22)\nat IncomingMessage.EventEmitter.emit(domain.js: 483: 12)\nat endReadableNT(_stream_readable.js: 1241: 12)\nat processTicksAndRejections(internal / process / task_queues.js: 84: 21)\n"
+}
