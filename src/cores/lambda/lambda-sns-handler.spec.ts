@@ -36,7 +36,7 @@ describe('LambdaSNSHandler', () => {
     it('should pass handle protocol with web (default)', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service, web } = instance();
-        const event: any = loadJsonSync('data/protocol.event.sns.json');
+        const event: any = loadJsonSync('data/samples/events/protocol.event.sns.json');
         expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId:'7820a87c-f73c-5c88-b2be-fe250be6b564' });
 
         //! PRE-CONDITION
@@ -60,7 +60,7 @@ describe('LambdaSNSHandler', () => {
     it('should pass handle protocol with web (hello)', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service, web } = instance();
-        const event: any = loadJsonSync('data/protocol.event.sns.json');
+        const event: any = loadJsonSync('data/samples/events/protocol.event.sns.json');
         expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId:'7820a87c-f73c-5c88-b2be-fe250be6b564' });
 
         //! CHANGE PARAM

@@ -34,7 +34,7 @@ describe('LambdaDynamoStreamHandler', () => {
     it('should pass handler listener', async done => {
         /* eslint-disable prettier/prettier */
         const { service } = instance();
-        const event: any = loadJsonSync('data/sample.event.dynamo-stream.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
         let data: any;
         service.addListener(async (id, param, body, context) => {
             data = { id, param, body, context };
@@ -65,7 +65,7 @@ describe('LambdaDynamoStreamHandler', () => {
         const options: DynamoOption = { tableName, idName };
 
         //! override id value.
-        const event: any = loadJsonSync('data/sample.event.dynamo-stream.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
         event.Records[0].dynamodb.Keys[idName] = { 'S': id };
         event.Records[0].dynamodb.NewImage[idName] = { 'S': id };
         event.Records[0].dynamodb.OldImage[idName] = { 'S': id };

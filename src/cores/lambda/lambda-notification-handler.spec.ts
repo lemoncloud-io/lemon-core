@@ -40,7 +40,7 @@ describe('LambdaNotificationHandler', () => {
     it('should pass sns subscription', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service } = instance();
-        const event: any = loadJsonSync('data/sample.event.noti-sub.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.noti-sub.json');
         //! validate event
         expect2(event.resource).toEqual('/{proxy+}')
         expect2(event.path).toEqual('/hello/noti')
@@ -72,7 +72,7 @@ describe('LambdaNotificationHandler', () => {
     it('should pass notification w/ raw-delivery ', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service } = instance();
-        const event: any = loadJsonSync('data/sample.event.noti-msg-raw.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.noti-msg-raw.json');
         //! validate event
         expect2(event.resource).toEqual('/{proxy+}')
         expect2(event.path).toEqual('/hello/noti')
@@ -99,7 +99,7 @@ describe('LambdaNotificationHandler', () => {
     it('should pass notification w/ no-raw ', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service } = instance();
-        const event: any = loadJsonSync('data/sample.event.noti-msg-noraw.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.noti-msg-noraw.json');
         //! validate event
         expect2(event.resource).toEqual('/{proxy+}')
         expect2(event.path).toEqual('/hello/noti')

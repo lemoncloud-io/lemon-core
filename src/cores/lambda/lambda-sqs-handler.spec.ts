@@ -36,7 +36,7 @@ describe('LambdaSQSHandler', () => {
     it('should pass handle protocol with web (default)', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service, web } = instance();
-        const event: any = loadJsonSync('data/protocol.event.sqs.json');
+        const event: any = loadJsonSync('data/samples/events/protocol.event.sqs.json');
         expect2(event.Records[0], 'messageId').toEqual({ messageId:'3649c307-b056-406c-b42a-d68493b8055e' });
 
         //! PRE-CONDITION
@@ -60,7 +60,7 @@ describe('LambdaSQSHandler', () => {
     it('should pass handle protocol with web (hello)', async done => {
         /* eslint-disable prettier/prettier */
         const { lambda, service, web } = instance();
-        const event: any = loadJsonSync('data/protocol.event.sqs.json');
+        const event: any = loadJsonSync('data/samples/events/protocol.event.sqs.json');
         expect2(event.Records[0], 'messageId').toEqual({ messageId:'3649c307-b056-406c-b42a-d68493b8055e' });
 
         //! CHANGE PARAM
