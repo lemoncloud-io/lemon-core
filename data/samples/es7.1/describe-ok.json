@@ -1,0 +1,135 @@
+{
+    "mappings": {
+        "dynamic_templates": [{
+            "autocomplete": {
+                "mapping": {
+                    "analyzer": "autocomplete_case_insensitive",
+                    "search_analyzer": "standard",
+                    "type": "text"
+                },
+                "path_match": "_decomposed.*"
+            }
+        }, {
+            "autocomplete_qwerty": {
+                "mapping": {
+                    "analyzer": "autocomplete_case_sensitive",
+                    "search_analyzer": "whitespace",
+                    "type": "text"
+                },
+                "path_match": "_qwerty.*"
+            }
+        }, {
+            "string_id": {
+                "mapping": {
+                    "ignore_above": 256,
+                    "type": "keyword"
+                },
+                "match": "$id",
+                "match_mapping_type": "string"
+            }
+        }, {
+            "strings": {
+                "mapping": {
+                    "analyzer": "hangul",
+                    "fields": {
+                        "keyword": {
+                            "ignore_above": 256,
+                            "type": "keyword"
+                        }
+                    },
+                    "search_analyzer": "hangul",
+                    "type": "text"
+                },
+                "match_mapping_type": "string"
+            }
+        }],
+        "properties": {
+            "$id": {
+                "ignore_above": 256,
+                "type": "keyword"
+            },
+            "@version": {
+                "index": false,
+                "type": "keyword"
+            },
+            "count": {
+                "type": "long"
+            },
+            "created_at": {
+                "type": "date"
+            },
+            "deleted_at": {
+                "type": "date"
+            },
+            "name": {
+                "analyzer": "hangul",
+                "fields": {
+                    "keyword": {
+                        "ignore_above": 256,
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "type": {
+                "analyzer": "hangul",
+                "fields": {
+                    "keyword": {
+                        "ignore_above": 256,
+                        "type": "keyword"
+                    }
+                },
+                "type": "text"
+            },
+            "updated_at": {
+                "type": "date"
+            }
+        }
+    },
+    "settings": {
+        "index": {
+            "analysis": {
+                "analyzer": {
+                    "autocomplete_case_insensitive": {
+                        "filter": ["lowercase"],
+                        "tokenizer": "edge_30grams",
+                        "type": "custom"
+                    },
+                    "autocomplete_case_sensitive": {
+                        "filter": [],
+                        "tokenizer": "edge_30grams",
+                        "type": "custom"
+                    },
+                    "hangul": {
+                        "filter": ["lowercase"],
+                        "tokenizer": "hangul",
+                        "type": "custom"
+                    }
+                },
+                "tokenizer": {
+                    "edge_30grams": {
+                        "max_gram": "30",
+                        "min_gram": "1",
+                        "token_chars": ["letter", "digit", "punctuation", "symbol"],
+                        "type": "edge_ngram"
+                    },
+                    "hangul": {
+                        "decompound": "true",
+                        "deinflect": "true",
+                        "index_eojeol": "true",
+                        "pos_tagging": "false",
+                        "type": "seunjeon_tokenizer"
+                    }
+                }
+            },
+            "creation_date": "1645513380236",
+            "number_of_replicas": "1",
+            "number_of_shards": "4",
+            "provided_name": "test-v7.1",
+            "uuid": "mzaEEG_cQD2tJ7Saca-qHg",
+            "version": {
+                "created": "135227827"
+            }
+        }
+    }
+}

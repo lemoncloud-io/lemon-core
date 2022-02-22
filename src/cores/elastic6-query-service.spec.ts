@@ -4,13 +4,14 @@
  *
  * @author      Tim Hong <tim@lemoncloud.io>
  * @date        2020-07-29 initial version
+ * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../environ';
 import { GETERR, expect2, waited } from '..';
 import { Elastic6QueryService } from './elastic6-query-service';
-import { VERSIONS } from './elastic6-service.spec';
+import { canPerformTest, VERSIONS } from './elastic6-service.spec';
 import * as $elastic from './elastic6-service.spec';
 
 const instance = (indexName = 'test-v4') => {
@@ -55,8 +56,11 @@ describe('Elastic6QueryService', () => {
 
     // autocomplete search
     it('should pass autocomplete search', async done => {
+        if (!PROFILE) return done(); // ignore w/o profile
         const { elastic, search, indexName } = instance('test-autocomplete-v4');
-        if (!PROFILE) return done();
+
+        //! break if no live connection
+        if (!(await canPerformTest(elastic))) return done();
 
         //! make sure if index is ready.
         const $old = await elastic.findIndex(indexName);
@@ -91,16 +95,23 @@ describe('Elastic6QueryService', () => {
 
     // search quality
     it('should pass check search quality', async done => {
+        if (!PROFILE) return done(); // ignore w/o profile
         const { elastic, search, indexName } = instance('test-quality-v4');
-        if (!PROFILE) return done();
+
+        //! break if no live connection
+        if (!(await canPerformTest(elastic))) return done();
 
         //! make sure if index is ready.
         const $old = await elastic.findIndex(indexName);
         if ($old) {
-            expect2(await elastic.destroyIndex()).toEqual({ acknowledged: true, index: indexName });
+            expect2(await elastic.destroyIndex()).toEqual({ status: 200, acknowledged: true, index: indexName });
             await waited(200);
         }
-        expect2(await elastic.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: indexName });
+        expect2(await elastic.createIndex().catch(GETERR)).toEqual({
+            status: 200,
+            acknowledged: true,
+            index: indexName,
+        });
         await waited(200);
 
         /* eslint-disable prettier/prettier */

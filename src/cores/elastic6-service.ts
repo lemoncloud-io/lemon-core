@@ -5,20 +5,14 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @date        2022-02-21 optimized error handler, and search.
+ * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine/';
 import { GeneralItem, Incrementable, SearchBody } from './core-types';
-import elasticsearch, {
-    CreateDocumentParams,
-    IndexDocumentParams,
-    GetParams,
-    DeleteDocumentParams,
-    UpdateDocumentParams,
-    SearchParams,
-} from 'elasticsearch';
+import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../tools';
 import { GETERR } from '../common/test-helper';
@@ -26,7 +20,8 @@ const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
-export type SearchResponse = elasticsearch.SearchResponse<any>;
+// export type SearchResponse = elasticsearch.SearchResponse<any>;
+export type SearchResponse = any;
 
 /**
  * options for construction.
@@ -103,7 +98,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
      */
     public static instance(endpoint: string) {
-        const client = new elasticsearch.Client({ host: endpoint });
+        const client = new elasticsearch.Client({
+            node: endpoint,
+            ssl: {
+                ca: process.env.elasticsearch_certificate,
+                rejectUnauthorized: false,
+            },
+        });
         return { client };
     }
 
@@ -156,10 +157,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const client = this.client;
         const res = await client.cat.indices({ format: 'json' });
         _log(NS, `> indices =`, $U.json(res));
-        if (!Array.isArray(res)) throw new Error(`@result<${typeof res}> is invalid - expected: any[]!`);
+        // eslint-disable-next-line prettier/prettier
+        const list0: any[] = Array.isArray(res) ? (res as any[]) : res?.body && Array.isArray(res?.body) ? (res?.body as any[]) : null;
+        if (!list0) throw new Error(`@result<${typeof res}> is invalid - ${$U.json(res)}!`);
 
         // {"docs.count": "84", "docs.deleted": "7", "health": "green", "index": "dev-eureka-alarms-v1", "pri": "5", "pri.store.size": "234.3kb", "rep": "1", "status": "open", "store.size": "468.6kb", "uuid": "xPp-Sx86SgmhAWxT3cGAFw"}
-        const list = res.map(N => ({
+        const list = list0.map(N => ({
             pri: $U.N(N['pri']),
             rep: $U.N(N['rep']),
             docsCount: $U.N(N['docs.count']),
@@ -212,22 +215,21 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.create({ index: indexName, body: payload }).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('create', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('400 RESOURCE ALREADY EXISTS')) throw new Error(`400 IN USE - index:${indexName}`);
                 throw e;
             }),
-            // $ERROR.throwAsJson,
         );
-        _log(NS, `> create[${indexName}] =`, $U.json(res));
-        _log(NS, `> create[${indexName}].acknowledged =`, res.acknowledged); // true
-        _log(NS, `> create[${indexName}].index =`, res.index); // index
-        _log(NS, `> create[${indexName}].shards_acknowledged =`, res.shards_acknowledged); // true
+        // if (res) throw res;
+        _log(NS, `> create[${indexName}] =`, $U.json({ ...res, meta: undefined }));
 
         //! build result.
         return {
-            index: res.index,
-            acknowledged: res.acknowledged,
+            status: res.statusCode,
+            index: indexName,
+            acknowledged: res.body.shards_acknowledged,
         };
     }
 
@@ -243,19 +245,20 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.delete({ index: indexName }).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('destroy', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
-            // $ERROR.throwAsJson,
         );
-        _log(NS, `> destroy[${indexName}] =`, $U.json(res));
-        _log(NS, `> destroy[${indexName}].acknowledged =`, res.acknowledged); // true
+        // if (res) throw res;
+        _log(NS, `> destroy[${indexName}] =`, $U.json({ ...res, meta: undefined }));
 
         return {
-            index: res.index || indexName,
-            acknowledged: res.acknowledged,
+            status: res.statusCode,
+            index: indexName,
+            acknowledged: res.body.acknowledged,
         };
     }
 
@@ -271,16 +274,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.refresh({ index: indexName }).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('refresh', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
-            // $ERROR.throwAsJson,
         );
-        _log(NS, `> refresh[${indexName}] =`, $U.json(res));
+        _log(NS, `> refresh[${indexName}] =`, $U.json({ ...res, meta: undefined }));
 
-        return res;
+        return res.body;
     }
 
     /**
@@ -295,16 +298,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.flush({ index: indexName }).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('flush', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
-            // $ERROR.throwAsJson,
         );
-        _log(NS, `> flush[${indexName}] =`, $U.json(res));
+        _log(NS, `> flush[${indexName}] =`, $U.json({ ...res, meta: undefined }));
 
-        return res;
+        return res.body;
     }
 
     /**
@@ -319,22 +322,23 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.getSettings({ index: indexName }).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('describe', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
-            // $ERROR.throwAsJson,
         );
-        _log(NS, `> settings[${indexName}] =`, $U.json(res));
-        const settings: any = (res[indexName] && res[indexName].settings) || {};
+        _log(NS, `> settings[${indexName}] =`, $U.json({ ...res, meta: undefined }));
+
+        const settings = (res.body && res.body[indexName] && res.body[indexName].settings) || {};
         _log(NS, `> number_of_shards =`, settings.index && settings.index.number_of_shards); // 5
         _log(NS, `> number_of_replicas =`, settings.index && settings.index.number_of_replicas); // 1
 
         //! read mappings.
         const res2 = await client.indices.getMapping({ index: indexName });
         _log(NS, `> mappings[${indexName}] =`, $U.json(res2));
-        const mappings: any = (res2[indexName] && res2[indexName].mappings) || {};
+        const mappings: any = (res2.body && res2.body[indexName] && res2.body[indexName].mappings) || {};
 
         //! returns
         return { settings, mappings };
@@ -358,32 +362,29 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const body2 = this.popullateAutocompleteFields(body);
 
         type = `${type || docType}`;
-        const params: CreateDocumentParams = { index: indexName, type, id, body: body2 };
+        const params = { index: indexName, type, id, body: body2 };
         if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
-        const res = await client.create(params).catch(
+        const res: ApiResponse = await client.create(params).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('save', e => {
                 const msg = GETERR(e);
                 //! try to update document..
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
                     delete body2[idName]; // do set id while update
-                    return this.updateItem(id, body2);
+                    // return this.updateItem(id, body2);
+                    const param2 = { index: indexName, type, id, body: { doc: body2 } };
+                    return client.update(param2);
                 }
                 throw e;
             }),
-            // $ERROR.throwAsJson,
         );
-        // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":1,"result":"created","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":0,"_primary_term":1}
-        // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":1,"result":"noop","_shards":{"total":0,"successful":0,"failed":0}}
-        _log(NS, `> create[${id}].res =`, $U.json(res));
-        _log(NS, `> create[${id}].result =`, res.result); // 'created','noop','updated'
-        _log(NS, `> create[${id}]._version =`, res._version); // 1
-        // return res;
+        _log(NS, `> create[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
-        const _version: number = $U.N(res._version, 0);
-        const _id: string = res._id;
+        const _version: number = $U.N(res.body?._version, 0);
+        const _id: string = res.body?._id;
         const res2: T = { ...body, _id, _version };
         return res2;
     }
@@ -402,25 +403,24 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const body2 = this.popullateAutocompleteFields(body);
 
         _log(NS, `- pushItem(${id})`);
-        const params: IndexDocumentParams<any> = { index: indexName, type, body: body2 };
+        const params = { index: indexName, type, body: body2 };
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.index(params).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('index', e => {
                 _err(NS, `> index[${indexName}].err =`, e instanceof Error ? e : $U.json(e));
                 throw e;
             }),
         );
         // {"_index":"test-v3","_type":"_doc","_id":"rTeHiW4BPb_liACrA9qa","_version":1,"result":"created","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":2,"_primary_term":1}
-        _log(NS, `> create[${id}].res =`, $U.json(res));
-        _log(NS, `> create[${id}].result =`, res.result); // 'created','noop','updated'
-        _log(NS, `> create[${id}]._version =`, res._version); // 1
+        _log(NS, `> create[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
-        const _id = res._id;
-        const _version = res._version;
+        const _id = res.body?._id;
+        const _version = res.body?._version;
         const res2: T = { ...body, _id, _version };
         return res2;
     }
@@ -436,11 +436,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
-        const params: GetParams = { index: indexName, type, id };
+        const params: any = { index: indexName, type, id };
         if (views) {
             const fields: string[] = [];
-            const is_array = Array.isArray(views);
-            const keys = is_array ? views : Object.keys(views);
+            const keys: string[] = Array.isArray(views) ? views : Object.keys(views);
             keys.forEach((k: string) => {
                 fields.push(k);
             });
@@ -450,20 +449,17 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.get(params).catch(
+            // $ERROR.throwAsJson,
             $ERROR.handler('read', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 throw e;
             }),
-            // $ERROR.throwAsJson,
         );
-        // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"found":true,"_source":{"name":"haha"}}
-        _log(NS, `> read[${id}].res =`, $U.json(res));
-        _log(NS, `> create[${id}].found =`, res.found); // true
-        _log(NS, `> create[${id}]._version =`, res._version); // 2
+        _log(NS, `> read[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
-        const _id = res._id;
-        const _version = res._version;
+        const _id = res.body?._id;
+        const _version = res.body?._version;
         const data: T = (res as any)?._source || {};
         // delete internal (analyzed) field
         delete data[Elastic6Service.DECOMPOSED_FIELD];
@@ -483,7 +479,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
-        const params: DeleteDocumentParams = { index: indexName, type, id };
+        const params = { index: indexName, type, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -496,13 +492,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             // $ERROR.throwAsJson,
         );
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":3,"result":"deleted","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":4,"_primary_term":1}
-        _log(NS, `> delete[${id}].res =`, $U.json(res));
-        _log(NS, `> delete[${id}].result =`, res.result); // true
-        _log(NS, `> delete[${id}]._version =`, res._version); // 2
+        _log(NS, `> delete[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
-        const _id = res._id;
-        const _version = res._version;
-        const data: T = (res as any)?._source || {};
+        const _id = res.body?._id;
+        const _version = res.body?._version;
+        const data: T = res.body?._source || {};
         const res2: T = { ...data, _id, _version };
         return res2;
     }
@@ -520,7 +514,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         item = !item && increments ? undefined : item;
 
         //! prepare params.
-        const params: UpdateDocumentParams = { index: indexName, type, id, body: { doc: item } };
+        const params: any = { index: indexName, type, id, body: { doc: item } };
         const version = this.version;
         if (increments) {
             //! it will create if not exists.
@@ -535,7 +529,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
-        const res = await client.update(params).catch(
+        const res: ApiResponse = await client.update(params).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
                 //! id 아이템이 없을 경우 발생함.
@@ -552,12 +546,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         );
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"updated","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":8,"_primary_term":1}
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"noop","_shards":{"total":0,"successful":0,"failed":0}}
-        _log(NS, `> update[${id}].res =`, $U.json(res));
-        _log(NS, `> update[${id}].result =`, res.result); // true
-        _log(NS, `> update[${id}]._version =`, res._version); // 2
+        _log(NS, `> update[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
-        const _id = res._id;
-        const _version = res._version;
+        const _id = res.body._id;
+        const _version = res.body._version;
         const res2: T = { ...item, _id, _version };
         return res2;
     }
@@ -573,25 +565,25 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
-        const params: SearchParams = { index: indexName, type, body, searchType };
+        const params = { index: indexName, type, body, searchType };
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
         const client = this.client;
-        const $res: SearchResponse = await client.search(params).catch(
+        const $res = await client.search(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
                 throw e;
             }),
         );
         // {"took":6,"timed_out":false,"_shards":{"total":4,"successful":4,"skipped":0,"failed":0},"hits":{"total":1,"max_score":0.2876821,"hits":[{"_index":"test-v3","_type":"_doc","_id":"aaa","_score":0.2876821,"_source":{"name":"AAA","@id":"aaa","a":-3,"b":-2}}]}}
-        // _log(NS, `> search[${id}].res =`, $U.json(res));
-        _log(NS, `> search[${tmp}].took =`, $res.took);
-        _log(NS, `> search[${tmp}].hits.total =`, $res.hits?.total);
-        _log(NS, `> search[${tmp}].hits.max_score =`, $res.hits?.max_score);
-        _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
+        // _log(NS, `> search[${id}].res =`, $U.json({ ...res, meta: undefined }));
+        // _log(NS, `> search[${tmp}].took =`, $res.took);
+        // _log(NS, `> search[${tmp}].hits.total =`, $res.hits?.total);
+        // _log(NS, `> search[${tmp}].hits.max_score =`, $res.hits?.max_score);
+        // _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
 
         //! return raw results.
-        return $res;
+        return $res?.body;
     }
 
     /**
@@ -606,7 +598,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         //NOTE - ES6.8 w/ OS1.1
         return {
             total: typeof (hits.total as any)?.value === 'number' ? (hits.total as any)?.value : hits.total,
-            list: hits.hits.map(hit => ({
+            list: hits.hits.map((hit: any) => ({
                 ...(hit._source as any),
                 _id: hit._id,
                 _score: hit._score,
@@ -825,15 +817,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 }
 
+interface ErrorReasonDetail {
+    status: number;
+    type: string;
+    reason?: string;
+    cause?: any;
+}
 interface ErrorReason {
     status: number;
     message: string;
-    reason: {
-        status: number;
-        type: string;
-        reason: string;
-        cause: any;
-    };
+    reason: ErrorReasonDetail;
 }
 
 /**
@@ -841,10 +834,12 @@ interface ErrorReason {
  */
 export const $ERROR = {
     asJson: (e: any) => {
+        const _pack = (o: any): any => JSON.parse(JSON.stringify(o, Object.getOwnPropertyNames(o)));
         if (e instanceof Error) {
-            const err = e;
-            const str = JSON.stringify(err, Object.getOwnPropertyNames(err));
-            return JSON.parse(str);
+            const err: any = e;
+            const meta: any = err.meta && typeof err.meta === 'object' ? err.meta : undefined;
+            const $err = _pack(err);
+            return { ...$err, meta };
         }
         return e;
     },
@@ -884,8 +879,20 @@ export const $ERROR = {
         const E = $ERROR.asJson(e);
         const status = `${E.statusCode || ''}`;
         const message = `${E.message || E.msg || ''}`;
-        const reason = ((E: any) => {
-            // const body = $ERROR.parseMeta<any>(E.body); // it must be the body of request
+        const reason = ((E: any): ErrorReasonDetail => {
+            //! from ES7.1
+            if (E.meta && typeof E.meta == 'object') {
+                const type = _S(E?.message)
+                    .toUpperCase()
+                    .split('_')
+                    .slice(0, -1)
+                    .join(' ');
+                const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
+                return { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
+            }
+
+            //! from ES6.2
+            if (!E.response) return null;
             const $res = $ERROR.parseMeta<any>(E.response);
 
             //! find the root-cause.
@@ -905,13 +912,13 @@ export const $ERROR = {
         })(E);
         //! FINAL. convert to error-object.
         return {
-            status: $U.N(status, reason.status),
-            message: message || reason.reason,
+            status: $U.N(status, reason?.status || 0),
+            message: message || reason?.reason,
             reason,
         };
     },
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    handler: <T = any>(name: string, cb?: (e: Error, E?: ErrorReason) => T) => (e: any): T => {
+    handler: (name: string, cb?: (e: Error, E?: ErrorReason) => any) => (e: any): any => {
         const E = $ERROR.asError(e);
         //! unknown error found..
         if (!E?.status) {

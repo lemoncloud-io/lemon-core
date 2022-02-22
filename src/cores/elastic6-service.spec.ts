@@ -6,11 +6,11 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-25 initial version with dummy serivce
  * @date        2022-02-21 optimized error handler, and search.
+ * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../environ';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { GETERR, expect2, _it, waited, loadJsonSync } from '..';
 import { GeneralItem } from './core-types';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
@@ -50,13 +50,15 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
     // cond 1. localhost is able to access elastic6 endpoint (by tunneling)
     // cond 2. index must be exist
     try {
-        await service.describe();
+        await service.listIndices();
         return true;
     } catch (e) {
+        if (GETERR(e).includes('ECONNREFUSED')) return false; // no connection.
         // unable to access to elastic6 endpoint
         if (GETERR(e).endsWith('unknown error')) return false;
         // index does not exist
         if (GETERR(e).startsWith('404 NOT FOUND')) return false;
+        console.error('! err =', GETERR(e));
 
         // rethrow
         throw e;
@@ -95,7 +97,7 @@ describe('Elastic6Service', () => {
     });
 
     //! $ERROR parser
-    it('should pass error handler($ERROR)', async done => {
+    it('should pass error handler($ERROR/es6.2)', async done => {
         const message = 'someting wrong';
         const err = new Error(message);
         // expect2(() => JSON.stringify(err, Object.getOwnPropertyNames(err))).toEqual();
@@ -175,8 +177,34 @@ describe('Elastic6Service', () => {
         done();
     });
 
+    //! $ERROR parser
+    it('should pass error handler($ERROR/es7.1)', async done => {
+        const message = 'someting wrong';
+        const err = new Error(message);
+        // expect2(() => JSON.stringify(err, Object.getOwnPropertyNames(err))).toEqual();
+        expect2(() => $ERROR.asJson(err), 'message').toEqual({ message });
+
+        //! resource exists
+        const E1 = loadJsonSync('data/samples/es7.1/create-index.err.json');
+        expect2(() => $ERROR.asError(E1)).toEqual({"message": "resource_already_exists_exception", "reason": {"status": 400, "type": "RESOURCE ALREADY EXISTS"}, "status": 400});
+        expect2(() => $ERROR.handler('test', GETERR)(E1)).toEqual('400 RESOURCE ALREADY EXISTS - resource_already_exists_exception');
+
+        //! 404 not found
+        const E2 = loadJsonSync('data/samples/es7.1/read-item.err404.json');
+        expect2(() => $ERROR.asError(E2)).toEqual({"status": 404, "message": "Response Error", "reason": {"status": 404, "type": "NOT FOUND"}});
+        expect2(() => $ERROR.handler('test', GETERR)(E2)).toEqual('404 NOT FOUND - Response Error');
+
+        //! conflict
+        const E3 = loadJsonSync('data/samples/es7.1/version-conflict.err.json');
+        expect2(() => $ERROR.asError(E3)).toEqual({"message": "version_conflict_engine_exception", "reason": {"status": 409, "type": "VERSION CONFLICT ENGINE"}, "status": 409});
+        expect2(() => $ERROR.handler('test', GETERR)(E3)).toEqual('409 VERSION CONFLICT ENGINE - version_conflict_engine_exception');
+
+        done();
+    });
+
     //! test with real server
     it('should pass basic CRUD w/ real server (ES6.2~7.x)', async done => {
+        if (!PROFILE) return done(); // ignore w/o profile
         jest.setTimeout(12000);
         const PASS = (e: any) => e;
 
@@ -190,11 +218,17 @@ describe('Elastic6Service', () => {
         expect2(() => indexName).toEqual(`test-v${ver}`);
         expect2(() => service.version).toEqual(parseFloat(ver));
 
+        //! break if no live connection
+        if (!(await canPerformTest(service))) return done();
+
+        // const expectedDesc = loadJsonSync('data/samples/es7.1/describe-ok.json');
+        // expect2(await service.describe().catch(PASS)).toEqual(expectedDesc);
+
         //! make sure the index destroyed.
         const $old = await service.findIndex(indexName);
         if ($old) {
             expect2(() => $old, 'index').toEqual({ index: indexName });
-            expect2(await service.destroyIndex()).toEqual({ acknowledged: true, index: indexName });
+            expect2(await service.destroyIndex().catch(PASS)).toEqual({ status:200, acknowledged: true, index: indexName });
             await waited(50);
         }
 
@@ -203,14 +237,15 @@ describe('Elastic6Service', () => {
         // expect2(await service.flushIndex().catch(PASS)).toEqual();
         // expect2(await service.describe().catch(PASS)).toEqual();
 
-        expect2(await service.destroyIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-        expect2(await service.refreshIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-        expect2(await service.flushIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-        expect2(await service.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        // expect2(await service.destroyIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        // expect2(await service.refreshIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        // expect2(await service.flushIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        // expect2(await service.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
 
         //! make sure the index created
-        expect2(await service.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: indexName });
+        expect2(await service.createIndex().catch(PASS)).toEqual({ status:200, acknowledged: true, index: indexName });
         await waited(200);
+        // expect2(await service.createIndex().catch(PASS)).toEqual(`400 IN USE - index:${indexName}`);
         expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
 
         //! for debugging.
@@ -225,11 +260,12 @@ describe('Elastic6Service', () => {
         //! create new item
         const A0 = { type: '', name: 'a0' };
         expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });
+        // expect2(await service.saveItem('A0', A0).catch(PASS)).toEqual();
         expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, _id: 'A0', _version: 2 });
 
         //! try to update fields.
         expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual(
-            `400 ACTION REQUEST VALIDATION - Validation Failed: 1: can't provide both script and doc;`,
+            `400 ACTION REQUEST VALIDATION - action_request_validation_exception`,
         );
         expect2(await service.updateItem('A0', { type: 'test' }).catch(GETERR)).toEqual({
             _id: 'A0',
@@ -239,7 +275,7 @@ describe('Elastic6Service', () => {
 
         //! try to increment fields
         expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
-            service.version < 7 ? '400 INVALID FIELD - id:A0' : '400 ILLEGAL ARGUMENT - failed to execute script',
+            service.version < 7 ? '400 INVALID FIELD - id:A0' : '400 ILLEGAL ARGUMENT - illegal_argument_exception',
         );
         expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
             _id: 'A0',
