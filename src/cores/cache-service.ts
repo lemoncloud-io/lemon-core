@@ -224,7 +224,7 @@ export class CacheService {
         const namespacedKey = this.asNamespacedKey(key);
         const ttl = timeout && toTTL(timeout);
         const ret = await this.backend.set(namespacedKey, val, ttl);
-        _log(NS, `.set ${namespacedKey} ${val} / ret =`, ret);
+        _log(NS, `.set ${namespacedKey} ${val} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -245,7 +245,7 @@ export class CacheService {
             };
         });
         const ret = await this.backend.mset(param);
-        _log(NS, `.setMulti ${entries.map(entry => entry.key)} / ret =`, ret);
+        _log(NS, `.setMulti ${entries.map(entry => entry.key)} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -258,7 +258,7 @@ export class CacheService {
         if (!key) throw new Error(`@key (CacheKey) is required.`);
         const namespacedKey = this.asNamespacedKey(key);
         const ret = await this.backend.get(namespacedKey);
-        _log(NS, `.get ${namespacedKey} / ret =`, ret);
+        _log(NS, `.get ${namespacedKey} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -280,7 +280,7 @@ export class CacheService {
             newMap[key] = val;
             return newMap;
         }, {});
-        _log(NS, `.getMulti ${namespacedKeys} / ret =`, ret);
+        _log(NS, `.getMulti ${namespacedKeys} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -295,7 +295,7 @@ export class CacheService {
         if (inc === undefined) throw new Error(`@inc (number) cannot be undefined.`);
         const namespacedKey = this.asNamespacedKey(key);
         const ret = await this.backend.incr(namespacedKey, inc);
-        _log(NS, `.increment ${namespacedKey} ${inc} / ret =`, ret);
+        _log(NS, `.increment ${namespacedKey} ${inc} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -321,7 +321,7 @@ export class CacheService {
 
             if (!(await this.backend.set<CacheValue>(namespacedKey, val, ttl))) throw new Error(`getAndSet() failed`);
         }
-        _log(NS, `.getAndSet ${namespacedKey} ${val} / ret =`, ret);
+        _log(NS, `.getAndSet ${namespacedKey} ${val} / ret =`, $U.json(ret));
 
         return ret;
     }
@@ -342,7 +342,7 @@ export class CacheService {
             ret = await this.backend.get<CacheValue>(namespacedKey);
             await this.backend.del(namespacedKey);
         }
-        _log(NS, `.getAndDelete ${namespacedKey} / ret =`, ret);
+        _log(NS, `.getAndDelete ${namespacedKey} / ret =`, $U.json(ret));
 
         return ret;
     }
@@ -357,7 +357,7 @@ export class CacheService {
         if (!key) throw new Error(`@key (CacheKey) is required.`);
         const namespacedKey = this.asNamespacedKey(key);
         const ret = await this.backend.del(namespacedKey);
-        _log(NS, `.delete ${namespacedKey} / ret =`, ret);
+        _log(NS, `.delete ${namespacedKey} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -374,7 +374,7 @@ export class CacheService {
         });
         const promises = namespacedKeys.map(namespacedKey => this.backend.del(namespacedKey));
         const ret = await Promise.all(promises);
-        _log(NS, `.deleteMulti ${namespacedKeys} / ret =`, ret);
+        _log(NS, `.deleteMulti ${namespacedKeys} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -389,7 +389,7 @@ export class CacheService {
         if (!key) throw new Error(`@key (CacheKey) is required.`);
         const namespacedKey = this.asNamespacedKey(key);
         const ret = await this.backend.expire(namespacedKey, toTTL(timeout));
-        _log(NS, `.setTimeout ${namespacedKey} ${timeout} / ret =`, ret);
+        _log(NS, `.setTimeout ${namespacedKey} ${timeout} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -405,7 +405,7 @@ export class CacheService {
         if (!key) throw new Error(`@key (CacheKey) is required.`);
         const namespacedKey = this.asNamespacedKey(key);
         const ret = await this.backend.ttl(namespacedKey);
-        _log(NS, `.getTimeout ${namespacedKey} / ret =`, ret);
+        _log(NS, `.getTimeout ${namespacedKey} / ret =`, $U.json(ret));
         return ret;
     }
 
@@ -418,7 +418,7 @@ export class CacheService {
         if (!key) throw new Error(`@key (CacheKey) is required.`);
         const namespacedKey = this.asNamespacedKey(key);
         const ret = await this.backend.expire(namespacedKey, 0);
-        _log(NS, `.removeTimeout ${namespacedKey} / ret =`, ret);
+        _log(NS, `.removeTimeout ${namespacedKey} / ret =`, $U.json(ret));
         return ret;
     }
 
