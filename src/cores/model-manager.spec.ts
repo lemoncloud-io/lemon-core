@@ -7,7 +7,6 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, GETERR } from '../common/test-helper';
 import {
     CoreModel,
     CoreModelFilterable,
@@ -17,6 +16,7 @@ import {
     TypedStorageService,
 } from './proxy-storage-service';
 import { AbstractManager } from './model-manager';
+import { expect2, GETERR } from '../common/test-helper';
 
 //-------------------------
 //! internal definitions
@@ -33,7 +33,6 @@ export const UserFields: string[] = ['id', 'uid', 'name', 'age', 'contact', 'act
 
 class DummyStorageMaker extends GeneralKeyMaker<UserType> implements StorageMakeable<User, UserType> {
     protected readonly tableName: string;
-
     public constructor(tableName?: string) {
         super('TT');
         this.tableName = `${tableName || ''}`;
@@ -82,16 +81,17 @@ export const instance = (table?: string, time?: number) => {
 
     const parent = new DummyStorageMaker(table);
     const manager = new UserManager(parent, time);
-    return { manager, current: time };
+    return { manager, current: time, table };
 };
 
 //! main test body.
 describe('ModelManager', () => {
     //! test w/ service
     it('should pass identity and basic functions', async done => {
-        const { manager, current } = instance();
+        const { manager, current, table } = instance();
 
         /* eslint-disable prettier/prettier */
+        expect2(() => table).toBe('dummy-user-data.yml');
         expect2(manager.hello()).toEqual('typed-storage-service:user/proxy-storage-service:dummy-storage-service:dummy-user-data/id');
         expect2(manager.parent.hello()).toEqual('dummy-storage-maker:TT/dummy-user-data.yml');
         expect2(manager.type).toBe('user');

@@ -11,11 +11,11 @@
  *
  * @copyright (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import $cores, { NextContext, NextIdentityCognito, ProtocolModule, ProtocolService } from '../cores/';
 import { $U, doReportSlack, do_parrallel } from '../engine/';
+import { GETERR } from '../common/test-helper';
 import querystring from 'querystring';
 import { performance } from 'perf_hooks';
-import $cores, { NextContext, NextIdentityCognito, ProtocolModule, ProtocolService } from '../cores/';
-import { GETERR } from '../common/test-helper';
 
 /**
  * type: simple data-types
@@ -588,3 +588,14 @@ export const my_parrallel = async <T extends { id?: string; error?: string }, U 
     );
     return (results as unknown) as U[];
 };
+
+/**
+ * run in sequence order
+ * = my_parrallel(list, func, 1);
+ *
+ * 주의) 내부 error를 throw 하지 않으니, list 를 전부 처리할때까지 안끝남.
+ */
+ export const my_sequence = <T extends { id?: string; error?: string }, U = T>(
+    list: T[],
+    func: (item: T, index?: number) => Promise<U>,
+) => my_parrallel(list, func, 1);

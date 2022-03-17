@@ -27,8 +27,9 @@ import * as lib from './lib/';
 import * as tools from './tools/';
 import * as controllers from './controllers/';
 
-//! export as named.
+//! export as named, or helpers.
 export { lib, tools };
+export * from './helpers/';
 
 //! export as default.
 export default { engine, cores, tools, controllers };
