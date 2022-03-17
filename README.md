@@ -85,6 +85,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.0.2     | support `helpers` like `$T`.
 | 3.0.0     | improve search-client with `@elastic/elasticsearch@7.12` to support AWS `OpenSearch 1.1` (compartible with `ES6.2`).
 | 2.2.20    | improve an extra feature from `aws-s3-service` to 'lemon-images-api'
 | 2.2.19    | improve search filtering feature for `ES6 autocomplete search`.
