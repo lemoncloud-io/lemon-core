@@ -20,7 +20,8 @@
         "X-Amzn-Trace-Id": "Root=1-5e0ed1d8-fca6eb14074560a82623f09c",
         "X-Forwarded-For": "221.149.50.0",
         "X-Forwarded-Port": "443",
-        "X-Forwarded-Proto": "https"
+        "X-Forwarded-Proto": "https",
+        "x-lemon-language": "ko"
     },
     "multiValueHeaders": {
         "accept": ["application/json"],
@@ -39,7 +40,8 @@
         "X-Amzn-Trace-Id": ["Root=1-5e0ed1d8-fca6eb14074560a82623f09c"],
         "X-Forwarded-For": ["221.149.50.0"],
         "X-Forwarded-Port": ["443"],
-        "X-Forwarded-Proto": ["https"]
+        "X-Forwarded-Proto": ["https"],
+        "x-lemon-language": ["ko"]
     },
     "queryStringParameters": null,
     "multiValueQueryStringParameters": null,
