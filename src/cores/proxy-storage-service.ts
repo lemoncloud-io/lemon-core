@@ -480,14 +480,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         _log(NS, `nextSeq(${type})..`);
         const { createdAt, updatedAt } = this.asTime();
         const _id = this.asKey(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         let res = await this.storage.increment(_id, { next: 1 } as T, { updatedAt } as T); // it will create new row if not exists. (like upset)
         if (res.next == 1) {
             const $key = this.service.asKey$(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
             initNext = initNext === undefined ? ProxyStorageService.AUTO_SEQUENCE : initNext;
-            // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
             const $upd: T = { next: initNext } as T;
-            // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
             const $inc: T = { ...$key, createdAt, updatedAt } as T;
             res = await this.storage.increment(_id, $upd, $inc); //! increment w/ update-set
         }

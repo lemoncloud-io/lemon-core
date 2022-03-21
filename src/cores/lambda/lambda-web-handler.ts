@@ -381,7 +381,6 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 _err(NS, '!WARN! parse.err =', e);
                 _err(NS, '!WARN! identity =', val);
             }
-            // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
             const ret: any = val ? { meta: val } : {};
             return ret as NextIdentityCognito;
         };

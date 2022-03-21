@@ -45,7 +45,6 @@ describe(`test service/sns-service.js`, () => {
 
     test('check asPayload() function', async () => {
         const e = new Error('test-error');
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         const e2 = { statusMessage: 'test-status' };
         const e3 = 'test-message';
         expect(SNS.asPayload(e, { type: 'error' }).error).toEqual('test-error');
