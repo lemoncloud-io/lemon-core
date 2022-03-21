@@ -187,9 +187,10 @@ export class GeneralWEBController extends GeneralController {
         const subject = `event://${config.getService()}-${config.getStage()}`;
         const { service, param } = ((asUrl: boolean): { service: string; param: GeneralItem } => {
             if (asUrl) {
+                // So far, can not reach this line
                 const uri = $proto.myProtocolURI(context, type, id);
                 const [a, b] = uri.split('#', 2);
-                const service = `${a}${param ? '?' : ''}${param ? $U.qs.stringify(param) : ''}#${b}`;
+                const service = `${a}${$param ? '?' : ''}${$param ? $U.qs.stringify($param) : ''}#${b}`;
                 return { service, param: undefined };
             } else {
                 const service: string = $proto.myProtocolURI(context, type, id);
