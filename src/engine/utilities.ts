@@ -284,7 +284,7 @@ export class Utilities {
      */
     public current_time_ms(shift?: number): number {
         const time_shift = this.N(shift, 0);
-        var ret = new Date().getTime();
+        let ret = new Date().getTime();
         ret += time_shift;
         return ret;
     }
@@ -566,7 +566,7 @@ export class Utilities {
             // It's done here since we only need them for objects and arrays comparison.
             aStack = aStack || [];
             bStack = bStack || [];
-            var length = aStack.length;
+            let length = aStack.length;
             while (length--) {
                 // Linear search. Performance is inversely proportional to the number of
                 // unique nested structures.

@@ -32,7 +32,7 @@ internals.regexMap = _.reduce(
 internals.splitOperandsRegex = new RegExp(/\s*(?![^(]*\)),\s*/);
 
 internals.match = function(actionWord: any, str: any) {
-    var match = internals.regexMap[actionWord].exec(str);
+    const match = internals.regexMap[actionWord].exec(str);
 
     if (match && match.length >= 2) {
         return match[1].split(internals.splitOperandsRegex);
@@ -53,11 +53,11 @@ export const parse = function(str: any) {
 };
 
 export const serializeUpdateExpression = function(schema: any, item: any) {
-    var datatypes = schema._modelDatatypes;
+    const datatypes = schema._modelDatatypes;
 
-    var data = utils.omitPrimaryKeys(schema, item);
+    const data = utils.omitPrimaryKeys(schema, item);
 
-    var memo = {
+    const memo = {
         expressions: {},
         attributeNames: {},
         values: {},
@@ -76,8 +76,8 @@ export const serializeUpdateExpression = function(schema: any, item: any) {
     const result = _.reduce(
         data,
         function(result: any, value: any, key: any) {
-            var valueKey = ':' + key;
-            var nameKey = '#' + key;
+            const valueKey = ':' + key;
+            const nameKey = '#' + key;
 
             if (_.isNull(value) || (_.isString(value) && _.isEmpty(value))) {
                 result.expressions.REMOVE.push(nameKey);
@@ -146,8 +146,8 @@ internals.isFunctionOperator = function(operator: any) {
 };
 
 internals.uniqAttributeValueName = function(key: any, existingValueNames: any) {
-    var potentialName = ':' + key;
-    var idx = 1;
+    let potentialName = ':' + key;
+    let idx = 1;
 
     while (_.includes(existingValueNames, potentialName)) {
         idx++;
@@ -163,8 +163,8 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
         return internals.buildInFilterExpression(key, existingValueNames, val1);
     }
 
-    var v1 = internals.formatAttributeValue(val1);
-    var v2 = internals.formatAttributeValue(val2);
+    let v1 = internals.formatAttributeValue(val1);
+    const v2 = internals.formatAttributeValue(val2);
 
     if (operator === 'attribute_exists' && v1 === false) {
         operator = 'attribute_not_exists';
@@ -173,11 +173,11 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
         v1 = null;
     }
 
-    var path = '#' + key;
-    var v1ValueName = internals.uniqAttributeValueName(key, existingValueNames);
-    var v2ValueName = internals.uniqAttributeValueName(key, [v1ValueName].concat(existingValueNames));
+    const path = '#' + key;
+    const v1ValueName = internals.uniqAttributeValueName(key, existingValueNames);
+    const v2ValueName = internals.uniqAttributeValueName(key, [v1ValueName].concat(existingValueNames));
 
-    var statement = '';
+    let statement = '';
 
     if (internals.isFunctionOperator(operator)) {
         if (!_.isNull(v1) && !_.isUndefined(v1)) {
@@ -191,7 +191,7 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
         statement = [path, operator, v1ValueName].join(' ');
     }
 
-    var attributeValues: any = {};
+    const attributeValues: any = {};
 
     if (!_.isNull(v1) && !_.isUndefined(v1)) {
         attributeValues[v1ValueName] = v1;
@@ -201,7 +201,7 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
         attributeValues[v2ValueName] = v2;
     }
 
-    var attributeNames: any = {};
+    const attributeNames: any = {};
     attributeNames[path] = key;
 
     return {
@@ -212,16 +212,16 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
 };
 
 internals.buildInFilterExpression = function(key: any, existingValueNames: any, values: any) {
-    var path = '#' + key;
+    const path = '#' + key;
 
-    var attributeNames: any = {};
+    const attributeNames: any = {};
     attributeNames[path] = key;
 
-    var attributeValues = _.reduce(
+    const attributeValues = _.reduce(
         values,
         function(result: any, val: any) {
-            var existing = _.keys(result).concat(existingValueNames);
-            var p = internals.uniqAttributeValueName(key, existing);
+            const existing = _.keys(result).concat(existingValueNames);
+            const p = internals.uniqAttributeValueName(key, existing);
             result[p] = internals.formatAttributeValue(val);
             return result;
         },

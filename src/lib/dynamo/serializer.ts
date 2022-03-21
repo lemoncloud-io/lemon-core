@@ -61,12 +61,12 @@ const internals = {
         },
 
         binarySet: function(value: any) {
-            var bins = value;
+            let bins = value;
             if (!_.isArray(value)) {
                 bins = [value];
             }
 
-            var vals = _.map(bins, serialize.binary);
+            const vals = _.map(bins, serialize.binary);
             return internals.createSet(vals, 'B');
         },
     },
@@ -151,7 +151,7 @@ serializer.buildKey = (hashKey: any, rangeKey: any, schema: any) => {
 serializer.serializeItem = (schema: any, item: any, options: any) => {
     options = options || {};
 
-    var serialize = function(item: any, datatypes: any) {
+    const serialize = function(item: any, datatypes: any) {
         datatypes = datatypes || {};
 
         if (!item) {
@@ -179,7 +179,7 @@ serializer.serializeItem = (schema: any, item: any, options: any) => {
                     return result;
                 }
 
-                var attr = internals.serializeAttribute(val, datatypes[key], options);
+                const attr = internals.serializeAttribute(val, datatypes[key], options);
 
                 if (!_.isNull(attr) || options.returnNulls) {
                     if (options.expected) {
@@ -234,7 +234,7 @@ serializer.deserializeItem = function(item: any) {
         }
 
         return map(data, function(value: any) {
-            var result;
+            let result;
 
             if (_.isPlainObject(value)) {
                 result = formatter(value);

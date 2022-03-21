@@ -18,12 +18,12 @@ import * as utils from './utils';
 const internals: any = {};
 
 internals.keyCondition = function(keyName: any, schema: any, scan: any) {
-    var f = function(operator: any) {
+    const f = function(operator: any) {
         return function(/*values*/) {
-            var copy = [].slice.call(arguments);
-            var existingValueKeys = _.keys(scan.request.ExpressionAttributeValues);
-            var args = [keyName, operator, existingValueKeys].concat(copy);
-            var cond = expressions.buildFilterExpression.apply(null, args);
+            const copy = [].slice.call(arguments);
+            const existingValueKeys = _.keys(scan.request.ExpressionAttributeValues);
+            const args = [keyName, operator, existingValueKeys].concat(copy);
+            const cond = expressions.buildFilterExpression.apply(null, args);
             return scan.addFilterCondition(cond);
         };
     };
@@ -69,8 +69,12 @@ class Scan {
     };
 
     public addFilterCondition = function(condition: any) {
-        var expressionAttributeNames = _.merge({}, condition.attributeNames, this.request.ExpressionAttributeNames);
-        var expressionAttributeValues = _.merge({}, condition.attributeValues, this.request.ExpressionAttributeValues);
+        const expressionAttributeNames = _.merge({}, condition.attributeNames, this.request.ExpressionAttributeNames);
+        const expressionAttributeValues = _.merge(
+            {},
+            condition.attributeValues,
+            this.request.ExpressionAttributeValues,
+        );
 
         if (!_.isEmpty(expressionAttributeNames)) {
             this.request.ExpressionAttributeNames = expressionAttributeNames;
@@ -100,10 +104,10 @@ class Scan {
             attrs = [attrs];
         }
 
-        var expressionAttributeNames = _.reduce(
+        const expressionAttributeNames = _.reduce(
             attrs,
             function(result: any, attr: any) {
-                var path = '#' + attr;
+                const path = '#' + attr;
                 result[path] = attr;
 
                 return result;
@@ -173,9 +177,9 @@ class Scan {
     };
 
     public exec = function(callback: any) {
-        var self = this;
+        const self = this;
 
-        var runScan = function(params: any, callback: any) {
+        const runScan = function(params: any, callback: any) {
             self.table.runScan(params, callback);
         };
 

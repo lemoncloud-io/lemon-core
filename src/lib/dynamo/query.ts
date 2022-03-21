@@ -18,12 +18,12 @@ import * as utils from './utils';
 const internals: any = {};
 
 internals.keyCondition = function(keyName: any, schema: any, query: any) {
-    var f = function(operator: any) {
+    const f = function(operator: any) {
         return function(/*values*/) {
-            var copy = [].slice.call(arguments);
-            var existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
-            var args = [keyName, operator, existingValueKeys].concat(copy);
-            var cond = expressions.buildFilterExpression.apply(null, args);
+            const copy = [].slice.call(arguments);
+            const existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
+            const args = [keyName, operator, existingValueKeys].concat(copy);
+            const cond = expressions.buildFilterExpression.apply(null, args);
             return query.addKeyCondition(cond);
         };
     };
@@ -41,12 +41,12 @@ internals.keyCondition = function(keyName: any, schema: any, query: any) {
 };
 
 internals.queryFilter = function(keyName: any, schema: any, query: any) {
-    var f = function(operator: any) {
+    const f = function(operator: any) {
         return function(/*values*/) {
-            var copy = [].slice.call(arguments);
-            var existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
-            var args = [keyName, operator, existingValueKeys].concat(copy);
-            var cond = expressions.buildFilterExpression.apply(null, args);
+            const copy = [].slice.call(arguments);
+            const existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
+            const args = [keyName, operator, existingValueKeys].concat(copy);
+            const cond = expressions.buildFilterExpression.apply(null, args);
             return query.addFilterCondition(cond);
         };
     };
@@ -176,10 +176,10 @@ class Query {
             attrs = [attrs];
         }
 
-        var expressionAttributeNames = _.reduce(
+        const expressionAttributeNames = _.reduce(
             attrs,
             function(result: any, attr: any) {
-                var path = '#' + attr;
+                const path = '#' + attr;
                 result[path] = attr;
 
                 return result;
@@ -240,11 +240,11 @@ class Query {
     };
 
     public exec = function(callback: any) {
-        var self = this;
+        const self = this;
 
         this.addKeyCondition(this.buildKey());
 
-        var runQuery = function(params: any, callback: any) {
+        const runQuery = function(params: any, callback: any) {
             self.table.runQuery(params, callback);
         };
 
@@ -252,13 +252,13 @@ class Query {
     };
 
     public buildKey = function() {
-        var key: any = this.table.schema.hashKey;
+        let key: any = this.table.schema.hashKey;
 
         if (internals.isUsingGlobalIndex(this)) {
             key = this.table.schema.globalIndexes[this.request.IndexName].hashKey;
         }
 
-        var existingValueKeys = _.keys(this.request.ExpressionAttributeValues);
+        const existingValueKeys = _.keys(this.request.ExpressionAttributeValues);
         return expressions.buildFilterExpression(key, '=', existingValueKeys, this.hashKey);
     };
 
@@ -268,8 +268,8 @@ class Query {
 }
 
 internals.addExpressionAttributes = function(request: any, condition: any) {
-    var expressionAttributeNames = _.merge({}, condition.attributeNames, request.ExpressionAttributeNames);
-    var expressionAttributeValues = _.merge({}, condition.attributeValues, request.ExpressionAttributeValues);
+    const expressionAttributeNames = _.merge({}, condition.attributeNames, request.ExpressionAttributeNames);
+    const expressionAttributeValues = _.merge({}, condition.attributeValues, request.ExpressionAttributeValues);
 
     if (!_.isEmpty(expressionAttributeNames)) {
         request.ExpressionAttributeNames = expressionAttributeNames;
