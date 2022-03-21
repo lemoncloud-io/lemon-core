@@ -83,7 +83,7 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
     }
 
     let lastEvaluatedKey = null as any;
-    let responses = [] as any[];
+    const responses = [] as any[];
     let retry = false;
 
     var doFunc = function(callback: any) {

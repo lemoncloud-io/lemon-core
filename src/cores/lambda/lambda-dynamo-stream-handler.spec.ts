@@ -80,7 +80,7 @@ describe('LambdaDynamoStreamHandler', () => {
             expect2(handlersCalled).toEqual({ filter: false, onBeforeSync: false, onAfterSync: false });
             handlersCalled.filter = true;
             // check diff items
-            for (let key of Object.keys(item))
+            for (const key of Object.keys(item))
                 if (diff.includes(key)) expect2(item[key]).not.toEqual(prev[key]);
             return true;
         };

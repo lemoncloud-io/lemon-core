@@ -58,7 +58,7 @@ export const RESET = '\x1b[0m';
 export const build_log = ($console: EngineConsole): EngineLogger =>
     function() {
         const _ts = build_ts({ console: $console });
-        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
             ($console.auto_ts && args.unshift(_ts(), LEVEL_LOG + RESET)) || args.unshift(LEVEL_LOG + RESET),
                 args.unshift(BLUE);
@@ -68,7 +68,7 @@ export const build_log = ($console: EngineConsole): EngineLogger =>
 export const build_inf = ($console: EngineConsole): EngineLogger =>
     function() {
         const _ts = build_ts({ console: $console });
-        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
             ($console.auto_ts && args.unshift(_ts(), LEVEL_INF + RESET)) || args.unshift(LEVEL_INF + RESET),
                 args.unshift(YELLOW);
@@ -78,7 +78,7 @@ export const build_inf = ($console: EngineConsole): EngineLogger =>
 export const build_err = ($console: EngineConsole): EngineLogger =>
     function() {
         const _ts = build_ts({ console: $console });
-        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
             ($console.auto_ts && args.unshift(_ts(), LEVEL_ERR + RESET)) || args.unshift(LEVEL_ERR + RESET),
                 args.unshift(RED);

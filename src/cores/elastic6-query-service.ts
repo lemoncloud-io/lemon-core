@@ -313,9 +313,9 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     $source = '*';
                 } else if (typeof val === 'string' && val.indexOf !== undefined) {
                     // string array set.
-                    let vals: string[] = val.split(',') || [];
-                    let $includes: string[] = [];
-                    let $excludes: string[] = [];
+                    const vals: string[] = val.split(',') || [];
+                    const $includes: string[] = [];
+                    const $excludes: string[] = [];
                     vals.forEach(val => {
                         val = `${val || ''}`.trim();
                         if (!val) return;

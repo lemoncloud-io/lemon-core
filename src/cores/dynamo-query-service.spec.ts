@@ -56,9 +56,9 @@ describe('DynamoQueryService', () => {
         expect2(dynamoQuery.hello()).toEqual(`dynamo-query-service:${options.tableName}`);
         if (PROFILE) {
             expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
-            for (let [id, item] of dataMap.entries())
+            for (const [id, item] of dataMap.entries())
                 expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
-            for (let [id, item] of dataMap.entries())
+            for (const [id, item] of dataMap.entries())
                 expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
             // TODO: Need to add sort key query test cases
         }

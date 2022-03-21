@@ -395,8 +395,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             cookie = `${cookie || ''}`.trim();
             if (!cookie) return undefined;
             const parseCookies = (str: string) => {
-                let rx = /([^;=\s]*)=([^;]*)/g;
-                let obj: { [key: string]: string } = {};
+                const rx = /([^;=\s]*)=([^;]*)/g;
+                const obj: { [key: string]: string } = {};
                 for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
                 return obj;
             };
