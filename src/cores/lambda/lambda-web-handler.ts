@@ -124,28 +124,30 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
 /**
  * builder for default handler
  */
-export const mxNextHandler = (thiz: LambdaWEBHandler) => async (params: ProxyChain): Promise<ProxyResult> => {
-    //! determine if param or func.
-    const fx: ProxyResponser = typeof params == 'function' ? params : null;
-    const $param: ProxyParams = params && typeof params == 'object' ? params : null;
-    const { param, event } = $param || {};
+export const mxNextHandler =
+    (thiz: LambdaWEBHandler) =>
+    async (params: ProxyChain): Promise<ProxyResult> => {
+        //! determine if param or func.
+        const fx: ProxyResponser = typeof params == 'function' ? params : null;
+        const $param: ProxyParams = params && typeof params == 'object' ? params : null;
+        const { param, event } = $param || {};
 
-    //! call the main handler()
-    const R = $param ? await thiz.handleProtocol(param, event) : fx;
+        //! call the main handler()
+        const R = $param ? await thiz.handleProtocol(param, event) : fx;
 
-    //! - if like to override the full response, then return function.
-    if (R && typeof R == 'function') return R();
+        //! - if like to override the full response, then return function.
+        if (R && typeof R == 'function') return R();
 
-    //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
-    const { httpMethod: method, headers } = event || {};
-    if (method && method != 'GET') {
-        const origin = `${(headers && headers['origin']) || ''}`;
-        return success(R, null, origin);
-    }
+        //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+        const { httpMethod: method, headers } = event || {};
+        if (method && method != 'GET') {
+            const origin = `${(headers && headers['origin']) || ''}`;
+            return success(R, null, origin);
+        }
 
-    //! returns response..
-    return success(R);
-};
+        //! returns response..
+        return success(R);
+    };
 
 /**
  * builder for failure promised.
@@ -263,9 +265,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         _log(NS, '! $param =', $U.json($param));
 
         //! start promised..
-        return promised(event, $ctx)
-            .then(mxNextHandler(this))
-            .catch(mxNextFailure(event, $ctx));
+        return promised(event, $ctx).then(mxNextHandler(this)).catch(mxNextFailure(event, $ctx));
     };
 
     /**

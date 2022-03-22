@@ -784,9 +784,7 @@ class MemcachedBackend implements CacheBackend {
      */
     private readonly api: {
         get: (key: string) => Promise<any>;
-        gets: (
-            key: string,
-        ) => Promise<{
+        gets: (key: string) => Promise<{
             [key: string]: any;
             cas: string;
         }>;
@@ -939,7 +937,7 @@ class MemcachedBackend implements CacheBackend {
         if (!item || Object.keys(item).length === 0) return [];
 
         const [server, slabid] = [item.server, Number(Object.keys(item)[0])];
-        const number = ((item[slabid] as unknown) as Memcached.StatusData).number as number;
+        const number = (item[slabid] as unknown as Memcached.StatusData).number as number;
         const cachedump = await this.api.cachedump(server, slabid, number);
         return cachedump.map(({ key }) => key);
     }

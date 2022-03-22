@@ -17,9 +17,9 @@ import * as utils from './utils';
 
 const internals: any = {};
 
-internals.keyCondition = function(keyName: any, schema: any, scan: any) {
-    const f = function(operator: any) {
-        return function(/*values*/) {
+internals.keyCondition = function (keyName: any, schema: any, scan: any) {
+    const f = function (operator: any) {
+        return function (/*values*/) {
             const copy = [].slice.call(arguments);
             const existingValueKeys = _.keys(scan.request.ExpressionAttributeValues);
             const args = [keyName, operator, existingValueKeys].concat(copy);
@@ -58,7 +58,7 @@ class Scan {
         this.request = {};
     }
 
-    public limit = function(num: any) {
+    public limit = function (num: any) {
         if (num <= 0) {
             throw new Error('Limit must be greater than 0');
         }
@@ -68,7 +68,7 @@ class Scan {
         return this;
     };
 
-    public addFilterCondition = function(condition: any) {
+    public addFilterCondition = function (condition: any) {
         const expressionAttributeNames = _.merge({}, condition.attributeNames, this.request.ExpressionAttributeNames);
         const expressionAttributeValues = _.merge(
             {},
@@ -93,20 +93,20 @@ class Scan {
         return this;
     };
 
-    public startKey = function(hashKey: any, rangeKey: any) {
+    public startKey = function (hashKey: any, rangeKey: any) {
         this.request.ExclusiveStartKey = this.serializer.buildKey(hashKey, rangeKey, this.table.schema);
 
         return this;
     };
 
-    public attributes = function(attrs: any) {
+    public attributes = function (attrs: any) {
         if (!_.isArray(attrs)) {
             attrs = [attrs];
         }
 
         const expressionAttributeNames = _.reduce(
             attrs,
-            function(result: any, attr: any) {
+            function (result: any, attr: any) {
                 const path = '#' + attr;
                 result[path] = attr;
 
@@ -125,13 +125,13 @@ class Scan {
         return this;
     };
 
-    public select = function(value: any) {
+    public select = function (value: any) {
         this.request.Select = value;
 
         return this;
     };
 
-    public returnConsumedCapacity = function(value: any) {
+    public returnConsumedCapacity = function (value: any) {
         if (_.isUndefined(value)) {
             value = 'TOTAL';
         }
@@ -141,58 +141,58 @@ class Scan {
         return this;
     };
 
-    public segments = function(segment: any, totalSegments: any) {
+    public segments = function (segment: any, totalSegments: any) {
         this.request.Segment = segment;
         this.request.TotalSegments = totalSegments;
 
         return this;
     };
 
-    public where = function(keyName: any) {
+    public where = function (keyName: any) {
         return internals.keyCondition(keyName, this.table.schema, this);
     };
 
-    public filterExpression = function(expression: any) {
+    public filterExpression = function (expression: any) {
         this.request.FilterExpression = expression;
 
         return this;
     };
 
-    public expressionAttributeValues = function(data: any) {
+    public expressionAttributeValues = function (data: any) {
         this.request.ExpressionAttributeValues = data;
 
         return this;
     };
 
-    public expressionAttributeNames = function(data: any) {
+    public expressionAttributeNames = function (data: any) {
         this.request.ExpressionAttributeNames = data;
 
         return this;
     };
 
-    public projectionExpression = function(data: any) {
+    public projectionExpression = function (data: any) {
         this.request.ProjectionExpression = data;
 
         return this;
     };
 
-    public exec = function(callback: any) {
+    public exec = function (callback: any) {
         const self = this;
 
-        const runScan = function(params: any, callback: any) {
+        const runScan = function (params: any, callback: any) {
             self.table.runScan(params, callback);
         };
 
         return utils.paginatedRequest(self, runScan, callback);
     };
 
-    public loadAll = function() {
+    public loadAll = function () {
         this.options.loadAll = true;
 
         return this;
     };
 
-    public buildRequest = function() {
+    public buildRequest = function () {
         return _.merge({}, this.request, { TableName: this.table.tableName() });
     };
 }

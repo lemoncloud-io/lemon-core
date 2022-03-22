@@ -17,9 +17,9 @@ import * as utils from './utils';
 
 const internals: any = {};
 
-internals.keyCondition = function(keyName: any, schema: any, query: any) {
-    const f = function(operator: any) {
-        return function(/*values*/) {
+internals.keyCondition = function (keyName: any, schema: any, query: any) {
+    const f = function (operator: any) {
+        return function (/*values*/) {
             const copy = [].slice.call(arguments);
             const existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
             const args = [keyName, operator, existingValueKeys].concat(copy);
@@ -40,9 +40,9 @@ internals.keyCondition = function(keyName: any, schema: any, query: any) {
     };
 };
 
-internals.queryFilter = function(keyName: any, schema: any, query: any) {
-    const f = function(operator: any) {
-        return function(/*values*/) {
+internals.queryFilter = function (keyName: any, schema: any, query: any) {
+    const f = function (operator: any) {
+        return function (/*values*/) {
             const copy = [].slice.call(arguments);
             const existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
             const args = [keyName, operator, existingValueKeys].concat(copy);
@@ -69,7 +69,7 @@ internals.queryFilter = function(keyName: any, schema: any, query: any) {
     };
 };
 
-internals.isUsingGlobalIndex = function(query: any) {
+internals.isUsingGlobalIndex = function (query: any) {
     return query.request.IndexName && query.table.schema.globalIndexes[query.request.IndexName];
 };
 
@@ -90,7 +90,7 @@ class Query {
         this.request = {};
     }
 
-    public limit = function(num: any) {
+    public limit = function (num: any) {
         if (num <= 0) {
             throw new Error('Limit must be greater than 0');
         }
@@ -100,37 +100,37 @@ class Query {
         return this;
     };
 
-    public filterExpression = function(expression: any) {
+    public filterExpression = function (expression: any) {
         this.request.FilterExpression = expression;
 
         return this;
     };
 
-    public expressionAttributeValues = function(data: any) {
+    public expressionAttributeValues = function (data: any) {
         this.request.ExpressionAttributeValues = data;
 
         return this;
     };
 
-    public expressionAttributeNames = function(data: any) {
+    public expressionAttributeNames = function (data: any) {
         this.request.ExpressionAttributeNames = data;
 
         return this;
     };
 
-    public projectionExpression = function(data: any) {
+    public projectionExpression = function (data: any) {
         this.request.ProjectionExpression = data;
 
         return this;
     };
 
-    public usingIndex = function(name: any) {
+    public usingIndex = function (name: any) {
         this.request.IndexName = name;
 
         return this;
     };
 
-    public consistentRead = function(read: any) {
+    public consistentRead = function (read: any) {
         if (!_.isBoolean(read)) {
             read = true;
         }
@@ -140,7 +140,7 @@ class Query {
         return this;
     };
 
-    public addKeyCondition = function(condition: any) {
+    public addKeyCondition = function (condition: any) {
         internals.addExpressionAttributes(this.request, condition);
 
         if (_.isString(this.request.KeyConditionExpression)) {
@@ -153,7 +153,7 @@ class Query {
         return this;
     };
 
-    public addFilterCondition = function(condition: any) {
+    public addFilterCondition = function (condition: any) {
         internals.addExpressionAttributes(this.request, condition);
 
         if (_.isString(this.request.FilterExpression)) {
@@ -165,20 +165,20 @@ class Query {
         return this;
     };
 
-    public startKey = function(hashKey: any, rangeKey: any) {
+    public startKey = function (hashKey: any, rangeKey: any) {
         this.request.ExclusiveStartKey = this.serializer.buildKey(hashKey, rangeKey, this.table.schema);
 
         return this;
     };
 
-    public attributes = function(attrs: any) {
+    public attributes = function (attrs: any) {
         if (!_.isArray(attrs)) {
             attrs = [attrs];
         }
 
         const expressionAttributeNames = _.reduce(
             attrs,
-            function(result: any, attr: any) {
+            function (result: any, attr: any) {
                 const path = '#' + attr;
                 result[path] = attr;
 
@@ -197,25 +197,25 @@ class Query {
         return this;
     };
 
-    public ascending = function() {
+    public ascending = function () {
         this.request.ScanIndexForward = true;
 
         return this;
     };
 
-    public descending = function() {
+    public descending = function () {
         this.request.ScanIndexForward = false;
 
         return this;
     };
 
-    public select = function(value: any) {
+    public select = function (value: any) {
         this.request.Select = value;
 
         return this;
     };
 
-    public returnConsumedCapacity = function(value: any) {
+    public returnConsumedCapacity = function (value: any) {
         if (_.isUndefined(value)) {
             value = 'TOTAL';
         }
@@ -225,33 +225,33 @@ class Query {
         return this;
     };
 
-    public loadAll = function() {
+    public loadAll = function () {
         this.options.loadAll = true;
 
         return this;
     };
 
-    public where = function(keyName: any) {
+    public where = function (keyName: any) {
         return internals.keyCondition(keyName, this.table.schema, this);
     };
 
-    public filter = function(keyName: any) {
+    public filter = function (keyName: any) {
         return internals.queryFilter(keyName, this.table.schema, this);
     };
 
-    public exec = function(callback: any) {
+    public exec = function (callback: any) {
         const self = this;
 
         this.addKeyCondition(this.buildKey());
 
-        const runQuery = function(params: any, callback: any) {
+        const runQuery = function (params: any, callback: any) {
             self.table.runQuery(params, callback);
         };
 
         return utils.paginatedRequest(self, runQuery, callback);
     };
 
-    public buildKey = function() {
+    public buildKey = function () {
         let key: any = this.table.schema.hashKey;
 
         if (internals.isUsingGlobalIndex(this)) {
@@ -262,12 +262,12 @@ class Query {
         return expressions.buildFilterExpression(key, '=', existingValueKeys, this.hashKey);
     };
 
-    public buildRequest = function() {
+    public buildRequest = function () {
         return _.merge({}, this.request, { TableName: this.table.tableName() });
     };
 }
 
-internals.addExpressionAttributes = function(request: any, condition: any) {
+internals.addExpressionAttributes = function (request: any, condition: any) {
     const expressionAttributeNames = _.merge({}, condition.attributeNames, request.ExpressionAttributeNames);
     const expressionAttributeValues = _.merge({}, condition.attributeValues, request.ExpressionAttributeValues);
 
@@ -280,7 +280,7 @@ internals.addExpressionAttributes = function(request: any, condition: any) {
     }
 };
 
-internals.formatAttributeValue = function(val: any) {
+internals.formatAttributeValue = function (val: any) {
     if (_.isDate(val)) {
         return val.toISOString();
     }

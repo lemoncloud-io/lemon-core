@@ -25,7 +25,7 @@ import { CoreModel, TypedStorageService, UniqueFieldManager } from '../cores/pro
  */
 export class GeneralAPIController<
     T extends TypedStorageService<CoreModel<ModelType>, ModelType>,
-    ModelType extends string
+    ModelType extends string,
 > extends GeneralWEBController {
     public readonly NS: string;
     protected storage: T;

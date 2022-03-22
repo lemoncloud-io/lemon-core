@@ -20,7 +20,7 @@ const serializer = {} as any;
 
 const internals = {
     docClient: new DocClient(),
-    createSet: function(value: any, opt?: string) {
+    createSet: function (value: any, opt?: string) {
         if (_.isArray(value)) {
             return internals.docClient.createSet(value);
         } else {
@@ -28,7 +28,7 @@ const internals = {
         }
     },
     serialize: {
-        binary: function(value: any) {
+        binary: function (value: any) {
             if (_.isString(value)) {
                 return utils.strToBin(value);
             }
@@ -36,7 +36,7 @@ const internals = {
             return value;
         },
 
-        date: function(value: any) {
+        date: function (value: any) {
             if (_.isDate(value)) {
                 return value.toISOString();
             } else {
@@ -44,7 +44,7 @@ const internals = {
             }
         },
 
-        boolean: function(value: any) {
+        boolean: function (value: any) {
             if (value && value !== 'false') {
                 return true;
             } else {
@@ -52,15 +52,15 @@ const internals = {
             }
         },
 
-        stringSet: function(value: any) {
+        stringSet: function (value: any) {
             return internals.createSet(value, 'S');
         },
 
-        numberSet: function(value: any) {
+        numberSet: function (value: any) {
             return internals.createSet(value, 'N');
         },
 
-        binarySet: function(value: any) {
+        binarySet: function (value: any) {
             let bins = value;
             if (!_.isArray(value)) {
                 bins = [value];
@@ -122,7 +122,7 @@ serializer.buildKey = (hashKey: any, rangeKey: any, schema: any) => {
         if (schema.rangeKey && !_.isNull(hashKey[schema.rangeKey]) && !_.isUndefined(hashKey[schema.rangeKey])) {
             obj[schema.rangeKey] = hashKey[schema.rangeKey];
         }
-        _.each(schema.globalIndexes, function(keys) {
+        _.each(schema.globalIndexes, function (keys) {
             if (_.has(hashKey, keys.hashKey)) {
                 obj[keys.hashKey] = hashKey[keys.hashKey];
             }
@@ -132,7 +132,7 @@ serializer.buildKey = (hashKey: any, rangeKey: any, schema: any) => {
             }
         });
 
-        _.each(schema.secondaryIndexes, function(keys) {
+        _.each(schema.secondaryIndexes, function (keys) {
             if (_.has(hashKey, keys.rangeKey)) {
                 obj[keys.rangeKey] = hashKey[keys.rangeKey];
             }
@@ -151,7 +151,7 @@ serializer.buildKey = (hashKey: any, rangeKey: any, schema: any) => {
 serializer.serializeItem = (schema: any, item: any, options: any) => {
     options = options || {};
 
-    const serialize = function(item: any, datatypes: any) {
+    const serialize = function (item: any, datatypes: any) {
         datatypes = datatypes || {};
 
         if (!item) {
@@ -160,7 +160,7 @@ serializer.serializeItem = (schema: any, item: any, options: any) => {
 
         return _.reduce(
             item,
-            function(result: any, val: any, key: any) {
+            function (result: any, val: any, key: any) {
                 if (options.expected && _.isObject(val) && _.isBoolean((val as any).Exists)) {
                     result[key] = val;
                     return result;
@@ -172,7 +172,7 @@ serializer.serializeItem = (schema: any, item: any, options: any) => {
                 }
 
                 if (_.isArray(val) && _.isArray(datatypes[key])) {
-                    result[key] = _.map(val, function(item) {
+                    result[key] = _.map(val, function (item) {
                         return serialize(item, datatypes[key][0]);
                     });
 
@@ -198,13 +198,13 @@ serializer.serializeItem = (schema: any, item: any, options: any) => {
     return serialize(item, schema._modelDatatypes);
 };
 
-serializer.serializeItemForUpdate = function(schema: any, action: any, item: any) {
+serializer.serializeItemForUpdate = function (schema: any, action: any, item: any) {
     const datatypes = schema._modelDatatypes;
 
     const data = utils.omitPrimaryKeys(schema, item);
     return _.reduce(
         data,
-        function(result: any, value: any, key: any) {
+        function (result: any, value: any, key: any) {
             if (_.isNull(value)) {
                 result[key] = { Action: 'DELETE' };
             } else if (_.isPlainObject(value) && value.$add) {
@@ -221,7 +221,7 @@ serializer.serializeItemForUpdate = function(schema: any, action: any, item: any
     );
 };
 
-serializer.deserializeItem = function(item: any) {
+serializer.deserializeItem = function (item: any) {
     if (_.isNull(item)) {
         return null;
     }
@@ -233,7 +233,7 @@ serializer.deserializeItem = function(item: any) {
             map = _.map;
         }
 
-        return map(data, function(value: any) {
+        return map(data, function (value: any) {
             let result;
 
             if (_.isPlainObject(value)) {

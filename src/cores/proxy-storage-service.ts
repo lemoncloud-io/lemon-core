@@ -967,7 +967,7 @@ export class ModelUtil {
     public static buildPop = (thiz: any, popName: string = 'pop') => {
         if (!thiz) throw new Error('@thiz (object) is required!');
         if (typeof thiz[popName] != 'undefined') throw new Error(`.[${popName}] is duplicated!`);
-        thiz[popName] = function<T>(key: string, defValue?: T): T {
+        thiz[popName] = function <T>(key: string, defValue?: T): T {
             if (!key) {
                 //! clear pop() if key is null.
                 delete (this as any)[popName];

@@ -882,11 +882,7 @@ export const $ERROR = {
         const reason = ((E: any): ErrorReasonDetail => {
             //! from ES7.1
             if (E.meta && typeof E.meta == 'object') {
-                const type = _S(E?.message)
-                    .toUpperCase()
-                    .split('_')
-                    .slice(0, -1)
-                    .join(' ');
+                const type = _S(E?.message).toUpperCase().split('_').slice(0, -1).join(' ');
                 const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
                 return { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
             }
@@ -903,11 +899,7 @@ export const $ERROR = {
                 $res.error?.reason,
                 $res.found === false || $res.result === 'not_found' ? 'NOT FOUND' : '',
             );
-            const type = _S(cause?.type)
-                .toUpperCase()
-                .split('_')
-                .slice(0, -1)
-                .join(' ');
+            const type = _S(cause?.type).toUpperCase().split('_').slice(0, -1).join(' ');
             return { status, reason, cause, type: type || reason };
         })(E);
         //! FINAL. convert to error-object.
@@ -918,17 +910,19 @@ export const $ERROR = {
         };
     },
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    handler: (name: string, cb?: (e: Error, E?: ErrorReason) => any) => (e: any): any => {
-        const E = $ERROR.asError(e);
-        //! unknown error found..
-        if (!E?.status) {
-            _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
-            throw e;
-        }
-        const $e = new Error(`${E.status} ${E.reason.type} - ${E.message}`);
-        if (cb) return cb($e, E);
-        throw $e;
-    },
+    handler:
+        (name: string, cb?: (e: Error, E?: ErrorReason) => any) =>
+        (e: any): any => {
+            const E = $ERROR.asError(e);
+            //! unknown error found..
+            if (!E?.status) {
+                _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
+                throw e;
+            }
+            const $e = new Error(`${E.status} ${E.reason.type} - ${E.message}`);
+            if (cb) return cb($e, E);
+            throw $e;
+        },
 };
 
 /** ****************************************************************************************************************

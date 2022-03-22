@@ -235,21 +235,19 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             const regexp = new RegExp([...query.replace(/\s/g, '')].join(' *'), 'i');
 
             // try to match regular expression with items found
-            list = result.list.map(
-                (item: any): T => {
-                    const target = `${item[field] || ''}`;
-                    const match = target.match(regexp);
-                    if (match) {
-                        item._highlight =
-                            target.slice(0, match.index) +
-                            `<${tagName}>${match[0]}</${tagName}>` +
-                            target.slice(match.index + match[0].length);
-                    } else {
-                        item._highlight = target;
-                    }
-                    return item;
-                },
-            );
+            list = result.list.map((item: any): T => {
+                const target = `${item[field] || ''}`;
+                const match = target.match(regexp);
+                if (match) {
+                    item._highlight =
+                        target.slice(0, match.index) +
+                        `<${tagName}>${match[0]}</${tagName}>` +
+                        target.slice(match.index + match[0].length);
+                } else {
+                    item._highlight = target;
+                }
+                return item;
+            });
         }
 
         //! finally, override list.

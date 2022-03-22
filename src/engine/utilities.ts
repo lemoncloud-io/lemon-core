@@ -103,7 +103,7 @@ export class Utilities {
 
         this.log(NS, 'load file =', fname);
         //! prepare promised.
-        const chain = new Promise(function(resolve, reject) {
+        const chain = new Promise(function (resolve, reject) {
             // Get document, or throw exception on error
             try {
                 const doc = yaml.safeLoad(fs.readFileSync(fname, 'utf8'));
@@ -314,11 +314,7 @@ export class Utilities {
         if (typeof str == 'object') {
             str = JSON.stringify(str);
         }
-        str = str
-            .replace(/\\/g, '\\\\')
-            .replace(/\$/g, '\\$')
-            .replace(/'/g, "\\'")
-            .replace(/"/g, '\\"');
+        str = str.replace(/\\/g, '\\\\').replace(/\$/g, '\\$').replace(/'/g, "\\'").replace(/"/g, '\\"');
 
         if (urldecode) {
             // url-decode
@@ -420,7 +416,7 @@ export class Utilities {
      * remove internal properties which starts with _ or $
      */
     public cleanup(node: any) {
-        return Object.keys(node).reduce(function(N, key) {
+        return Object.keys(node).reduce(function (N, key) {
             if (key.startsWith('_') || key.startsWith('$')) delete N[key];
             return N;
         }, node);
@@ -442,7 +438,7 @@ export class Utilities {
     }
 
     public copy($N: any) {
-        return Object.keys($N).reduce(function($n: any, key) {
+        return Object.keys($N).reduce(function ($n: any, key) {
             $n[key] = $N[key];
             return $n;
         }, {});
@@ -450,7 +446,7 @@ export class Utilities {
 
     public copy_node(node: any, isClear?: boolean) {
         isClear = isClear === undefined ? false : isClear;
-        return Object.keys(node).reduce(function(N: any, key) {
+        return Object.keys(node).reduce(function (N: any, key) {
             if (key.startsWith('_') || key.startsWith('$')) return N;
             N[key] = isClear ? null : node[key];
             return N;
@@ -496,7 +492,7 @@ export class Utilities {
     protected isEqual(obj1: any, obj2: any) {
         const keys = Object.keys;
         function tagTester(name: string) {
-            return function(obj: any) {
+            return function (obj: any) {
                 return toString.call(obj) === '[object ' + name + ']';
             };
         }
@@ -645,7 +641,7 @@ export class Utilities {
          * @param {integer} [seed] optionally pass the hash of the previous chunk
          * @returns {integer | string}
          */
-        const hashFnv32a = function(str: any, asString?: any, seed?: any): string {
+        const hashFnv32a = function (str: any, asString?: any, seed?: any): string {
             /*jshint bitwise:false */
             let i, l;
             let hval = seed === undefined ? 0x811c9dc5 : seed;
@@ -662,7 +658,7 @@ export class Utilities {
 
     //! start promise chain.
     public promise(param: any) {
-        return new Promise(function(resolve) {
+        return new Promise(function (resolve) {
             resolve(param);
         });
     }
@@ -685,10 +681,7 @@ export class Utilities {
      */
     public md5(data: any, digest: 'latin1' | 'hex' | 'base64') {
         digest = digest === undefined ? 'hex' : digest;
-        return crypto
-            .createHash('md5')
-            .update(data)
-            .digest(digest);
+        return crypto.createHash('md5').update(data).digest(digest);
     }
 
     /**
@@ -698,10 +691,7 @@ export class Utilities {
         KEY = KEY || 'XENI';
         encoding = encoding || 'base64';
         algorithm = algorithm || 'sha256';
-        return crypto
-            .createHmac(algorithm, KEY)
-            .update(data)
-            .digest(encoding);
+        return crypto.createHmac(algorithm, KEY).update(data).digest(encoding);
     }
 
     /**

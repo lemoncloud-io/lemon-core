@@ -186,18 +186,34 @@ describe('Elastic6Service', () => {
 
         //! resource exists
         const E1 = loadJsonSync('data/samples/es7.1/create-index.err.json');
-        expect2(() => $ERROR.asError(E1)).toEqual({"message": "resource_already_exists_exception", "reason": {"status": 400, "type": "RESOURCE ALREADY EXISTS"}, "status": 400});
-        expect2(() => $ERROR.handler('test', GETERR)(E1)).toEqual('400 RESOURCE ALREADY EXISTS - resource_already_exists_exception');
+        expect2(() => $ERROR.asError(E1)).toEqual({
+            message: 'resource_already_exists_exception',
+            reason: { status: 400, type: 'RESOURCE ALREADY EXISTS' },
+            status: 400,
+        });
+        expect2(() => $ERROR.handler('test', GETERR)(E1)).toEqual(
+            '400 RESOURCE ALREADY EXISTS - resource_already_exists_exception',
+        );
 
         //! 404 not found
         const E2 = loadJsonSync('data/samples/es7.1/read-item.err404.json');
-        expect2(() => $ERROR.asError(E2)).toEqual({"status": 404, "message": "Response Error", "reason": {"status": 404, "type": "NOT FOUND"}});
+        expect2(() => $ERROR.asError(E2)).toEqual({
+            status: 404,
+            message: 'Response Error',
+            reason: { status: 404, type: 'NOT FOUND' },
+        });
         expect2(() => $ERROR.handler('test', GETERR)(E2)).toEqual('404 NOT FOUND - Response Error');
 
         //! conflict
         const E3 = loadJsonSync('data/samples/es7.1/version-conflict.err.json');
-        expect2(() => $ERROR.asError(E3)).toEqual({"message": "version_conflict_engine_exception", "reason": {"status": 409, "type": "VERSION CONFLICT ENGINE"}, "status": 409});
-        expect2(() => $ERROR.handler('test', GETERR)(E3)).toEqual('409 VERSION CONFLICT ENGINE - version_conflict_engine_exception');
+        expect2(() => $ERROR.asError(E3)).toEqual({
+            message: 'version_conflict_engine_exception',
+            reason: { status: 409, type: 'VERSION CONFLICT ENGINE' },
+            status: 409,
+        });
+        expect2(() => $ERROR.handler('test', GETERR)(E3)).toEqual(
+            '409 VERSION CONFLICT ENGINE - version_conflict_engine_exception',
+        );
 
         done();
     });
@@ -228,7 +244,11 @@ describe('Elastic6Service', () => {
         const $old = await service.findIndex(indexName);
         if ($old) {
             expect2(() => $old, 'index').toEqual({ index: indexName });
-            expect2(await service.destroyIndex().catch(PASS)).toEqual({ status:200, acknowledged: true, index: indexName });
+            expect2(await service.destroyIndex().catch(PASS)).toEqual({
+                status: 200,
+                acknowledged: true,
+                index: indexName,
+            });
             await waited(50);
         }
 
@@ -243,7 +263,7 @@ describe('Elastic6Service', () => {
         // expect2(await service.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
 
         //! make sure the index created
-        expect2(await service.createIndex().catch(PASS)).toEqual({ status:200, acknowledged: true, index: indexName });
+        expect2(await service.createIndex().catch(PASS)).toEqual({ status: 200, acknowledged: true, index: indexName });
         await waited(200);
         // expect2(await service.createIndex().catch(PASS)).toEqual(`400 IN USE - index:${indexName}`);
         expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);

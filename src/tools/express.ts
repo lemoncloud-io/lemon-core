@@ -40,16 +40,18 @@ import fs from 'fs';
 import * as requestIp from 'request-ip';
 
 //! helper to catch header value w/o case-sensitive
-export const buildHeaderGetter = (headers: any) => (name: string): string => {
-    name = `${name || ''}`.toLowerCase();
-    headers = headers || {};
-    return Object.keys(headers).reduce((found: string, key: string) => {
-        const val = headers[key];
-        key = `${key || ''}`.toLowerCase();
-        if (key == name) return val;
-        return found;
-    }, '');
-};
+export const buildHeaderGetter =
+    (headers: any) =>
+    (name: string): string => {
+        name = `${name || ''}`.toLowerCase();
+        headers = headers || {};
+        return Object.keys(headers).reduce((found: string, key: string) => {
+            const val = headers[key];
+            key = `${key || ''}`.toLowerCase();
+            if (key == name) return val;
+            return found;
+        }, '');
+    };
 
 //! create Server Instance.
 //NOTE - avoid external reference of type.
@@ -259,18 +261,20 @@ export const buildExpress = (
         const ROUTE_PREFIX = `${(options && options.prefix) || ''}`;
 
         //! handle request to handler.
-        const next_middle = (type: string) => (req: any): Promise<void> => {
-            const callback = req.$callback;
-            req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
-            return $web
-                .packContext(req.$event, req.$context)
-                .then(context => $web.handle(req.$event, context))
-                .then(_ => callback && callback(null, _))
-                .catch(e => {
-                    _err(NS, '! exp.err =', e);
-                    callback && callback(e);
-                });
-        };
+        const next_middle =
+            (type: string) =>
+            (req: any): Promise<void> => {
+                const callback = req.$callback;
+                req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
+                return $web
+                    .packContext(req.$event, req.$context)
+                    .then(context => $web.handle(req.$event, context))
+                    .then(_ => callback && callback(null, _))
+                    .catch(e => {
+                        _err(NS, '! exp.err =', e);
+                        callback && callback(e);
+                    });
+            };
 
         //! register automatically endpont.
         const RESERVES = 'id,log,inf,err,extend,ts,dt,environ'.split(',');

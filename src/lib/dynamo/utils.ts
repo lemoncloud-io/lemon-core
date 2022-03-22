@@ -17,7 +17,7 @@ import $async from 'async';
 const AWSUtil = require('aws-sdk/lib/util');
 
 export const omitNulls = (data: any) => {
-    return _.omitBy(data, function(value) {
+    return _.omitBy(data, function (value) {
         return (
             _.isNull(value) ||
             _.isUndefined(value) ||
@@ -86,12 +86,12 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
     const responses = [] as any[];
     let retry = false;
 
-    const doFunc = function(callback: any) {
+    const doFunc = function (callback: any) {
         if (lastEvaluatedKey) {
             self.startKey(lastEvaluatedKey);
         }
 
-        runRequestFunc(self.buildRequest(), function(err: any, resp: any) {
+        runRequestFunc(self.buildRequest(), function (err: any, resp: any) {
             if (err && err.retryable) {
                 retry = true;
                 return setImmediate(callback);
@@ -109,11 +109,11 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
         });
     };
 
-    const testFunc = function() {
+    const testFunc = function () {
         return (self.options.loadAll && lastEvaluatedKey) || retry;
     };
 
-    const resulsFunc = function(err: any) {
+    const resulsFunc = function (err: any) {
         if (err) {
             return callback(err);
         }
@@ -124,11 +124,11 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
     $async.doWhilst(doFunc, testFunc, resulsFunc);
 };
 
-export const omitPrimaryKeys = function(schema: any, params: any) {
+export const omitPrimaryKeys = function (schema: any, params: any) {
     return _.omit(params, schema.hashKey, schema.rangeKey);
 };
 
-export const strToBin = function(value: any) {
+export const strToBin = function (value: any) {
     if (typeof value !== 'string') {
         const StrConversionError = 'Need to pass in string primitive to be converted to binary.';
         throw new Error(StrConversionError);

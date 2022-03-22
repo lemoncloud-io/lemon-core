@@ -130,7 +130,10 @@ export class GeneralWEBController extends GeneralController {
         //! if not found, then find via base.
         if (!ret && this.base) {
             const handler = this.base.decode(mode, id, cmd);
-            const builder = (thiz: any, func: NextHandler): NextHandler => (i, p, b, c) => func.call(thiz, i, p, b, c);
+            const builder =
+                (thiz: any, func: NextHandler): NextHandler =>
+                (i, p, b, c) =>
+                    func.call(thiz, i, p, b, c);
             return typeof handler == 'function' ? builder(this.base, handler) : null;
         }
         return ret;

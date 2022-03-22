@@ -116,16 +116,13 @@ export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHan
  * @param isReport flag to report-error via sns
  * @return the last error message
  */
-export const buildReportError = (isReport?: boolean) => (
-    e: Error,
-    context?: any,
-    event?: any,
-    data?: any,
-): Promise<string> => {
-    return (isReport ? doReportError(e, context, event, data) : Promise.resolve(data))
-        .then(() => GETERR(e))
-        .catch(GETERR);
-};
+export const buildReportError =
+    (isReport?: boolean) =>
+    (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
+        return (isReport ? doReportError(e, context, event, data) : Promise.resolve(data))
+            .then(() => GETERR(e))
+            .catch(GETERR);
+    };
 
 /**
  * class: `LambdaHandler`
