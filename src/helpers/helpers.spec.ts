@@ -11,7 +11,17 @@ import { loadProfile } from '../environ';
 import { $U } from '../engine';
 import { loadJsonSync } from '../tools/shared';
 import { expect2, waited } from '../common/test-helper';
-import { $protocol, $T, getIdentityId, isUserAuthorized, my_parrallel } from './helpers';
+import {
+    $protocol,
+    $rand,
+    $T,
+    getIdentityId,
+    isUserAuthorized,
+    my_parrallel,
+    $info,
+    parseRange,
+    my_sequence,
+} from './helpers';
 import $cores from '../cores/';
 
 //! create instance.
@@ -257,12 +267,81 @@ describe('utils', () => {
         expect2(() => $T.parseMeta(true)).toEqual({ type: 'boolean', value: true });
     });
 
+    it('should pass $rand', () => {
+        // range
+        expect2(() => $rand.range(3)).toEqual([0, 1, 2]);
+        expect2(() => $rand.range(0)).toEqual([]);
+
+        // float
+        const float1 = $rand.float(0, 1);
+        expect2(() => float1).toBeGreaterThanOrEqual(0);
+        expect2(() => float1).toBeLessThanOrEqual(1);
+        const float2 = $rand.float(3, 3);
+        expect2(() => float2).toEqual(3);
+        const float3 = $rand.float(-1.4, -0.5);
+        expect2(() => float3).toBeGreaterThanOrEqual(-1.4);
+        expect2(() => float3).toBeLessThanOrEqual(-0.5);
+
+        // floats
+        const count = 15;
+        const floats = $rand.floats(0, 1, count);
+        expect2(() => floats).toHaveLength(count);
+        floats.forEach((f: number) => {
+            expect2(() => f).toBeGreaterThanOrEqual(0);
+            expect2(() => f).toBeLessThanOrEqual(1);
+        });
+
+        // integer
+        const integer1 = $rand.integer(3, 5);
+        expect2(Number.isInteger(integer1)).toBeTruthy();
+        expect2(integer1).toBeGreaterThanOrEqual(3);
+        expect2(integer1).toBeLessThanOrEqual(5);
+        const integer2 = $rand.integer(8, 8);
+        expect2(Number.isInteger(integer2)).toBeTruthy();
+        expect2(() => integer2).toEqual(8);
+
+        // integers
+        const count2 = 20;
+        const integers = $rand.integers(2.7, 4.999, count2);
+        expect2(() => integers).toHaveLength(count2);
+        integers.forEach((i: number) => {
+            expect2(() => i).toBeGreaterThanOrEqual(3);
+            expect2(() => i).toBeLessThanOrEqual(4);
+        });
+    });
+
     it('should pass misc function()', async done => {
         //! test if making target protocol-url
         const $prot1 = $protocol({}, '//self/hello/0');
 
         //NOTE - package dependent
         expect2(() => $prot1.asTargetUrl()).toEqual('api://lemon-core-dev/hello/0');
+
+        done();
+    });
+
+    it('should pass $info()', async done => {
+        expect2(() => $info()).toEqual({
+            service: 'lemon-core',
+            stage: expect.any(String),
+            version: expect.any(String),
+        });
+
+        done();
+    });
+
+    it('should pass parseRange()', async done => {
+        expect2(() => parseRange('[1020 TO 3030]')).toEqual({ gte: 1020, lte: 3030 });
+        expect2(() => parseRange('[1020 TO 3030}')).toEqual({ gte: 1020, lt: 3030 });
+        expect2(() => parseRange('{80 TO 81]')).toEqual({ gt: 80, lte: 81 });
+        expect2(() => parseRange('{80 TO 81}')).toEqual({ gt: 80, lt: 81 });
+        expect2(() => parseRange('{* TO 999]')).toEqual({ lte: 999 });
+        expect2(() => parseRange('{* TO 999}')).toEqual({ lt: 999 });
+        expect2(() => parseRange('[999 TO *]')).toEqual({ gte: 999 });
+        expect2(() => parseRange('{999 TO *]')).toEqual({ gt: 999 });
+        expect2(() => parseRange('{* TO *}')).toEqual(undefined);
+        expect2(() => parseRange('[* TO *}')).toEqual(undefined);
+        expect2(() => parseRange('[* TO *]')).toEqual(undefined);
 
         done();
     });
@@ -308,6 +387,44 @@ describe('utils', () => {
             { id: '2', error: null, data: 2 },
         ]);
 
+        done();
+    });
+
+    it('should pass my_sequence()', async done => {
+        interface MyModel {
+            id: string;
+            error: string;
+            data?: number;
+            actionTime?: number;
+        }
+        const actionDelay = 100; // milliseconds
+        //! test with async function.
+        const results = await my_sequence(
+            [
+                { id: '1', error: null },
+                { id: '2', error: null },
+                { id: '3', error: null },
+                { id: '4', error: null },
+            ],
+            async (item: MyModel, i) => {
+                const actionTime = new Date().getTime();
+                await waited(actionDelay);
+                return { ...item, actionTime };
+            },
+        );
+        expect2(() => results).toEqual([
+            { id: '1', error: null, actionTime: expect.any(Number) },
+            { id: '2', error: null, actionTime: expect.any(Number) },
+            { id: '3', error: null, actionTime: expect.any(Number) },
+            { id: '4', error: null, actionTime: expect.any(Number) },
+        ]);
+
+        let previousActionTime = 0;
+        // compare action time of each task by order sequence
+        results.forEach(result => {
+            expect2(() => result.actionTime).toBeGreaterThan(previousActionTime + actionDelay);
+            previousActionTime = result.actionTime;
+        });
         done();
     });
 
