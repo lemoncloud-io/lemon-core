@@ -166,7 +166,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
                     return attrNameVar;
                 };
                 const asAttrValue = (key: string, value: any): string => {
-                    const attrValueVar = (function() {
+                    const attrValueVar = (function () {
                         for (let i = 0; ; i++) {
                             const valueVar = `:${key}${i}`;
                             if (!(valueVar in expAttrValues)) return valueVar;

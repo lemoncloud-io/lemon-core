@@ -124,28 +124,30 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
 /**
  * builder for default handler
  */
-export const mxNextHandler = (thiz: LambdaWEBHandler) => async (params: ProxyChain): Promise<ProxyResult> => {
-    //! determine if param or func.
-    const fx: ProxyResponser = typeof params == 'function' ? params : null;
-    const $param: ProxyParams = params && typeof params == 'object' ? params : null;
-    const { param, event } = $param || {};
+export const mxNextHandler =
+    (thiz: LambdaWEBHandler) =>
+    async (params: ProxyChain): Promise<ProxyResult> => {
+        //! determine if param or func.
+        const fx: ProxyResponser = typeof params == 'function' ? params : null;
+        const $param: ProxyParams = params && typeof params == 'object' ? params : null;
+        const { param, event } = $param || {};
 
-    //! call the main handler()
-    const R = $param ? await thiz.handleProtocol(param, event) : fx;
+        //! call the main handler()
+        const R = $param ? await thiz.handleProtocol(param, event) : fx;
 
-    //! - if like to override the full response, then return function.
-    if (R && typeof R == 'function') return R();
+        //! - if like to override the full response, then return function.
+        if (R && typeof R == 'function') return R();
 
-    //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
-    const { httpMethod: method, headers } = event || {};
-    if (method && method != 'GET') {
-        const origin = `${(headers && headers['origin']) || ''}`;
-        return success(R, null, origin);
-    }
+        //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+        const { httpMethod: method, headers } = event || {};
+        if (method && method != 'GET') {
+            const origin = `${(headers && headers['origin']) || ''}`;
+            return success(R, null, origin);
+        }
 
-    //! returns response..
-    return success(R);
-};
+        //! returns response..
+        return success(R);
+    };
 
 /**
  * builder for failure promised.
@@ -263,9 +265,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         _log(NS, '! $param =', $U.json($param));
 
         //! start promised..
-        return promised(event, $ctx)
-            .then(mxNextHandler(this))
-            .catch(mxNextFailure(event, $ctx));
+        return promised(event, $ctx).then(mxNextHandler(this)).catch(mxNextFailure(event, $ctx));
     };
 
     /**
@@ -381,7 +381,6 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 _err(NS, '!WARN! parse.err =', e);
                 _err(NS, '!WARN! identity =', val);
             }
-            // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
             const ret: any = val ? { meta: val } : {};
             return ret as NextIdentityCognito;
         };
@@ -395,8 +394,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             cookie = `${cookie || ''}`.trim();
             if (!cookie) return undefined;
             const parseCookies = (str: string) => {
-                let rx = /([^;=\s]*)=([^;]*)/g;
-                let obj: { [key: string]: string } = {};
+                const rx = /([^;=\s]*)=([^;]*)/g;
+                const obj: { [key: string]: string } = {};
                 for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
                 return obj;
             };

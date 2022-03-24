@@ -4,9 +4,10 @@
     "collectCoverage": true,
     "globals": {
         "ts-jest": {
-            "tsConfig": "tsconfig.json"
+            "tsconfig": "tsconfig.json"
         }
     },
+    "testRunner": "jest-jasmine2",
     "moduleFileExtensions": ["js", "jsx", "ts", "tsx"],
     "testEnvironment": "node",
     "testMatch": ["**/src/**/*.spec.+(ts|tsx|js|jsx)", "**/test/**/*.+(ts|tsx|js|jsx)"],

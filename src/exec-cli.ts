@@ -82,7 +82,7 @@ const do_http = (options: any) => {
 };
 
 //! prepare request(json) options
-const prepare_json = function(method: string, path: string, qs: any, body: any) {
+const prepare_json = function (method: string, path: string, qs: any, body: any) {
     method = method || 'GET';
     if (!path) throw Error('path is required!');
     const options = {

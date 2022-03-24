@@ -17,7 +17,7 @@ import $async from 'async';
 const AWSUtil = require('aws-sdk/lib/util');
 
 export const omitNulls = (data: any) => {
-    return _.omitBy(data, function(value) {
+    return _.omitBy(data, function (value) {
         return (
             _.isNull(value) ||
             _.isUndefined(value) ||
@@ -83,15 +83,15 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
     }
 
     let lastEvaluatedKey = null as any;
-    let responses = [] as any[];
+    const responses = [] as any[];
     let retry = false;
 
-    var doFunc = function(callback: any) {
+    const doFunc = function (callback: any) {
         if (lastEvaluatedKey) {
             self.startKey(lastEvaluatedKey);
         }
 
-        runRequestFunc(self.buildRequest(), function(err: any, resp: any) {
+        runRequestFunc(self.buildRequest(), function (err: any, resp: any) {
             if (err && err.retryable) {
                 retry = true;
                 return setImmediate(callback);
@@ -109,11 +109,11 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
         });
     };
 
-    var testFunc = function() {
+    const testFunc = function () {
         return (self.options.loadAll && lastEvaluatedKey) || retry;
     };
 
-    var resulsFunc = function(err: any) {
+    const resulsFunc = function (err: any) {
         if (err) {
             return callback(err);
         }
@@ -124,20 +124,20 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
     $async.doWhilst(doFunc, testFunc, resulsFunc);
 };
 
-export const omitPrimaryKeys = function(schema: any, params: any) {
+export const omitPrimaryKeys = function (schema: any, params: any) {
     return _.omit(params, schema.hashKey, schema.rangeKey);
 };
 
-export const strToBin = function(value: any) {
+export const strToBin = function (value: any) {
     if (typeof value !== 'string') {
-        var StrConversionError = 'Need to pass in string primitive to be converted to binary.';
+        const StrConversionError = 'Need to pass in string primitive to be converted to binary.';
         throw new Error(StrConversionError);
     }
 
     if (AWSUtil.isBrowser()) {
-        var len = value.length;
-        var bin = new Uint8Array(new ArrayBuffer(len));
-        for (var i = 0; i < len; i++) {
+        const len = value.length;
+        const bin = new Uint8Array(new ArrayBuffer(len));
+        for (let i = 0; i < len; i++) {
             bin[i] = value.charCodeAt(i);
         }
         return bin;

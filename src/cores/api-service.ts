@@ -569,7 +569,7 @@ export const createHttpWebProxy = (
             //! returns promise
             return new Promise((resolve, reject) => {
                 //! start request..
-                request(options, function(error: any, response: any, body: any) {
+                request(options, function (error: any, response: any, body: any) {
                     error && _err(NS, '>>>>> requested! err=', error);
                     if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
                     //! detecte trouble.

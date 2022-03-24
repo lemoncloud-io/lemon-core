@@ -94,30 +94,26 @@ describe('express', () => {
         expect2(await request(app).delete('/test/a'), 'status,body,text').toEqual({ status:404, body:{}, text:'404 NOT FOUND - DELETE /test/a' });
         /* eslint-enable prettier/prettier */
         //! echo request context.....
-        expect2(
-            await request(app)
-                .post('/test/a/200')
-                .set('Cookie', 'A=1; B=2')
-                .send({ b: 3 }),
-            'status,body',
-        ).toEqual({
-            status: 200,
-            body: {
-                id: 'a',
-                param: {},
-                body: { b: 3 },
-                context: {
-                    accountId: ACCOUNT_ID,
-                    clientIp: '::ffff:127.0.0.1',
-                    domain: ACCOUNT_ID == 'travis' ? '127.0.0.1' : '127.0.0.1',
-                    identity: {},
-                    requestId: 'express-test-request-id',
-                    source: `api://${ACCOUNT_ID}@lemon-core-dev#${$pack.version}`,
-                    userAgent: 'node-superagent/3.8.3',
-                    cookie: { A: '1', B: '2' },
+        expect2(await request(app).post('/test/a/200').set('Cookie', 'A=1; B=2').send({ b: 3 }), 'status,body').toEqual(
+            {
+                status: 200,
+                body: {
+                    id: 'a',
+                    param: {},
+                    body: { b: 3 },
+                    context: {
+                        accountId: ACCOUNT_ID,
+                        clientIp: '::ffff:127.0.0.1',
+                        domain: ACCOUNT_ID == 'travis' ? '127.0.0.1' : '127.0.0.1',
+                        identity: {},
+                        requestId: 'express-test-request-id',
+                        source: `api://${ACCOUNT_ID}@lemon-core-dev#${$pack.version}`,
+                        userAgent: 'node-superagent/3.8.3',
+                        cookie: { A: '1', B: '2' },
+                    },
                 },
             },
-        });
+        );
         done();
     });
 });

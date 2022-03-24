@@ -81,7 +81,7 @@ export class Utilities {
         if (typeof this._$.environ === 'function') return this._$.environ(name, def_val);
 
         // as default, load from proces.env.
-        let val = (process && process.env[name]) || undefined;
+        const val = (process && process.env[name]) || undefined;
         return val === undefined ? def_val : val;
     }
 
@@ -103,10 +103,10 @@ export class Utilities {
 
         this.log(NS, 'load file =', fname);
         //! prepare promised.
-        let chain = new Promise(function(resolve, reject) {
+        const chain = new Promise(function (resolve, reject) {
             // Get document, or throw exception on error
             try {
-                let doc = yaml.safeLoad(fs.readFileSync(fname, 'utf8'));
+                const doc = yaml.safeLoad(fs.readFileSync(fname, 'utf8'));
                 resolve(doc);
             } catch (e) {
                 reject(e);
@@ -125,7 +125,7 @@ export class Utilities {
         // Get document, or throw exception on error
         try {
             this.log(NS, 'load-sync-file =', fname);
-            let doc = yaml.safeLoad(fs.readFileSync(fname, 'utf8'));
+            const doc = yaml.safeLoad(fs.readFileSync(fname, 'utf8'));
             return doc;
         } catch (e) {
             this.err(NS, `error:load-sync-yaml(${name})=`, e);
@@ -134,7 +134,7 @@ export class Utilities {
     }
 
     public extend(a: any, b: any) {
-        for (var x in b) a[x] = b[x];
+        for (const x in b) a[x] = b[x];
         return a;
     }
 
@@ -283,8 +283,8 @@ export class Utilities {
      * @returns {number}
      */
     public current_time_ms(shift?: number): number {
-        var time_shift = this.N(shift, 0);
-        var ret = new Date().getTime();
+        const time_shift = this.N(shift, 0);
+        let ret = new Date().getTime();
         ret += time_shift;
         return ret;
     }
@@ -314,11 +314,7 @@ export class Utilities {
         if (typeof str == 'object') {
             str = JSON.stringify(str);
         }
-        str = str
-            .replace(/\\/g, '\\\\')
-            .replace(/\$/g, '\\$')
-            .replace(/'/g, "\\'")
-            .replace(/"/g, '\\"');
+        str = str.replace(/\\/g, '\\\\').replace(/\$/g, '\\$').replace(/'/g, "\\'").replace(/"/g, '\\"');
 
         if (urldecode) {
             // url-decode
@@ -420,7 +416,7 @@ export class Utilities {
      * remove internal properties which starts with _ or $
      */
     public cleanup(node: any) {
-        return Object.keys(node).reduce(function(N, key) {
+        return Object.keys(node).reduce(function (N, key) {
             if (key.startsWith('_') || key.startsWith('$')) delete N[key];
             return N;
         }, node);
@@ -442,7 +438,7 @@ export class Utilities {
     }
 
     public copy($N: any) {
-        return Object.keys($N).reduce(function($n: any, key) {
+        return Object.keys($N).reduce(function ($n: any, key) {
             $n[key] = $N[key];
             return $n;
         }, {});
@@ -450,7 +446,7 @@ export class Utilities {
 
     public copy_node(node: any, isClear?: boolean) {
         isClear = isClear === undefined ? false : isClear;
-        return Object.keys(node).reduce(function(N: any, key) {
+        return Object.keys(node).reduce(function (N: any, key) {
             if (key.startsWith('_') || key.startsWith('$')) return N;
             N[key] = isClear ? null : node[key];
             return N;
@@ -496,7 +492,7 @@ export class Utilities {
     protected isEqual(obj1: any, obj2: any) {
         const keys = Object.keys;
         function tagTester(name: string) {
-            return function(obj: any) {
+            return function (obj: any) {
                 return toString.call(obj) === '[object ' + name + ']';
             };
         }
@@ -514,14 +510,14 @@ export class Utilities {
             // `NaN`s are equivalent, but non-reflexive.
             if (a !== a) return b !== b;
             // Exhaust primitive checks
-            let type = typeof a;
+            const type = typeof a;
             if (type !== 'function' && type !== 'object' && typeof b != 'object') return false;
             return deepEq(a, b, aStack, bStack);
         }
         // Internal recursive comparison function for `isEqual`.
         function deepEq(a: any, b: any, aStack: any, bStack: any) {
             // Compare `[[Class]]` names.
-            let className = toString.call(a);
+            const className = toString.call(a);
             if (className !== toString.call(b)) return false;
             switch (className) {
                 // Strings, numbers, regular expressions, dates, and booleans are compared by value.
@@ -544,12 +540,12 @@ export class Utilities {
                     // of `NaN` are not equivalent.
                     return +a === +b;
             }
-            let areArrays = className === '[object Array]';
+            const areArrays = className === '[object Array]';
             if (!areArrays) {
                 if (typeof a != 'object' || typeof b != 'object') return false;
                 // Objects with different constructors are not equivalent, but `Object`s or `Array`s
                 // from different frames are.
-                var aCtor = a.constructor,
+                const aCtor = a.constructor,
                     bCtor = b.constructor;
                 if (
                     aCtor !== bCtor &&
@@ -566,7 +562,7 @@ export class Utilities {
             // It's done here since we only need them for objects and arrays comparison.
             aStack = aStack || [];
             bStack = bStack || [];
-            var length = aStack.length;
+            let length = aStack.length;
             while (length--) {
                 // Linear search. Performance is inversely proportional to the number of
                 // unique nested structures.
@@ -586,8 +582,8 @@ export class Utilities {
                 }
             } else {
                 // Deep compare objects.
-                var _keys = keys(a),
-                    key;
+                const _keys = keys(a);
+                let key;
                 length = _keys.length;
                 // Ensure that both objects contain the same number of properties before comparing deep equality.
                 if (keys(b).length !== length) return false;
@@ -645,7 +641,7 @@ export class Utilities {
          * @param {integer} [seed] optionally pass the hash of the previous chunk
          * @returns {integer | string}
          */
-        const hashFnv32a = function(str: any, asString?: any, seed?: any): string {
+        const hashFnv32a = function (str: any, asString?: any, seed?: any): string {
             /*jshint bitwise:false */
             let i, l;
             let hval = seed === undefined ? 0x811c9dc5 : seed;
@@ -662,7 +658,7 @@ export class Utilities {
 
     //! start promise chain.
     public promise(param: any) {
-        return new Promise(function(resolve) {
+        return new Promise(function (resolve) {
             resolve(param);
         });
     }
@@ -685,10 +681,7 @@ export class Utilities {
      */
     public md5(data: any, digest: 'latin1' | 'hex' | 'base64') {
         digest = digest === undefined ? 'hex' : digest;
-        return crypto
-            .createHash('md5')
-            .update(data)
-            .digest(digest);
+        return crypto.createHash('md5').update(data).digest(digest);
     }
 
     /**
@@ -698,10 +691,7 @@ export class Utilities {
         KEY = KEY || 'XENI';
         encoding = encoding || 'base64';
         algorithm = algorithm || 'sha256';
-        return crypto
-            .createHmac(algorithm, KEY)
-            .update(data)
-            .digest(encoding);
+        return crypto.createHmac(algorithm, KEY).update(data).digest(encoding);
     }
 
     /**
@@ -778,7 +768,7 @@ export class Utilities {
                 const data = dec.substr(MAGIC.length);
                 if (data && !data.startsWith('{') && !data.endsWith('}'))
                     throw new Error('400 INVALID PASSWD - invalid json string!');
-                var $msg = JSON.parse(data) || {};
+                const $msg = JSON.parse(data) || {};
                 return $msg.val;
             };
         })();
@@ -814,14 +804,14 @@ export class Utilities {
             };
             public decrypt = (msg: string): string => {
                 const buffer = Buffer.from(`${msg || ''}`, 'base64');
-                var key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
+                const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
                 const decipher = crypto.createDecipheriv(algorithm, key, iv);
                 const dec = Buffer.concat([decipher.update(buffer), decipher.final()]).toString('utf8');
                 if (!dec.startsWith(MAGIC)) throw new Error(`400 INVALID PASSWD - invalid magic string!`);
                 const data = dec.substr(MAGIC.length);
                 if (data && !data.startsWith('{') && !data.endsWith('}'))
                     throw new Error('400 INVALID PASSWD - invalid json string!');
-                var $msg = JSON.parse(data) || {};
+                const $msg = JSON.parse(data) || {};
                 return $msg.val;
             };
         })();

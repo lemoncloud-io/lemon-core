@@ -74,7 +74,7 @@ function toJsValue(entry: any) {
 function toJsArray(arr: any) {
     const val = new Array(arr.length);
 
-    for (var x = 0; x < arr.length; x++) {
+    for (let x = 0; x < arr.length; x++) {
         val[x] = toJsValue(arr[x]);
     }
 
@@ -95,9 +95,9 @@ function toDDBValue(val: any) {
     }
 
     if (_.isArray(val)) {
-        var result = new Array(val.length);
+        const result = new Array(val.length);
 
-        for (var i = 0; i < result.length; i++) {
+        for (let i = 0; i < result.length; i++) {
             result[i] = toDDBValue(val[i]);
         }
 

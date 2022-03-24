@@ -542,9 +542,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const accountId = `${(context && context.accountId) || ''}`;
 
         //! build http parameter
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         const base: APIGatewayProxyEvent = {} as APIGatewayProxyEvent;
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         const $ctx: APIGatewayEventRequestContext = {} as APIGatewayEventRequestContext;
         const event: APIGatewayProxyEvent = {
             ...base,

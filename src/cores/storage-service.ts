@@ -185,7 +185,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             return N;
         }, {});
         await this.$dynamo.saveItem(id, data); // must be `{}`
-        const item: T = (Object.assign({ [this._idName]: id }, data) as unknown) as T;
+        const item: T = Object.assign({ [this._idName]: id }, data) as unknown as T;
         return item;
     }
 
@@ -308,15 +308,13 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         if (!id.trim()) throw new Error('@id (string) is required!');
         const item = this.buffer[id];
         if (!item) throw new Error(`404 NOT FOUND - ${this.idName}:${id}`);
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         return { ...item, [this.idName]: id } as T;
     }
 
     protected async readSafe(id: string): Promise<T> {
         return this.read(id).catch(e => {
             if (`${e.message || e}`.startsWith('404 NOT FOUND')) {
-                // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
-                const $org: T = ({ [this.idName]: id } as unknown) as T;
+                const $org: T = { [this.idName]: id } as unknown as T;
                 return $org;
             }
             throw e;

@@ -495,7 +495,7 @@ export const $slack = async (
  * @param context   current context
  * @param defEndpoint (optional) the default endpoint.
  */
-export const $event = (context: NextContext, defEndpoint: string ='') => {
+export const $event = (context: NextContext, defEndpoint: string = '') => {
     const $protocol: ProtocolModule = $cores.protocol;
     const endpoint = $U.env('EVENT_RELAY_SNS', defEndpoint);
     if (!endpoint) throw new Error(`env[EVENT_RELAY_SNS] is required - $event()`);
@@ -566,7 +566,10 @@ export function parseRange(exp: string): any {
  * customized of `do_parrallel` for safe error-handling.
  * - use `.error` to report the internal error.
  */
-export const my_parrallel = async <T extends { id?: string; error?: string }, U extends { id?: string; error?: string }>(
+export const my_parrallel = async <
+    T extends { id?: string; error?: string },
+    U extends { id?: string; error?: string },
+>(
     list: T[],
     func: (item: T, index?: number) => Promise<U>,
     size?: number,
@@ -586,7 +589,7 @@ export const my_parrallel = async <T extends { id?: string; error?: string }, U 
         },
         size,
     );
-    return (results as unknown) as U[];
+    return results as unknown as U[];
 };
 
 /**
@@ -595,7 +598,7 @@ export const my_parrallel = async <T extends { id?: string; error?: string }, U 
  *
  * 주의) 내부 error를 throw 하지 않으니, list 를 전부 처리할때까지 안끝남.
  */
- export const my_sequence = <T extends { id?: string; error?: string }, U = T>(
+export const my_sequence = <T extends { id?: string; error?: string }, U = T>(
     list: T[],
     func: (item: T, index?: number) => Promise<U>,
 ) => my_parrallel(list, func, 1);

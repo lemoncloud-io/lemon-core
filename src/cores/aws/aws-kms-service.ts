@@ -87,9 +87,7 @@ export class AWSKMSService implements CoreKmsService {
             KeyId,
             Plaintext: message,
         };
-        const result = await instance()
-            .encrypt(params)
-            .promise();
+        const result = await instance().encrypt(params).promise();
         _log(NS, '> result =', result);
         const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
         _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
@@ -111,9 +109,7 @@ export class AWSKMSService implements CoreKmsService {
                 : encryptedSecret;
         //! api param.
         const params = { CiphertextBlob };
-        const data: any = await instance()
-            .decrypt(params)
-            .promise();
+        const data: any = await instance().decrypt(params).promise();
         // _log(NS, '> data.type =', typeof data);
         return data && data.Plaintext ? data.Plaintext.toString() : '';
     };

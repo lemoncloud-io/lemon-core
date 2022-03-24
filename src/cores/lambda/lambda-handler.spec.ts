@@ -102,7 +102,7 @@ describe('LambdaHandler', () => {
 
         interface InnerA {
             hello: Handler;
-        };
+        }
         const $a = new class implements InnerA {
             private name: string = 'inner-a';
             public hello: Handler = async (event, context) => {

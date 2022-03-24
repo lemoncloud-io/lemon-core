@@ -28,7 +28,7 @@ const NS = $U.NS('MMGR', 'cyan'); // default namespace name
 export abstract class AbstractManager<
     T extends CoreModel<ModelType>,
     S extends StorageMakeable<T, ModelType>,
-    ModelType extends string
+    ModelType extends string,
 > extends GeneralModelFilter<T, ModelType> {
     public readonly NS: string;
     public readonly parent: S;

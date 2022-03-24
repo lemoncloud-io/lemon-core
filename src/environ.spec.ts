@@ -10,7 +10,7 @@
 import { expect2 } from './common/test-helper';
 import loadEnviron from './environ';
 
-const safe = (f: () => {}) => {
+const safe = (f: () => unknown) => {
     try {
         return f();
     } catch (e) {

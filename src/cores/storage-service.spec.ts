@@ -130,7 +130,6 @@ describe('StorageService', () => {
         //! ignore if no profile.
         if (!PROFILE) return done(); //! ignore if no profile.
 
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         expect(await $dynamo.save('A00000', { type:'account', ha:'ho' } as AccountModel)).toEqual({ no:'A00000', type:'account' });//! init with property filtering.
         expect(await $dynamo.update('A00000', { stereo:'lemon'})).toEqual({ no:'A00000', stereo:'lemon' });                        //! it will have ONLY update-set.
         expect(await $dynamo.increment('A00000', { slot:1})).toEqual({ no:'A00000', slot:1 });                                     //! auto update for un-defined attribute.
