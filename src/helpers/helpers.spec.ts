@@ -422,7 +422,7 @@ describe('utils', () => {
         let previousActionTime = 0;
         // compare action time of each task by order sequence
         results.forEach(result => {
-            expect2(() => result.actionTime).toBeGreaterThan(previousActionTime + actionDelay);
+            expect2(() => result.actionTime).toBeGreaterThan(previousActionTime + actionDelay - 0.1);
             previousActionTime = result.actionTime;
         });
         done();
