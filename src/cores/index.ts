@@ -27,6 +27,7 @@ export * from './elastic6-query-service';
 export * from './storage-service';
 export * from './proxy-storage-service';
 export * from './cache-service';
+export * from './hangul-service';
 export * from './model-manager';
 
 //! import default with named.

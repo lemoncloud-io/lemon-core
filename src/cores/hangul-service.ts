@@ -1,27 +1,35 @@
-/** ****************************************************************************************************************
- *  Service Core
- ** ****************************************************************************************************************/
+/**
+ * `hangul-service.ts`
+ * - common service for handling hangul
+ *
+ *
+ * @author      Tim Hong <tim@lemoncloud.io>
+ * @date        2020-07-27 initial version
+ *
+ * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
+ */
 /**
  * class `HangulService`
+ * - transform hangul to qwerty type.
  */
 export class HangulService {
     /* eslint-disable prettier/prettier */
     // Hangul Jamo
-    //  1.Initial consonants (초성)
+    /** 1.Initial consonants (초성) */
     public static readonly CHOSEONG = [
         'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
     ];
-    //  2. Medial vowels (중성)
+    /** 2. Medial vowels (중성) */
     public static readonly JUNGSEONG = [
         'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ',
     ];
-    //  3. Final consonants (종성)
+    /** 3. Final consonants (종성) */
     public static readonly JONGSEONG = [
         'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ',
         'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
     ];
 
-    // Hangul Composite Jamo(겹자모) -> Hangul Basic Jamo(기본 자모)
+    /** Hangul Composite Jamo(겹자모) -> Hangul Basic Jamo(기본 자모) */
     protected static readonly JamoDecomposeMap: Map<string, string> = new Map([
         // 쌍자음
         ['ㄲ', 'ㄱㄱ'], ['ㄸ', 'ㄷㄷ'], ['ㅃ', 'ㅂㅂ'], ['ㅆ', 'ㅅㅅ'], ['ㅉ', 'ㅈㅈ'],
@@ -34,7 +42,8 @@ export class HangulService {
         ['ㅘ', 'ㅗㅏ'], ['ㅙ', 'ㅗㅏㅣ'], ['ㅚ', 'ㅗㅣ'], ['ㅝ', 'ㅜㅓ'], ['ㅞ', 'ㅜㅓㅣ'], ['ㅟ', 'ㅜㅣ'],
         ['ㅢ', 'ㅡㅣ'],
     ]);
-    // Hangul Jamo -> Alphabet (in QWERTY 2벌식)
+
+    /** Hangul Jamo -> Alphabet (in QWERTY 2벌식) */
     protected static readonly QwertyMap: Map<string, string> = new Map([
         // 자음
         ['ㄱ', 'r'], ['ㄴ', 's'], ['ㄷ', 'e'], ['ㄹ', 'f'], ['ㅁ', 'a'], ['ㅂ', 'q'],
@@ -62,6 +71,7 @@ export class HangulService {
 
     /**
      * Identify whether given text is Hangul or not
+     *
      * @param text      input text
      * @param partial   (optional) if set true, result is true if there is at least one Korean letter in the text (default: false)
      */
