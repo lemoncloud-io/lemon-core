@@ -578,4 +578,15 @@ describe('CacheService - Redis', () => {
         await cache.close();
         done();
     });
+
+    it('publish', async done => {
+        if (!(await isLocalCacheAvailable('redis'))) return done();
+        const { cache } = instance('redis', 'TC03');
+
+        // setup test
+        await cache.publish('test-ch', 'hihihi');
+
+        await cache.close();
+        done();
+    });
 });

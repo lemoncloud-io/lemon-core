@@ -423,6 +423,22 @@ export class CacheService {
     }
 
     /**
+     * (optional) Send(publish) message to channel (currently support only redis)
+     * @param channel - channel name or channel pattern
+     * @param message - message to publish to channel
+     * @param options - Ref PublishOptions
+     */
+    public async publish(channel: string, message: any, options?: PublishOptions): Promise<unknown> {
+        const hasPublishFunc = !!this.backend.publish;
+        if (!hasPublishFunc) {
+            throw new Error(`(${this.backend.name}) currently does not support publish() method`);
+        }
+
+        const result = await this.backend.publish(channel, message, options);
+        return result;
+    }
+
+    /**
      * Protected constructor -> use CacheService.create()
      *
      * @param backend   cache backend object
@@ -539,6 +555,41 @@ interface ItemEntry<T = any> {
 }
 
 /**
+ * publish options
+ */
+interface PublishOptions {}
+
+/**
+ * subscribe options
+ */
+interface SubscribeOptions {
+    /**
+     * if true, channel parameter is pattern (eg. news.*), false is channel is raw subscription channel (eg. news.today)
+     */
+    isPattern: boolean;
+}
+
+/**
+ * If cache supports Publish-Subscribe pattern, implments this interface
+ */
+interface PubSub {
+    /**
+     * (optional Pub/Sub) Send(publish) message to channel (currently support only redis)
+     * @param channel - channel name
+     * @param message - message to publish to channel
+     * @param options - Ref PublishOptions
+     */
+    publish: (channel: string, message: any, options?: PublishOptions) => Promise<unknown>;
+    /**
+     * (optional Pub/Sub) listen(subscribe) on specific channel (currently support only redis)
+     * @param channel - channel name or channel pattern
+     * @param listener - called callback function when receive published message
+     * @param options - Ref SubscribeOptions
+     */
+    subscribe: (channel: string, listener: (...args: any[]) => any, options?: SubscribeOptions) => Promise<unknown>;
+}
+
+/**
  * interface `CacheBackend`
  * @internal
  */
@@ -649,6 +700,21 @@ interface CacheBackend {
      *          - undefined if the key does not exist
      */
     ttl(key: string): Promise<number | undefined>;
+
+    /**
+     * (optional Pub/Sub) Send(publish) message to channel on cache service (currently support only redis)
+     * @param channel - channel name
+     * @param message - message to publish to channel
+     * @param options - Ref PublishOptions
+     */
+    publish?: (channel: string, message: any, options?: PublishOptions) => Promise<unknown>;
+    /**
+     * (optional Pub/Sub) listen(subscribe) on specific channel on cache service (currently support only redis)
+     * @param channel - channel name or channel pattern
+     * @param listener - called callback function when receive published message
+     * @param options - Ref SubscribeOptions
+     */
+    subscribe?: (channel: string, listener: (...args: any[]) => any, options?: SubscribeOptions) => Promise<unknown>;
 
     /**
      * Close connection(s) to the cache server
@@ -998,12 +1064,17 @@ class MemcachedBackend implements CacheBackend {
  * class `RedisBackend`
  * @internal
  */
-class RedisBackend implements CacheBackend {
+class RedisBackend implements CacheBackend, PubSub {
     /**
      * ioredis client
      * @private
      */
     private readonly redis: Redis;
+
+    /**
+     * ioredis client to subscribe channel (to use publish and subscribe both, create Redis connection)
+     */
+    private readonly subModeRedis: Redis;
 
     /**
      * Default TTL as number in seconds
@@ -1140,6 +1211,36 @@ class RedisBackend implements CacheBackend {
         if (ms === -1) return 0;
     }
 
+    /**
+     * CacheBackend.publish implementation
+     */
+    public async publish(
+        channel: string,
+        message: string | Record<string, unknown>,
+        options?: PublishOptions,
+    ): Promise<void> {
+        let msg: string;
+        switch (typeof message) {
+            case 'object':
+                msg = JSON.stringify(message);
+                break;
+            case 'string':
+                msg = message;
+                break;
+            default:
+                throw new Error(`@message is not supported type(${typeof message})`);
+        }
+        this.redis.publish(channel, msg);
+    }
+
+    /**
+     * CacheBackend.publish implementation
+     */
+    public async subscribe(
+        channel: string,
+        listener: (...args: any[]) => any,
+        options?: SubscribeOptions,
+    ): Promise<void> {}
     /**
      * CacheBackend.close implementation
      */
