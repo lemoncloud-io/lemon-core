@@ -1,0 +1,9 @@
+version: "3.7"
+services:
+  redis: # 서비스 명
+    image: redis:6.2 # 사용할 이미지
+    container_name: redis62 # 컨테이너 이름 설정
+    ports:
+      - "6379:6379" # 접근 포트 설정 (컨테이너 외부:컨테이너 내부)  <- 컨테이너 내부는 무조건 3306
+    command: # 명령어 실행
+      - --port 6379
