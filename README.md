@@ -85,6 +85,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.1.1     | support `ManagerProxy`, `AbstractProxy` and `$ES6`.
 | 3.1.0     | upgrade `typescript^4.6.2`, and optimized.
 | 3.0.2     | support `helpers` like `$T`.
 | 3.0.0     | improve search-client with `@elastic/elasticsearch@7.12` to support AWS `OpenSearch 1.1` (compartible with `ES6.2`).
