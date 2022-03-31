@@ -1,0 +1,13 @@
+# dummy data for ticketing internal test!
+data:
+  - _id: TT:test:A00000
+    id: A00000
+    type: test
+
+  - _id: TT:test:A00001
+    id: A00001
+    type: test
+    name: Hong
+    slot: 0
+    last: 0
+    balance: 1200
