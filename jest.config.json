@@ -4,7 +4,8 @@
     "collectCoverage": true,
     "globals": {
         "ts-jest": {
-            "tsconfig": "tsconfig.json"
+            "compiler": "ttypescript",
+            "tsConfig": "tsconfig.json"
         }
     },
     "testRunner": "jest-jasmine2",

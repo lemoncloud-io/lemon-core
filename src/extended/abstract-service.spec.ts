@@ -29,7 +29,7 @@ export interface TestModel extends Model {
     Model?: Model;
     $model?: Model;
 }
-const TEST_FIELDS = filterFields(typeof keys === 'function' ? keys<TestModel>() : []);
+const TEST_FIELDS = filterFields(keys<TestModel>());
 
 /**
  * class: `BackendService`
@@ -95,7 +95,7 @@ describe('core-service', () => {
         // expect2(() => _F(1.555555)).toEqual(1.556);
 
         //! test filterFields()
-        const isKeys = typeof keys === 'function';
+        const isKeys = true;
         if (isKeys) {
             expect2(() => filterFields(TEST_FIELDS).join(',')).toEqual(
                 'name,test,A,AB,A_B,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
