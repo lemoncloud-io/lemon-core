@@ -806,7 +806,7 @@ export class Elastic6Synchronizer {
  * class `ElasticInstance`
  * - to manipulate the shared Elasticsearch resources.
  */
-export class ElasticInstance {
+export class Elastic6Instance {
     /**
      * Elasticsearch client
      */
@@ -999,7 +999,7 @@ export function sourceToItem<T>(_source: T, idName: string = '$id'): T {
  * const `$ES6`
  * - default instance as a singleton by env configuration.
  */
-export const $ES6 = new (class extends ElasticInstance {
+export const $ES6 = new (class extends Elastic6Instance {
     public constructor() {
         // 0. load from env configuration.
         const endpoint = $U.env('ES6_ENDPOINT', '');
