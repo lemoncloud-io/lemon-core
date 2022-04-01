@@ -1,6 +1,6 @@
 /**
- * `backend-service.spec.ts`
- * - test for `backend-service`
+ * `abstract-service.spec.ts`
+ * - test for `abstract-service`
  *
  *
  * @author      Steve <steve@lemoncloud.io>
@@ -80,7 +80,7 @@ export const instance = (type: string = 'dummy') => {
 };
 
 //! main test body.
-describe('core-service', () => {
+describe('abstract-service', () => {
     const PROFILE = loadProfile(process); // override process.env.
     PROFILE && console.info('! PROFILE =', PROFILE);
 
@@ -88,11 +88,6 @@ describe('core-service', () => {
     it('should pass basic function', async done => {
         const { service } = instance();
         expect2(() => service.hello()).toEqual('backend-service:TT/dummy-data.yml');
-
-        //! test float number conversion.
-        // expect2(() => _FQ(1.555555)).toEqual(1.556);
-        // expect2(() => _F3(1.555555)).toEqual(1.556);
-        // expect2(() => _F(1.555555)).toEqual(1.556);
 
         //! test filterFields()
         const isKeys = true;

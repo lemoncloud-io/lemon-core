@@ -71,6 +71,8 @@ describe('utils', () => {
         expect2(() => $T.FF('1.234')).toEqual([1.234]);
         expect2(() => $T.FF('2,5,39,40,0')).toEqual([2,5,39,40,0]);
         expect2(() => $T.FF([35,'49.9', '101', 0, 1])).toEqual([35, 49.9, 101, 0, 1]);
+        expect2(() => $T.F3(1.555555)).toEqual(1.556);
+
         expect2(() => $T.B('0')).toEqual(0);
         expect2(() => $T.B('1')).toEqual(1);
         expect2(() => $T.B('2')).toEqual(1);

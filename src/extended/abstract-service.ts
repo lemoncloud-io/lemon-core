@@ -1,5 +1,5 @@
 /**
- * `backend-service.ts`
+ * `abstract-service.ts`
  * - common service design pattern to build micro-service backend.
  *
  * @author      Tim Hong <tim@lemoncloud.io>
@@ -41,10 +41,6 @@ import { $protocol, $slack, $T, my_parrallel } from '../helpers';
 import elasticsearch from '@elastic/elasticsearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
 
-// export const _FQ = (n: number, q = 1000) => (1.0 * Math.round(n * q)) / q;
-// export const _F3 = (n: number) => Number((n + 0.00001).toFixed(3)); // 반올림을 위해서...
-// export const _F = (n: number, q = 1000) => (q === 1000 ? _F3(n) : _FQ(n, q));
-
 /**
  * authentication helper - get identity-id from context
  * @param context the current request context.
@@ -67,11 +63,6 @@ export const filterFields = (fields: string[], base: string[] = []) =>
             },
             [...base],
         );
-
-// /**
-//  * re-export
-//  */
-// export { DynamoStreamEvent };
 
 /**
  * interface `ModelSynchronizer`
