@@ -11,7 +11,9 @@ import { promisify } from 'util';
 import NodeCache from 'node-cache';
 import Memcached from 'memcached';
 import IORedis, { Redis } from 'ioredis';
+
 import { $U, _log, _inf } from '../engine';
+import { SimpleRouter } from '../helpers';
 
 // Log namespace
 const NS = $U.NS('CCHS', 'green');
@@ -39,6 +41,10 @@ export interface CacheOptions {
      * (optional) default timeout of cache entries. 0 for unlimited (default: 1-day)
      */
     defTimeout?: number;
+    /**
+     * (optional) use subscription(in Pub/Sub). currently support only 'redis' type. (default: false)
+     */
+    useSubscription?: boolean;
 }
 
 /**
@@ -147,6 +153,7 @@ export class CacheService {
             options?.defTimeout,
             $U.N($U.env(CacheService.ENV_CACHE_DEFAULT_TIMEOUT), CacheService.DEF_CACHE_DEFAULT_TIMEOUT),
         );
+        const useSubscription = options?.useSubscription || false; // currently only support for 'redis'
 
         _log(NS, `constructing [${type}] cache ...`);
         _log(NS, ` > endpoint =`, endpoint);
@@ -159,7 +166,7 @@ export class CacheService {
                 backend = new MemcachedBackend(endpoint, defTimeout);
                 break;
             case 'redis':
-                backend = new RedisBackend(endpoint, defTimeout);
+                backend = new RedisBackend(endpoint, defTimeout, { useSubscription });
                 break;
             default:
                 throw new Error(`@type [${type}] is invalid.`);
@@ -434,8 +441,28 @@ export class CacheService {
             throw new Error(`(${this.backend.name}) currently does not support publish() method`);
         }
 
-        const result = await this.backend.publish(channel, message, options);
-        return result;
+        const publicationResult = await this.backend.publish(channel, message, options);
+        return publicationResult;
+    }
+
+    /**
+     * (optional Pub/Sub) listen(subscribe) on specific channel (currently support only redis)
+     * @param channel - channel name or channel pattern
+     * @param listener - called callback function when receive published message
+     * @param options - Ref SubscribeOptions
+     */
+    public async subscribe(
+        channel: string,
+        listener: (...args: any[]) => void,
+        options?: SubscribeOptions,
+    ): Promise<unknown> {
+        const hasSubscribeFunc = !!this.backend.subscribe;
+        if (!hasSubscribeFunc) {
+            throw new Error(`(${this.backend.name}) currently does not support subscribe() method`);
+        }
+
+        const subscriptionResult = await this.backend.subscribe(channel, listener, options);
+        return subscriptionResult;
     }
 
     /**
@@ -586,7 +613,7 @@ interface PubSub {
      * @param listener - called callback function when receive published message
      * @param options - Ref SubscribeOptions
      */
-    subscribe: (channel: string, listener: (...args: any[]) => any, options?: SubscribeOptions) => Promise<unknown>;
+    subscribe: (channel: string, listener: (...args: any[]) => void, options?: SubscribeOptions) => Promise<unknown>;
 }
 
 /**
@@ -708,13 +735,14 @@ interface CacheBackend {
      * @param options - Ref PublishOptions
      */
     publish?: (channel: string, message: any, options?: PublishOptions) => Promise<unknown>;
+
     /**
      * (optional Pub/Sub) listen(subscribe) on specific channel on cache service (currently support only redis)
      * @param channel - channel name or channel pattern
      * @param listener - called callback function when receive published message
      * @param options - Ref SubscribeOptions
      */
-    subscribe?: (channel: string, listener: (...args: any[]) => any, options?: SubscribeOptions) => Promise<unknown>;
+    subscribe?: (channel: string, listener: (...args: any[]) => void, options?: SubscribeOptions) => Promise<unknown>;
 
     /**
      * Close connection(s) to the cache server
@@ -1061,20 +1089,42 @@ class MemcachedBackend implements CacheBackend {
 }
 
 /**
+ * RedisBackend constructor options
+ */
+interface RedisBackendOptions {
+    /**
+     * (optional) use subscription(in Pub/Sub). currently support only 'redis' type. (default: false)
+     */
+    useSubscription?: boolean;
+}
+/**
  * class `RedisBackend`
  * @internal
  */
 class RedisBackend implements CacheBackend, PubSub {
     /**
-     * ioredis client
+     * ioredis client (use this for CRUD and publish)
      * @private
      */
     private readonly redis: Redis;
 
     /**
+     * whether to use a subscription feature(Pub/Sub) or not
+     * @private
+     */
+    private readonly useSubscription: boolean;
+
+    /**
      * ioredis client to subscribe channel (to use publish and subscribe both, create Redis connection)
+     * @private
      */
     private readonly subModeRedis: Redis;
+
+    /**
+     * using routing subscription message by channel
+     * @private
+     */
+    private readonly subscriptionRouter: SimpleRouter;
 
     /**
      * Default TTL as number in seconds
@@ -1090,9 +1140,28 @@ class RedisBackend implements CacheBackend, PubSub {
     /**
      * Public constructor
      */
-    public constructor(endpoint?: string, defTTL: number = 0) {
-        this.redis = new IORedis(endpoint || 'localhost:6379');
+    public constructor(endpoint?: string, defTTL: number = 0, options?: RedisBackendOptions) {
+        this.useSubscription = options?.useSubscription || false;
+        const redisEndpoint = endpoint || 'localhost:6379';
+        this.redis = new IORedis(redisEndpoint);
         this.defTTL = defTTL;
+
+        // for Subscription
+        if (this.useSubscription) {
+            this.subModeRedis = new IORedis(redisEndpoint); // for only subscription mode redis connection
+            this.readyListenSubscription(this.subModeRedis);
+            this.subscriptionRouter = new SimpleRouter({ allowMultipleRouter: true });
+        }
+    }
+
+    /**
+     * Setup listening subscription message for routing by channel
+     * @param subscriptionRedis - Redis instance to using as subscription mode
+     */
+    protected readyListenSubscription(subscriptionRedis: Redis) {
+        subscriptionRedis.on('message', (channel, message) => {
+            this.subscriptionRouter.route(channel, channel, message);
+        });
     }
 
     /**
@@ -1234,17 +1303,39 @@ class RedisBackend implements CacheBackend, PubSub {
     }
 
     /**
-     * CacheBackend.publish implementation
+     * CacheBackend.subscribe implementation
+     * @returns - total number of channels subscribed
      */
     public async subscribe(
         channel: string,
-        listener: (...args: any[]) => any,
+        listener: (...args: any[]) => void,
         options?: SubscribeOptions,
-    ): Promise<void> {}
+    ): Promise<number> {
+        return new Promise((resolve, reject) => {
+            if (!this.useSubscription) {
+                reject('Not allow subscription mode. you should set useSubscription: true in options');
+            }
+            this.subModeRedis.subscribe(channel, (err, count) => {
+                if (err) {
+                    reject(new Error(`Failed to subscribe: ${err.message}`));
+                }
+
+                // register listener to router for channel-routing
+                this.subscriptionRouter.add(channel, listener);
+                resolve(count);
+            });
+        });
+    }
+
     /**
      * CacheBackend.close implementation
      */
     public async close(): Promise<void> {
-        await this.redis.quit();
+        const quitAwaitArray = [this.redis.quit()];
+        if (this.useSubscription) {
+            quitAwaitArray.push(this.subModeRedis.quit());
+        }
+
+        await Promise.all(quitAwaitArray);
     }
 }

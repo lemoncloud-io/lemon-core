@@ -11,11 +11,23 @@ import net from 'net';
 import { expect2, GETERR, _it } from '..';
 import { CacheService, DummyCacheService, sleep, toTTL, fromTTL } from './cache-service';
 
-export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'cache-service-test') => {
+const wait = async (timeout: number) =>
+    new Promise((resolve, reject) => {
+        setTimeout(() => {
+            resolve(timeout);
+        }, timeout);
+    });
+
+export const instance = (
+    type: 'dummy' | 'memcached' | 'redis',
+    ns: string = 'cache-service-test',
+    otherOptions?: { useSubscription: boolean },
+) => {
+    const customOptions = otherOptions || {};
     if (type === 'dummy') {
-        return { cache: DummyCacheService.create({ ns, defTimeout: 0 }) };
+        return { cache: DummyCacheService.create({ ns, defTimeout: 0, ...customOptions }) };
     } else {
-        return { cache: CacheService.create({ type, ns, defTimeout: 0 }) }; // use local cache server
+        return { cache: CacheService.create({ type, ns, defTimeout: 0, ...customOptions }) }; // use local cache server
     }
 };
 
@@ -579,12 +591,41 @@ describe('CacheService - Redis', () => {
         done();
     });
 
-    it('publish', async done => {
+    it('publish/subscribe', async done => {
         if (!(await isLocalCacheAvailable('redis'))) return done();
-        const { cache } = instance('redis', 'TC03');
+        const { cache } = instance('redis', 'TC03', { useSubscription: true });
 
-        // setup test
+        // subscribe one listener
+        const listener1 = jest.fn();
+        const otherChannelListener = jest.fn();
+        expect2(await cache.subscribe('test-ch', listener1)).toEqual(1); // count: 'test-ch'
+        expect2(await cache.subscribe('other-ch', otherChannelListener)).toEqual(2); // count: 'test-ch', 'other-ch'
+        expect2(listener1.mock.calls.length).toEqual(0);
+
+        // publish test
         await cache.publish('test-ch', 'hihihi');
+
+        // check if subscribe listener is called
+        await wait(1000); // wait seconds, because pub/sub is async
+        expect2(listener1.mock.calls.length).toEqual(1); // listener is called once (only 'test-ch' channel)
+        expect2(listener1.mock.calls[0]).toEqual(['test-ch', 'hihihi']);
+        expect2(otherChannelListener.mock.calls.length).toEqual(0);
+
+        // subscribe second listener
+        // add listener2 one more on 'test-ch' channel
+        const listener2 = jest.fn();
+        expect2(await cache.subscribe('test-ch', listener2)).toEqual(2); // count: 'test-ch', 'other-ch'
+
+        // publish again
+        await cache.publish('test-ch', 'hihihi2');
+
+        // check if subscribe listener is called
+        await wait(1000); // wait seconds, because pub/sub is async
+        expect2(listener1.mock.calls.length).toEqual(2);
+        expect2(listener1.mock.calls[1]).toEqual(['test-ch', 'hihihi2']);
+        expect2(listener2.mock.calls.length).toEqual(1);
+        expect2(listener2.mock.calls[0]).toEqual(['test-ch', 'hihihi2']);
+        expect2(otherChannelListener.mock.calls.length).toEqual(0);
 
         await cache.close();
         done();

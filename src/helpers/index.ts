@@ -8,3 +8,4 @@
  * @copyright (C) lemoncloud.io 2022 - All Rights Reserved.
  */
 export * from './helpers';
+export { SimpleRouter } from './simple-router';
