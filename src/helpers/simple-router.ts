@@ -19,7 +19,10 @@ type RoutingFunc = (...args: any[]) => any;
  * SimpleRouter constructor options
  */
 interface SimpleRouterOptions {
-    allowMultipleRouter: boolean; // allow multiple routing functions on one path(routing key)
+    /**
+     * allow multiple routing functions on one path(routing key)
+     */
+    allowMultipleRouter: boolean;
 }
 
 /**
@@ -27,10 +30,20 @@ interface SimpleRouterOptions {
  * @class
  */
 export class SimpleRouter {
+    /**
+     * for saving router key(routing path) with value(routing function)
+     */
     protected readonly routerMap: Map<string, RoutingFunc[]>;
 
+    /**
+     * if true, allow adding multiple routing functions on one path(routing key)
+     */
     public allowMultipleRouter: boolean;
 
+    /**
+     * SimpleRouter class constructor
+     * @param options - Ref SimpleRouterOptions
+     */
     public constructor(options?: SimpleRouterOptions) {
         const defaultOptions: SimpleRouterOptions = {
             allowMultipleRouter: false,
@@ -81,10 +94,10 @@ export class SimpleRouter {
     }
 
     /**
-     * run routing function with parameter(params) in matched path
+     * run routing functions with parameter(params) in matched path
      * @param path - routing path
-     * @param params - parameters to hand-off to routing function
-     * @returns - results of all routing function in matched path
+     * @param params - parameters to hand-off to routing functions
+     * @returns - results of all routing functions in matched path
      */
     public async route(path: string, ...params: any[]) {
         const routingFuncs = this.get(path);

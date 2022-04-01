@@ -110,6 +110,8 @@ describe(`class SimpleRouter`, () => {
         };
         router.add('/one', asyncFunc);
         router.add('/one', errorFunc);
+
+        // run route()
         expect2(await router.route('/one', 2020)).toEqual(['2020:ok', '2020-async:ok', err]);
         expect2(err.message).toEqual('2020:err');
 
