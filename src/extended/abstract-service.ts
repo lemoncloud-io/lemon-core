@@ -552,7 +552,9 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
     /**
      * constructor of proxy.
-     * @param service
+     * @param service user service instance
+     * @param parrallel parrallel count (default 2)
+     * @param cacheScope prefix of cache-key (like `lemon:SS:` or `lemon:SS:user`)
      */
     public constructor(context: NextContext, service: T, parrallel = 2, cacheScope?: string) {
         this.context = context;

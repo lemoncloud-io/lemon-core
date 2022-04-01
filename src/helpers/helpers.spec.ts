@@ -48,6 +48,17 @@ describe('utils', () => {
     const PROFILE = loadProfile(process); // override process.env.
     PROFILE && console.info(`! PROFILE =`, PROFILE);
 
+    it('should pass basic code pattern.', () => {
+        const params = [undefined, null, 0, 1, '', false, {}, [], '#', ' ', '1'];
+        expect2(() => params.map(v => v ?? 'N')).toEqual(['N', 'N', 0, 1, '', false, {}, [], '#', ' ', '1']);
+        expect2(() => params.map(v => v || 'N')).toEqual(['N', 'N', 'N', 1, 'N', 'N', {}, [], '#', ' ', '1']);
+
+        /* eslint-disable prettier/prettier */
+        expect2(() => params.map(v => $T.S(v))).toEqual([ '', '', '0', '1', '', 'false', '[object Object]', '', '#', '', '1']);
+        expect2(() => params.map(v => $T.N(v))).toEqual([ 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1]);
+        /* eslint-enable prettier/prettier */
+    });
+
     //! test transformer
     it('should pass helper of $T (transformer).', async () => {
         /* eslint-disable prettier/prettier */

@@ -4,6 +4,8 @@
  *
  * @author      Tim Hong <tim@lemoncloud.io>
  * @date        2020-12-02 initial version
+ * @author      Steve <steve@lemoncloud.io>
+ * @date        2022-04-01 optimized for `AbstractProxy`
  *
  * @copyright   (C) lemoncloud.io 2020 - All Rights Reserved.
  */
@@ -12,13 +14,8 @@ import NodeCache from 'node-cache';
 import Memcached from 'memcached';
 import IORedis, { Redis } from 'ioredis';
 import { $U, _log, _inf } from '../engine';
+const NS = $U.NS('CCHS', 'green'); // NAMESPACE TO BE PRINTED.
 
-// Log namespace
-const NS = $U.NS('CCHS', 'green');
-
-/** ********************************************************************************************************************
- *  Exported Types
- ** ********************************************************************************************************************/
 /**
  * type `CacheOptions`
  */
@@ -47,11 +44,6 @@ export interface CacheOptions {
 export type CacheKey = string | number;
 
 /**
- * type `CacheValue`
- */
-export type CacheValue = any;
-
-/**
  * type: `Timeout`
  */
 export interface Timeout {
@@ -70,7 +62,7 @@ export interface Timeout {
 /**
  * type `CacheEntry`: parameter type of 'setMulti' operation
  */
-export interface CacheEntry {
+export interface CacheEntry<CacheValue> {
     /**
      * key
      */
@@ -88,15 +80,46 @@ export interface CacheEntry {
 /**
  * type `KeyValueMap`: result type of 'getMulti' operation
  */
-export type KeyValueMap = Record<CacheKey, CacheValue>;
+export type KeyValueMap<CacheValue> = Record<CacheKey, CacheValue>;
 
-/** ********************************************************************************************************************
- *  Exported Class
- ** ********************************************************************************************************************/
+/**
+ * class: `CacheKeyMakable`
+ * - to provide the custom key-string of cache.
+ * - the global pkey would be like `<project>:<model.ns>:<model.type>::<cache-key>` (ex: `lemon:SS:item::100001`)
+ */
+export interface CacheKeyMakable {
+    /**
+     * make the global pkey
+     * - default must be like `${ns}${delim}${key}`
+     */
+    (ns: string, delim: string, key: CacheKey): string;
+}
+
+/**
+ * class: `CacheSupportable`
+ * - support basic cache operation(read/write/timeout).
+ */
+export interface CacheSupportable<CacheValue = any> {
+    /**
+     * save into cache w/ timeout(sec)
+     */
+    set(key: CacheKey, val: CacheValue, timeout?: number | Timeout): Promise<boolean>;
+    /**
+     * read from cache
+     */
+    get(key: CacheKey): Promise<CacheValue>;
+    /**
+     * increment number by `inc`
+     * - should be atomic operation w/ thread safe.
+     */
+    inc(key: CacheKey, inc: number): Promise<number>;
+}
+
 /**
  * class `CacheService`
+ * - common service to provide cache
  */
-export class CacheService {
+export class CacheService<CacheValue = any> implements CacheSupportable<CacheValue> {
     /**
      * Environment variable name for cache server endpoint
      * @static
@@ -128,6 +151,11 @@ export class CacheService {
     public readonly ns: string;
 
     /**
+     * Namespace of cache key
+     */
+    public readonly maker: CacheKeyMakable;
+
+    /**
      * Cache backend instance
      * @private
      */
@@ -137,9 +165,10 @@ export class CacheService {
      * Factory method
      *
      * @param options   (optional) cache options
+     * @param maker     (optional) custome cache-pkey generator.
      * @static
      */
-    public static create(options?: CacheOptions): CacheService {
+    public static create(options?: CacheOptions, maker?: CacheKeyMakable): CacheService {
         const type = options?.type || 'redis';
         const endpoint = options?.endpoint || $U.env(CacheService.ENV_CACHE_ENDPOINT);
         const ns = options?.ns || '';
@@ -162,10 +191,10 @@ export class CacheService {
                 backend = new RedisBackend(endpoint, defTimeout);
                 break;
             default:
-                throw new Error(`@type [${type}] is invalid.`);
+                throw new Error(`@type [${type}] is invalid - CacheService.create()`);
         }
 
-        return new CacheService(backend, ns);
+        return new CacheService(backend, { ns, maker });
     }
 
     /**
@@ -223,7 +252,7 @@ export class CacheService {
         if (val === undefined) throw new Error(`@val (CacheValue) cannot be undefined.`);
         const namespacedKey = this.asNamespacedKey(key);
         const ttl = timeout && toTTL(timeout);
-        const ret = await this.backend.set(namespacedKey, val, ttl);
+        const ret = await this.backend.set<CacheValue>(namespacedKey, val, ttl);
         _log(NS, `.set ${namespacedKey} ${val} / ret =`, typeof ret === 'string' ? ret : $U.json(ret));
         return ret;
     }
@@ -234,7 +263,7 @@ export class CacheService {
      * @param entries
      * @return  true on success
      */
-    public async setMulti(entries: CacheEntry[]): Promise<boolean> {
+    public async setMulti(entries: CacheEntry<CacheValue>[]): Promise<boolean> {
         const param = entries.map(({ key, val, timeout }, idx) => {
             if (!key) throw new Error(`.key (CacheKey) is required (at @entries[${idx}]).`);
             if (val === undefined) throw new Error(`.val (CacheValue) cannot be undefined (at @entries[${idx}]).`);
@@ -244,7 +273,7 @@ export class CacheService {
                 ttl: timeout && toTTL(timeout),
             };
         });
-        const ret = await this.backend.mset(param);
+        const ret = await this.backend.mset<CacheValue>(param);
         _log(NS, `.setMulti ${entries.map(entry => entry.key)} / ret =`, typeof ret === 'string' ? ret : $U.json(ret));
         return ret;
     }
@@ -257,7 +286,7 @@ export class CacheService {
     public async get(key: CacheKey): Promise<CacheValue | undefined> {
         if (!key) throw new Error(`@key (CacheKey) is required.`);
         const namespacedKey = this.asNamespacedKey(key);
-        const ret = await this.backend.get(namespacedKey);
+        const ret = await this.backend.get<CacheValue>(namespacedKey);
         _log(NS, `.get ${namespacedKey} / ret =`, typeof ret === 'string' ? ret : $U.json(ret));
         return ret;
     }
@@ -267,15 +296,15 @@ export class CacheService {
      *
      * @param keys
      */
-    public async getMulti(keys: CacheKey[]): Promise<KeyValueMap> {
+    public async getMulti(keys: CacheKey[]): Promise<KeyValueMap<CacheValue>> {
         const namespacedKeys = keys.map((key, idx) => {
             if (!key) throw new Error(`@key (CacheKey) is required (at @keys[${idx}]).`);
             return this.asNamespacedKey(key);
         });
-        const map = await this.backend.mget(namespacedKeys);
+        const map = await this.backend.mget<CacheValue>(namespacedKeys);
 
         // Remove namespace prefix from keys
-        const ret = Object.entries(map).reduce<KeyValueMap>((newMap, [namespacedKey, val]) => {
+        const ret = Object.entries(map).reduce<KeyValueMap<CacheValue>>((newMap, [namespacedKey, val]) => {
             const key = namespacedKey.split(CacheService.NAMESPACE_DELIMITER)[1];
             newMap[key] = val;
             return newMap;
@@ -297,6 +326,13 @@ export class CacheService {
         const ret = await this.backend.incr(namespacedKey, inc);
         _log(NS, `.increment ${namespacedKey} ${inc} / ret =`, typeof ret === 'string' ? ret : $U.json(ret));
         return ret;
+    }
+
+    /**
+     * same as increment()
+     */
+    public inc(key: CacheKey, inc: number): Promise<number> {
+        return this.increment(key, inc);
     }
 
     /**
@@ -426,15 +462,24 @@ export class CacheService {
      * Protected constructor -> use CacheService.create()
      *
      * @param backend   cache backend object
-     * @param ns        (optional) namespace of cache key (default: '')
+     * @param options   options to create.
      * @protected
      */
-    protected constructor(backend: CacheBackend, ns: string = '') {
+    protected constructor(
+        backend: CacheBackend,
+        options?: {
+            /** (optional) namespace of cache key (default: '') */
+            ns?: string;
+            /** custom key-maker */
+            maker?: CacheKeyMakable;
+        },
+    ) {
+        const ns = options?.ns || '';
         _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [ns=${ns}]`);
         this.backend = backend;
         this.ns = ns;
+        this.maker = options?.maker;
     }
-
     /**
      * Get namespace prefixed cache key
      *
@@ -442,7 +487,9 @@ export class CacheService {
      * @protected
      */
     protected asNamespacedKey(key: CacheKey): string {
-        return `${this.ns}${CacheService.NAMESPACE_DELIMITER}${key}`;
+        const [ns, delim] = [this.ns, CacheService.NAMESPACE_DELIMITER];
+        if (this.maker) return this.maker(ns, delim, key);
+        return `${ns}${delim}${key}`;
     }
 }
 
@@ -476,7 +523,7 @@ export class DummyCacheService extends CacheService {
         // NOTE: Use singleton backend instance
         // because node-cache is volatile and client instance does not share keys with other instance
         if (!DummyCacheService.backend) DummyCacheService.backend = new NodeCacheBackend(defTimeout);
-        return new DummyCacheService(DummyCacheService.backend, ns);
+        return new DummyCacheService(DummyCacheService.backend, { ns });
     }
 
     /**
