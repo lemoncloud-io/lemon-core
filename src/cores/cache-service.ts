@@ -453,7 +453,7 @@ export class CacheService {
      */
     public async subscribe(
         channel: string,
-        listener: (...args: any[]) => void,
+        listener: SubscriptionListener,
         options?: SubscribeOptions,
     ): Promise<unknown> {
         const hasSubscribeFunc = !!this.backend.subscribe;
@@ -462,6 +462,22 @@ export class CacheService {
         }
 
         const subscriptionResult = await this.backend.subscribe(channel, listener, options);
+        return subscriptionResult;
+    }
+
+    /**
+     * (optional Pub/Sub) remove listener on specific channel (currently support only redis).
+     * if omit listeners options, then unsubscribe all listener in channel
+     * @param channel - channel name or channel pattern
+     * @param options - Ref UnsubscribeOptions
+     */
+    public async unsubscribe(channel: string, options?: UnsubscribeOptions): Promise<unknown> {
+        const hasUnsubscribeFunc = !!this.backend.unsubscribe;
+        if (!hasUnsubscribeFunc) {
+            throw new Error(`(${this.backend.name}) currently does not support unsubscribe() method`);
+        }
+
+        const subscriptionResult = await this.backend.unsubscribe(channel, options);
         return subscriptionResult;
     }
 
@@ -582,6 +598,11 @@ interface ItemEntry<T = any> {
 }
 
 /**
+ * subscription listener type for Pub/Sub
+ */
+type SubscriptionListener = (...args: any[]) => void;
+
+/**
  * publish options
  */
 interface PublishOptions {}
@@ -596,6 +617,10 @@ interface SubscribeOptions {
     isPattern: boolean;
 }
 
+interface UnsubscribeOptions {
+    listeners?: SubscriptionListener[];
+}
+
 /**
  * If cache supports Publish-Subscribe pattern, implments this interface
  */
@@ -607,13 +632,21 @@ interface PubSub {
      * @param options - Ref PublishOptions
      */
     publish: (channel: string, message: any, options?: PublishOptions) => Promise<unknown>;
+
     /**
      * (optional Pub/Sub) listen(subscribe) on specific channel (currently support only redis)
      * @param channel - channel name or channel pattern
      * @param listener - called callback function when receive published message
      * @param options - Ref SubscribeOptions
      */
-    subscribe: (channel: string, listener: (...args: any[]) => void, options?: SubscribeOptions) => Promise<unknown>;
+    subscribe: (channel: string, listener: SubscriptionListener, options?: SubscribeOptions) => Promise<unknown>;
+
+    /**
+     * (optional Pub/Sub) remove listener on specific channel on cache service (currently support only redis)
+     * @param channel - channel name or channel pattern
+     * @param options - Ref UnsubscribeOptions
+     */
+    unsubscribe?: (channel: string, options?: UnsubscribeOptions) => Promise<unknown>;
 }
 
 /**
@@ -742,7 +775,14 @@ interface CacheBackend {
      * @param listener - called callback function when receive published message
      * @param options - Ref SubscribeOptions
      */
-    subscribe?: (channel: string, listener: (...args: any[]) => void, options?: SubscribeOptions) => Promise<unknown>;
+    subscribe?: (channel: string, listener: SubscriptionListener, options?: SubscribeOptions) => Promise<unknown>;
+
+    /**
+     * (optional Pub/Sub) remove listener on specific channel on cache service (currently support only redis)
+     * @param channel - channel name or channel pattern
+     * @param options - Ref UnsubscribeOptions
+     */
+    unsubscribe?: (channel: string, options?: UnsubscribeOptions) => Promise<unknown>;
 
     /**
      * Close connection(s) to the cache server
@@ -1308,7 +1348,7 @@ class RedisBackend implements CacheBackend, PubSub {
      */
     public async subscribe(
         channel: string,
-        listener: (...args: any[]) => void,
+        listener: SubscriptionListener,
         options?: SubscribeOptions,
     ): Promise<number> {
         return new Promise((resolve, reject) => {
@@ -1324,6 +1364,41 @@ class RedisBackend implements CacheBackend, PubSub {
                 this.subscriptionRouter.add(channel, listener);
                 resolve(count);
             });
+        });
+    }
+
+    /**
+     * CacheBackend.unsubscribe implementation
+     */
+    public async unsubscribe(channel: string, options?: UnsubscribeOptions): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (!this.useSubscription) {
+                reject('Not allow unsubscribe method. you should set useSubscription: true in options');
+            }
+            const { listeners } = options || {};
+
+            const noListener = !listeners || listeners.length === 0;
+            if (noListener) {
+                // if only pass channel param. then unsubscribe channel(remove all listener in channel)
+                this.subscriptionRouter.clearPath(channel);
+            } else {
+                listeners.forEach(listener => this.subscriptionRouter.remove(channel, listener));
+            }
+
+            const emptyListenerInChannel = this.subscriptionRouter.get(channel).length === 0;
+            const shouldUnsubscribeChannel = noListener || emptyListenerInChannel;
+
+            if (shouldUnsubscribeChannel) {
+                this.subModeRedis.unsubscribe(channel, err => {
+                    if (err) {
+                        reject(new Error(`Failed to unsubscribe: ${err.message}`));
+                    }
+
+                    resolve();
+                });
+            } else {
+                resolve();
+            }
         });
     }
 

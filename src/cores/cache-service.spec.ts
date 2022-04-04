@@ -544,7 +544,7 @@ describe('CacheService - Redis', () => {
         done();
     });
 
-    _it('TTL', async done => {
+    it('TTL', async done => {
         if (!(await isLocalCacheAvailable('redis'))) return done();
         const { cache } = instance('redis', 'TC04');
         /* eslint-disable prettier/prettier */
@@ -591,6 +591,20 @@ describe('CacheService - Redis', () => {
         done();
     });
 
+    it('useSubscription: false', async done => {
+        const { cache } = instance('redis', 'TC03', { useSubscription: false });
+
+        const listener1 = jest.fn();
+        expect2(await cache.subscribe('test-ch', listener1).catch(GETERR)).toEqual(
+            'Not allow subscription mode. you should set useSubscription: true in options',
+        );
+        expect2(await cache.unsubscribe('test-ch').catch(GETERR)).toEqual(
+            'Not allow unsubscribe method. you should set useSubscription: true in options',
+        );
+
+        done();
+    });
+
     it('publish/subscribe', async done => {
         if (!(await isLocalCacheAvailable('redis'))) return done();
         const { cache } = instance('redis', 'TC03', { useSubscription: true });
@@ -606,7 +620,7 @@ describe('CacheService - Redis', () => {
         await cache.publish('test-ch', 'hihihi');
 
         // check if subscribe listener is called
-        await wait(1000); // wait seconds, because pub/sub is async
+        await wait(600); // wait seconds, because pub/sub is async
         expect2(listener1.mock.calls.length).toEqual(1); // listener is called once (only 'test-ch' channel)
         expect2(listener1.mock.calls[0]).toEqual(['test-ch', 'hihihi']);
         expect2(otherChannelListener.mock.calls.length).toEqual(0);
@@ -616,16 +630,72 @@ describe('CacheService - Redis', () => {
         const listener2 = jest.fn();
         expect2(await cache.subscribe('test-ch', listener2)).toEqual(2); // count: 'test-ch', 'other-ch'
 
+        // publish json object
+        const message = { str: 'a', obj: { arr: [1, 2, 3] } };
+        await cache.publish('test-ch', message);
+
+        // check if subscribe listener is called
+        await wait(600); // wait seconds, because pub/sub is async
+        expect2(listener1.mock.calls.length).toEqual(2);
+        expect2(listener1.mock.calls[1]).toEqual(['test-ch', JSON.stringify(message)]);
+        expect2(listener2.mock.calls.length).toEqual(1);
+        expect2(listener2.mock.calls[0]).toEqual(['test-ch', JSON.stringify(message)]);
+        expect2(otherChannelListener.mock.calls.length).toEqual(0);
+
+        // not support publish message type
+        expect2(await cache.publish('test-ch', false).catch(GETERR)).toEqual('@message is not supported type(boolean)');
+
+        await cache.close();
+        done();
+    });
+
+    it('unsubscribe', async done => {
+        if (!(await isLocalCacheAvailable('redis'))) return done();
+        const { cache } = instance('redis', 'TC03', { useSubscription: true });
+
+        // subscribe one listener
+        const listener1 = jest.fn();
+        expect2(await cache.subscribe('test-ch', listener1)).toEqual(1); // count: 'test-ch'
+        expect2(listener1.mock.calls.length).toEqual(0);
+
+        // publish test
+        await cache.publish('test-ch', 'hihihi');
+
+        // check if subscribe listener is called
+        await wait(600); // wait seconds, because pub/sub is async
+        expect2(listener1.mock.calls.length).toEqual(1); // listener is called once (only 'test-ch' channel)
+        expect2(listener1.mock.calls[0]).toEqual(['test-ch', 'hihihi']);
+
+        // add listener2 one more on 'test-ch' channel
+        const listener2 = jest.fn();
+        expect2(await cache.subscribe('test-ch', listener2)).toEqual(1); // count: 'test-ch'
+
+        // ---------------------------------------------------
+        // unsubscribe listener
+        await cache.unsubscribe('test-ch', { listeners: [listener1] });
         // publish again
         await cache.publish('test-ch', 'hihihi2');
 
         // check if subscribe listener is called
-        await wait(1000); // wait seconds, because pub/sub is async
-        expect2(listener1.mock.calls.length).toEqual(2);
-        expect2(listener1.mock.calls[1]).toEqual(['test-ch', 'hihihi2']);
+        await wait(600); // wait seconds, because pub/sub is async
+        expect2(listener1.mock.calls.length).toEqual(1); // because unsubscribe listener1
         expect2(listener2.mock.calls.length).toEqual(1);
         expect2(listener2.mock.calls[0]).toEqual(['test-ch', 'hihihi2']);
-        expect2(otherChannelListener.mock.calls.length).toEqual(0);
+
+        const listener3 = jest.fn();
+        expect2(await cache.subscribe('test-ch', listener3)).toEqual(1); // count: 'test-ch'
+
+        // ------------------------------------------------------
+        // unsubscribe channel(remove all listener in channel)
+        await expect(cache.unsubscribe('test-ch')).resolves.toEqual(undefined); // return Promise<void>
+        // publish again
+        await cache.publish('test-ch', 'hihihi3');
+
+        //  call count is not changed.
+        await wait(600); // wait seconds, because pub/sub is async
+        expect2(listener1.mock.calls.length).toEqual(1);
+        expect2(listener2.mock.calls.length).toEqual(1);
+        expect2(listener3.mock.calls.length).toEqual(0);
 
         await cache.close();
         done();
