@@ -89,6 +89,28 @@ describe(`class SimpleRouter`, () => {
         done();
     });
 
+    test('clearPath()', async (done: any) => {
+        const router = new SimpleRouter({ allowMultipleRouter: true });
+
+        const func = () => 'ok';
+        router.add('/one', func);
+        router.add('/two', func);
+        router.add('/two', func);
+
+        expect2(() => router.get('/one')).toHaveLength(1);
+        expect2(() => router.get('/two')).toHaveLength(2);
+        expect2(await router.route('/two')).toEqual(['ok', 'ok']);
+
+        // delete router ('/two')
+        router.clearPath('/two');
+        expect2(() => router.get('/two')).toHaveLength(0);
+        expect2(() => router.get('/one')).toHaveLength(1);
+
+        // empty result
+        expect2(await router.route('/two')).toEqual([]);
+        done();
+    });
+
     test('route()', async (done: any) => {
         // route() is function that run added function in router-path
         const router = new SimpleRouter({ allowMultipleRouter: true });

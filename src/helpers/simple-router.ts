@@ -94,6 +94,14 @@ export class SimpleRouter {
     }
 
     /**
+     * remove path (remove all routing function in path)
+     * @param path - path for clear router
+     */
+    public clearPath(path: string) {
+        this.routerMap.delete(path);
+    }
+
+    /**
      * run routing functions with parameter(params) in matched path
      * @param path - routing path
      * @param params - parameters to hand-off to routing functions
