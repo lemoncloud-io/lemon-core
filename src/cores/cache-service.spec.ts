@@ -18,16 +18,11 @@ const wait = async (timeout: number) =>
         }, timeout);
     });
 
-export const instance = (
-    type: 'dummy' | 'memcached' | 'redis',
-    ns: string = 'cache-service-test',
-    otherOptions?: { useSubscription: boolean },
-) => {
-    const customOptions = otherOptions || {};
+export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'cache-service-test') => {
     if (type === 'dummy') {
-        return { cache: DummyCacheService.create({ ns, defTimeout: 0, ...customOptions }) };
+        return { cache: DummyCacheService.create({ ns, defTimeout: 0 }) };
     } else {
-        return { cache: CacheService.create({ type, ns, defTimeout: 0, ...customOptions }) }; // use local cache server
+        return { cache: CacheService.create({ type, ns, defTimeout: 0 }) }; // use local cache server
     }
 };
 
@@ -591,23 +586,9 @@ describe('CacheService - Redis', () => {
         done();
     });
 
-    it('useSubscription: false', async done => {
-        const { cache } = instance('redis', 'TC03', { useSubscription: false });
-
-        const listener1 = jest.fn();
-        expect2(await cache.subscribe('test-ch', listener1).catch(GETERR)).toEqual(
-            'Not allow subscription mode. you should set useSubscription: true in options',
-        );
-        expect2(await cache.unsubscribe('test-ch').catch(GETERR)).toEqual(
-            'Not allow unsubscribe method. you should set useSubscription: true in options',
-        );
-
-        done();
-    });
-
     it('publish/subscribe', async done => {
         if (!(await isLocalCacheAvailable('redis'))) return done();
-        const { cache } = instance('redis', 'TC03', { useSubscription: true });
+        const { cache } = instance('redis', 'TC03');
 
         // subscribe one listener
         const listener1 = jest.fn();
@@ -651,7 +632,10 @@ describe('CacheService - Redis', () => {
 
     it('unsubscribe', async done => {
         if (!(await isLocalCacheAvailable('redis'))) return done();
-        const { cache } = instance('redis', 'TC03', { useSubscription: true });
+        const { cache } = instance('redis', 'TC03');
+
+        // throw error not without subscribe method
+        await expect(cache.unsubscribe('test-ch')).resolves.toEqual(undefined);
 
         // subscribe one listener
         const listener1 = jest.fn();

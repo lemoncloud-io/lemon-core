@@ -41,10 +41,6 @@ export interface CacheOptions {
      * (optional) default timeout of cache entries. 0 for unlimited (default: 1-day)
      */
     defTimeout?: number;
-    /**
-     * (optional) use subscription(in Pub/Sub). currently support only 'redis' type. (default: false)
-     */
-    useSubscription?: boolean;
 }
 
 /**
@@ -153,7 +149,6 @@ export class CacheService {
             options?.defTimeout,
             $U.N($U.env(CacheService.ENV_CACHE_DEFAULT_TIMEOUT), CacheService.DEF_CACHE_DEFAULT_TIMEOUT),
         );
-        const useSubscription = options?.useSubscription || false; // currently only support for 'redis'
 
         _log(NS, `constructing [${type}] cache ...`);
         _log(NS, ` > endpoint =`, endpoint);
@@ -166,7 +161,7 @@ export class CacheService {
                 backend = new MemcachedBackend(endpoint, defTimeout);
                 break;
             case 'redis':
-                backend = new RedisBackend(endpoint, defTimeout, { useSubscription });
+                backend = new RedisBackend(endpoint, defTimeout);
                 break;
             default:
                 throw new Error(`@type [${type}] is invalid.`);
@@ -1129,15 +1124,6 @@ class MemcachedBackend implements CacheBackend {
 }
 
 /**
- * RedisBackend constructor options
- */
-interface RedisBackendOptions {
-    /**
-     * (optional) use subscription(in Pub/Sub). currently support only 'redis' type. (default: false)
-     */
-    useSubscription?: boolean;
-}
-/**
  * class `RedisBackend`
  * @internal
  */
@@ -1149,22 +1135,9 @@ class RedisBackend implements CacheBackend, PubSub {
     private readonly redis: Redis;
 
     /**
-     * whether to use a subscription feature(Pub/Sub) or not
-     * @private
+     * ioredis connection endpoint
      */
-    private readonly useSubscription: boolean;
-
-    /**
-     * ioredis client to subscribe channel (to use publish and subscribe both, create Redis connection)
-     * @private
-     */
-    private readonly subModeRedis: Redis;
-
-    /**
-     * using routing subscription message by channel
-     * @private
-     */
-    private readonly subscriptionRouter: SimpleRouter;
+    public readonly endpoint: string;
 
     /**
      * Default TTL as number in seconds
@@ -1178,30 +1151,45 @@ class RedisBackend implements CacheBackend, PubSub {
     public readonly name: string = 'redis';
 
     /**
+     * whether ready to use subscription feature(Pub/Sub)
+     * @private
+     */
+    private enabledSubscription: boolean;
+
+    /**
+     * ioredis client to subscribe channel (to use publish and subscribe both, create Redis connection)
+     * @private
+     */
+    private subModeRedis: Redis;
+
+    /**
+     * using routing subscription message by channel
+     * @private
+     */
+    private subscriptionRouter: SimpleRouter;
+
+    /**
      * Public constructor
      */
-    public constructor(endpoint?: string, defTTL: number = 0, options?: RedisBackendOptions) {
-        this.useSubscription = options?.useSubscription || false;
-        const redisEndpoint = endpoint || 'localhost:6379';
-        this.redis = new IORedis(redisEndpoint);
+    public constructor(endpoint?: string, defTTL: number = 0) {
+        this.endpoint = endpoint || 'localhost:6379';
+        this.redis = new IORedis(this.endpoint);
         this.defTTL = defTTL;
-
-        // for Subscription
-        if (this.useSubscription) {
-            this.subModeRedis = new IORedis(redisEndpoint); // for only subscription mode redis connection
-            this.readyListenSubscription(this.subModeRedis);
-            this.subscriptionRouter = new SimpleRouter({ allowMultipleRouter: true });
-        }
+        this.enabledSubscription = false; // when call subscribe(), to be enabled
     }
 
     /**
      * Setup listening subscription message for routing by channel
-     * @param subscriptionRedis - Redis instance to using as subscription mode
+     * @param endpoint - subscription mode redis endpoint (default: endpoint which passed to constructor)
      */
-    protected readyListenSubscription(subscriptionRedis: Redis) {
-        subscriptionRedis.on('message', (channel, message) => {
+    public enableSubscriptionMode(endpoint?: string) {
+        const subModeEndpoint = endpoint || this.endpoint;
+        this.subModeRedis = new IORedis(subModeEndpoint); // for only subscription mode redis connection
+        this.subscriptionRouter = new SimpleRouter({ allowMultipleRouter: true });
+        this.subModeRedis.on('message', (channel, message) => {
             this.subscriptionRouter.route(channel, channel, message);
         });
+        this.enabledSubscription = true;
     }
 
     /**
@@ -1352,8 +1340,9 @@ class RedisBackend implements CacheBackend, PubSub {
         options?: SubscribeOptions,
     ): Promise<number> {
         return new Promise((resolve, reject) => {
-            if (!this.useSubscription) {
-                reject('Not allow subscription mode. you should set useSubscription: true in options');
+            if (!this.enabledSubscription) {
+                // when first subscribe, ready to use subscription
+                this.enableSubscriptionMode();
             }
             this.subModeRedis.subscribe(channel, (err, count) => {
                 if (err) {
@@ -1372,8 +1361,8 @@ class RedisBackend implements CacheBackend, PubSub {
      */
     public async unsubscribe(channel: string, options?: UnsubscribeOptions): Promise<void> {
         return new Promise((resolve, reject) => {
-            if (!this.useSubscription) {
-                reject('Not allow unsubscribe method. you should set useSubscription: true in options');
+            if (!this.enabledSubscription) {
+                resolve();
             }
             const { listeners } = options || {};
 
@@ -1407,7 +1396,7 @@ class RedisBackend implements CacheBackend, PubSub {
      */
     public async close(): Promise<void> {
         const quitAwaitArray = [this.redis.quit()];
-        if (this.useSubscription) {
+        if (this.enabledSubscription) {
             quitAwaitArray.push(this.subModeRedis.quit());
         }
 
