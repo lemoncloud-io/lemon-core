@@ -52,7 +52,7 @@ export interface NextIdentity {
      */
     sid: string;
     /**
-     * user-id (user unique-id)
+     * user-id (user id)
      */
     uid: string;
     /**

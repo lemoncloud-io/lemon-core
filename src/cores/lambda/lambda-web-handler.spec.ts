@@ -272,7 +272,7 @@ describe('LambdaWEBHandler', () => {
         if (1){
             const event = loadEventStock(id);
             event.headers['x-lemon-identity'] = $U.json({ sid:'', lang:'ko' });
-            event.headers['x-lemon-language'] = ' es ';
+            event.headers['x-lemon-language'] = ' es '; //! should override `language`.
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const result = JSON.parse(response.body);

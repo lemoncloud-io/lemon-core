@@ -10,6 +10,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2022-04-07 use env, and opt header-parser
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -22,20 +23,23 @@ import {
     NextMode,
     NextIdentityCognito,
     ProtocolParam,
+    NextIdentity,
 } from './../core-services';
-import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
+import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
+import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-//! header names..
+//! header definitions by environment.
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
 const HEADER_LEMON_IDENTITY = $U.env('HEADER_LEMON_IDENTITY', 'x-lemon-identity');
-const HEADER_COOKIE = 'cookie';
-const FAVICON_ICO =
+const HEADER_COOKIE = $U.env('HEADER_COOKIE', 'cookie');
+const DEFAULT_FAVICON_ICO =
     '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';
+const FAVICON_ICO = $U.env('FAVICON_ICO', DEFAULT_FAVICON_ICO);
 
 /**
  * class: `WEBController`
@@ -112,8 +116,8 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
     }
 
     //! transform to protocol-context.
-    if (event && event.headers && !event.headers['x-protocol-context'])
-        event.headers['x-protocol-context'] = $ctx ? $U.json($ctx) : null;
+    if (event && event.headers && !event.headers[HEADER_PROTOCOL_CONTEXT])
+        event.headers[HEADER_PROTOCOL_CONTEXT] = $ctx ? $U.json($ctx) : null;
     const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
     _log(NS, '! protocol-param =', $U.json({ ...param, body: undefined })); // hide `.body` in log.
 
@@ -341,89 +345,117 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     }
 
     /**
+     * internal tools
+     */
+    public tools = (headers: { [name: string]: string }) =>
+        new (class MyHeaderTool {
+            /**
+             * parse of header[HEADER_LEMON_IDENTITY] to get `next-identity`
+             */
+            public parseIdentityHeader = (name: string = HEADER_LEMON_IDENTITY): NextIdentity => {
+                //TODO - support internal JWT Token authentication.
+                //! `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
+                //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
+                //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
+                // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
+                let val = headers[name] || '';
+                val = `${val || ''}`.trim();
+                let result: any = val ? { meta: val } : {};
+                try {
+                    if (val && val.startsWith('{') && val.endsWith('}')) result = JSON.parse(val);
+                } catch (e) {
+                    _err(NS, '!WARN! parse.err =', e);
+                    _err(NS, '!WARN! identity =', val);
+                }
+                const lang = this.parseLanguageHeader() || result?.lang;
+                return { ...result, lang } as NextIdentity;
+            };
+            /**
+             * parse of header[HEADER_LEMON_LANGUAGE] to get language-type.
+             */
+            public parseLanguageHeader = (name: string = HEADER_LEMON_LANGUAGE): string => {
+                const val = headers[name];
+                return typeof val === 'string' ? val.trim() : undefined;
+            };
+            /**
+             * parse of header[HEADER_LEMON_LANGUAGE] to get cookie-set.
+             */
+            public parseCookiesHeader = (name: string = HEADER_COOKIE): { [key: string]: string } => {
+                const cookie = `${headers[name] || ''}`.trim();
+                if (!cookie) return undefined;
+                const parseCookies = (str: string) => {
+                    const rx = /([^;=\s]*)=([^;]*)/g;
+                    const obj: { [key: string]: string } = {};
+                    for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
+                    return obj;
+                };
+                return parseCookies(cookie);
+            };
+            /**
+             * override with AWS request-context
+             */
+            public prepareContext = ($base: NextContext, reqContext: APIGatewayEventRequestContext) => {
+                // STEP.4 override w/ cognito authentication to NextIdentity.
+                if (reqContext?.identity?.cognitoIdentityPoolId !== undefined) {
+                    const identity = $base.identity as NextIdentityCognito;
+                    if (!identity) throw new Error(`.identity is required - prepareContext()`);
+
+                    const $id = reqContext.identity;
+                    _inf(NS, '! identity :=', $U.json(identity));
+                    identity.identityProvider = $id.cognitoAuthenticationProvider;
+                    identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
+                    identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
+                    identity.accountId = $id.accountId; // account-id should be same as context.accountId
+                    identity.userAgent = $id.userAgent; // user-agent string.
+
+                    //TODO - transform to access identity via `lemon-accounts-api` service @200106
+                }
+
+                // STEP.5 extract additional request infor from req-context.
+                const clientIp = `${reqContext?.identity?.sourceIp || ''}`;
+                const userAgent = `${reqContext?.identity?.userAgent || ''}`;
+                const requestId = `${reqContext?.requestId || ''}`;
+                const accountId = `${reqContext?.accountId || ''}`;
+                const domain = `${reqContext?.domainName || headers['Host'] || headers['host'] || ''}`; //! chore avoid null of headers
+
+                //! save into headers and returns.
+                const context: NextContext = { ...$base, userAgent, clientIp, requestId, accountId, domain };
+                return context;
+            };
+        })();
+
+    /**
      * pack the request context for Http request.
      *
      * @param event     origin Event.
      * @param $ctx      (optional) referenced lambda.Context
      */
     public async packContext(event: APIGatewayProxyEvent, $ctx: Context): Promise<NextContext> {
+        _log(NS, `packContext(${event ? '' : 'null'})..`);
+        if (!event) return null;
         //! prepare chain object.
         const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
-        if (!event) return null;
-        _log(NS, `packContext()..`);
-        _log(NS, `> reqContext=`, $U.S(reqContext, 256, 32));
-        _log(NS, `> orgContext=`, $U.S($ctx, 256, 32));
-
-        //! prepare the next-context.
-        const res: NextContext = { identity: null };
+        _log(NS, `> orgContext =`, $U.S($ctx, 256, 32));
+        reqContext && _log(NS, `> reqContext =`, $U.S(reqContext, 256, 32));
 
         // STEP.1 support lambda call JWT Token authentication.
-        //! if it is protocol request via lambda, then returns valid context.
         const headers = event.headers || {};
-        if (headers['x-protocol-context']) {
+        if (headers[HEADER_PROTOCOL_CONTEXT]) {
+            //! if it is protocol request via lambda, then returns valid context.
             const $param = $protocol.service.asTransformer('web').transformToParam(event);
             return $param.context;
         }
 
-        //TODO - support internal JWT Token authentication.
+        // STEP.2 use internal identity json data via python lambda call.
+        const $tool = this.tools(headers);
+        const identity = $tool.parseIdentityHeader();
+        const cookie = $tool.parseCookiesHeader();
 
-        // STEP.3 use internal identity json data via python lambda call.
-        //! `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
-        //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
-        //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
-        // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
-        const _identity = async (val: string): Promise<NextIdentityCognito> => {
-            val = `${val || ''}`.trim();
-            try {
-                if (val && val.startsWith('{') && val.endsWith('}')) return JSON.parse(val);
-                _err(NS, '!WARN! identity =', val);
-            } catch (e) {
-                _err(NS, '!WARN! parse.err =', e);
-                _err(NS, '!WARN! identity =', val);
-            }
-            const ret: any = val ? { meta: val } : {};
-            return ret as NextIdentityCognito;
-        };
-        const identity: NextIdentityCognito = await _identity(headers[HEADER_LEMON_IDENTITY]);
-
-        //! support prefered lanauge.
-        if (headers[HEADER_LEMON_LANGUAGE]) identity.lang = `${headers[HEADER_LEMON_LANGUAGE]}`.trim();
-
-        //! support cookie (string) to .cookie (object)
-        const cookie = ((cookie: string): { [key: string]: string } => {
-            cookie = `${cookie || ''}`.trim();
-            if (!cookie) return undefined;
-            const parseCookies = (str: string) => {
-                const rx = /([^;=\s]*)=([^;]*)/g;
-                const obj: { [key: string]: string } = {};
-                for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
-                return obj;
-            };
-            return parseCookies(cookie);
-        })(headers[HEADER_COOKIE]);
-
-        //! translate cognito authentication to NextIdentity.
-        if (reqContext.identity && reqContext.identity.cognitoIdentityPoolId !== undefined) {
-            const $id = reqContext.identity;
-            _inf(NS, '! identity :=', $U.json(identity));
-            identity.identityProvider = $id.cognitoAuthenticationProvider;
-            identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
-            identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
-            identity.accountId = $id.accountId; // account-id should be same as context.accountId
-            identity.userAgent = $id.userAgent; // user-agent string.
-            //TODO - transform to access identity via `lemon-accounts-api` service @200106
-        }
-
-        //! - extract original request infor.
-        const clientIp = `${(reqContext.identity && reqContext.identity.sourceIp) || ''}`;
-        const userAgent = `${(reqContext.identity && reqContext.identity.userAgent) || ''}`;
-        const requestId = `${reqContext.requestId || ''}`;
-        const accountId = `${reqContext.accountId || ''}`;
-        const domain = `${reqContext.domainName || headers['Host'] || headers['host'] || ''}`; //! chore avoid null of headers
-
-        //! save into headers and returns.
-        const context: NextContext = { ...res, identity, userAgent, clientIp, requestId, accountId, domain, cookie };
+        // STEP.3. prepare the final `next-context`.
+        const context = $tool.prepareContext({ identity, cookie }, reqContext);
         context.source = $protocol.service.myProtocolURI(context); // self service-uri as source
+
+        // FINIAL. returns
         return context;
     }
 }
