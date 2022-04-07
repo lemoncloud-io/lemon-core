@@ -350,6 +350,22 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     public tools = (headers: { [name: string]: string }) =>
         new (class MyHeaderTool {
             /**
+             * get values by name
+             * @param name case-insentive name of field
+             */
+            public getHeaders = (name: string) =>
+                Object.keys(headers).reduce<string[]>((L, key) => {
+                    if (name === key || key.toLowerCase() === name) L.push(headers[key]?.trim());
+                    return L;
+                }, []);
+            /**
+             * get the last value in header by name
+             */
+            public getHeader = (name: string) => {
+                const vals = this.getHeaders(name);
+                return vals.length < 1 ? undefined : vals[vals.length - 1];
+            };
+            /**
              * parse of header[HEADER_LEMON_IDENTITY] to get `next-identity`
              */
             public parseIdentityHeader = (name: string = HEADER_LEMON_IDENTITY): NextIdentity => {
@@ -358,8 +374,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
                 //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
                 // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
-                let val = headers[name] || '';
-                val = `${val || ''}`.trim();
+                const val = this.getHeader(name);
                 let result: any = val ? { meta: val } : {};
                 try {
                     if (val && val.startsWith('{') && val.endsWith('}')) result = JSON.parse(val);
@@ -374,14 +389,14 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
              * parse of header[HEADER_LEMON_LANGUAGE] to get language-type.
              */
             public parseLanguageHeader = (name: string = HEADER_LEMON_LANGUAGE): string => {
-                const val = headers[name];
+                const val = this.getHeader(name);
                 return typeof val === 'string' ? val.trim() : undefined;
             };
             /**
              * parse of header[HEADER_LEMON_LANGUAGE] to get cookie-set.
              */
             public parseCookiesHeader = (name: string = HEADER_COOKIE): { [key: string]: string } => {
-                const cookie = `${headers[name] || ''}`.trim();
+                const cookie = this.getHeader(name);
                 if (!cookie) return undefined;
                 const parseCookies = (str: string) => {
                     const rx = /([^;=\s]*)=([^;]*)/g;
@@ -416,7 +431,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 const userAgent = `${reqContext?.identity?.userAgent || ''}`;
                 const requestId = `${reqContext?.requestId || ''}`;
                 const accountId = `${reqContext?.accountId || ''}`;
-                const domain = `${reqContext?.domainName || headers['Host'] || headers['host'] || ''}`; //! chore avoid null of headers
+                const domain = `${reqContext?.domainName || this.getHeader('host') || ''}`; //! chore avoid null of headers
 
                 //! save into headers and returns.
                 const context: NextContext = { ...$base, userAgent, clientIp, requestId, accountId, domain };

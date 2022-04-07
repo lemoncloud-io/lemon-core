@@ -46,7 +46,7 @@ export type NextMode = 'LIST' | 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
  * - the context parameter for each next-handler `fx(id, param, body, context)`
  * - possible to query user's detail via OAuth Resource Server.
  */
-export interface NextIdentity {
+export interface NextIdentity<T = any> {
     /**
      * site-id (like domain group)
      */
@@ -72,14 +72,14 @@ export interface NextIdentity {
     /**
      * something unknown.
      */
-    meta?: any;
+    meta?: T;
 }
 
 /**
  * class: `NextIdentityCognito`
  * - extended information w/ cognito identity.
  */
-export interface NextIdentityCognito extends NextIdentity {
+export interface NextIdentityCognito<T = any> extends NextIdentity<T> {
     /**
      * account-id of AWS Credential
      */
@@ -106,7 +106,7 @@ export interface NextIdentityCognito extends NextIdentity {
  * class: `NextIdentityAcess`
  * - extended information w/ site + account access information.
  */
-export interface NextIdentityAccess extends NextIdentity {
+export interface NextIdentityAccess<T = any> extends NextIdentity<T> {
     /**
      * site-information for domain
      */
@@ -152,7 +152,7 @@ export interface NextIdentityAccess extends NextIdentity {
 
 /**
  * class: `NextContext`
- * - information of caller's context.
+ * - information of caller's context w/ `next-identity`.
  */
 export interface NextContext<T extends NextIdentity = NextIdentity> {
     /**

@@ -820,6 +820,7 @@ export class Utilities {
     /**
      * builder for `JWTHelper`
      * @param passcode string for verification.
+     * @param current_ms (optional) current time in millisecond (required to verify `exp`)
      */
     public readonly jwt = <T = any>(passcode?: string, current_ms?: number) => {
         const $ = jwt;
