@@ -100,6 +100,11 @@ export interface NextIdentityCognito<T = any> extends NextIdentity<T> {
      * user-agent string like 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4)'
      */
     userAgent?: string;
+    /**
+     * (optional) caller string like `AROXXXXXX:CognitoIdentityCredentials` from `APIGatewayEventIdentity`
+     * - available since `3.1.1`
+     */
+    caller?: string;
 }
 
 /**

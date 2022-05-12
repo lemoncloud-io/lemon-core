@@ -536,15 +536,16 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             if (!identity) throw new Error(`.identity is required - prepareContext()`);
 
             const $id = reqContext.identity;
-            _inf(NS, '! identity :=', $U.json(identity));
-            identity.identityProvider = $id.cognitoAuthenticationProvider;
+            _inf(NS, '! identity(req) :=', $U.json({ ...$id }));
+            identity.identityProvider = $id.cognitoAuthenticationProvider; // provider string.
             identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
             identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
             identity.accountId = $id.accountId; // account-id should be same as context.accountId
             identity.userAgent = $id.userAgent; // user-agent string.
-
-            //TODO - transform to access identity via `lemon-accounts-api` service @200106
+            identity.caller = $id.caller ?? undefined; // caller string.
+            _inf(NS, '! identity(new) :=', $U.json({ ...identity }));
         }
+        //TODO - transform to access identity via `lemon-accounts-api` service @200106
 
         // STEP.5 extract additional request infor from req-context.
         const clientIp = `${reqContext?.identity?.sourceIp || ''}`;

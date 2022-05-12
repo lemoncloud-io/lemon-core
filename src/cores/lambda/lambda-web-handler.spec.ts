@@ -268,49 +268,80 @@ describe('LambdaWEBHandler', () => {
         };
         const id = '!';
 
-        /* eslint-disable prettier/prettier */
         //! use default cofnig.
         if (1) {
             const event = loadEventStock(id);
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const result = JSON.parse(response.body);
-            expect2(() => result, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-            expect2(() => result.context, 'identity').toEqual({ identity:{ sid:undefined, uid:undefined, accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+            expect2(() => result, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => result.context, 'identity').toEqual({
+                identity: {
+                    sid: undefined,
+                    uid: undefined,
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
         }
 
         //! change identity..
-        if (1){
+        if (1) {
             const event = loadEventStock(id);
-            event.headers['x-lemon-identity'] = $U.json({ sid:'', uid:'guest' });
+            event.headers['x-lemon-identity'] = $U.json({ sid: '', uid: 'guest' });
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const body = JSON.parse(response.body);
-            expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-            expect2(() => body.context, 'identity').toEqual({ identity:{ sid:'', uid:'guest', accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+            expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => body.context, 'identity').toEqual({
+                identity: {
+                    sid: '',
+                    uid: 'guest',
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
         }
 
         //! change language..
-        if (1){
+        if (1) {
             const event = loadEventStock(id);
-            event.headers['x-lemon-identity'] = $U.json({ sid:'', lang:'ko' });
+            event.headers['x-lemon-identity'] = $U.json({ sid: '', lang: 'ko' });
             event.headers['x-lemon-language'] = ' es '; //! should override `language`.
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const result = JSON.parse(response.body);
-            expect2(() => result, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-            expect2(() => result.context, 'identity').toEqual({ identity:{ sid:'', lang:'es', accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+            expect2(() => result, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => result.context, 'identity').toEqual({
+                identity: {
+                    sid: '',
+                    lang: 'es',
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
         }
 
+        /* eslint-disable prettier/prettier */
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! test packContext() via lambda protocol
-    it('should pass packContext() via lambda protocol', async done => {
+    it('should pass packContext(public) via lambda protocol', async done => {
         const { lambda, service: $web } = instance();
         const $pack = loadJsonSync('package.json');
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+        // const identity: any = loadJsonSync('data/samples/events/sample.cognito.identity.json');
         const context: NextContext = {
             accountId: '796730245826',
             requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
@@ -326,6 +357,7 @@ describe('LambdaWEBHandler', () => {
                 identityId: null,
                 identityPoolId: null,
                 identityProvider: null,
+                caller: undefined,
                 lang: undefined,
                 userAgent: 'HTTPie/1.0.2',
             },
@@ -336,7 +368,7 @@ describe('LambdaWEBHandler', () => {
             source: `api://796730245826@lemon-core-dev#${$pack.version}`,
         });
 
-        //! pack context
+        //! pack context by header
         event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
@@ -349,21 +381,60 @@ describe('LambdaWEBHandler', () => {
         done();
     });
 
+    //! test packContext() via lambda protocol
+    it('should pass packContext(authed) via lambda protocol', async done => {
+        const { lambda, service: $web } = instance();
+        const $pack = loadJsonSync('package.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.signed.json');
+        const context: NextContext = {
+            accountId: '796730245826',
+            requestId: 'a9bff61d-8eaf-4e1d-8e8e-364ed1bef646',
+        };
+
+        //! packContext()
+        expect2(await lambda.packContext(event, null).catch(GETERR)).toEqual({});
+        expect2(await $web.packContext(event, null).catch(GETERR)).toEqual({
+            ...context,
+            identity: {
+                accountId: '796730245826',
+                caller: 'AROAIBXAJA2J7SUQOWJMO:CognitoIdentityCredentials',
+                identityId: 'ap-northeast-2:dbd95fb4-1234-2345-4567-56e5bc95e444',
+                identityPoolId: 'ap-northeast-2:618ce9d2-1234-2345-4567-e248ea51425e',
+                identityProvider:
+                    'oauth.lemoncloud.io,oauth.lemoncloud.io:ap-northeast-2:618ce9d2-1234-2345-4567-e248ea51425e:kakao_00000',
+                lang: 'ko',
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            },
+            domain: 'dev.oauth.lemoncloud.io',
+            cookie: undefined,
+            clientIp: '221.149.50.0',
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+        });
+
+        done();
+    });
+
     //! test packContext() via web-handler-servce
     it('should pass packContext() via lambda protocol', async done => {
-        /* eslint-disable prettier/prettier */
         const { service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
-        const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
+        const context: NextContext = {
+            accountId: '796730245826',
+            requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
+            identity: { sid: 'A', uid: 'B', gid: 'C', roles: null },
+        };
+
+        //! no pack context by header
         // event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
         const response: any = await service.handle(event, context).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         const body = JSON.parse(response.body);
-        expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
+        expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
         expect2(body.context, '').toEqual(context);
-        /* eslint-enable prettier/prettier */
+
         done();
     });
 });
