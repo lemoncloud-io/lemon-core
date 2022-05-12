@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { $U } from '../../engine/';
-import { expect2, GETERR$ } from '../../common/test-helper';
+import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController } from './lambda-web-handler';
@@ -308,19 +308,44 @@ describe('LambdaWEBHandler', () => {
 
     //! test packContext() via lambda protocol
     it('should pass packContext() via lambda protocol', async done => {
-        /* eslint-disable prettier/prettier */
-        const { lambda } = instance();
+        const { lambda, service: $web } = instance();
+        const $pack = loadJsonSync('package.json');
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
-        const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
+        const context: NextContext = {
+            accountId: '796730245826',
+            requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
+            identity: { sid: 'A', uid: 'B', gid: 'C', roles: null },
+        };
+
+        //! packContext()
+        expect2(await lambda.packContext(event, null).catch(GETERR)).toEqual({});
+        expect2(await $web.packContext(event, null).catch(GETERR)).toEqual({
+            ...context,
+            identity: {
+                accountId: null,
+                identityId: null,
+                identityPoolId: null,
+                identityProvider: null,
+                lang: undefined,
+                userAgent: 'HTTPie/1.0.2',
+            },
+            domain: 'na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com',
+            cookie: undefined,
+            clientIp: '221.149.250.0',
+            userAgent: 'HTTPie/1.0.2',
+            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+        });
+
+        //! pack context
         event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
         const response = await lambda.handle(event, null).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         const body = JSON.parse(response.body);
-        expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-        expect2(body.context, '').toEqual(context);
-        /* eslint-enable prettier/prettier */
+        expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+        expect2(body.context, '').toEqual({ ...context });
+
         done();
     });
 

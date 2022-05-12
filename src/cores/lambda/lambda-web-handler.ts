@@ -345,120 +345,31 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     }
 
     /**
-     * internal tools
+     * builder of tools for http-headers
+     * - extracting header content, and parse.
      */
-    public tools = (headers: { [name: string]: string }) =>
-        new (class MyHeaderTool {
-            /**
-             * get values by name
-             * @param name case-insentive name of field
-             */
-            public getHeaders = (name: string) =>
-                Object.keys(headers).reduce<string[]>((L, key) => {
-                    if (name === key || key.toLowerCase() === name) L.push(headers[key]?.trim());
-                    return L;
-                }, []);
-            /**
-             * get the last value in header by name
-             */
-            public getHeader = (name: string) => {
-                const vals = this.getHeaders(name);
-                return vals.length < 1 ? undefined : vals[vals.length - 1];
-            };
-            /**
-             * parse of header[HEADER_LEMON_IDENTITY] to get `next-identity`
-             */
-            public parseIdentityHeader = (name: string = HEADER_LEMON_IDENTITY): NextIdentity => {
-                //TODO - support internal JWT Token authentication.
-                //! `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
-                //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
-                //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
-                // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
-                const val = this.getHeader(name);
-                let result: any = val ? { meta: val } : {};
-                try {
-                    if (val && val.startsWith('{') && val.endsWith('}')) result = JSON.parse(val);
-                } catch (e) {
-                    _err(NS, '!WARN! parse.err =', e);
-                    _err(NS, '!WARN! identity =', val);
-                }
-                const lang = this.parseLanguageHeader() || result?.lang;
-                return { ...result, lang } as NextIdentity;
-            };
-            /**
-             * parse of header[HEADER_LEMON_LANGUAGE] to get language-type.
-             */
-            public parseLanguageHeader = (name: string = HEADER_LEMON_LANGUAGE): string => {
-                const val = this.getHeader(name);
-                return typeof val === 'string' ? val.trim() : undefined;
-            };
-            /**
-             * parse of header[HEADER_LEMON_LANGUAGE] to get cookie-set.
-             */
-            public parseCookiesHeader = (name: string = HEADER_COOKIE): { [key: string]: string } => {
-                const cookie = this.getHeader(name);
-                if (!cookie) return undefined;
-                const parseCookies = (str: string) => {
-                    const rx = /([^;=\s]*)=([^;]*)/g;
-                    const obj: { [key: string]: string } = {};
-                    for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
-                    return obj;
-                };
-                return parseCookies(cookie);
-            };
-            /**
-             * override with AWS request-context
-             */
-            public prepareContext = ($base: NextContext, reqContext: APIGatewayEventRequestContext) => {
-                // STEP.4 override w/ cognito authentication to NextIdentity.
-                if (reqContext?.identity?.cognitoIdentityPoolId !== undefined) {
-                    const identity = $base.identity as NextIdentityCognito;
-                    if (!identity) throw new Error(`.identity is required - prepareContext()`);
-
-                    const $id = reqContext.identity;
-                    _inf(NS, '! identity :=', $U.json(identity));
-                    identity.identityProvider = $id.cognitoAuthenticationProvider;
-                    identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
-                    identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
-                    identity.accountId = $id.accountId; // account-id should be same as context.accountId
-                    identity.userAgent = $id.userAgent; // user-agent string.
-
-                    //TODO - transform to access identity via `lemon-accounts-api` service @200106
-                }
-
-                // STEP.5 extract additional request infor from req-context.
-                const clientIp = `${reqContext?.identity?.sourceIp || ''}`;
-                const userAgent = `${reqContext?.identity?.userAgent || ''}`;
-                const requestId = `${reqContext?.requestId || ''}`;
-                const accountId = `${reqContext?.accountId || ''}`;
-                const domain = `${reqContext?.domainName || this.getHeader('host') || ''}`; //! chore avoid null of headers
-
-                //! save into headers and returns.
-                const context: NextContext = { ...$base, userAgent, clientIp, requestId, accountId, domain };
-                return context;
-            };
-        })();
+    public tools = (headers: HttpHeaderSet): HttpHeaderTool => new MyHttpHeaderTool(headers);
 
     /**
      * pack the request context for Http request.
      *
-     * @param event     origin Event.
-     * @param $ctx      (optional) referenced lambda.Context
+     * @param event origin Event.
+     * @param orgContext (optional) original lambda.Context
      */
-    public async packContext(event: APIGatewayProxyEvent, $ctx: Context): Promise<NextContext> {
+    public async packContext(event: APIGatewayProxyEvent, orgContext?: Context): Promise<NextContext> {
         _log(NS, `packContext(${event ? '' : 'null'})..`);
         if (!event) return null;
         //! prepare chain object.
-        const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
-        _log(NS, `> orgContext =`, $U.S($ctx, 256, 32));
+        const reqContext: APIGatewayEventRequestContext = event?.requestContext;
+        orgContext && _log(NS, `> orgContext =`, $U.S(orgContext, 256, 32));
         reqContext && _log(NS, `> reqContext =`, $U.S(reqContext, 256, 32));
 
         // STEP.1 support lambda call JWT Token authentication.
-        const headers = event.headers || {};
-        if (headers[HEADER_PROTOCOL_CONTEXT]) {
+        const headers = event.headers;
+        if (headers && headers[HEADER_PROTOCOL_CONTEXT]) {
             //! if it is protocol request via lambda, then returns valid context.
             const $param = $protocol.service.asTransformer('web').transformToParam(event);
-            return $param.context;
+            return $param?.context;
         }
 
         // STEP.2 use internal identity json data via python lambda call.
@@ -467,10 +378,183 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const cookie = $tool.parseCookiesHeader();
 
         // STEP.3. prepare the final `next-context`.
-        const context = $tool.prepareContext({ identity, cookie }, reqContext);
-        context.source = $protocol.service.myProtocolURI(context); // self service-uri as source
+        const $ctx = await $tool.prepareContext({ identity, cookie }, reqContext);
+        $ctx.source = $protocol.service.myProtocolURI($ctx); // self service-uri as source
 
         // FINIAL. returns
-        return context;
+        return $ctx;
     }
+}
+
+/**
+ * class: `HttpHeaderSet`
+ * - header has only <string> value (or values)
+ */
+export interface HttpHeaderSet {
+    [name: string]: string | string[];
+}
+
+/**
+ * class: `HttpHeaderTool`
+ * - parse header and extract identity.
+ */
+export interface HttpHeaderTool {
+    /** say hello */
+    hello(): string;
+    /**
+     * get values by name
+     * @param name case-insentive name of header
+     */
+    getHeaders(name: string): string[];
+    /**
+     * get the last value in header by name
+     * @param name case-insentive name of header
+     */
+    getHeader(name: string): string;
+    /**
+     * parse of header[`env(HEADER_LEMON_IDENTITY)`] to get `NextIdentity`
+     * @param name (optional) name of header (default is 'x-lemon-identity')
+     */
+    parseIdentityHeader(name?: string): NextIdentity;
+    /**
+     * parse of header[`env(HEADER_LEMON_LANGUAGE)`] to get language-type.
+     * @param name (optional) name of header (default is 'x-lemon-language')
+     */
+    parseLanguageHeader(name?: string): string;
+    /**
+     * parse of header[`env(HEADER_LEMON_LANGUAGE)] to get cookie-set.
+     * @param name (optional) name of header (default is 'cookie')
+     */
+    parseCookiesHeader(name?: string): { [key: string]: string };
+    /**
+     * override with AWS request-context
+     * @param $org the current request-context.
+     * @param reqContext (optional) request-context from AWS lambda handler.
+     */
+    prepareContext($org: NextContext, reqContext?: APIGatewayEventRequestContext): Promise<NextContext>;
+}
+
+/**
+ * class: `MyHttpHeaderTool`
+ * - basic implementation of HttpHeaderTool
+ */
+export class MyHttpHeaderTool implements HttpHeaderTool {
+    protected headers: HttpHeaderSet;
+
+    /**
+     * default constructor.
+     * @param headers
+     */
+    public constructor(headers: HttpHeaderSet) {
+        this.headers = { ...headers };
+    }
+
+    public hello(): string {
+        return 'header-tool-by-default';
+    }
+    /**
+     * get values by name
+     * @param name case-insentive name of field
+     */
+    public getHeaders = (name: string): string[] =>
+        Object.entries(this.headers).reduce<string[]>((L, [key, val]) => {
+            if (name === key || key.toLowerCase() === name) {
+                if (Array.isArray(val)) {
+                    val.forEach(val => {
+                        if (typeof val === 'string') {
+                            L.push(val.trim());
+                        } else {
+                            _err(NS, `! invalid type @header[${name}] =`, typeof val, val);
+                        }
+                    });
+                } else if (typeof val === 'string') {
+                    L.push(val.trim());
+                } else {
+                    _err(NS, `! invalid type @header[${name}] =`, typeof val, val);
+                }
+            }
+            return L;
+        }, []);
+    /**
+     * get the last value in header by name
+     */
+    public getHeader = (name: string): string => {
+        const vals = this.getHeaders(name);
+        return vals.length < 1 ? undefined : vals[vals.length - 1];
+    };
+    /**
+     * parse of header[HEADER_LEMON_IDENTITY] to get `next-identity`
+     */
+    public parseIdentityHeader = (name: string = HEADER_LEMON_IDENTITY): NextIdentity => {
+        //TODO - support internal JWT Token authentication.
+        //! `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
+        //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
+        //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
+        // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
+        const val = this.getHeader(name);
+        let result: any = val ? { meta: val } : {};
+        try {
+            if (val && val.startsWith('{') && val.endsWith('}')) result = JSON.parse(val);
+        } catch (e) {
+            _err(NS, '!WARN! parse.err =', e);
+            _err(NS, '!WARN! identity =', val);
+        }
+        const lang = this.parseLanguageHeader() || result?.lang;
+        return { ...result, lang } as NextIdentity;
+    };
+    /**
+     * parse of header[HEADER_LEMON_LANGUAGE] to get language-type.
+     */
+    public parseLanguageHeader = (name: string = HEADER_LEMON_LANGUAGE): string => {
+        const val = this.getHeader(name);
+        return typeof val === 'string' ? val.trim() : undefined;
+    };
+    /**
+     * parse of header[HEADER_LEMON_LANGUAGE] to get cookie-set.
+     */
+    public parseCookiesHeader = (name: string = HEADER_COOKIE): { [key: string]: string } => {
+        const cookie = this.getHeader(name);
+        if (!cookie) return undefined;
+        const parseCookies = (str: string) => {
+            const rx = /([^;=\s]*)=([^;]*)/g;
+            const obj: { [key: string]: string } = {};
+            for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
+            return obj;
+        };
+        return parseCookies(cookie);
+    };
+    /**
+     * override with AWS request-context
+     */
+    public prepareContext = async (
+        $org: NextContext,
+        reqContext: APIGatewayEventRequestContext,
+    ): Promise<NextContext> => {
+        // STEP.4 override w/ cognito authentication to NextIdentity.
+        if (reqContext?.identity?.cognitoIdentityPoolId !== undefined) {
+            const identity = $org.identity as NextIdentityCognito;
+            if (!identity) throw new Error(`.identity is required - prepareContext()`);
+
+            const $id = reqContext.identity;
+            _inf(NS, '! identity :=', $U.json(identity));
+            identity.identityProvider = $id.cognitoAuthenticationProvider;
+            identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
+            identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
+            identity.accountId = $id.accountId; // account-id should be same as context.accountId
+            identity.userAgent = $id.userAgent; // user-agent string.
+
+            //TODO - transform to access identity via `lemon-accounts-api` service @200106
+        }
+
+        // STEP.5 extract additional request infor from req-context.
+        const clientIp = `${reqContext?.identity?.sourceIp || ''}`;
+        const userAgent = `${reqContext?.identity?.userAgent || ''}`;
+        const requestId = `${reqContext?.requestId || ''}`;
+        const accountId = `${reqContext?.accountId || ''}`;
+        const domain = `${reqContext?.domainName || this.getHeader('host') || ''}`; //! chore avoid null of headers
+
+        //! save into headers and returns.
+        const context: NextContext = { ...$org, userAgent, clientIp, requestId, accountId, domain };
+        return context;
+    };
 }
