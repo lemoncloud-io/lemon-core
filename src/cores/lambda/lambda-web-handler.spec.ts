@@ -125,11 +125,11 @@ describe('LambdaWEBHandler', () => {
             expect2(() => $t.getHeaders('X-lemon')).toEqual(['A']);
             expect2(() => $t.getHeader('X-lemon')).toEqual('A');
 
-            expect2(() => $t.getHeader('x-lemon')).toEqual('C !');
             expect2(() => $t.getHeaders('x-lemon')).toEqual(['A', 'B', 'C !']);
+            expect2(() => $t.getHeader('x-lemon')).toEqual('C !');
 
             expect2(() => $t.parseLanguageHeader()).toEqual('ko/kr');
-            expect2(() => $t.parseIdentityHeader()).toEqual({ lang: 'ko/kr', meta: '1122' });
+            expect2(() => $t.parseIdentityHeader()).toEqual({ meta: '1122', lang: 'ko/kr' });
         }
 
         done();

@@ -176,7 +176,7 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
      */
     requestId?: string;
     /**
-     * id of account of initial request. (ex: `085403634746` for lemon profile)
+     * id of aws account number from initial request. (ex: `085403634746` for lemon profile)
      */
     accountId?: string;
     /**
