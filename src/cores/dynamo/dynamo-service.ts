@@ -11,9 +11,9 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../engine/';
-import { GeneralItem, Incrementable } from './core-types';
-import { loadDataYml } from '../tools/';
+import { _log, _inf, _err, $U } from '../../engine/';
+import { GeneralItem, Incrementable } from './../core-types';
+import { loadDataYml } from '../../tools/';
 import AWS from 'aws-sdk';
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 

@@ -18,9 +18,6 @@ export * from './protocol/';
 
 //! export services
 export * from './api-service';
-export * from './dynamo-service';
-export * from './dynamo-query-service';
-export * from './dynamo-scan-service';
 export * from './redis-storage-service';
 export * from './elastic6-service';
 export * from './elastic6-query-service';

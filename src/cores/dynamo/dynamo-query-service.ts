@@ -9,8 +9,8 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../engine/';
-import { GeneralItem } from './core-types';
+import { _log, _inf, _err, $U } from '../../engine/';
+import { GeneralItem } from '../core-types';
 import { DynamoOption, DynamoService } from './dynamo-service';
 const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -54,8 +54,8 @@ export interface DynamoSimpleQueriable<T extends GeneralItem> {
 /** ****************************************************************************************************************
  *  Service Main
  ** ****************************************************************************************************************/
-import Query from '../lib/dynamo/query';
-import Serializer from '../lib/dynamo/serializer';
+import Query from '../../lib/dynamo/query';
+import Serializer from '../../lib/dynamo/serializer';
 
 /**
  * class: `DynamoQueryService`

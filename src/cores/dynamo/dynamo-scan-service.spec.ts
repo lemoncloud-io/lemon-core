@@ -8,12 +8,12 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2 } from '..';
-import { loadProfile } from '../environ';
-import { loadDataYml } from '../tools';
+import { expect2 } from '../..';
+import { loadProfile } from '../../environ';
+import { loadDataYml } from '../../tools';
 import { DynamoService, DynamoOption } from './dynamo-service';
 import { DynamoScanFilter, DynamoScanService } from './dynamo-scan-service';
-import { GeneralItem } from './core-types';
+import { GeneralItem } from '../core-types';
 
 interface AccountItem extends GeneralItem {
     ID: string;

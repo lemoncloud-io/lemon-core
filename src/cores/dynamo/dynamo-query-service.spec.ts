@@ -8,13 +8,13 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { loadProfile } from '../environ';
+import { loadProfile } from '../../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { GETERR, expect2 } from '../common/test-helper';
+import { GETERR, expect2 } from '../../common/test-helper';
 import { DynamoService, DynamoOption } from './dynamo-service';
-import { GeneralItem } from './core-types';
+import { GeneralItem } from '../core-types';
 import { DynamoQueryService } from './dynamo-query-service';
-import { loadDataYml } from '../tools';
+import { loadDataYml } from '../../tools';
 
 interface MyModel extends GeneralItem {
     ID: string;
