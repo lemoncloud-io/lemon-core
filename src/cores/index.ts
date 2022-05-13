@@ -9,22 +9,22 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+//! export modules.
 export * from './core-types';
 export * from './core-services';
 export * from './aws/';
 export * from './config/';
 export * from './lambda/';
+
+//! export sub folders
 export * from './protocol/';
 export * from './dynamo/';
 export * from './elastic/';
+export * from './storage/';
 
 //! export services
 export * from './api-service';
-export * from './redis-storage-service';
-export * from './storage-service';
-export * from './proxy-storage-service';
 export * from './cache-service';
-export * from './model-manager';
 
 //! import default with named.
 import aws from './aws/';

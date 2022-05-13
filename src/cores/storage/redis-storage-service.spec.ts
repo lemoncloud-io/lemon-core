@@ -7,9 +7,10 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, GETERR, StorageModel } from '..';
+import { expect2, GETERR } from '../..';
+import { StorageModel } from './storage-service';
 import { RedisStorageService, DummyRedisStorageService } from './redis-storage-service';
-import { isLocalCacheAvailable } from './cache-service.spec';
+import { isLocalCacheAvailable } from '../cache-service.spec';
 
 interface TestModel extends StorageModel {
     type?: 'test';

@@ -17,7 +17,7 @@ import { _log, _inf, _err, $U } from '../engine/';
 import { NUL404 } from '../common/test-helper';
 import { GeneralWEBController } from './general-controller';
 import { NextHandler, Elastic6SimpleQueriable } from '../cores/core-types';
-import { CoreModel, TypedStorageService, UniqueFieldManager } from '../cores/proxy-storage-service';
+import { CoreModel, TypedStorageService, UniqueFieldManager } from '../cores/';
 
 /**
  * class: `APIController`

@@ -10,10 +10,8 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../engine/';
+import { _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
-
-export * from './http-storage-service';
 
 /**
  * only for type information for internal partition-key.
@@ -101,9 +99,9 @@ export interface StorageService<T extends StorageModel> {
 /** ****************************************************************************************************************
  *  Data Storage Service
  ** ****************************************************************************************************************/
-import { GeneralItem, Incrementable } from './core-types';
-import { DynamoService, KEY_TYPE } from './dynamo/';
-import { loadDataYml } from '../tools/shared';
+import { GeneralItem, Incrementable } from '../core-types';
+import { DynamoService, KEY_TYPE } from '../dynamo/';
+import { loadDataYml } from '../../tools/shared';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
 

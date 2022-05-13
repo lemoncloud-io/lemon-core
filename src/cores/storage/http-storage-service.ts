@@ -1,6 +1,6 @@
 /**
- * `storage-service.js`
- * - common service for `storage`
+ * `http-storage-service.js`
+ * - `storage` service with http api.
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-09-26 initial version
@@ -10,9 +10,9 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../engine';
-import { APIService, APIServiceClient, APIHeaders } from './api-service';
-import { StorageModel, StorageService } from './storage-service';
+import { _log, _inf, _err, $U } from '../../engine';
+import { APIService, APIServiceClient, APIHeaders } from '../api-service';
+import { StorageModel, StorageService } from '.';
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**

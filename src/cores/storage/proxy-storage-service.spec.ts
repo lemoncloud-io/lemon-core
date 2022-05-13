@@ -8,10 +8,10 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { loadProfile } from '../environ';
+import { loadProfile } from '../../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U, do_parrallel } from '../engine';
-import { expect2, GETERR } from '../common/test-helper';
+import { $U, do_parrallel } from '../../engine';
+import { expect2, GETERR } from '../../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageService } from './storage-service';
 import {
     CoreModel,

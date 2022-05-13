@@ -16,7 +16,7 @@ import {
     TypedStorageService,
 } from './proxy-storage-service';
 import { AbstractManager } from './model-manager';
-import { expect2, GETERR } from '../common/test-helper';
+import { expect2, GETERR } from '../../common/test-helper';
 
 //-------------------------
 //! internal definitions

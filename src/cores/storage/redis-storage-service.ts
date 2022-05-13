@@ -8,7 +8,7 @@
  * @copyright   (C) lemoncloud.io 2020 - All Rights Reserved.
  */
 import IORedis, { Redis } from 'ioredis';
-import { $U, _log, _inf, _err } from '../engine';
+import { $U, _log, _inf, _err } from '../../engine';
 import { StorageService, StorageModel } from './storage-service';
 
 // Log namespace

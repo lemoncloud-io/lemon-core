@@ -7,9 +7,10 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { loadProfile } from '../environ';
-import { GETERR, expect2 } from '../common/test-helper';
-import { DynamoStorageService, DummyStorageService, HttpStorageService, StorageModel } from './storage-service';
+import { loadProfile } from '../../environ';
+import { GETERR, expect2 } from '../../common/test-helper';
+import { DynamoStorageService, DummyStorageService, StorageModel } from './storage-service';
+import { HttpStorageService } from './http-storage-service';
 
 interface AccountModel extends StorageModel {
     slot?: number;
