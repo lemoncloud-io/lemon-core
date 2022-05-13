@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2 } from '..';
+import { expect2 } from '../..';
 import { HangulService } from './hangul-service';
 
 // create service instance

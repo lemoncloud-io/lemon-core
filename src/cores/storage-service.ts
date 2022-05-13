@@ -102,7 +102,7 @@ export interface StorageService<T extends StorageModel> {
  *  Data Storage Service
  ** ****************************************************************************************************************/
 import { GeneralItem, Incrementable } from './core-types';
-import { DynamoService, KEY_TYPE } from './dynamo-service';
+import { DynamoService, KEY_TYPE } from './dynamo/';
 import { loadDataYml } from '../tools/shared';
 
 interface MyGeneral extends GeneralItem, StorageModel {}

@@ -10,12 +10,12 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../engine/';
-import { GeneralItem, Incrementable, SearchBody } from './core-types';
+import { _log, _inf, _err, $U } from '../../engine/';
+import { GeneralItem, Incrementable, SearchBody } from '../core-types';
 import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
-import { loadDataYml } from '../tools';
-import { GETERR } from '../common/test-helper';
+import { loadDataYml } from '../../tools';
+import { GETERR } from '../../common/test-helper';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';

@@ -8,8 +8,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { loadProfile } from '../environ';
-import { GETERR, expect2, waited } from '..';
+import { loadProfile } from '../../environ';
+import { GETERR, expect2, waited } from '../..';
 import { Elastic6QueryService } from './elastic6-query-service';
 import { canPerformTest, VERSIONS } from './elastic6-service.spec';
 import * as $elastic from './elastic6-service.spec';

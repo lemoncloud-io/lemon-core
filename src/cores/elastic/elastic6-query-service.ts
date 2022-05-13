@@ -10,7 +10,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../engine/';
+import { _log, _inf, _err, $U } from '../../engine/';
 import {
     GeneralItem,
     Elastic6SimpleQueriable,
@@ -18,7 +18,7 @@ import {
     SimpleSearchParam,
     AutocompleteSearchParam,
     SearchBody,
-} from './core-types';
+} from '../core-types';
 import { Elastic6Service, SearchType } from './elastic6-service';
 import $hangul from './hangul-service';
 const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.

@@ -10,11 +10,10 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { loadProfile } from '../environ';
-import { GETERR, expect2, _it, waited, loadJsonSync } from '..';
-import { GeneralItem } from './core-types';
+import { loadProfile } from '../../environ';
+import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
+import { GeneralItem, SearchBody } from '../core-types';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
-import { SearchBody } from '.';
 
 /**
  * default endpoints url.
