@@ -11,12 +11,11 @@ import request from 'supertest';
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
 import { ProtocolParam, Elastic6QueryService } from '../cores';
 import { buildEngine } from '../engine';
-import { buildExpress, loadJsonSync } from '../tools';
+import { buildExpress } from '../tools';
 import { expect2, GETERR } from '../common/test-helper';
 import { GeneralAPIController } from './general-api-controller';
-import { TypedStorageService } from '../cores/proxy-storage-service';
-
-import * as $proxy from '../cores/proxy-storage-service.spec';
+import { TypedStorageService } from '../cores/';
+import * as $proxy from '../cores/storage/proxy-storage-service.spec';
 
 //! local `lambda-web-handler` to server dummy
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
