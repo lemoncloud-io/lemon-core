@@ -13,20 +13,18 @@
 export * from './core-types';
 export * from './core-services';
 
-//! export modules.
+//! export by groups.
 export * from './aws/';
 export * from './config/';
 export * from './lambda/';
-
-//! export sub folders
 export * from './protocol/';
+export * from './storage/';
 export * from './dynamo/';
 export * from './elastic/';
-export * from './storage/';
 export * from './cache/';
 export * from './api/';
 
-//! import default with named.
+//! import `default` with named.
 import aws from './aws/';
 import config from './config/';
 import lambda from './lambda/';
