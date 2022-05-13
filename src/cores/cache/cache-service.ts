@@ -13,7 +13,7 @@ import { promisify } from 'util';
 import NodeCache from 'node-cache';
 import Memcached from 'memcached';
 import IORedis, { Redis } from 'ioredis';
-import { $U, _log, _inf } from '../engine';
+import { $U, _log, _inf } from '../../engine';
 const NS = $U.NS('CCHS', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**

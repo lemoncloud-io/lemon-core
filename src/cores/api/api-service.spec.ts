@@ -8,11 +8,11 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { loadProfile } from '../environ';
-import $engine, { $U } from '../engine';
-import { GETERR, expect2 } from '../common/test-helper';
+import { loadProfile } from '../../environ';
+import $engine, { $U } from '../../engine';
+import { GETERR, expect2 } from '../../common/test-helper';
 import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
-import { loadJsonSync } from '../tools';
+import { loadJsonSync } from '../../tools';
 
 //! api with `lemon-hello-api` in prod @lemon.
 const TYPE = 'hello';

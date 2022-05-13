@@ -11,7 +11,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine';
-import { APIService, APIServiceClient, APIHeaders } from '../api-service';
+import { APIService, APIServiceClient, APIHeaders } from '../api/';
 import { StorageModel, StorageService } from '.';
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 

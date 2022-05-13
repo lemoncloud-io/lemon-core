@@ -8,7 +8,7 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import net from 'net';
-import { expect2, GETERR, _it } from '..';
+import { expect2, GETERR, _it } from '../..';
 import { CacheService, DummyCacheService, sleep, toTTL, fromTTL } from './cache-service';
 
 export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'cache-service-test') => {

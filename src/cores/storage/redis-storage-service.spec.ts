@@ -10,7 +10,7 @@
 import { expect2, GETERR } from '../..';
 import { StorageModel } from './storage-service';
 import { RedisStorageService, DummyRedisStorageService } from './redis-storage-service';
-import { isLocalCacheAvailable } from '../cache-service.spec';
+import { isLocalCacheAvailable } from '../cache/cache-service.spec';
 
 interface TestModel extends StorageModel {
     type?: 'test';

@@ -9,9 +9,11 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-//! export modules.
+//! export cores.
 export * from './core-types';
 export * from './core-services';
+
+//! export modules.
 export * from './aws/';
 export * from './config/';
 export * from './lambda/';
@@ -21,10 +23,8 @@ export * from './protocol/';
 export * from './dynamo/';
 export * from './elastic/';
 export * from './storage/';
-
-//! export services
-export * from './api-service';
-export * from './cache-service';
+export * from './cache/';
+export * from './api/';
 
 //! import default with named.
 import aws from './aws/';
