@@ -73,11 +73,19 @@ export class AWSKMSService implements CoreKmsService {
      */
     public keyId = () => this._keyId;
 
+    protected _instance: AWS.KMS;
+    /**
+     * get KMS instance in stock
+     */
+    public instance() {
+        if (!this._instance) this._instance = instance();
+        return this._instance;
+    }
+
     /**
      * Encrypt message
      *
      * @param {*} message
-     * @param {*} keyId
      */
     public encrypt = async (message: string): Promise<string> => {
         const keyId = this.keyId();
@@ -87,7 +95,7 @@ export class AWSKMSService implements CoreKmsService {
             KeyId,
             Plaintext: message,
         };
-        const result = await instance().encrypt(params).promise();
+        const result = await this.instance().encrypt(params).promise();
         _log(NS, '> result =', result);
         const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
         _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
@@ -109,7 +117,7 @@ export class AWSKMSService implements CoreKmsService {
                 : encryptedSecret;
         //! api param.
         const params = { CiphertextBlob };
-        const data: any = await instance().decrypt(params).promise();
+        const data: any = await this.instance().decrypt(params).promise();
         // _log(NS, '> data.type =', typeof data);
         return data && data.Plaintext ? data.Plaintext.toString() : '';
     };
@@ -129,7 +137,7 @@ export class AWSKMSService implements CoreKmsService {
         //! check key-id.
         const message = `hello lemon!`;
         const KMS_KEY_ID = $engine.environ(AWSKMSService.ENV_KMS_KEY_ID, `alias/${ALIAS}`) as string;
-        const keyId = await this.keyId();
+        const keyId = this.keyId();
         _log(NS, '> key-id =', keyId);
 
         const encrypted = await this.encrypt(message);

@@ -17,7 +17,8 @@ import { AWSKMSService } from './aws-kms-service';
 //! main test body.
 describe('AWSKMSService', () => {
     //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = credentials(environ('ENV'));
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //! test w/ aws-kms-service
     it('should pass aws-kms-service()', async done => {
@@ -35,6 +36,7 @@ describe('AWSKMSService', () => {
 
         //! run encrypt/decrypt
         expect2(await service.sample(), 'keyId,message,decrypted').toEqual({ keyId, message, decrypted: message });
+
         /* eslint-enable prettier/prettier */
         done();
     });

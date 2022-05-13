@@ -24,7 +24,8 @@ const SNS = new AWSSNSService();
 
 describe(`test service/sns-service.js`, () => {
     //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = credentials(environ('ENV'));
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     test('check name() function', async () => {
         expect(SNS.name()).toEqual('SNS');
