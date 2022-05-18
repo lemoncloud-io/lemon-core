@@ -50,19 +50,19 @@ export interface NextIdentity<T = any> {
     /**
      * site-id (like domain group)
      */
-    sid: string;
+    sid?: string;
     /**
      * user-id (user id)
      */
-    uid: string;
+    uid?: string;
     /**
      * group-id (group id)
      */
-    gid: string;
+    gid?: string;
     /**
      * roles  (like `user`, `admin`, `super`)
      */
-    roles: string[];
+    roles?: string[];
     /**
      * prefered language (like 'ko')
      * - use `x-lemon-language` header, or in `x-lemon-identity`
@@ -70,9 +70,35 @@ export interface NextIdentity<T = any> {
      */
     lang?: string;
     /**
-     * something unknown.
+     * (optional) internal last-error message
+     * - if this is not empty, then DO NOT use this object.
+     * @since ver3.1.2 2022/MAY/15
+     */
+    error?: string;
+    /**
+     * something unknown having the original data.
      */
     meta?: T;
+}
+
+/**
+ * class: `NextIdentityJwt`
+ * - JWT-Token based identity
+ */
+export interface NextIdentityJwt<T = any> extends NextIdentity<T> {
+    /**
+     * issuer of jwt
+     * - must be in format of `kms/<alias>`
+     */
+    iss: string;
+    /**
+     * expired timestamp (sec)
+     */
+    exp: number;
+    /**
+     * issued timestamp (sec)
+     */
+    iat: number;
 }
 
 /**

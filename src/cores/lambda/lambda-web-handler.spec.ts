@@ -9,12 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { $U } from '../../engine/';
-import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
-import { loadJsonSync } from '../../tools/';
+import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
+import { loadJsonSync, credentials } from '../../tools/';
 import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
-import { LambdaWEBHandler, CoreWEBController } from './lambda-web-handler';
+import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
+import { NextIdentity } from '..';
 
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
     public constructor(lambda: LambdaHandler) {
@@ -81,6 +82,10 @@ class MyLemonWebController implements CoreWEBController {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('LambdaWEBHandler', () => {
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('ENV'));
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
     //! list in web-handler
     it('should pass success GET / via web', async done => {
         const { service } = instance();
@@ -113,12 +118,23 @@ describe('LambdaWEBHandler', () => {
         //! test `tools()`
         if (1) {
             const $t = service.tools({
+                Host: 'localhost',
+            }) as MyHttpHeaderTool;
+
+            expect2(() => $t.isExternal()).toEqual(true);
+            expect2(() => $t.parseLanguageHeader()).toEqual();
+            expect2(() => $t.parseIdentityHeader()).toEqual({ lang: undefined as string });
+        }
+
+        //! test `tools()`
+        if (1) {
+            const $t = service.tools({
                 'X-lemon': ' A',
                 'X-Lemon': 'B ',
                 'X-LEMON': 'C !',
                 'X-Lemon-Language': 'ko/kr ',
                 'x-lemon-identity': '1122 ',
-            });
+            }) as MyHttpHeaderTool;
             expect2(() => $t.getHeaders('X-Lemon')).toEqual(['B']);
             expect2(() => $t.getHeader('X-Lemon')).toEqual('B');
 
@@ -128,8 +144,76 @@ describe('LambdaWEBHandler', () => {
             expect2(() => $t.getHeaders('x-lemon')).toEqual(['A', 'B', 'C !']);
             expect2(() => $t.getHeader('x-lemon')).toEqual('C !');
 
+            expect2(() => $t.isExternal()).toEqual(false);
             expect2(() => $t.parseLanguageHeader()).toEqual('ko/kr');
             expect2(() => $t.parseIdentityHeader()).toEqual({ meta: '1122', lang: 'ko/kr' });
+
+            const identity: NextIdentity = { sid: ' ㅎ힁', uid: 'U', gid: 'g', roles: ['&@ $+-'] };
+            const current = ($U.dt('2022-05-10 11:22:33', 9) as Date).getTime();
+            const expectedHead =
+                'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiIg44WO7Z6BIiwidWlkIjoiVSIsImdpZCI6ImciLCJyb2xlcyI6WyImQCAkKy0iXSwiaXNzIjpudWxsLCJpYXQiOjE2NTIxNDkzNTMsImV4cCI6MTY1MjIzNTc1M30';
+            expect2(() => current).toEqual(1652149353000);
+            expect2(await $t.encodeIdentityJWT(identity, { current }), 'token').toEqual({
+                token: `${expectedHead}.`,
+            });
+            expect2(() => $U.jwt().decode(`${expectedHead}.`)).toEqual({
+                iss: null,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+            expect2(await $t.parseIdentityJWT(null).catch(GETERR)).toEqual('@token (string) is required - but object');
+            expect2(await $t.parseIdentityJWT(`${expectedHead}.`).catch(GETERR)).toEqual(
+                '@iss[null] is invalid - unsupportable issuer!',
+            );
+        }
+
+        //! test with valid profile
+        if (PROFILE) {
+            const $t = service.tools({}) as MyHttpHeaderTool;
+            const identity: NextIdentity = { sid: ' ㅎ힁', uid: 'U', gid: 'g', roles: ['&@ $+-'] };
+            const current = ($U.dt('2022-05-10 11:22:33', 9) as Date).getTime();
+            const alias = 'lemon-identity-key';
+            const expectedHead =
+                'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiIg44WO7Z6BIiwidWlkIjoiVSIsImdpZCI6ImciLCJyb2xlcyI6WyImQCAkKy0iXSwiaXNzIjoia21zL2xlbW9uLWlkZW50aXR5LWtleSIsImlhdCI6MTY1MjE0OTM1MywiZXhwIjoxNjUyMjM1NzUzfQ';
+            expect2(() => current).toEqual(1652149353000);
+            const $enc = await $t.encodeIdentityJWT(identity, { current, alias });
+            expect2(() => $enc, 'token').toEqual({ token: `${expectedHead}.${$enc.signature}` });
+            expect2(() => $U.jwt().decode($enc.token)).toEqual({
+                iss: `kms/${alias}`,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+            expect2(() => 1652235753 - 1652149353).toEqual(24 * 60 * 60);
+
+            const parse1 = (t: string) => $t.parseIdentityJWT(t, { current }).catch(GETERR);
+            expect2(await parse1(null)).toEqual('@token (string) is required - but object');
+            expect2(await parse1($enc.message + '.')).toEqual('@signature (string|Buffer) is required - kms.verify()');
+            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(`@signature[] is invalid - not be verified!`);
+            expect2(await parse1($enc.message + '.' + $enc.signature.replace('0', '1'))).toEqual(
+                `@signature[] is invalid - not be verified!`,
+            );
+            expect2(await parse1($enc.token + '.x')).toEqual(`@token[${$enc.token + '.x'}] is invalid format!`);
+            expect2(await parse1($enc.token)).toEqual({
+                iss: `kms/${alias}`,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+
+            const parse2 = (t: string) =>
+                $t.parseIdentityJWT(t, { current: current + 24 * 60 * 60 * 1000 + 0 }).catch(GETERR);
+            expect2(await parse2($enc.token)).toEqual({
+                iss: `kms/${alias}`,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+
+            const parse3 = (t: string) =>
+                $t.parseIdentityJWT(t, { current: current + 24 * 60 * 60 * 1000 + 1 }).catch(GETERR);
+            expect2(await parse3($enc.token)).toEqual('.exp[2022-05-11 11:22:33] is invalid - expired!');
         }
 
         done();
@@ -288,9 +372,10 @@ describe('LambdaWEBHandler', () => {
             });
         }
 
-        //! change identity..
+        //! change identity..(External)
         if (1) {
             const event = loadEventStock(id);
+            delete event.headers['Host'];
             event.headers['x-lemon-identity'] = $U.json({ sid: '', uid: 'guest' });
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
@@ -298,7 +383,51 @@ describe('LambdaWEBHandler', () => {
             expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
             expect2(() => body.context, 'identity').toEqual({
                 identity: {
-                    sid: '',
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    meta: '{"sid":"","uid":"guest"}',
+                    error: '.sid[] is required - IdentityHeader',
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
+        }
+
+        //! change identity.. (Internal)
+        if (1) {
+            const event = loadEventStock(id);
+            delete event.headers['Host'];
+            event.headers['x-lemon-identity'] = $U.json({ sid: null, uid: 'guest' });
+            const response = await lambda.handle(event, null).catch(GETERR$);
+            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse(response.body);
+            expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => body.context, 'identity').toEqual({
+                identity: {
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    meta: '{"sid":null,"uid":"guest"}',
+                    error: '.sid[null] is required - IdentityHeader',
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
+        }
+
+        //! change identity..
+        if (1) {
+            const event = loadEventStock(id);
+            delete event.headers['Host'];
+            event.headers['x-lemon-identity'] = $U.json({ sid: 'S', uid: 'guest' });
+            const response = await lambda.handle(event, null).catch(GETERR$);
+            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse(response.body);
+            expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => body.context, 'identity').toEqual({
+                identity: {
+                    sid: 'S',
                     uid: 'guest',
                     accountId: null,
                     identityId: null,
@@ -312,15 +441,16 @@ describe('LambdaWEBHandler', () => {
         //! change language..
         if (1) {
             const event = loadEventStock(id);
-            event.headers['x-lemon-identity'] = $U.json({ sid: '', lang: 'ko' });
-            event.headers['x-lemon-language'] = ' es '; //! should override `language`.
+            delete event.headers['Host'];
+            event.headers['x-lemon-identity'] = $U.json({ sid: 'S', lang: 'ko' });
+            event.headers['x-lemon-language'] = ' ES '; //! should override `language`.
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const result = JSON.parse(response.body);
             expect2(() => result, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
             expect2(() => result.context, 'identity').toEqual({
                 identity: {
-                    sid: '',
+                    sid: 'S',
                     lang: 'es',
                     accountId: null,
                     identityId: null,

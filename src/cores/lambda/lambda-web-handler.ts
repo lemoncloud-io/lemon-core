@@ -30,7 +30,10 @@ import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
+import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
+
 import $protocol from '../protocol/';
+import { NextIdentityJwt } from '../core-types';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 //! header definitions by environment.
@@ -348,7 +351,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * builder of tools for http-headers
      * - extracting header content, and parse.
      */
-    public tools = (headers: HttpHeaderSet): HttpHeaderTool => new MyHttpHeaderTool(headers);
+    public tools = (headers: HttpHeaderSet): HttpHeaderTool => new MyHttpHeaderTool(this, headers);
 
     /**
      * pack the request context for Http request.
@@ -374,7 +377,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         // STEP.2 use internal identity json data via python lambda call.
         const $tool = this.tools(headers);
-        const identity = $tool.parseIdentityHeader();
+        const identity = await $tool.parseIdentityHeader();
         const cookie = $tool.parseCookiesHeader();
 
         // STEP.3. prepare the final `next-context`.
@@ -415,7 +418,7 @@ export interface HttpHeaderTool {
      * parse of header[`env(HEADER_LEMON_IDENTITY)`] to get `NextIdentity`
      * @param name (optional) name of header (default is 'x-lemon-identity')
      */
-    parseIdentityHeader(name?: string): NextIdentity;
+    parseIdentityHeader(name?: string): Promise<NextIdentity>;
     /**
      * parse of header[`env(HEADER_LEMON_LANGUAGE)`] to get language-type.
      * @param name (optional) name of header (default is 'x-lemon-language')
@@ -439,19 +442,22 @@ export interface HttpHeaderTool {
  * - basic implementation of HttpHeaderTool
  */
 export class MyHttpHeaderTool implements HttpHeaderTool {
+    protected handler: LambdaWEBHandler;
     protected headers: HttpHeaderSet;
 
     /**
      * default constructor.
      * @param headers
      */
-    public constructor(headers: HttpHeaderSet) {
+    public constructor(handler: LambdaWEBHandler, headers: HttpHeaderSet) {
+        this.handler = handler;
         this.headers = { ...headers };
     }
 
     public hello(): string {
         return 'header-tool-by-default';
     }
+
     /**
      * get values by name
      * @param name case-insentive name of field
@@ -475,6 +481,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             }
             return L;
         }, []);
+
     /**
      * get the last value in header by name
      */
@@ -482,33 +489,168 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         const vals = this.getHeaders(name);
         return vals.length < 1 ? undefined : vals[vals.length - 1];
     };
+
     /**
-     * parse of header[HEADER_LEMON_IDENTITY] to get `next-identity`
+     * check if this request is from externals (like API-GW)
+     * @returns true if in external
      */
-    public parseIdentityHeader = (name: string = HEADER_LEMON_IDENTITY): NextIdentity => {
-        //TODO - support internal JWT Token authentication.
-        //! `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
-        //  - http 호출시 해더에 x-lemon-identity = '{"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}'
-        //  - lambda 호출시 requestContext.identity = {"ns": "SS", "sid": "SS000002", "uid": "", "gid": "", "role": "guest"}
-        // _log(NS,'headers['+HEADER_LEMON_IDENTITY+']=', event.headers[HEADER_LEMON_IDENTITY]);
+    public isExternal = (): boolean => {
+        const host = this.getHeader('host');
+        const isExternal = host ? true : false;
+        return !!isExternal;
+    };
+
+    /**
+     * parse of header[`x-lemon-identity`] to get the instance of `NextIdentity`
+     * - lambda 호출의 2가지 방법이 있음 (interval vs external)
+     * - internal는 AWS 같은 계정내 호출로 labmda 직접 호출이 가능함.
+     * - external는 API-GW를 통한 호출로 JWT 지원 (since 3.1.2).
+     *
+     * **[FOR INTERNAL CALL BY LAMBDA]**
+     * - `x-lemon-identity` 정보로부터, 계정 정보를 얻음 (for direct call via lambda)
+     * - 외부 호출과 구분하기 위해서 headr[host]가 비어 있어야함 (API-GW에서는 무조건 있으므로)
+     *
+     * **[FOR EXTERNAL CALL BY API-GW]**
+     * - support ONLY JWT Token authentication (verification).
+     * - iat
+     */
+    public parseIdentityHeader = async <T extends NextIdentity = NextIdentity>(
+        name: string = HEADER_LEMON_IDENTITY,
+    ): Promise<T> => {
+        //! internal means `request from internal services`
+        const isInternal = !this.isExternal();
         const val = this.getHeader(name);
-        let result: any = val ? { meta: val } : {};
+        let result: NextIdentity = val ? { meta: val } : {};
         try {
-            if (val && val.startsWith('{') && val.endsWith('}')) result = JSON.parse(val);
+            if (!val) {
+                //NOP
+            } else if (isInternal && val.startsWith('{') && val.endsWith('}')) {
+                result = await this.parseIdentityJson(val);
+            } else if (typeof val === 'string' && val.split('.').length === 3) {
+                result = await this.parseIdentityJWT(val);
+            }
         } catch (e) {
             _err(NS, '!WARN! parse.err =', e);
             _err(NS, '!WARN! identity =', val);
+            result.error = GETERR(e);
         }
-        const lang = this.parseLanguageHeader() || result?.lang;
-        return { ...result, lang } as NextIdentity;
+        //! overwrite finally language selection.
+        const lang = this.parseLanguageHeader() ?? result?.lang;
+        return { ...result, lang } as T;
     };
+
+    /**
+     * parse as identity from json encoded text.
+     */
+    public parseIdentityJson = async (val: string) => {
+        if (typeof val !== 'string') throw new Error(`@val[${val}] is invalid - not string!`);
+        //! (ONLY for internal) parse payload as `json`
+        const data = JSON.parse(val);
+        // if (typeof data?.ns !== 'string') throw new Error(`.ns[${data?.ns}] is required - IdentityHeader`);
+        if (typeof data?.sid !== 'string' || !data?.sid)
+            throw new Error(`.sid[${data?.sid}] is required - IdentityHeader`);
+        return data as NextIdentity;
+    };
+
+    /**
+     * find(or make) the proper KMSService per key
+     * @param keyId key of KMS
+     * @returns service
+     */
+    protected findKMSService(keyId: string): AWSKMSService {
+        // const aws = $engine.module('aws') as AWSModule;
+        // return aws?.kms;
+        const kms = new AWSKMSService(keyId);
+        return kms;
+    }
+
+    /**
+     * encode as JWT string.
+     */
+    public encodeIdentityJWT = async (
+        identity: NextIdentity,
+        params?: {
+            /** KMS alias to use */
+            alias?: string;
+            /** current ms */
+            current?: number;
+        },
+    ) => {
+        // STEP.1 prepare payload data
+        const current = params?.current ?? $U.current_time_ms();
+        const alias = params?.alias;
+        const payload = {
+            ...identity,
+            iss: alias ? `kms/${alias}` : null, //! issuer name. (must be alias of KMS)
+            iat: Math.floor(current / 1000), //! issued at
+            exp: Math.floor(current / 1000) + 24 * 60 * 60, //! max 1 day.
+        };
+        const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
+        const data = {
+            header: base64url(
+                JSON.stringify({
+                    alg: 'RS256',
+                    typ: 'JWT',
+                }),
+            ),
+            payload: base64url(JSON.stringify(payload)),
+        };
+        // STEP.2 encode and calc signature.
+        const message = [data.header, data.payload].join('.');
+        const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
+        const signature = $kms ? await $kms.sign(message, true) : '';
+        const token = [message, signature].join('.');
+        return { signature, message, token };
+    };
+
+    /**
+     * parse as jwt-token, and validate the signature.
+     */
+    public parseIdentityJWT = async <T extends NextIdentityJwt = NextIdentityJwt>(
+        token: string,
+        params?: {
+            /** current ms */
+            current?: number;
+        },
+    ): Promise<T> => {
+        //! it must be JWT Token. verify signature, and load.
+        if (typeof token !== 'string' || !token) throw new Error(`@token (string) is required - but ${typeof token}`);
+        // STEP.1 decode jwt, and extract { iss, iat, exp }
+        const current = params?.current ?? $U.current_time_ms();
+        const sections = token.split('.');
+        if (sections.length !== 3) throw new Error(`@token[${token}] is invalid format!`);
+        const [header, payload, signature] = sections;
+        const $jwt = $U.jwt();
+        const data = $jwt.decode(token, { complete: false, json: true });
+        if (!data) throw new Error(`@token[${token}] is invalid - failed to decode!`);
+        const { iss, iat, exp } = data;
+
+        // STEP.1-1 validate parameters.
+        if (typeof iss !== 'string' && iss !== null) throw new Error(`.iss (string) is required!`);
+        if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required!`);
+        if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required!`);
+
+        // STEP.2 validate signature by KMS(iss).verify()
+        if (typeof iss === 'string' && iss.startsWith('kms/')) {
+            const alias = iss.substring(4);
+            const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
+            const verified = $kms ? await $kms.verify([header, payload].join('.'), signature) : false;
+            if (!verified) throw new Error(`@signature[] is invalid - not be verified!`);
+            if (!exp || exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid - expired!`);
+            return data as T;
+        }
+        //! or throw
+        throw new Error(`@iss[${iss}] is invalid - unsupportable issuer!`);
+    };
+
     /**
      * parse of header[HEADER_LEMON_LANGUAGE] to get language-type.
      */
     public parseLanguageHeader = (name: string = HEADER_LEMON_LANGUAGE): string => {
         const val = this.getHeader(name);
-        return typeof val === 'string' ? val.trim() : undefined;
+        return typeof val === 'string' ? val.trim().toLowerCase() : undefined;
     };
+
     /**
      * parse of header[HEADER_LEMON_LANGUAGE] to get cookie-set.
      */
@@ -523,6 +665,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         };
         return parseCookies(cookie);
     };
+
     /**
      * override with AWS request-context
      */
