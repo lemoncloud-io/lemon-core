@@ -11,6 +11,7 @@
  * @date        2022-03-15 optimized w/ `AbstractProxy`
  * @date        2022-03-17 optimized w/ `lemon-core#3.0.2` and use `env.ES6_DOCTYPE`
  * @date        2022-03-31 optimized w/ unit test spec.
+ * @date        2022-05-19 optimized `CacheService` w/ typed key.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.

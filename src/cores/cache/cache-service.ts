@@ -151,7 +151,12 @@ export class CacheService<CacheValue = any> implements CacheSupportable<CacheVal
     public readonly ns: string;
 
     /**
-     * Namespace of cache key
+     * the final options to create this service.
+     */
+    public readonly options: CacheOptions;
+
+    /**
+     * maker of cache-key
      */
     public readonly maker: CacheKeyMakable;
 
@@ -176,6 +181,7 @@ export class CacheService<CacheValue = any> implements CacheSupportable<CacheVal
             options?.defTimeout,
             $U.N($U.env(CacheService.ENV_CACHE_DEFAULT_TIMEOUT), CacheService.DEF_CACHE_DEFAULT_TIMEOUT),
         );
+        options = { ...options, type, endpoint, ns, defTimeout };
 
         _log(NS, `constructing [${type}] cache ...`);
         _log(NS, ` > endpoint =`, endpoint);
@@ -194,7 +200,35 @@ export class CacheService<CacheValue = any> implements CacheSupportable<CacheVal
                 throw new Error(`@type [${type}] is invalid - CacheService.create()`);
         }
 
-        return new CacheService(backend, { ns, maker });
+        return new CacheService(backend, { ns, options, maker });
+    }
+
+    /**
+     * Protected constructor -> use CacheService.create()
+     * WARN! - do not create directly.˜
+     *
+     * @param backend  cache backend object
+     * @param params   params to create service.
+     * @protected
+     */
+    protected constructor(
+        backend: CacheBackend,
+        params?: {
+            /** (optional) namespace of cache key (default: '') */
+            ns?: string;
+            /** (optional) the final options to create() */
+            options?: CacheOptions;
+            /** custom key-maker */
+            maker?: CacheKeyMakable;
+        },
+    ) {
+        if (!backend) throw new Error(`@backend (cache-backend) is required!`);
+        const ns = params?.ns || '';
+        _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [ns=${ns}]`);
+        this.backend = backend;
+        this.ns = ns;
+        this.options = params.options;
+        this.maker = params?.maker;
     }
 
     /**
@@ -202,6 +236,20 @@ export class CacheService<CacheValue = any> implements CacheSupportable<CacheVal
      */
     public hello(): string {
         return `cache-service:${this.backend.name}:${this.ns}`;
+    }
+
+    /**
+     * for convient, make another typed service.
+     * - it add `type` into key automatically.
+     *
+     * @param type model-type like 'test'
+     * @param delimiter (optional) delim bewteen type and key (default ':')
+     * @returns the typed CacheService
+     */
+    public cloneByType(type: string, delimiter: string = ':') {
+        const { backend, ns, options } = this;
+        const maker: CacheKeyMakable = (ns, delim, key) => this.asNamespacedKey(`${type}${delimiter}${key}`);
+        return new CacheService(backend, { ns, options, maker });
     }
 
     /**
@@ -459,34 +507,12 @@ export class CacheService<CacheValue = any> implements CacheSupportable<CacheVal
     }
 
     /**
-     * Protected constructor -> use CacheService.create()
-     *
-     * @param backend   cache backend object
-     * @param options   options to create.
-     * @protected
-     */
-    protected constructor(
-        backend: CacheBackend,
-        options?: {
-            /** (optional) namespace of cache key (default: '') */
-            ns?: string;
-            /** custom key-maker */
-            maker?: CacheKeyMakable;
-        },
-    ) {
-        const ns = options?.ns || '';
-        _inf(NS, `! cache-service instantiated with [${backend.name}] backend. [ns=${ns}]`);
-        this.backend = backend;
-        this.ns = ns;
-        this.maker = options?.maker;
-    }
-    /**
      * Get namespace prefixed cache key
      *
      * @param key
      * @protected
      */
-    protected asNamespacedKey(key: CacheKey): string {
+    public asNamespacedKey(key: CacheKey): string {
         const [ns, delim] = [this.ns, CacheService.NAMESPACE_DELIMITER];
         if (this.maker) return this.maker(ns, delim, key);
         return `${ns}${delim}${key}`;
@@ -517,13 +543,13 @@ export class DummyCacheService extends CacheService {
             options?.defTimeout,
             $U.N($U.env(CacheService.ENV_CACHE_DEFAULT_TIMEOUT), CacheService.DEF_CACHE_DEFAULT_TIMEOUT),
         );
-
+        options = { ...options, ns, defTimeout };
         _log(NS, `constructing dummy cache ...`);
 
         // NOTE: Use singleton backend instance
         // because node-cache is volatile and client instance does not share keys with other instance
         if (!DummyCacheService.backend) DummyCacheService.backend = new NodeCacheBackend(defTimeout);
-        return new DummyCacheService(DummyCacheService.backend, { ns });
+        return new DummyCacheService(DummyCacheService.backend, { ns, options });
     }
 
     /**

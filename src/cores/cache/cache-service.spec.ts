@@ -76,12 +76,23 @@ describe('DummyCacheService', () => {
     it('namespace', async done => {
         const { cache: cacheA1 } = instance('dummy', 'NS-A');
         const { cache: cacheA2 } = instance('dummy', 'NS-A');
-        const { cache: cacheB } = instance('dummy', 'NS-B');
+        const { cache: cacheB0 } = instance('dummy', 'NS-B');
+
+        expect2(() => cacheA1.options).toEqual({ defTimeout: 0, ns: 'NS-A' });
+
+        expect2(() => cacheA1.asNamespacedKey('a')).toEqual('NS-A::a');
+        expect2(() => cacheA2.asNamespacedKey('a')).toEqual('NS-A::a');
+        expect2(() => cacheB0.asNamespacedKey('a')).toEqual('NS-B::a');
+
+        const cacheB1 = cacheB0.cloneByType('t1');
+        const cacheB2 = cacheB0.cloneByType('x2', '|');
+        expect2(() => cacheB1.asNamespacedKey('a')).toEqual('NS-B::t1:a');
+        expect2(() => cacheB2.asNamespacedKey('a')).toEqual('NS-B::x2|a');
 
         // pre-condition
         expect2(await cacheA1.keys().catch(GETERR)).toEqual([]);
         expect2(await cacheA2.keys().catch(GETERR)).toEqual([]);
-        expect2(await cacheB.keys().catch(GETERR)).toEqual([]);
+        expect2(await cacheB0.keys().catch(GETERR)).toEqual([]);
 
         // set key 'a' into 'NS-A' namespace
         expect2(await cacheA1.set('a', 'a').catch(GETERR)).toEqual(true);
@@ -89,31 +100,31 @@ describe('DummyCacheService', () => {
         expect2(await cacheA1.exists('a').catch(GETERR)).toEqual(true);
         expect2(await cacheA2.exists('a').catch(GETERR)).toEqual(true);
         // key 'a' should not be visible in cache3
-        expect2(await cacheB.exists('a').catch(GETERR)).toEqual(false);
+        expect2(await cacheB0.exists('a').catch(GETERR)).toEqual(false);
 
         // set key 'b' into 'NS-B' namespace
-        expect2(await cacheB.set('b', 'b').catch(GETERR)).toEqual(true);
+        expect2(await cacheB0.set('b', 'b').catch(GETERR)).toEqual(true);
         // key 'b' should not be visible in 'NS-B' namespace
         expect2(await cacheA1.exists('b').catch(GETERR)).toEqual(false);
         expect2(await cacheA2.exists('b').catch(GETERR)).toEqual(false);
         // key 'b' should be visible in 'NS-A' namespace
-        expect2(await cacheB.exists('b').catch(GETERR)).toEqual(true);
+        expect2(await cacheB0.exists('b').catch(GETERR)).toEqual(true);
 
         // set key 'c' into both 'NS-A' and 'NS-B' namespace with different values
         expect2(await cacheA2.set('c', 1).catch(GETERR)).toEqual(true);
-        expect2(await cacheB.set('c', 2).catch(GETERR)).toEqual(true);
+        expect2(await cacheB0.set('c', 2).catch(GETERR)).toEqual(true);
         // key 'c' should be visible in 'NS-A and 'NS-B'
         expect2(await cacheA1.exists('c').catch(GETERR)).toEqual(true);
         expect2(await cacheA2.exists('c').catch(GETERR)).toEqual(true);
-        expect2(await cacheB.exists('c').catch(GETERR)).toEqual(true);
+        expect2(await cacheB0.exists('c').catch(GETERR)).toEqual(true);
         // but values should be different
         expect2(await cacheA1.get('c').catch(GETERR)).toEqual(1);
         expect2(await cacheA2.get('c').catch(GETERR)).toEqual(1);
-        expect2(await cacheB.get('c').catch(GETERR)).toEqual(2);
+        expect2(await cacheB0.get('c').catch(GETERR)).toEqual(2);
 
         await cacheA1.close();
         await cacheA2.close();
-        await cacheB.close();
+        await cacheB0.close();
         done();
     });
 
