@@ -12,7 +12,7 @@ import { expect2, environ, GETERR } from '../../common/test-helper';
 import { $U } from '../../engine';
 
 import { credentials } from '../../tools/';
-import { AWSKMSService } from './aws-kms-service';
+import { AWSKMSService, fromBase64 } from './aws-kms-service';
 import { performance } from 'perf_hooks';
 
 const $perf = () => {
@@ -45,6 +45,9 @@ describe('AWSKMSService', () => {
         /* eslint-disable prettier/prettier */
         expect2(service.hello()).toEqual(`aws-kms-service:${keyId}`);
         expect2(service.keyId()).toEqual(keyId);
+
+        expect2(() => Buffer.from('\n한/글!(.').toString('base64')).toEqual('Cu2VnC/quIAhKC4=');
+        expect2(() => fromBase64(Buffer.from('\n한/글!(.').toString('base64'))).toEqual('Cu2VnC_quIAhKC4');
 
         //! break if no profile loaded.
         if (!PROFILE) return done();

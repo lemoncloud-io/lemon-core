@@ -17,29 +17,42 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
+import AWS, { KMS } from 'aws-sdk';
+import { SigningAlgorithmSpec } from 'aws-sdk/clients/kms';
+import { CoreKmsService } from '../core-services';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
-import AWS, { KMS } from 'aws-sdk';
-import { CoreKmsService } from '../core-services';
-
-//NOTE - use env[KMS_KEY_ID] to overide.
-const ALIAS = `lemon-hello-api`;
-
-/** ****************************************************************************************************************
- *  Public Instance Exported.
- ** ****************************************************************************************************************/
+type MySigningAlgorithm = SigningAlgorithmSpec;
+const ALIAS = `lemon-hello-api`; //NOTE - use env[KMS_KEY_ID] to overide.
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
-
-//! check if base64 string.
-const isBase64 = (text: string) =>
-    /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/.test(text);
-
 //! get aws client for KMS
 const instance = () => {
     const _region = region();
     const config = { region: _region };
     return new AWS.KMS(config);
 };
+
+/**
+ * check if base64 string.
+ */
+export const isBase64 = (text: string) =>
+    /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/.test(text);
+
+/**
+ * normal base64 to url encoded.
+ */
+export const fromBase64 = (base64: string) => base64.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+/**
+ * additional options for KMS signing.
+ */
+export interface AWSKMSSignOption {
+    /**
+     * algorithm used to sign and verify.
+     * (default RSASSA_PKCS1_V1_5_SHA_256)
+     */
+    algorithm?: MySigningAlgorithm;
+}
 
 /**
  * class: `AWSKMSService`
@@ -53,9 +66,11 @@ export class AWSKMSService implements CoreKmsService {
     public static DEF_KMS_TARGET = `alias/${ALIAS}`;
 
     private _keyId: string;
-    public constructor(keyId?: string) {
+    private _options: AWSKMSSignOption;
+    public constructor(keyId?: string, options?: AWSKMSSignOption) {
         keyId = keyId ?? `${$engine.environ(AWSKMSService.ENV_KMS_KEY_ID, AWSKMSService.DEF_KMS_TARGET)}`;
         this._keyId = keyId;
+        this._options = options;
     }
 
     /**
@@ -139,12 +154,12 @@ export class AWSKMSService implements CoreKmsService {
         const params: KMS.Types.SignRequest = {
             KeyId,
             Message: Buffer.from(message),
-            SigningAlgorithm: 'RSASSA_PKCS1_V1_5_SHA_256',
+            SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
             MessageType: 'RAW',
         };
         const result = await this.instance().sign(params).promise();
         const signature = result.Signature.toString('base64');
-        if (forJwtSignature) return signature.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        if (forJwtSignature) return fromBase64(signature);
         return signature;
     };
 
@@ -156,17 +171,24 @@ export class AWSKMSService implements CoreKmsService {
      * @param {*} signature signature of Buffer or string(in base64)
      */
     public verify = async (message: string, signature: Buffer | string): Promise<boolean> => {
-        if (!message || typeof message !== 'string') throw new Error(`@signature[${message}] is invalid - kms.sign()`);
+        if (!message || typeof message !== 'string') throw new Error(`@message[${message}] is invalid - kms.verify()`);
+        if (!signature) throw new Error(`@signature (string|Buffer) is required - kms.verify()`);
         const KeyId = this.keyId();
         _inf(NS, `verify(${KeyId}, ${message.substring(0, 10)}...)..`);
         const params: KMS.Types.VerifyRequest = {
             KeyId,
             Message: Buffer.from(message),
-            SigningAlgorithm: 'RSASSA_PKCS1_V1_5_SHA_256',
+            SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
             MessageType: 'RAW',
             Signature: typeof signature === 'string' ? Buffer.from(signature, 'base64') : signature,
         };
-        const result = await this.instance().verify(params).promise();
+        const result = await this.instance()
+            .verify(params)
+            .promise()
+            .catch(e => {
+                _err(NS, `! err=`, e);
+                return null;
+            });
         return result?.SignatureValid;
     };
 
