@@ -12,7 +12,7 @@ import { $U } from '../../engine/';
 import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
 import { loadJsonSync, credentials } from '../../tools/';
 import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
-import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool } from './lambda-web-handler';
+import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
 import { NextIdentity } from '..';
@@ -86,36 +86,36 @@ describe('LambdaWEBHandler', () => {
     const PROFILE = credentials(environ('ENV'));
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
-    //! list in web-handler
-    it('should pass success GET / via web', async done => {
+    //! basic function
+    it('should pass basic functions', async done => {
+        const expectedRes = {
+            body: 'null',
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
+                'Access-Control-Allow-Credentials': true,
+            },
+            isBase64Encoded: false,
+            statusCode: 200,
+        };
+        expect2(() => buildResponse(200, null)).toEqual({ ...expectedRes });
+        expect2(() => buildResponse(200, 0)).toEqual({ ...expectedRes, body: '0' });
+        expect2(() => buildResponse(200, {})).toEqual({ ...expectedRes, body: '{}' });
+        expect2(() => buildResponse(200, '')).toEqual({
+            ...expectedRes,
+            body: '',
+            headers: { ...expectedRes.headers, 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+
+        done();
+    });
+
+    //! pass tools()
+    it('should pass header tools', async done => {
         const { service } = instance();
-        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
-        const id = '';
-        event.pathParameters['id'] = id;
-        const res = await service.handle(event, null);
-        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body: $U.json({ hello: 'LIST' }) });
 
-        //! service handlers
-        expect2(Object.keys(service.getHandlerDecoders())).toEqual(['hello', 'lemon']); // must be maps
-        expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function'); // must be decoder function
-
-        /* eslint-disable prettier/prettier */
-        //! GET `/lemon` controller
-        event.resource = '/lemon/{id}'
-        event.path = '/lemon';
-        expect2(await service.handle(event, null), 'body').toEqual({ body:$U.json({ mode:'do-list', type:'lemon', hello:'my-lemon-web-controller:lemon' })});
-
-        //! GET `/lemon/123` controller
-        event.path = '/lemon/123'; event.pathParameters['id'] = '123';
-        expect2(await service.handle(event, null), 'body').toEqual({ body:$U.json({ mode:'MY GET', id:'123', cmd:'', param:{ ts:"1574150700000" }, body:null })});
-
-        //! PUT `/lemon` controller
-        event.path = '/lemon'; event.httpMethod = 'PUT';
-        expect2(await service.handle(event, null), 'body').toEqual({ body:'404 NOT FOUND - PUT /lemon/123'});
-        /* eslint-enable prettier/prettier */
-
-        //! test `tools()`
+        //! test `tools()` basic
         if (1) {
             const $t = service.tools({
                 Host: 'localhost',
@@ -126,7 +126,7 @@ describe('LambdaWEBHandler', () => {
             expect2(() => $t.parseIdentityHeader()).toEqual({ lang: undefined as string });
         }
 
-        //! test `tools()`
+        //! test `tools()` of headers
         if (1) {
             const $t = service.tools({
                 'X-lemon': ' A',
@@ -219,6 +219,38 @@ describe('LambdaWEBHandler', () => {
         done();
     });
 
+    //! list in web-handler
+    it('should pass success GET / via web', async done => {
+        const { service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+        const id = '';
+        event.pathParameters['id'] = id;
+        const res = await service.handle(event, null);
+        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(res, 'body').toEqual({ body: $U.json({ hello: 'LIST' }) });
+
+        //! service handlers
+        expect2(Object.keys(service.getHandlerDecoders())).toEqual(['hello', 'lemon']); // must be maps
+        expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function'); // must be decoder function
+
+        /* eslint-disable prettier/prettier */
+        //! GET `/lemon` controller
+        event.resource = '/lemon/{id}'
+        event.path = '/lemon';
+        expect2(await service.handle(event, null), 'body').toEqual({ body:$U.json({ mode:'do-list', type:'lemon', hello:'my-lemon-web-controller:lemon' })});
+
+        //! GET `/lemon/123` controller
+        event.path = '/lemon/123'; event.pathParameters['id'] = '123';
+        expect2(await service.handle(event, null), 'body').toEqual({ body:$U.json({ mode:'MY GET', id:'123', cmd:'', param:{ ts:"1574150700000" }, body:null })});
+
+        //! PUT `/lemon` controller
+        event.path = '/lemon'; event.httpMethod = 'PUT';
+        expect2(await service.handle(event, null), 'body').toEqual({ body:'404 NOT FOUND - PUT /lemon/123'});
+        /* eslint-enable prettier/prettier */
+
+        done();
+    });
+
     //! list via lambda-handler.
     it('should pass success GET / via lambda', async done => {
         /* eslint-enable prettier/prettier */
@@ -279,7 +311,7 @@ describe('LambdaWEBHandler', () => {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Credentials': true,
-                'Access-Control-Allow-Headers': 'origin, x-lemon-language',
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
             },
         });
         /* eslint-enable prettier/prettier */
@@ -306,7 +338,7 @@ describe('LambdaWEBHandler', () => {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': origin,
                 'Access-Control-Allow-Credentials': true,
-                'Access-Control-Allow-Headers': 'origin, x-lemon-language',
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
             },
         });
         /* eslint-enable prettier/prettier */

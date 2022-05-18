@@ -63,9 +63,17 @@ type ProxyResult = APIGatewayProxyResult;
 type ProxyResponser = () => ProxyResult;
 type ProxyChain = ProxyParams | ProxyResponser;
 
-/** ********************************************************************************************************************
- *  COMMON Functions.
- ** ********************************************************************************************************************/
+/**
+ * build http response body
+ * - if body is string type, then content-type would be text/<some>.
+ * - or default type is json
+ *
+ * @param statusCode http response code like 200
+ * @param body string or object
+ * @param contentType (optional) the target content-type
+ * @param origin (optional) the allow origin (default *)
+ * @returns http response body
+ */
 export const buildResponse = (statusCode: number, body: any, contentType?: string, origin?: string): ProxyResult => {
     const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
     contentType =
@@ -75,14 +83,14 @@ export const buildResponse = (statusCode: number, body: any, contentType?: strin
                 ? 'text/html; charset=utf-8'
                 : 'text/plain; charset=utf-8'
             : 'application/json; charset=utf-8');
-    // @0612 - body 가 string일 경우, 응답형식을 텍스트로 바꿔서 출력한다.
     return {
         statusCode,
         headers: {
             'Content-Type': contentType,
             'Access-Control-Allow-Origin': `${origin || '*'}`, // Required for CORS support to work
             'Access-Control-Allow-Credentials': true, // Required for cookies, authorization headers with HTTPS
-            'Access-Control-Allow-Headers': `origin, ${HEADER_LEMON_LANGUAGE}`, // custom headers
+            // eslint-disable-next-line prettier/prettier
+            'Access-Control-Allow-Headers': ['origin', HEADER_LEMON_LANGUAGE, HEADER_LEMON_IDENTITY].filter(s => !!s).join(', '), // custom headers
         },
         body: typeof body === 'string' ? body : JSON.stringify(body),
         isBase64Encoded,
