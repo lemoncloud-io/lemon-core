@@ -7,7 +7,8 @@ it describes the basic mechanism of `identity-token` in http header
 1. make JWT Token w/ KMS Signing @backend-api
     - save KMS Key as issuer
 
-1. send(or share) this Token to client, and save into local storage @client    
+1. send(or share) this Token to client, and save into local storage @client
+    - `Token` will be available custome backend-api while register-device.
 
 1. On every request, send Token by embedding header
     - default header-name is `X-Lemon-Identity`
