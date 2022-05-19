@@ -48,6 +48,17 @@ describe('utils', () => {
     const PROFILE = loadProfile(process); // override process.env.
     PROFILE && console.info(`! PROFILE =`, PROFILE);
 
+    it('should pass basic code pattern.', () => {
+        const params = [undefined, null, 0, 1, '', false, {}, [], '#', ' ', '1'];
+        expect2(() => params.map(v => v ?? 'N')).toEqual(['N', 'N', 0, 1, '', false, {}, [], '#', ' ', '1']);
+        expect2(() => params.map(v => v || 'N')).toEqual(['N', 'N', 'N', 1, 'N', 'N', {}, [], '#', ' ', '1']);
+
+        /* eslint-disable prettier/prettier */
+        expect2(() => params.map(v => $T.S(v))).toEqual([ '', '', '0', '1', '', 'false', '[object Object]', '', '#', '', '1']);
+        expect2(() => params.map(v => $T.N(v))).toEqual([ 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1]);
+        /* eslint-enable prettier/prettier */
+    });
+
     //! test transformer
     it('should pass helper of $T (transformer).', async () => {
         /* eslint-disable prettier/prettier */
@@ -71,6 +82,8 @@ describe('utils', () => {
         expect2(() => $T.FF('1.234')).toEqual([1.234]);
         expect2(() => $T.FF('2,5,39,40,0')).toEqual([2,5,39,40,0]);
         expect2(() => $T.FF([35,'49.9', '101', 0, 1])).toEqual([35, 49.9, 101, 0, 1]);
+        expect2(() => $T.F3(1.555555)).toEqual(1.556);
+
         expect2(() => $T.B('0')).toEqual(0);
         expect2(() => $T.B('1')).toEqual(1);
         expect2(() => $T.B('2')).toEqual(1);

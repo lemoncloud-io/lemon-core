@@ -87,6 +87,13 @@ export const $T = {
         if (Array.isArray(val)) return val.length > 0 ? val.map(_ => $T.F(_, 0)) : def;
         return [$T.F(val)];
     },
+    /**
+     * float w/ fixed len=3
+     */
+    F3: (n: number, e = 0.000001) => Number((n + e).toFixed(3)),
+    /**
+     * transform to boolean.
+     */
     B: (val: any, def: 0 | 1 = 0): 0 | 1 => {
         if (val === null || val === undefined) return def as 0 | 1;
         if (typeof val === 'boolean') return val ? 1 : 0;

@@ -14,7 +14,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
 import QUERY_STRING from 'query-string';
-import jwt from 'jsonwebtoken';
+import $jwt, { DecodeOptions } from 'jsonwebtoken';
 import * as uuid from 'uuid';
 const NS = 'util';
 
@@ -820,9 +820,9 @@ export class Utilities {
     /**
      * builder for `JWTHelper`
      * @param passcode string for verification.
+     * @param current_ms (optional) current time in millisecond (required to verify `exp`)
      */
     public readonly jwt = <T = any>(passcode?: string, current_ms?: number) => {
-        const $ = jwt;
         const $U = this;
 
         /**
@@ -833,7 +833,7 @@ export class Utilities {
             /**
              * use `jsonwebtoken` directly.
              */
-            public readonly $ = $;
+            public readonly $ = $jwt;
 
             /**
              * encode object to token string
@@ -844,7 +844,7 @@ export class Utilities {
              */
             public encode = (data: T & JwtCommon, algorithm: JwtAlgorithm = 'HS256'): string => {
                 data = current_ms ? { ...data, iat: Math.floor(current_ms / 1000) } : data;
-                const token = $.sign(data, passcode, { algorithm });
+                const token = $jwt.sign(data, passcode, { algorithm });
                 return token;
             };
 
@@ -853,8 +853,8 @@ export class Utilities {
              *
              * @param token string
              */
-            public decode = (token: string): T & JwtCommon => {
-                const N = $.decode(token) as T & JwtCommon;
+            public decode = (token: string, options?: DecodeOptions): T & JwtCommon => {
+                const N = $jwt.decode(token, options) as T & JwtCommon;
                 return N;
             };
 
@@ -867,7 +867,7 @@ export class Utilities {
              * @throws `jwt expired` if exp has expired!.
              */
             public verify = (token: string, algorithm: JwtAlgorithm = 'HS256'): T & JwtCommon => {
-                const verified = $.verify(token, passcode, { algorithms: [algorithm] }) as T & JwtCommon;
+                const verified = $jwt.verify(token, passcode, { algorithms: [algorithm] }) as T & JwtCommon;
                 const cur = $U.N(current_ms, 0);
                 const exp = $U.N(verified?.exp, 0) * 1000;
                 if (cur > 0 && exp > 0 && exp < current_ms) throw new Error(`jwt expired at ${$U.ts(exp)}`);

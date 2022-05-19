@@ -19,10 +19,11 @@ export * from './cores/';
 export * from './tools/';
 export * from './controllers/';
 
-//! import core modules.
+//! init an instance of core modules.
 import engine from './engine/';
 import cores from './cores/';
 
+//! export as group.
 import * as lib from './lib/';
 import * as tools from './tools/';
 import * as controllers from './controllers/';
@@ -30,6 +31,7 @@ import * as controllers from './controllers/';
 //! export as named, or helpers.
 export { lib, tools };
 export * from './helpers/';
+export * from './extended/';
 
 //! export as default.
 export default { engine, cores, tools, controllers };

@@ -19,7 +19,8 @@ import { GETERR, GETERR$, expect2, marshal, Filter, _it, environ } from '../../c
 //! main test body.
 describe('AWSSQSService', () => {
     //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = credentials(environ('ENV'));
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     const ENDPOINTS: { [key: string]: string } = {
         lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-test-sqs',

@@ -46,23 +46,23 @@ export type NextMode = 'LIST' | 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
  * - the context parameter for each next-handler `fx(id, param, body, context)`
  * - possible to query user's detail via OAuth Resource Server.
  */
-export interface NextIdentity {
+export interface NextIdentity<T = any> {
     /**
      * site-id (like domain group)
      */
-    sid: string;
+    sid?: string;
     /**
-     * user-id (user unique-id)
+     * user-id (user id)
      */
-    uid: string;
+    uid?: string;
     /**
      * group-id (group id)
      */
-    gid: string;
+    gid?: string;
     /**
      * roles  (like `user`, `admin`, `super`)
      */
-    roles: string[];
+    roles?: string[];
     /**
      * prefered language (like 'ko')
      * - use `x-lemon-language` header, or in `x-lemon-identity`
@@ -70,16 +70,42 @@ export interface NextIdentity {
      */
     lang?: string;
     /**
-     * something unknown.
+     * (optional) internal last-error message
+     * - if this is not empty, then DO NOT use this object.
+     * @since ver3.1.2 2022/MAY/15
      */
-    meta?: any;
+    error?: string;
+    /**
+     * something unknown having the original data.
+     */
+    meta?: T;
+}
+
+/**
+ * class: `NextIdentityJwt`
+ * - JWT-Token based identity
+ */
+export interface NextIdentityJwt<T = any> extends NextIdentity<T> {
+    /**
+     * issuer of jwt
+     * - must be in format of `kms/<alias>`
+     */
+    iss: string;
+    /**
+     * expired timestamp (sec)
+     */
+    exp: number;
+    /**
+     * issued timestamp (sec)
+     */
+    iat: number;
 }
 
 /**
  * class: `NextIdentityCognito`
  * - extended information w/ cognito identity.
  */
-export interface NextIdentityCognito extends NextIdentity {
+export interface NextIdentityCognito<T = any> extends NextIdentity<T> {
     /**
      * account-id of AWS Credential
      */
@@ -100,13 +126,18 @@ export interface NextIdentityCognito extends NextIdentity {
      * user-agent string like 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4)'
      */
     userAgent?: string;
+    /**
+     * (optional) caller string like `AROXXXXXX:CognitoIdentityCredentials` from `APIGatewayEventIdentity`
+     * - available since `3.1.1`
+     */
+    caller?: string;
 }
 
 /**
  * class: `NextIdentityAcess`
  * - extended information w/ site + account access information.
  */
-export interface NextIdentityAccess extends NextIdentity {
+export interface NextIdentityAccess<T = any> extends NextIdentity<T> {
     /**
      * site-information for domain
      */
@@ -152,7 +183,7 @@ export interface NextIdentityAccess extends NextIdentity {
 
 /**
  * class: `NextContext`
- * - information of caller's context.
+ * - information of caller's context w/ `next-identity`.
  */
 export interface NextContext<T extends NextIdentity = NextIdentity> {
     /**
@@ -176,7 +207,7 @@ export interface NextContext<T extends NextIdentity = NextIdentity> {
      */
     requestId?: string;
     /**
-     * id of account of initial request. (ex: `085403634746` for lemon profile)
+     * id of aws account number from initial request. (ex: `085403634746` for lemon profile)
      */
     accountId?: string;
     /**

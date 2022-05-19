@@ -268,7 +268,7 @@ describe('ProtocolService', () => {
         //! error exceptions
         expect2(() => service.web.transformToParam({ ...event2, headers: null })).toEqual('.headers is required');
         expect2(() => service.web.transformToParam({ ...event2, requestContext: null })).toEqual('.requestContext is required');
-        expect2(() => service.web.transformToParam({ ...event2, headers: {} })).toEqual(".headers['x-protocol-context'] is required");
+        expect2(() => service.web.transformToParam({ ...event2, headers: {} })).toEqual(".headers[x-protocol-context] is required");
         expect2(() => service.web.transformToParam({ ...event2, requestContext: {...event2.requestContext, accountId:'' } })).toEqual("400 INVALID CONTEXT - accountId:0908");
         expect2(() => service.web.transformToParam({ ...event2, requestContext: {...event2.requestContext, requestId:'' } })).toEqual("400 INVALID CONTEXT - requestId:xxxx");
 

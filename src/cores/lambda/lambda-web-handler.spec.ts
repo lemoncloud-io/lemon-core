@@ -9,12 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { $U } from '../../engine/';
-import { expect2, GETERR$ } from '../../common/test-helper';
-import { loadJsonSync } from '../../tools/';
+import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
+import { loadJsonSync, credentials } from '../../tools/';
 import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
-import { LambdaWEBHandler, CoreWEBController } from './lambda-web-handler';
+import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
+import { NextIdentity } from '..';
 
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
     public constructor(lambda: LambdaHandler) {
@@ -81,6 +82,143 @@ class MyLemonWebController implements CoreWEBController {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('LambdaWEBHandler', () => {
+    //! use `env.PROFILE`
+    const PROFILE = credentials(environ('ENV'));
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
+    //! basic function
+    it('should pass basic functions', async done => {
+        const expectedRes = {
+            body: 'null',
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
+                'Access-Control-Allow-Credentials': true,
+            },
+            isBase64Encoded: false,
+            statusCode: 200,
+        };
+        expect2(() => buildResponse(200, null)).toEqual({ ...expectedRes });
+        expect2(() => buildResponse(200, 0)).toEqual({ ...expectedRes, body: '0' });
+        expect2(() => buildResponse(200, {})).toEqual({ ...expectedRes, body: '{}' });
+        expect2(() => buildResponse(200, '')).toEqual({
+            ...expectedRes,
+            body: '',
+            headers: { ...expectedRes.headers, 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+
+        done();
+    });
+
+    //! pass tools()
+    it('should pass header tools', async done => {
+        const { service } = instance();
+
+        //! test `tools()` basic
+        if (1) {
+            const $t = service.tools({
+                Host: 'localhost',
+            }) as MyHttpHeaderTool;
+
+            expect2(() => $t.isExternal()).toEqual(true);
+            expect2(() => $t.parseLanguageHeader()).toEqual();
+            expect2(() => $t.parseIdentityHeader()).toEqual({ lang: undefined as string });
+        }
+
+        //! test `tools()` of headers
+        if (1) {
+            const $t = service.tools({
+                'X-lemon': ' A',
+                'X-Lemon': 'B ',
+                'X-LEMON': 'C !',
+                'X-Lemon-Language': 'ko/kr ',
+                'x-lemon-identity': '1122 ',
+            }) as MyHttpHeaderTool;
+            expect2(() => $t.getHeaders('X-Lemon')).toEqual(['B']);
+            expect2(() => $t.getHeader('X-Lemon')).toEqual('B');
+
+            expect2(() => $t.getHeaders('X-lemon')).toEqual(['A']);
+            expect2(() => $t.getHeader('X-lemon')).toEqual('A');
+
+            expect2(() => $t.getHeaders('x-lemon')).toEqual(['A', 'B', 'C !']);
+            expect2(() => $t.getHeader('x-lemon')).toEqual('C !');
+
+            expect2(() => $t.isExternal()).toEqual(false);
+            expect2(() => $t.parseLanguageHeader()).toEqual('ko/kr');
+            expect2(() => $t.parseIdentityHeader()).toEqual({ meta: '1122', lang: 'ko/kr' });
+
+            const identity: NextIdentity = { sid: ' ㅎ힁', uid: 'U', gid: 'g', roles: ['&@ $+-'] };
+            const current = ($U.dt('2022-05-10 11:22:33', 9) as Date).getTime();
+            const expectedHead =
+                'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiIg44WO7Z6BIiwidWlkIjoiVSIsImdpZCI6ImciLCJyb2xlcyI6WyImQCAkKy0iXSwiaXNzIjpudWxsLCJpYXQiOjE2NTIxNDkzNTMsImV4cCI6MTY1MjIzNTc1M30';
+            expect2(() => current).toEqual(1652149353000);
+            expect2(await $t.encodeIdentityJWT(identity, { current }), 'token').toEqual({
+                token: `${expectedHead}.`,
+            });
+            expect2(() => $U.jwt().decode(`${expectedHead}.`)).toEqual({
+                iss: null,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+            expect2(await $t.parseIdentityJWT(null).catch(GETERR)).toEqual('@token (string) is required - but object');
+            expect2(await $t.parseIdentityJWT(`${expectedHead}.`).catch(GETERR)).toEqual(
+                '@iss[null] is invalid - unsupportable issuer!',
+            );
+        }
+
+        //! test with valid profile
+        if (PROFILE) {
+            const $t = service.tools({}) as MyHttpHeaderTool;
+            const identity: NextIdentity = { sid: ' ㅎ힁', uid: 'U', gid: 'g', roles: ['&@ $+-'] };
+            const current = ($U.dt('2022-05-10 11:22:33', 9) as Date).getTime();
+            const alias = 'lemon-identity-key';
+            const expectedHead =
+                'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiIg44WO7Z6BIiwidWlkIjoiVSIsImdpZCI6ImciLCJyb2xlcyI6WyImQCAkKy0iXSwiaXNzIjoia21zL2xlbW9uLWlkZW50aXR5LWtleSIsImlhdCI6MTY1MjE0OTM1MywiZXhwIjoxNjUyMjM1NzUzfQ';
+            expect2(() => current).toEqual(1652149353000);
+            const $enc = await $t.encodeIdentityJWT(identity, { current, alias });
+            expect2(() => $enc, 'token').toEqual({ token: `${expectedHead}.${$enc.signature}` });
+            expect2(() => $U.jwt().decode($enc.token)).toEqual({
+                iss: `kms/${alias}`,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+            expect2(() => 1652235753 - 1652149353).toEqual(24 * 60 * 60);
+
+            const parse1 = (t: string) => $t.parseIdentityJWT(t, { current }).catch(GETERR);
+            expect2(await parse1(null)).toEqual('@token (string) is required - but object');
+            expect2(await parse1($enc.message + '.')).toEqual('@signature (string|Buffer) is required - kms.verify()');
+            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(`@signature[] is invalid - not be verified!`);
+            expect2(await parse1($enc.message + '.' + $enc.signature.replace('0', '1'))).toEqual(
+                `@signature[] is invalid - not be verified!`,
+            );
+            expect2(await parse1($enc.token + '.x')).toEqual(`@token[${$enc.token + '.x'}] is invalid format!`);
+            expect2(await parse1($enc.token)).toEqual({
+                iss: `kms/${alias}`,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+
+            const parse2 = (t: string) =>
+                $t.parseIdentityJWT(t, { current: current + 24 * 60 * 60 * 1000 + 0 }).catch(GETERR);
+            expect2(await parse2($enc.token)).toEqual({
+                iss: `kms/${alias}`,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+
+            const parse3 = (t: string) =>
+                $t.parseIdentityJWT(t, { current: current + 24 * 60 * 60 * 1000 + 1 }).catch(GETERR);
+            expect2(await parse3($enc.token)).toEqual('.exp[2022-05-11 11:22:33] is invalid - expired!');
+        }
+
+        done();
+    });
+
     //! list in web-handler
     it('should pass success GET / via web', async done => {
         const { service } = instance();
@@ -108,8 +246,8 @@ describe('LambdaWEBHandler', () => {
         //! PUT `/lemon` controller
         event.path = '/lemon'; event.httpMethod = 'PUT';
         expect2(await service.handle(event, null), 'body').toEqual({ body:'404 NOT FOUND - PUT /lemon/123'});
-
         /* eslint-enable prettier/prettier */
+
         done();
     });
 
@@ -173,7 +311,7 @@ describe('LambdaWEBHandler', () => {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Credentials': true,
-                'Access-Control-Allow-Headers': 'origin, x-lemon-language',
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
             },
         });
         /* eslint-enable prettier/prettier */
@@ -200,7 +338,7 @@ describe('LambdaWEBHandler', () => {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': origin,
                 'Access-Control-Allow-Credentials': true,
-                'Access-Control-Allow-Headers': 'origin, x-lemon-language',
+                'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
             },
         });
         /* eslint-enable prettier/prettier */
@@ -246,77 +384,219 @@ describe('LambdaWEBHandler', () => {
         };
         const id = '!';
 
-        /* eslint-disable prettier/prettier */
         //! use default cofnig.
         if (1) {
             const event = loadEventStock(id);
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const result = JSON.parse(response.body);
-            expect2(() => result, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-            expect2(() => result.context, 'identity').toEqual({ identity:{ sid:undefined, uid:undefined, accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+            expect2(() => result, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => result.context, 'identity').toEqual({
+                identity: {
+                    sid: undefined,
+                    uid: undefined,
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
         }
 
-        //! change identity..
-        if (1){
+        //! change identity..(External)
+        if (1) {
             const event = loadEventStock(id);
-            event.headers['x-lemon-identity'] = $U.json({ sid:'', uid:'guest' });
+            delete event.headers['Host'];
+            event.headers['x-lemon-identity'] = $U.json({ sid: '', uid: 'guest' });
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const body = JSON.parse(response.body);
-            expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-            expect2(() => body.context, 'identity').toEqual({ identity:{ sid:'', uid:'guest', accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+            expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => body.context, 'identity').toEqual({
+                identity: {
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    meta: '{"sid":"","uid":"guest"}',
+                    error: '.sid[] is required - IdentityHeader',
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
+        }
+
+        //! change identity.. (Internal)
+        if (1) {
+            const event = loadEventStock(id);
+            delete event.headers['Host'];
+            event.headers['x-lemon-identity'] = $U.json({ sid: null, uid: 'guest' });
+            const response = await lambda.handle(event, null).catch(GETERR$);
+            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse(response.body);
+            expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => body.context, 'identity').toEqual({
+                identity: {
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    meta: '{"sid":null,"uid":"guest"}',
+                    error: '.sid[null] is required - IdentityHeader',
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
+        }
+
+        //! change identity..
+        if (1) {
+            const event = loadEventStock(id);
+            delete event.headers['Host'];
+            event.headers['x-lemon-identity'] = $U.json({ sid: 'S', uid: 'guest' });
+            const response = await lambda.handle(event, null).catch(GETERR$);
+            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse(response.body);
+            expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => body.context, 'identity').toEqual({
+                identity: {
+                    sid: 'S',
+                    uid: 'guest',
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
         }
 
         //! change language..
-        if (1){
+        if (1) {
             const event = loadEventStock(id);
-            event.headers['x-lemon-identity'] = $U.json({ sid:'', lang:'ko' });
-            event.headers['x-lemon-language'] = ' es ';
+            delete event.headers['Host'];
+            event.headers['x-lemon-identity'] = $U.json({ sid: 'S', lang: 'ko' });
+            event.headers['x-lemon-language'] = ' ES '; //! should override `language`.
             const response = await lambda.handle(event, null).catch(GETERR$);
             expect2(response, 'statusCode').toEqual({ statusCode: 200 });
             const result = JSON.parse(response.body);
-            expect2(() => result, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-            expect2(() => result.context, 'identity').toEqual({ identity:{ sid:'', lang:'es', accountId:null, identityId:null, identityPoolId:null, identityProvider:null, userAgent: 'HTTPie/1.0.2' } });
+            expect2(() => result, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+            expect2(() => result.context, 'identity').toEqual({
+                identity: {
+                    sid: 'S',
+                    lang: 'es',
+                    accountId: null,
+                    identityId: null,
+                    identityPoolId: null,
+                    identityProvider: null,
+                    userAgent: 'HTTPie/1.0.2',
+                },
+            });
         }
 
+        /* eslint-disable prettier/prettier */
         /* eslint-enable prettier/prettier */
         done();
     });
 
     //! test packContext() via lambda protocol
-    it('should pass packContext() via lambda protocol', async done => {
-        /* eslint-disable prettier/prettier */
-        const { lambda } = instance();
+    it('should pass packContext(public) via lambda protocol', async done => {
+        const { lambda, service: $web } = instance();
+        const $pack = loadJsonSync('package.json');
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
-        const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
+        // const identity: any = loadJsonSync('data/samples/events/sample.cognito.identity.json');
+        const context: NextContext = {
+            accountId: '796730245826',
+            requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
+            identity: { sid: 'A', uid: 'B', gid: 'C', roles: null },
+        };
+
+        //! packContext()
+        expect2(await lambda.packContext(event, null).catch(GETERR)).toEqual({});
+        expect2(await $web.packContext(event, null).catch(GETERR)).toEqual({
+            ...context,
+            identity: {
+                accountId: null,
+                identityId: null,
+                identityPoolId: null,
+                identityProvider: null,
+                caller: undefined,
+                lang: undefined,
+                userAgent: 'HTTPie/1.0.2',
+            },
+            domain: 'na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com',
+            cookie: undefined,
+            clientIp: '221.149.250.0',
+            userAgent: 'HTTPie/1.0.2',
+            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+        });
+
+        //! pack context by header
         event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
         const response = await lambda.handle(event, null).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         const body = JSON.parse(response.body);
-        expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
-        expect2(body.context, '').toEqual(context);
-        /* eslint-enable prettier/prettier */
+        expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
+        expect2(body.context, '').toEqual({ ...context });
+
+        done();
+    });
+
+    //! test packContext() via lambda protocol
+    it('should pass packContext(authed) via lambda protocol', async done => {
+        const { lambda, service: $web } = instance();
+        const $pack = loadJsonSync('package.json');
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.signed.json');
+        const context: NextContext = {
+            accountId: '796730245826',
+            requestId: 'a9bff61d-8eaf-4e1d-8e8e-364ed1bef646',
+        };
+
+        //! packContext()
+        expect2(await lambda.packContext(event, null).catch(GETERR)).toEqual({});
+        expect2(await $web.packContext(event, null).catch(GETERR)).toEqual({
+            ...context,
+            identity: {
+                accountId: '796730245826',
+                caller: 'AROAIBXAJA2J7SUQOWJMO:CognitoIdentityCredentials',
+                identityId: 'ap-northeast-2:dbd95fb4-1234-2345-4567-56e5bc95e444',
+                identityPoolId: 'ap-northeast-2:618ce9d2-1234-2345-4567-e248ea51425e',
+                identityProvider:
+                    'oauth.lemoncloud.io,oauth.lemoncloud.io:ap-northeast-2:618ce9d2-1234-2345-4567-e248ea51425e:kakao_00000',
+                lang: 'ko',
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            },
+            domain: 'dev.oauth.lemoncloud.io',
+            cookie: undefined,
+            clientIp: '221.149.50.0',
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+        });
+
         done();
     });
 
     //! test packContext() via web-handler-servce
     it('should pass packContext() via lambda protocol', async done => {
-        /* eslint-disable prettier/prettier */
         const { service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
-        const context: NextContext = { accountId:'796730245826', requestId:'d8485d00-5624-4094-9a93-ce09c351ee5b', identity:{ sid:'A', uid:'B', gid:'C', roles:null } };
+        const context: NextContext = {
+            accountId: '796730245826',
+            requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
+            identity: { sid: 'A', uid: 'B', gid: 'C', roles: null },
+        };
+
+        //! no pack context by header
         // event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
         const response: any = await service.handle(event, context).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         const body = JSON.parse(response.body);
-        expect2(() => body, 'id,param,body').toEqual({ id, param:{ts:'1574150700000'}, body: null });
+        expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
         expect2(body.context, '').toEqual(context);
-        /* eslint-enable prettier/prettier */
+
         done();
     });
 });
