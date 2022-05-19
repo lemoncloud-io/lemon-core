@@ -73,12 +73,11 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 ----------------
 # TODO TASK #
 
-- [ ] use environ as default region like `ap-northeast-2` (or use current region).
+- [x] use environ as default region like `ap-northeast-2` (or use current region).
 - [x] draw protocol's sequence diagram w/ `callback` mechanism.
 - [x] on protocol, use local account name as accountId for NextContext.
 - [x] for protocol.enqueue(), use the optional delayed wait time.
-- [ ] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
-- [ ] for protocol.brodcast(), use `SNS` to receive events (along with https) @200121
+- [x] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
 
 
 ----------------
@@ -86,54 +85,47 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
-| 2.2.20    | cleanse and move an extra feature from `aws-s3-service` to 'lemon-images-api'
-| 2.2.19    | fix an issue and add filtering feature for `ES6 autocomplete search`.
+| 3.1.1     | support `ManagerProxy`, `AbstractProxy` and `$ES6`.
+| 3.1.0     | upgrade `typescript^4.6.2`, and optimized.
+| 3.0.2     | support `helpers` like `$T`.
+| 3.0.0     | improve search-client with `@elastic/elasticsearch@7.12` to support AWS `OpenSearch 1.1` (compartible with `ES6.2`).
+| 2.2.20    | improve an extra feature from `aws-s3-service` to 'lemon-images-api'
+| 2.2.19    | improve search filtering feature for `ES6 autocomplete search`.
 | 2.2.18    | support `$U.jwt(passcode).encode(...)` w/ `jsonwebtoken`.
 | 2.2.16    | hot-fix `utf8 encoding of json` in `AWS.S3`.
 | 2.2.15    | hot-fix `Cannot read property 'setIndex' of null` in `Dynamo`.
 | 2.2.14    | support `CacheService`, and support appending entry into list in `Dynamo`.
 | 2.2.13    | improve `LambdaWEBHandler` to support custom web-response including headers.
-| 2.2.12    | fix `AWSS3Service` to use pure JS image library because of AWS compatibility issue
+| 2.2.12    | improve `AWSS3Service` to use pure JS image library because of AWS compatibility issue.
 | 2.2.11    | improve `AWSS3Service` by adding handy method and metadata+tag handling
-| 2.2.10    | fix `Access-Control-Allow-Origin` w/ `Access-Control-Allow-Credentials: true`.
+| 2.2.10    | improve `Access-Control-Allow-Origin` w/ `Access-Control-Allow-Credentials: true`.
 | 2.2.9     | support `content-type:application/x-www-form-urlencoded` form data.
-| 2.2.8     | minor changes.
-| 2.2.7     | fix `status is not defined`.
 | 2.2.6     | improve `search`, and support `cookie` in NextContext.
-| 2.2.5     | add `Access-Control-Allow-Headers` for CORS.
-| 2.2.4     | update package modules `npm update --save`.
+| 2.2.5     | support `Access-Control-Allow-Headers` for CORS.
 | 2.2.3     | support `x-lemon-language` header in identity.
-| 2.2.2     | fix result of sns/sqn event handler
-| 2.2.1     | fix missing export of a class declaration.
 | 2.2.0     | support `AbstractManager` for the template of model managers.
 | 2.1.17    | support `filter()` in DynamoStream.
 | 2.1.16    | improve `lock()` w/ 404 error, and `.aggregations` in QueryResult.
-| 2.1.15    | support `$U.FN()`for float-number.
 | 2.1.14    | support `hash` param for `MocksAPIService`.
 | 2.1.13    | support `HttpStorage`, `$U.crypto2`, and `/favicon.ico`.
 | 2.1.12    | support `userAgent` in NextContext.
 | 2.1.11    | improve `syncToElastic6`, and `DynamoScanService`.
 | 2.1.10    | support `loadProfile()`, and lookup-id style.
-| 2.1.9     | improve `lock()` and `search()`.
 | 2.1.8     | improve `express` of request-context.
 | 2.1.7     | improve `TypedStorageService` w/ `save()`.
 | 2.1.5     | support `GeneralAPIController` along w/ `UniqueFieldManager`.
-| 2.1.4     | optimized `ProtocolService` w/ callback.
 | 2.1.3     | support `asNextIdentityAccess()` for access identity.
 | 2.1.2     | support `ProxyStorageService` for shared common storage.
 | 2.1.1     | support `enqueue()` with delayed-seconds.
 | 2.1.0     | support `ProtocolService` for inter communication of micro-services.
-| 2.0.10    | show current name/version by `GET /`.
+| 2.0.10    | support to display the current name/version by `GET /`.
 | 2.0.9     | improve `Elastic6Service` + `Elastic6QueryService`.
 | 2.0.8     | improve `APIService` w/ mocks data.
 | 2.0.7     | improve `StorageService` along w/ dummy-storage-service.
 | 2.0.6     | support `CoreWEBController`, and `lambda.cores.web.addController(...)`
 | 2.0.5     | support `APIService`, and fix `engine.initialize()`
-| 2.0.4     | improve test-helper w/ `environ`, `credentials`
 | 2.0.3     | support `StorageService` along with `DynamoStorageService`
-| 2.0.2     | refactoring, and support `ProtocolService`
-| 2.0.1     | fix package dependencies.
-| 2.0.0     | remove `lemon-engine`, and support `typescript` fully.
+| 2.0.0     | improve `lemon-engine`, and support `typescript` fully.
 | 1.2.15    | improve `doReportError` with error message
 | 1.2.12    | support `doReportMetric()` for saving metric data.
 

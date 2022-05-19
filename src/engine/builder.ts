@@ -56,9 +56,9 @@ export const RESET = '\x1b[0m';
 
 /* eslint-disable @typescript-eslint/indent */
 export const build_log = ($console: EngineConsole): EngineLogger =>
-    function() {
+    function () {
         const _ts = build_ts({ console: $console });
-        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
             ($console.auto_ts && args.unshift(_ts(), LEVEL_LOG + RESET)) || args.unshift(LEVEL_LOG + RESET),
                 args.unshift(BLUE);
@@ -66,9 +66,9 @@ export const build_log = ($console: EngineConsole): EngineLogger =>
         return $console.log.apply($console.thiz, args);
     };
 export const build_inf = ($console: EngineConsole): EngineLogger =>
-    function() {
+    function () {
         const _ts = build_ts({ console: $console });
-        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
             ($console.auto_ts && args.unshift(_ts(), LEVEL_INF + RESET)) || args.unshift(LEVEL_INF + RESET),
                 args.unshift(YELLOW);
@@ -76,9 +76,9 @@ export const build_inf = ($console: EngineConsole): EngineLogger =>
         return $console.log.apply($console.thiz, args);
     };
 export const build_err = ($console: EngineConsole): EngineLogger =>
-    function() {
+    function () {
         const _ts = build_ts({ console: $console });
-        let args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
+        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
         if ($console.auto_color)
             ($console.auto_ts && args.unshift(_ts(), LEVEL_ERR + RESET)) || args.unshift(LEVEL_ERR + RESET),
                 args.unshift(RED);
@@ -246,10 +246,8 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
             public readonly $console: EngineConsole = $console;
             public ts: (date?: number | Date, timeZone?: number) => string = build_ts({ console: $console });
             public dt: (time?: string | number | Date, timeZone?: number) => Date = Utilities.datetime;
-            public environ: (
-                name: string,
-                defValue?: string | number | boolean,
-            ) => string | number | boolean = _environ;
+            public environ: (name: string, defValue?: string | number | boolean) => string | number | boolean =
+                _environ;
             public toString = () => `engine: ${ROOT_NAME}`;
         })();
         //! start initialization only if making $engine.

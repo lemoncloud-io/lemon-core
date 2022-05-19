@@ -130,7 +130,10 @@ export class GeneralWEBController extends GeneralController {
         //! if not found, then find via base.
         if (!ret && this.base) {
             const handler = this.base.decode(mode, id, cmd);
-            const builder = (thiz: any, func: NextHandler): NextHandler => (i, p, b, c) => func.call(thiz, i, p, b, c);
+            const builder =
+                (thiz: any, func: NextHandler): NextHandler =>
+                (i, p, b, c) =>
+                    func.call(thiz, i, p, b, c);
             return typeof handler == 'function' ? builder(this.base, handler) : null;
         }
         return ret;
@@ -187,9 +190,10 @@ export class GeneralWEBController extends GeneralController {
         const subject = `event://${config.getService()}-${config.getStage()}`;
         const { service, param } = ((asUrl: boolean): { service: string; param: GeneralItem } => {
             if (asUrl) {
+                // So far, can not reach this line
                 const uri = $proto.myProtocolURI(context, type, id);
                 const [a, b] = uri.split('#', 2);
-                const service = `${a}${param ? '?' : ''}${param ? $U.qs.stringify(param) : ''}#${b}`;
+                const service = `${a}${$param ? '?' : ''}${$param ? $U.qs.stringify($param) : ''}#${b}`;
                 return { service, param: undefined };
             } else {
                 const service: string = $proto.myProtocolURI(context, type, id);

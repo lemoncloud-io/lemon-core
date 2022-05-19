@@ -21,7 +21,7 @@ internals.actionWords = ['SET', 'ADD', 'REMOVE', 'DELETE'];
 
 internals.regexMap = _.reduce(
     internals.actionWords,
-    function(result: any, key: any) {
+    function (result: any, key: any) {
         result[key] = new RegExp(key + '\\s*(.+?)\\s*(SET|ADD|REMOVE|DELETE|$)');
         return result;
     },
@@ -31,8 +31,8 @@ internals.regexMap = _.reduce(
 // explanation http://stackoverflow.com/questions/3428618/regex-to-find-commas-that-arent-inside-and
 internals.splitOperandsRegex = new RegExp(/\s*(?![^(]*\)),\s*/);
 
-internals.match = function(actionWord: any, str: any) {
-    var match = internals.regexMap[actionWord].exec(str);
+internals.match = function (actionWord: any, str: any) {
+    const match = internals.regexMap[actionWord].exec(str);
 
     if (match && match.length >= 2) {
         return match[1].split(internals.splitOperandsRegex);
@@ -41,10 +41,10 @@ internals.match = function(actionWord: any, str: any) {
     }
 };
 
-export const parse = function(str: any) {
+export const parse = function (str: any) {
     return _.reduce(
         internals.actionWords,
-        function(result: any, actionWord: any) {
+        function (result: any, actionWord: any) {
             result[actionWord] = internals.match(actionWord, str);
             return result;
         },
@@ -52,12 +52,12 @@ export const parse = function(str: any) {
     );
 };
 
-export const serializeUpdateExpression = function(schema: any, item: any) {
-    var datatypes = schema._modelDatatypes;
+export const serializeUpdateExpression = function (schema: any, item: any) {
+    const datatypes = schema._modelDatatypes;
 
-    var data = utils.omitPrimaryKeys(schema, item);
+    const data = utils.omitPrimaryKeys(schema, item);
 
-    var memo = {
+    const memo = {
         expressions: {},
         attributeNames: {},
         values: {},
@@ -65,7 +65,7 @@ export const serializeUpdateExpression = function(schema: any, item: any) {
 
     memo.expressions = _.reduce(
         internals.actionWords,
-        function(result: any, key: any) {
+        function (result: any, key: any) {
             result[key] = [];
 
             return result;
@@ -75,9 +75,9 @@ export const serializeUpdateExpression = function(schema: any, item: any) {
 
     const result = _.reduce(
         data,
-        function(result: any, value: any, key: any) {
-            var valueKey = ':' + key;
-            var nameKey = '#' + key;
+        function (result: any, value: any, key: any) {
+            const valueKey = ':' + key;
+            const nameKey = '#' + key;
 
             if (_.isNull(value) || (_.isString(value) && _.isEmpty(value))) {
                 result.expressions.REMOVE.push(nameKey);
@@ -104,10 +104,10 @@ export const serializeUpdateExpression = function(schema: any, item: any) {
     return result;
 };
 
-export const stringify = function(expressions: any) {
+export const stringify = function (expressions: any) {
     return _.reduce(
         expressions,
-        function(result: any, value: any, key: any) {
+        function (result: any, value: any, key: any) {
             if (!_.isEmpty(value)) {
                 if (_.isArray(value)) {
                     result.push(key + ' ' + value.join(', '));
@@ -122,7 +122,7 @@ export const stringify = function(expressions: any) {
     ).join(' ');
 };
 
-internals.formatAttributeValue = function(val: any) {
+internals.formatAttributeValue = function (val: any) {
     if (_.isDate(val)) {
         return val.toISOString();
     }
@@ -130,7 +130,7 @@ internals.formatAttributeValue = function(val: any) {
     return val;
 };
 
-internals.isFunctionOperator = function(operator: any) {
+internals.isFunctionOperator = function (operator: any) {
     return _.includes(
         [
             'attribute_exists',
@@ -145,9 +145,9 @@ internals.isFunctionOperator = function(operator: any) {
     );
 };
 
-internals.uniqAttributeValueName = function(key: any, existingValueNames: any) {
-    var potentialName = ':' + key;
-    var idx = 1;
+internals.uniqAttributeValueName = function (key: any, existingValueNames: any) {
+    let potentialName = ':' + key;
+    let idx = 1;
 
     while (_.includes(existingValueNames, potentialName)) {
         idx++;
@@ -157,14 +157,20 @@ internals.uniqAttributeValueName = function(key: any, existingValueNames: any) {
     return potentialName;
 };
 
-export const buildFilterExpression = function(key: any, operator: any, existingValueNames: any, val1: any, val2?: any) {
+export const buildFilterExpression = function (
+    key: any,
+    operator: any,
+    existingValueNames: any,
+    val1: any,
+    val2?: any,
+) {
     // IN filter expression is unlike all the others where val1 is an array of values
     if (operator === 'IN') {
         return internals.buildInFilterExpression(key, existingValueNames, val1);
     }
 
-    var v1 = internals.formatAttributeValue(val1);
-    var v2 = internals.formatAttributeValue(val2);
+    let v1 = internals.formatAttributeValue(val1);
+    const v2 = internals.formatAttributeValue(val2);
 
     if (operator === 'attribute_exists' && v1 === false) {
         operator = 'attribute_not_exists';
@@ -173,11 +179,11 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
         v1 = null;
     }
 
-    var path = '#' + key;
-    var v1ValueName = internals.uniqAttributeValueName(key, existingValueNames);
-    var v2ValueName = internals.uniqAttributeValueName(key, [v1ValueName].concat(existingValueNames));
+    const path = '#' + key;
+    const v1ValueName = internals.uniqAttributeValueName(key, existingValueNames);
+    const v2ValueName = internals.uniqAttributeValueName(key, [v1ValueName].concat(existingValueNames));
 
-    var statement = '';
+    let statement = '';
 
     if (internals.isFunctionOperator(operator)) {
         if (!_.isNull(v1) && !_.isUndefined(v1)) {
@@ -191,7 +197,7 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
         statement = [path, operator, v1ValueName].join(' ');
     }
 
-    var attributeValues: any = {};
+    const attributeValues: any = {};
 
     if (!_.isNull(v1) && !_.isUndefined(v1)) {
         attributeValues[v1ValueName] = v1;
@@ -201,7 +207,7 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
         attributeValues[v2ValueName] = v2;
     }
 
-    var attributeNames: any = {};
+    const attributeNames: any = {};
     attributeNames[path] = key;
 
     return {
@@ -211,17 +217,17 @@ export const buildFilterExpression = function(key: any, operator: any, existingV
     };
 };
 
-internals.buildInFilterExpression = function(key: any, existingValueNames: any, values: any) {
-    var path = '#' + key;
+internals.buildInFilterExpression = function (key: any, existingValueNames: any, values: any) {
+    const path = '#' + key;
 
-    var attributeNames: any = {};
+    const attributeNames: any = {};
     attributeNames[path] = key;
 
-    var attributeValues = _.reduce(
+    const attributeValues = _.reduce(
         values,
-        function(result: any, val: any) {
-            var existing = _.keys(result).concat(existingValueNames);
-            var p = internals.uniqAttributeValueName(key, existing);
+        function (result: any, val: any) {
+            const existing = _.keys(result).concat(existingValueNames);
+            const p = internals.uniqAttributeValueName(key, existing);
             result[p] = internals.formatAttributeValue(val);
             return result;
         },

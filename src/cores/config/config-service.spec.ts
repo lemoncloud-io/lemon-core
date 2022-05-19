@@ -19,7 +19,8 @@ import { marshal, Filter, MyConfigService } from './config-service';
 
 describe('ConfigService', () => {
     //! use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const PROFILE = credentials(environ('ENV'));
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //! dummy storage service.
     it('should pass expect2 helper', async done => {
@@ -77,6 +78,7 @@ describe('ConfigService', () => {
         const message = 'hello-lemon';
         const encrypted = await $kms.encrypt(message);
         const secret = `*${encrypted}`;
+        //NOTE - encrypted string can be changed when created.
         console.info(`encrypt[${message}] :=`, secret);
 
         //! prepare dummy config set.

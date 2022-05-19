@@ -42,25 +42,27 @@ interface Options {
  * example:
  * `$ ENV=lemon STAGE=dev nodemon express.js --port 8081`
  *
- * @param process
- * @param param1
+ * @param process the main process instance.
+ * @param options (optional) default option.
  */
 export const loadEnviron = (process: any, options?: Options) => {
     options = options || {};
-    let { ENV, STAGE, ENV_PATH } = options;
+    const { ENV, ENV_PATH } = options;
+    let { STAGE } = options;
     const $env = (process && process.env) || {};
     const QUIET = 0 ? 0 : $env['LS'] === '1'; // LOG SILENT - PRINT NO LOG MESSAGE
     const PROFILE = ENV || $env['PROFILE'] || $env['ENV'] || 'none'; // Environment Profile Name.
     STAGE = STAGE || $env['STAGE'] || $env['NODE_ENV'] || 'local'; // Global STAGE/NODE_ENV For selecting.
     const _log = QUIET ? (...a: any) => {} : console.log;
-    _log(`! PROFILE=${PROFILE} STAGE=${STAGE}`);
+    const isLocal = STAGE === 'local';
+    if (!isLocal) _log(`! PROFILE=${PROFILE} STAGE=${STAGE}`);
 
     //! initialize environment via 'env.yml'
     return ($det => {
         const file = PROFILE;
         const path = `${ENV_PATH || './env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
         if (!fs.existsSync(path)) throw new Error('FILE NOT FOUND:' + path);
-        _log(`! loading yml-file: "${path}"`);
+        if (!isLocal) _log(`! loading yml-file: "${path}"`);
         const $doc: any = yaml.safeLoad(fs.readFileSync(path, 'utf8'));
         const $src: any = ($doc && $doc[STAGE]) || {};
         const $new = Object.keys($src).reduce(($O: any, key: string) => {

@@ -33,7 +33,7 @@ describe('LambdaNotificationHandler', () => {
         'Content-Type': 'text/plain; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Credentials': true,
-        'Access-Control-Allow-Headers': 'origin, x-lemon-language',
+        'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
     };
 
     //! handle for subscription

@@ -23,14 +23,16 @@ import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
-
-const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
-
 import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
-// import queryString from 'query-string';
 import queryString from 'qs';
+const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
+
+/**
+ * header name to exchange `next-context`
+ */
+export const HEADER_PROTOCOL_CONTEXT = $U.env('HEADER_PROTOCOL_CONTEXT', 'x-protocol-context');
 
 /**
  * type: MyProtocolType
@@ -542,14 +544,12 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const accountId = `${(context && context.accountId) || ''}`;
 
         //! build http parameter
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         const base: APIGatewayProxyEvent = {} as APIGatewayProxyEvent;
-        // eslint-disable-next-line @typescript-eslint/no-object-literal-type-assertion
         const $ctx: APIGatewayEventRequestContext = {} as APIGatewayEventRequestContext;
         const event: APIGatewayProxyEvent = {
             ...base,
             headers: {
-                'x-protocol-context': $U.json(context),
+                [HEADER_PROTOCOL_CONTEXT]: $U.json(context),
             },
             path,
             httpMethod,
@@ -601,9 +601,11 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         })(event.body, contType);
 
         //! decode context (can be null)
-        if (typeof headers['x-protocol-context'] == 'undefined')
-            throw new Error(".headers['x-protocol-context'] is required");
-        const context: NextContext = headers['x-protocol-context'] ? JSON.parse(headers['x-protocol-context']) : null;
+        if (typeof headers[HEADER_PROTOCOL_CONTEXT] === 'undefined')
+            throw new Error(`.headers[${HEADER_PROTOCOL_CONTEXT}] is required`);
+        const context: NextContext = headers[HEADER_PROTOCOL_CONTEXT]
+            ? JSON.parse(headers[HEADER_PROTOCOL_CONTEXT])
+            : null;
 
         //! determine execute mode.
         const service = '';

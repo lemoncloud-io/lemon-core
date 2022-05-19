@@ -17,29 +17,42 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
+import AWS, { KMS } from 'aws-sdk';
+import { SigningAlgorithmSpec } from 'aws-sdk/clients/kms';
+import { CoreKmsService } from '../core-services';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
-import AWS from 'aws-sdk';
-import { CoreKmsService } from '../core-services';
-
-//NOTE - use env[KMS_KEY_ID] to overide.
-const ALIAS = `lemon-hello-api`;
-
-/** ****************************************************************************************************************
- *  Public Instance Exported.
- ** ****************************************************************************************************************/
+type MySigningAlgorithm = SigningAlgorithmSpec;
+const ALIAS = `lemon-hello-api`; //NOTE - use env[KMS_KEY_ID] to overide.
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
-
-//! check if base64 string.
-const isBase64 = (text: string) =>
-    /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/.test(text);
-
 //! get aws client for KMS
 const instance = () => {
     const _region = region();
     const config = { region: _region };
     return new AWS.KMS(config);
 };
+
+/**
+ * check if base64 string.
+ */
+export const isBase64 = (text: string) =>
+    /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{4}|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)$/.test(text);
+
+/**
+ * normal base64 to url encoded.
+ */
+export const fromBase64 = (base64: string) => base64.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+/**
+ * additional options for KMS signing.
+ */
+export interface AWSKMSSignOption {
+    /**
+     * algorithm used to sign and verify.
+     * (default RSASSA_PKCS1_V1_5_SHA_256)
+     */
+    algorithm?: MySigningAlgorithm;
+}
 
 /**
  * class: `AWSKMSService`
@@ -53,9 +66,11 @@ export class AWSKMSService implements CoreKmsService {
     public static DEF_KMS_TARGET = `alias/${ALIAS}`;
 
     private _keyId: string;
-    public constructor(keyId?: string) {
-        keyId = keyId ? keyId : ($engine.environ(AWSKMSService.ENV_KMS_KEY_ID, AWSKMSService.DEF_KMS_TARGET) as string);
+    private _options: AWSKMSSignOption;
+    public constructor(keyId?: string, options?: AWSKMSSignOption) {
+        keyId = keyId ?? `${$engine.environ(AWSKMSService.ENV_KMS_KEY_ID, AWSKMSService.DEF_KMS_TARGET)}`;
         this._keyId = keyId;
+        this._options = options;
     }
 
     /**
@@ -71,13 +86,25 @@ export class AWSKMSService implements CoreKmsService {
     /**
      * get key-id to encrypt.
      */
-    public keyId = () => this._keyId;
+    public keyId = () => {
+        if (!this._keyId || typeof this._keyId !== 'string')
+            throw new Error(`.keyId<${typeof this._keyId}> (string) is required!`);
+        return this._keyId;
+    };
+
+    protected _instance: AWS.KMS;
+    /**
+     * get KMS instance in stock
+     */
+    public instance() {
+        if (!this._instance) this._instance = instance();
+        return this._instance;
+    }
 
     /**
      * Encrypt message
      *
      * @param {*} message
-     * @param {*} keyId
      */
     public encrypt = async (message: string): Promise<string> => {
         const keyId = this.keyId();
@@ -87,9 +114,7 @@ export class AWSKMSService implements CoreKmsService {
             KeyId,
             Plaintext: message,
         };
-        const result = await instance()
-            .encrypt(params)
-            .promise();
+        const result = await this.instance().encrypt(params).promise();
         _log(NS, '> result =', result);
         const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
         _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
@@ -111,11 +136,77 @@ export class AWSKMSService implements CoreKmsService {
                 : encryptedSecret;
         //! api param.
         const params = { CiphertextBlob };
-        const data: any = await instance()
-            .decrypt(params)
-            .promise();
+        const data: any = await this.instance().decrypt(params).promise();
         // _log(NS, '> data.type =', typeof data);
         return data && data.Plaintext ? data.Plaintext.toString() : '';
+    };
+
+    /**
+     * make signature by message
+     *
+     * @param {*} message any string
+     * @param forJwtSignature (option) flag to get JWT signature format.
+     */
+    public sign = async (message: string, forJwtSignature = true): Promise<string> => {
+        if (!message || typeof message !== 'string') throw new Error(`@message[${message}] is invalid - kms.sign()`);
+        const KeyId = this.keyId();
+        _inf(NS, `sign(${KeyId}, ${message.substring(0, 10)}...)..`);
+        const params: KMS.Types.SignRequest = {
+            KeyId,
+            Message: Buffer.from(message),
+            SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
+            MessageType: 'RAW',
+        };
+        const result = await this.instance().sign(params).promise();
+        const signature = result.Signature.toString('base64');
+        if (forJwtSignature) return fromBase64(signature);
+        return signature;
+    };
+
+    /**
+     * verify signature in asymetric way
+     * - it tooks around `30ms`
+     *
+     * @param {*} message any string
+     * @param {*} signature signature of Buffer or string(in base64)
+     */
+    public verify = async (message: string, signature: Buffer | string): Promise<boolean> => {
+        if (!message || typeof message !== 'string') throw new Error(`@message[${message}] is invalid - kms.verify()`);
+        if (!signature) throw new Error(`@signature (string|Buffer) is required - kms.verify()`);
+        const KeyId = this.keyId();
+        _inf(NS, `verify(${KeyId}, ${message.substring(0, 10)}...)..`);
+        const params: KMS.Types.VerifyRequest = {
+            KeyId,
+            Message: Buffer.from(message),
+            SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
+            MessageType: 'RAW',
+            Signature: typeof signature === 'string' ? Buffer.from(signature, 'base64') : signature,
+        };
+        const result = await this.instance()
+            .verify(params)
+            .promise()
+            .catch(e => {
+                _err(NS, `! err=`, e);
+                return null;
+            });
+        return result?.SignatureValid;
+    };
+
+    /**
+     * retrieve public-key for asymetric verification.
+     * - used to verify signature with JWT library w/o making request to AWS KMS.
+     * - in general, cache this `public-key` to verify locally.
+     *
+     * @param encoding (optional) encoding type
+     */
+    public getPublicKey = async (encoding: BufferEncoding = 'base64') => {
+        const KeyId = this.keyId();
+        _inf(NS, `getPublicKey(${KeyId})..`);
+        const params: KMS.Types.GetPublicKeyRequest = {
+            KeyId,
+        };
+        const result = await this.instance().getPublicKey(params).promise();
+        return result?.PublicKey.toString(encoding);
     };
 
     /**
@@ -133,7 +224,7 @@ export class AWSKMSService implements CoreKmsService {
         //! check key-id.
         const message = `hello lemon!`;
         const KMS_KEY_ID = $engine.environ(AWSKMSService.ENV_KMS_KEY_ID, `alias/${ALIAS}`) as string;
-        const keyId = await this.keyId();
+        const keyId = this.keyId();
         _log(NS, '> key-id =', keyId);
 
         const encrypted = await this.encrypt(message);

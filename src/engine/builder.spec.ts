@@ -84,7 +84,7 @@ describe(`core/builder.ts`, () => {
             public thiz: any;
             public auto_ts: boolean = true;
             public auto_color: boolean = false;
-            public log = function() {
+            public log = function () {
                 const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
                 return args.join(' ');
             };
@@ -109,7 +109,7 @@ describe(`core/builder.ts`, () => {
             public thiz: any;
             public auto_ts: boolean = true;
             public auto_color: boolean = true;
-            public log = function() {
+            public log = function () {
                 const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
                 return args.join(' ');
             };
@@ -134,7 +134,7 @@ describe(`core/builder.ts`, () => {
             public thiz: any;
             public auto_ts: boolean = false;
             public auto_color: boolean = true;
-            public log = function() {
+            public log = function () {
                 const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
                 return args.join(' ');
             };

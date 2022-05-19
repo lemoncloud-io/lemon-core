@@ -12,9 +12,9 @@ import { expect2, GETERR } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from './lambda-handler';
 import { LambdaDynamoStreamHandler, DynamoStreamFilter, DynamoStreamCallback } from './lambda-dynamo-stream-handler';
-import { DynamoOption } from './../dynamo-service';
+import { DynamoOption } from './../dynamo/';
 import * as $lambda from './lambda-handler.spec';
-import * as $elastic6 from './../elastic6-service.spec';
+import * as $elastic6 from './../elastic/elastic6-service.spec';
 
 class LambdaDynamoStreamHandlerLocal extends LambdaDynamoStreamHandler {
     public constructor(lambda: LambdaHandler) {
@@ -80,7 +80,7 @@ describe('LambdaDynamoStreamHandler', () => {
             expect2(handlersCalled).toEqual({ filter: false, onBeforeSync: false, onAfterSync: false });
             handlersCalled.filter = true;
             // check diff items
-            for (let key of Object.keys(item))
+            for (const key of Object.keys(item))
                 if (diff.includes(key)) expect2(item[key]).not.toEqual(prev[key]);
             return true;
         };

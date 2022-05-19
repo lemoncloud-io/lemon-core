@@ -339,7 +339,8 @@ class S3PutObjectRequestBuilder {
      * return PutObjectRequest object
      */
     public asParams(): AWS.S3.PutObjectRequest {
-        let { Body, Bucket, ContentLength, ContentType, Key, Metadata, Tagging } = this;
+        const { Body, Bucket, ContentLength, Metadata, Tagging } = this;
+        let { ContentType, Key } = this;
 
         // generate object key if not specified
         //  - generate UUID filename
