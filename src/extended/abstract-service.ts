@@ -656,13 +656,22 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
      * the cached identity model
      */
     protected _identity: { [key: string]: NextIdentityAccess } = {};
-    public async getIdentity$(identityId: string): Promise<NextIdentityAccess> {
+
+    /**
+     * fetch(or load) identity.
+     *
+     * @param identityId id to find
+     * @param force (optional) force to reload if not available
+     * @returns the cached identity-access
+     */
+    public async getIdentity$(identityId: string, force?: boolean): Promise<NextIdentityAccess> {
+        if (!identityId) return null;
         // STEP.1 check if in stock.
         const val = this._identity[identityId];
-        if (val !== undefined) return val;
-        // STEP.2 fetch remotely, and save
+        if (val !== undefined && !force) return val;
+        // STEP.2 fetch remotely, and save in cache.
         const { $identity } = await this.fetchIdentityAccess(identityId);
-        this._identity[identityId] = $identity;
+        this._identity[identityId] = $identity ? $identity : null; //! mark as 'null' not to fetch futher
         return $identity;
     }
 
