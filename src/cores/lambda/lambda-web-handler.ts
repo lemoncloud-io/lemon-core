@@ -428,6 +428,21 @@ export interface HttpHeaderTool {
      */
     parseIdentityHeader(name?: string): Promise<NextIdentity>;
     /**
+     * encode identity into JWT Token
+     * - this will be shared via `x-lemon-identity` header.
+     * @param identity the target identity
+     * @param params (optional) encoding options.
+     */
+    encodeIdentityJWT(
+        identity: NextIdentity,
+        params?: {
+            /** KMS alias to use */
+            alias?: string;
+            /** current ms */
+            current?: number;
+        },
+    ): Promise<{ signature: string; message: string; token: string }>;
+    /**
      * parse of header[`env(HEADER_LEMON_LANGUAGE)`] to get language-type.
      * @param name (optional) name of header (default is 'x-lemon-language')
      */
@@ -583,7 +598,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             /** current ms */
             current?: number;
         },
-    ) => {
+    ): Promise<{ signature: string; message: string; token: string }> => {
         // STEP.1 prepare payload data
         const current = params?.current ?? $U.current_time_ms();
         const alias = params?.alias;
