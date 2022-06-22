@@ -85,6 +85,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.1.2     | refactoring with `lemon-model@1.0.0` for shared types.
 | 3.1.1     | support `ManagerProxy`, `AbstractProxy` and `$ES6`. (`x-lemon-identity` as WebToken)
 | 3.1.0     | upgrade `typescript^4.6.2`, and optimized.
 | 3.0.2     | support `helpers` like `$T`.
