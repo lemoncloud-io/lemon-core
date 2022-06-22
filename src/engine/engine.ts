@@ -24,6 +24,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, $U, _log, _inf, _err } from './index';
+import { NextContext } from 'lemon-model';
 
 //! import sub-modules.
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
@@ -31,7 +32,6 @@ import { loadJsonSync } from '../tools/shared';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
 
 import * as $lambda from 'aws-lambda';
-import { NextContext } from '../cores/core-types';
 type Context = $lambda.Context;
 type RequestContext = $lambda.APIGatewayEventRequestContext;
 

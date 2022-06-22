@@ -12,7 +12,7 @@
  */
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
-import { GeneralItem, SearchBody } from '../core-types';
+import { GeneralItem, SearchBody } from 'lemon-model';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
 
 /**

@@ -10,7 +10,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-import { GeneralItem } from '../core-types';
+import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
 const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 

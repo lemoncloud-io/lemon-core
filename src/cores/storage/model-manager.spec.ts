@@ -7,8 +7,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { CoreModel } from 'lemon-model';
 import {
-    CoreModel,
     CoreModelFilterable,
     GeneralKeyMaker,
     ProxyStorageService,

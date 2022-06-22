@@ -20,7 +20,8 @@ import {
     SNSEvent as AWSSNSEvent,
     SQSEvent as AWSSQSEvent,
 } from 'aws-lambda';
-import { NextContext, ProtocolParam, CoreConfigService } from './../core-services';
+import { NextContext } from 'lemon-model';
+import { ProtocolParam, CoreConfigService } from './../core-services';
 import { GETERR } from '../../common/test-helper';
 import * as $lambda from 'aws-lambda';
 const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.

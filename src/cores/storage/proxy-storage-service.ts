@@ -10,10 +10,9 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-import { StorageService, StorageModel } from './storage-service';
-import { DummyStorageService, DynamoStorageService } from './storage-service';
+import { Elastic6SimpleQueriable, CoreModel, CORE_FIELDS } from 'lemon-model';
 import { NUL404 } from '../../common/test-helper';
-import { Elastic6SimpleQueriable } from '../core-types';
+import { StorageService, DummyStorageService, DynamoStorageService } from './storage-service';
 import { GeneralAPIController } from '../../controllers/general-api-controller';
 const NS = $U.NS('PSTR', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -61,81 +60,6 @@ export interface CoreKeyMakeable<ModelType extends string> {
      */
     asKey?(type: ModelType, id: string): string;
 }
-
-/**
- * class: `InternalModel`
- * - common internal properties. (ONLY FOR INTERNAL PROCESSING)
- */
-export interface InternalModel<T> {
-    /**
-     * internal unique partition-key (valid if using default idName )
-     */
-    _id?: string;
-}
-
-/**
- * class: `CoreModel`
- * - general model out of base Model to support the common usage
- */
-export interface CoreModel<ModelType extends string> extends StorageModel, InternalModel<CoreModel<ModelType>> {
-    /**
-     * namespace
-     */
-    ns?: string;
-    /**
-     * type of model
-     */
-    type?: ModelType;
-    /**
-     * stereo: stereo-type in common type.
-     */
-    stereo?: string;
-    /**
-     * site-id
-     */
-    sid?: string;
-    /**
-     * user-id
-     */
-    uid?: string;
-    /**
-     *  group-id
-     */
-    gid?: string;
-    /**
-     * lock count to secure sync
-     */
-    lock?: number;
-    /**
-     * next sequence number (use `nextSeq()`)
-     */
-    next?: number;
-    /**
-     * meta the json stringified string.
-     */
-    meta?: string | any;
-    /**
-     * created timestamp
-     */
-    createdAt?: number;
-    /**
-     * updated timestamp
-     */
-    updatedAt?: number;
-    /**
-     * deleted timestamp
-     */
-    deletedAt?: number;
-    /**
-     * error message will be set if error occurred
-     */
-    error?: string;
-}
-
-//NOTE! - BE WARE TO USE `ts-transformer-keys` DUE TO MISSING `ttypescript`
-// export const CORE_FIELDS: string[] = keys<CoreModel>().filter(_ => !_.startsWith('_'));
-// _inf(NS, '! CORE_FIELDS =', CORE_FIELDS.join(', ')); // for debugging.
-export const CORE_FIELDS: string[] = 'ns,type,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt'.split(',');
 
 /**
  * type: ModelFilter

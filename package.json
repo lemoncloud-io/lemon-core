@@ -63,6 +63,7 @@
     "ioredis": "^4.19.2",
     "js-yaml": "^3.14.0",
     "jsonwebtoken": "^8.5.1",
+    "lemon-model": "^1.0.0",
     "lodash": "^4.17.21",
     "memcached": "^2.2.2",
     "mime-types": "^2.1.27",

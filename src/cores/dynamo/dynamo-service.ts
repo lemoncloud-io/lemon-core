@@ -12,7 +12,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-import { GeneralItem, Incrementable } from './../core-types';
+import { GeneralItem, Incrementable } from 'lemon-model';
 import { loadDataYml } from '../../tools/';
 import AWS from 'aws-sdk';
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.

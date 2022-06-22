@@ -9,9 +9,10 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { $U } from '../../engine/';
+import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
 import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
 import { loadJsonSync, credentials } from '../../tools/';
-import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
+import { ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';

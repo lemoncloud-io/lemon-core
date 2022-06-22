@@ -11,9 +11,9 @@
 import { expect2 } from '../..';
 import { loadProfile } from '../../environ';
 import { loadDataYml } from '../../tools';
+import { GeneralItem } from 'lemon-model';
 import { DynamoService, DynamoOption } from './dynamo-service';
 import { DynamoScanFilter, DynamoScanService } from './dynamo-scan-service';
-import { GeneralItem } from '../core-types';
 
 interface AccountItem extends GeneralItem {
     ID: string;

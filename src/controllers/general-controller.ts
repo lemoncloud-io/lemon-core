@@ -12,7 +12,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine/';
 import { GETERR } from '../common/test-helper';
-import { NextMode, NextContext, NextIdentityAccess, NextHandler, GeneralItem } from '../cores/core-types';
+import { NextMode, NextContext, NextIdentityAccess, NextHandler, GeneralItem } from 'lemon-model';
 import { ProtocolService, ProtocolParam } from '../cores/core-services';
 import { CoreWEBController } from '../cores/lambda';
 import $aws from '../cores/aws/';

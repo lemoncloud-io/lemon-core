@@ -13,7 +13,7 @@ import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, environ } from '../../common/test-helper';
 
 import { loadDataYml } from '../../tools/';
-import { GeneralItem } from './../core-types';
+import { GeneralItem } from 'lemon-model';
 import { DynamoService, DummyDynamoService, DynamoOption } from './dynamo-service';
 
 interface MyModel extends GeneralItem {

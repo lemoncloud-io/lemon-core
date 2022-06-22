@@ -12,7 +12,7 @@
 import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
 import { SQSRecord } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
-import { NextHandler, NextContext } from './../core-services';
+import { NextHandler, NextContext } from 'lemon-model';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
 const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.

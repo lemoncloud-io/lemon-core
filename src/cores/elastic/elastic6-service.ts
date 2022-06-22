@@ -11,7 +11,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-import { GeneralItem, Incrementable, SearchBody } from '../core-types';
+import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
 import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';

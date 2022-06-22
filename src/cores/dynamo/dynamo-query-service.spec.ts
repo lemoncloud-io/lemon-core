@@ -12,7 +12,7 @@ import { loadProfile } from '../../environ';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { GETERR, expect2 } from '../../common/test-helper';
 import { DynamoService, DynamoOption } from './dynamo-service';
-import { GeneralItem } from '../core-types';
+import { GeneralItem } from 'lemon-model';
 import { DynamoQueryService } from './dynamo-query-service';
 import { loadDataYml } from '../../tools';
 

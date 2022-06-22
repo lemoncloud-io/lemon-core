@@ -10,6 +10,7 @@
  */
 import { expect2, GETERR, environ } from '../../common/test-helper';
 import { credentials } from '../../tools/';
+import { NextContext } from 'lemon-model';
 import {
     MyProtocolService,
     WEBProtocolTransformer,
@@ -17,7 +18,6 @@ import {
     SQSProtocolTransformer,
 } from './protocol-service';
 import { MyConfigService, ConfigService } from './../config/config-service';
-import { NextContext } from './../core-types';
 import { ProtocolParam, STAGE, CallbackParam } from './../core-services';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 

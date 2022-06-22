@@ -9,7 +9,7 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { _log, _inf, $U } from '../../engine/';
-import { GeneralItem } from '../core-types';
+import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
 const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
 

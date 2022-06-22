@@ -9,13 +9,8 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-import {
-    CoreModel,
-    StorageMakeable,
-    GeneralModelFilter,
-    TypedStorageService,
-    UniqueFieldManager,
-} from './proxy-storage-service';
+import { CoreModel } from 'lemon-model';
+import { StorageMakeable, GeneralModelFilter, TypedStorageService, UniqueFieldManager } from './proxy-storage-service';
 const NS = $U.NS('MMGR', 'cyan'); // default namespace name
 
 /**

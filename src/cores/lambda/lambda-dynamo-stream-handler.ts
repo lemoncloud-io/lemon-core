@@ -11,8 +11,8 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
 import { DynamoDBRecord } from 'aws-lambda';
+import { NextHandler } from 'lemon-model';
 import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
-import { NextHandler } from '../core-types';
 import { toJavascript } from '../../lib/dynamodb-value';
 import { Elastic6Service, Elastic6Item } from '../elastic/';
 import { DynamoOption } from '../dynamo/';
@@ -196,7 +196,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             } else if (diff && Array.isArray(diff) && diff.length) {
                 //! try to update in advance, then save.
                 const $upt = diff.reduce<any>((M: any, key: string) => {
-                    M[key] = item[key];
+                    M[key] = item[key as keyof Elastic6Item];
                     return M;
                 }, {});
                 _log(NS, `> updates[${_id}] =`, $U.json($upt));

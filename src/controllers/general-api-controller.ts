@@ -14,9 +14,9 @@
  ** ********************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine/';
+import { NextHandler, Elastic6SimpleQueriable } from 'lemon-model';
 import { NUL404 } from '../common/test-helper';
 import { GeneralWEBController } from './general-controller';
-import { NextHandler, Elastic6SimpleQueriable } from '../cores/core-types';
 import { CoreModel, TypedStorageService, UniqueFieldManager } from '../cores/';
 
 /**

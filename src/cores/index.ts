@@ -10,7 +10,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 //! export cores.
-export * from './core-types';
+export * from 'lemon-model';
 export * from './core-services';
 
 //! export by groups.

@@ -22,9 +22,10 @@ import {
     NextContext,
     NextMode,
     NextIdentityCognito,
-    ProtocolParam,
     NextIdentity,
-} from './../core-services';
+    NextIdentityJwt,
+} from 'lemon-model';
+import { ProtocolParam } from './../core-services';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
@@ -33,7 +34,6 @@ import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEv
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 
 import $protocol from '../protocol/';
-import { NextIdentityJwt } from '../core-types';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 //! header definitions by environment.
