@@ -1,12 +1,12 @@
 {
     "compilerOptions": {
         "allowJs": false,
-        "experimentalDecorators": true,
         "module": "commonjs",
         "resolveJsonModule": true,
         "esModuleInterop": true,
         "removeComments": false,
         "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
         "target": "es6",
         "noImplicitAny": true,
         "moduleResolution": "node",
