@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<title>lemon-core</title>
+	<title>lemon-core - v3.1.2</title>
 	<meta name="description" content="">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<link rel="stylesheet" href="assets/css/main.css">
@@ -22,7 +22,7 @@
 						<li class="state loading">Preparing search index...</li>
 						<li class="state failure">The search index is not available</li>
 					</ul>
-					<a href="index.html" class="title">lemon-core</a>
+					<a href="index.html" class="title">lemon-core - v3.1.2</a>
 				</div>
 				<div class="table-cell" id="tsd-widgets">
 					<div id="tsd-filter">
@@ -56,7 +56,7 @@
 					<a href="globals.html">Globals</a>
 				</li>
 			</ul>
-			<h1> lemon-core</h1>
+			<h1> lemon-core - v3.1.2</h1>
 		</div>
 	</div>
 </header>
@@ -85,17 +85,43 @@
 					<h2>Architecture</h2>
 				</a>
 				<p>Basic MicroService Architecutre with <code>API</code> + <code>SNS</code> + <code>SQS</code>.</p>
-				<p><img src="assets/lemon-core-ms-arch.png" alt=""></p>
 				<ul>
-					<li><code>NextHandler</code>: basic controller method to handle user service</li>
-					<li><code>NextDecoder</code>: mapper from <code>httpMethod + id + cmd</code> to <code>NextHandler</code></li>
-					<li><code>NextContext</code>: initial requester&#39;s context with <code>identity</code>.</li>
+					<li><p><code>NextHandler</code>: basic controller method to handle user service</p>
+					</li>
+					<li><p><code>NextDecoder</code>: mapper from <code>httpMethod + id + cmd</code> to <code>NextHandler</code></p>
+					</li>
+					<li><p><code>NextContext</code>: initial requester&#39;s context with <code>identity</code>.</p>
+						<p>  <img src="assets/lemon-core-ms-arch.png" alt=""></p>
+					</li>
 				</ul>
+				<a href="#protocol-service" id="protocol-service" style="color: inherit; text-decoration: none;">
+					<h3>Protocol Service</h3>
+				</a>
+				<ul>
+					<li><p>support inter-communication between micro services</p>
+					</li>
+					<li><p><code>execute()</code>: synchronized call via lambda execution by <code>API</code> Handler.</p>
+					</li>
+					<li><p><code>notifiy()</code>: async call by <code>SNS</code> handler w/ lambda callback.</p>
+					</li>
+					<li><p><code>enqueue()</code>: async call by <code>SQS</code> handler w/ lambda callback.</p>
+					</li>
+					<li><p><code>broadcast()</code>: publish message via <code>SNS</code>, and handled by <code>Notification</code> handler.</p>
+						<p>  <img src="assets/lemon-protocol-flow.png" alt=""></p>
+					</li>
+				</ul>
+				<pre><code class="language-ts"><span class="hljs-keyword">import</span> $engine, { ProtocolParam, ProtocolService, CallbackParam } <span class="hljs-keyword">from</span> <span class="hljs-string">'lemon-core'</span>;
+<span class="hljs-comment">// use the internal instance from $engine.</span>
+<span class="hljs-keyword">const</span> service: ProtocolService = $engine.cores.protocol.service;
+<span class="hljs-keyword">const</span> protocol: ProtocolParam = service.fromURL(context, <span class="hljs-string">'api://lemon-hello-api/hello/echo'</span>, param, body);
+<span class="hljs-keyword">const</span> callback: CallbackParam = { <span class="hljs-keyword">type</span>: <span class="hljs-string">'hooks'</span>, id: <span class="hljs-string">`<span class="hljs-subst">${id}</span>`</span> };
+<span class="hljs-comment">// queue protocol in 30 seconds delayed.</span>
+<span class="hljs-keyword">const</span> queueId = <span class="hljs-keyword">await</span> service.enqueue(protocol, callback, <span class="hljs-number">30</span>);</code></pre>
 				<a href="#usage" id="usage" style="color: inherit; text-decoration: none;">
 					<h2>Usage</h2>
 				</a>
 				<ol>
-					<li>install <code>lemon-core</code> module (&gt;= 2.0.1).</li>
+					<li>install <code>lemon-core</code> module (&gt;= 2.1.0).</li>
 				</ol>
 				<pre><code class="language-sh">$ npm install lemon-core --save</code></pre>
 				<p>TODO - TBD in detail.</p>
@@ -109,6 +135,17 @@
 				</a>
 				<p><a href="LICENSE">MIT</a> - (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.</p>
 				<hr>
+				<a href="#todo-task" id="todo-task" style="color: inherit; text-decoration: none;">
+					<h1>TODO TASK</h1>
+				</a>
+				<ul>
+					<li><input checked="" disabled="" type="checkbox"> use environ as default region like <code>ap-northeast-2</code> (or use current region).</li>
+					<li><input checked="" disabled="" type="checkbox"> draw protocol&#39;s sequence diagram w/ <code>callback</code> mechanism.</li>
+					<li><input checked="" disabled="" type="checkbox"> on protocol, use local account name as accountId for NextContext.</li>
+					<li><input checked="" disabled="" type="checkbox"> for protocol.enqueue(), use the optional delayed wait time.</li>
+					<li><input checked="" disabled="" type="checkbox"> notification-handler is directly subscribed to <code>SNS</code> like <code>lemon-hello-out</code>.</li>
+				</ul>
+				<hr>
 				<a href="#version-info" id="version-info" style="color: inherit; text-decoration: none;">
 					<h1>VERSION INFO</h1>
 				</a>
@@ -120,6 +157,154 @@
 						</tr>
 					</thead>
 					<tbody><tr>
+							<td>3.1.2</td>
+							<td>refactoring with <code>lemon-model@1.0.0</code> for shared types.</td>
+						</tr>
+						<tr>
+							<td>3.1.1</td>
+							<td>support <code>ManagerProxy</code>, <code>AbstractProxy</code> and <code>$ES6</code>. (<code>x-lemon-identity</code> as WebToken)</td>
+						</tr>
+						<tr>
+							<td>3.1.0</td>
+							<td>upgrade <code>typescript^4.6.2</code>, and optimized.</td>
+						</tr>
+						<tr>
+							<td>3.0.2</td>
+							<td>support <code>helpers</code> like <code>$T</code>.</td>
+						</tr>
+						<tr>
+							<td>3.0.0</td>
+							<td>improve search-client with <code>@elastic/elasticsearch@7.12</code> to support AWS <code>OpenSearch 1.1</code> (compartible with <code>ES6.2</code>).</td>
+						</tr>
+						<tr>
+							<td>2.2.20</td>
+							<td>improve an extra feature from <code>aws-s3-service</code> to &#39;lemon-images-api&#39;</td>
+						</tr>
+						<tr>
+							<td>2.2.19</td>
+							<td>improve search filtering feature for <code>ES6 autocomplete search</code>.</td>
+						</tr>
+						<tr>
+							<td>2.2.18</td>
+							<td>support <code>$U.jwt(passcode).encode(...)</code> w/ <code>jsonwebtoken</code>.</td>
+						</tr>
+						<tr>
+							<td>2.2.16</td>
+							<td>hot-fix <code>utf8 encoding of json</code> in <code>AWS.S3</code>.</td>
+						</tr>
+						<tr>
+							<td>2.2.15</td>
+							<td>hot-fix <code>Cannot read property &#39;setIndex&#39; of null</code> in <code>Dynamo</code>.</td>
+						</tr>
+						<tr>
+							<td>2.2.14</td>
+							<td>support <code>CacheService</code>, and support appending entry into list in <code>Dynamo</code>.</td>
+						</tr>
+						<tr>
+							<td>2.2.13</td>
+							<td>improve <code>LambdaWEBHandler</code> to support custom web-response including headers.</td>
+						</tr>
+						<tr>
+							<td>2.2.12</td>
+							<td>improve <code>AWSS3Service</code> to use pure JS image library because of AWS compatibility issue.</td>
+						</tr>
+						<tr>
+							<td>2.2.11</td>
+							<td>improve <code>AWSS3Service</code> by adding handy method and metadata+tag handling</td>
+						</tr>
+						<tr>
+							<td>2.2.10</td>
+							<td>improve <code>Access-Control-Allow-Origin</code> w/ <code>Access-Control-Allow-Credentials: true</code>.</td>
+						</tr>
+						<tr>
+							<td>2.2.9</td>
+							<td>support <code>content-type:application/x-www-form-urlencoded</code> form data.</td>
+						</tr>
+						<tr>
+							<td>2.2.6</td>
+							<td>improve <code>search</code>, and support <code>cookie</code> in NextContext.</td>
+						</tr>
+						<tr>
+							<td>2.2.5</td>
+							<td>support <code>Access-Control-Allow-Headers</code> for CORS.</td>
+						</tr>
+						<tr>
+							<td>2.2.3</td>
+							<td>support <code>x-lemon-language</code> header in identity.</td>
+						</tr>
+						<tr>
+							<td>2.2.0</td>
+							<td>support <code>AbstractManager</code> for the template of model managers.</td>
+						</tr>
+						<tr>
+							<td>2.1.17</td>
+							<td>support <code>filter()</code> in DynamoStream.</td>
+						</tr>
+						<tr>
+							<td>2.1.16</td>
+							<td>improve <code>lock()</code> w/ 404 error, and <code>.aggregations</code> in QueryResult.</td>
+						</tr>
+						<tr>
+							<td>2.1.14</td>
+							<td>support <code>hash</code> param for <code>MocksAPIService</code>.</td>
+						</tr>
+						<tr>
+							<td>2.1.13</td>
+							<td>support <code>HttpStorage</code>, <code>$U.crypto2</code>, and <code>/favicon.ico</code>.</td>
+						</tr>
+						<tr>
+							<td>2.1.12</td>
+							<td>support <code>userAgent</code> in NextContext.</td>
+						</tr>
+						<tr>
+							<td>2.1.11</td>
+							<td>improve <code>syncToElastic6</code>, and <code>DynamoScanService</code>.</td>
+						</tr>
+						<tr>
+							<td>2.1.10</td>
+							<td>support <code>loadProfile()</code>, and lookup-id style.</td>
+						</tr>
+						<tr>
+							<td>2.1.8</td>
+							<td>improve <code>express</code> of request-context.</td>
+						</tr>
+						<tr>
+							<td>2.1.7</td>
+							<td>improve <code>TypedStorageService</code> w/ <code>save()</code>.</td>
+						</tr>
+						<tr>
+							<td>2.1.5</td>
+							<td>support <code>GeneralAPIController</code> along w/ <code>UniqueFieldManager</code>.</td>
+						</tr>
+						<tr>
+							<td>2.1.3</td>
+							<td>support <code>asNextIdentityAccess()</code> for access identity.</td>
+						</tr>
+						<tr>
+							<td>2.1.2</td>
+							<td>support <code>ProxyStorageService</code> for shared common storage.</td>
+						</tr>
+						<tr>
+							<td>2.1.1</td>
+							<td>support <code>enqueue()</code> with delayed-seconds.</td>
+						</tr>
+						<tr>
+							<td>2.1.0</td>
+							<td>support <code>ProtocolService</code> for inter communication of micro-services.</td>
+						</tr>
+						<tr>
+							<td>2.0.10</td>
+							<td>support to display the current name/version by <code>GET /</code>.</td>
+						</tr>
+						<tr>
+							<td>2.0.9</td>
+							<td>improve <code>Elastic6Service</code> + <code>Elastic6QueryService</code>.</td>
+						</tr>
+						<tr>
+							<td>2.0.8</td>
+							<td>improve <code>APIService</code> w/ mocks data.</td>
+						</tr>
+						<tr>
 							<td>2.0.7</td>
 							<td>improve <code>StorageService</code> along w/ dummy-storage-service.</td>
 						</tr>
@@ -132,24 +317,12 @@
 							<td>support <code>APIService</code>, and fix <code>engine.initialize()</code></td>
 						</tr>
 						<tr>
-							<td>2.0.4</td>
-							<td>improve test-helper w/ <code>environ</code>, <code>credentials</code></td>
-						</tr>
-						<tr>
 							<td>2.0.3</td>
 							<td>support <code>StorageService</code> along with <code>DynamoStorageService</code></td>
 						</tr>
 						<tr>
-							<td>2.0.2</td>
-							<td>refactoring, and support <code>ProtocolService</code></td>
-						</tr>
-						<tr>
-							<td>2.0.1</td>
-							<td>fix package dependencies.</td>
-						</tr>
-						<tr>
 							<td>2.0.0</td>
-							<td>remove <code>lemon-engine</code>, and support <code>typescript</code> fully.</td>
+							<td>improve <code>lemon-engine</code>, and support <code>typescript</code> fully.</td>
 						</tr>
 						<tr>
 							<td>1.2.15</td>
@@ -168,736 +341,211 @@
 					<li class="globals  ">
 						<a href="globals.html"><em>Globals</em></a>
 					</li>
+					<li class="label tsd-is-external">
+						<span>Internals</span>
+					</li>
+					<li class=" tsd-kind-external-module">
+						<a href="modules/_index_.html">&quot;index&quot;</a>
+					</li>
+					<li class="label tsd-is-external">
+						<span>Externals</span>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_common_test_helper_.html">&quot;common/test-<wbr>helper&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_common_types_.html">&quot;common/types&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_controllers_dummy_controller_.html">&quot;controllers/dummy-<wbr>controller&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_controllers_general_api_controller_.html">&quot;controllers/general-<wbr>api-<wbr>controller&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_controllers_general_controller_.html">&quot;controllers/general-<wbr>controller&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_controllers_index_.html">&quot;controllers/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_api_api_service_.html">&quot;cores/api/api-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_api_index_.html">&quot;cores/api/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_aws_aws_kms_service_.html">&quot;cores/aws/aws-<wbr>kms-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_aws_aws_s3_service_.html">&quot;cores/aws/aws-<wbr>s3-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_aws_aws_sns_service_.html">&quot;cores/aws/aws-<wbr>sns-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_aws_aws_sqs_service_.html">&quot;cores/aws/aws-<wbr>sqs-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_aws_index_.html">&quot;cores/aws/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_cache_cache_service_.html">&quot;cores/cache/cache-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_cache_index_.html">&quot;cores/cache/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_config_config_service_.html">&quot;cores/config/config-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_config_index_.html">&quot;cores/config/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_core_services_.html">&quot;cores/core-<wbr>services&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_dynamo_dynamo_query_service_.html">&quot;cores/dynamo/dynamo-<wbr>query-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_dynamo_dynamo_scan_service_.html">&quot;cores/dynamo/dynamo-<wbr>scan-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_dynamo_dynamo_service_.html">&quot;cores/dynamo/dynamo-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_dynamo_index_.html">&quot;cores/dynamo/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_elastic_elastic6_query_service_.html">&quot;cores/elastic/elastic6-<wbr>query-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_elastic_elastic6_service_.html">&quot;cores/elastic/elastic6-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_elastic_hangul_service_.html">&quot;cores/elastic/hangul-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_elastic_index_.html">&quot;cores/elastic/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_index_.html">&quot;cores/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_index_.html">&quot;cores/lambda/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_cognito_handler_.html">&quot;cores/lambda/lambda-<wbr>cognito-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_cron_handler_.html">&quot;cores/lambda/lambda-<wbr>cron-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_dynamo_stream_handler_.html">&quot;cores/lambda/lambda-<wbr>dynamo-<wbr>stream-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_handler_.html">&quot;cores/lambda/lambda-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_notification_handler_.html">&quot;cores/lambda/lambda-<wbr>notification-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_sns_handler_.html">&quot;cores/lambda/lambda-<wbr>sns-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_sqs_handler_.html">&quot;cores/lambda/lambda-<wbr>sqs-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_web_handler_.html">&quot;cores/lambda/lambda-<wbr>web-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_lambda_lambda_wss_handler_.html">&quot;cores/lambda/lambda-<wbr>wss-<wbr>handler&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_protocol_index_.html">&quot;cores/protocol/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_protocol_protocol_service_.html">&quot;cores/protocol/protocol-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_storage_http_storage_service_.html">&quot;cores/storage/http-<wbr>storage-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_storage_index_.html">&quot;cores/storage/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_storage_model_manager_.html">&quot;cores/storage/model-<wbr>manager&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_storage_proxy_storage_service_.html">&quot;cores/storage/proxy-<wbr>storage-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_storage_redis_storage_service_.html">&quot;cores/storage/redis-<wbr>storage-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_cores_storage_storage_service_.html">&quot;cores/storage/storage-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_engine_builder_.html">&quot;engine/builder&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_engine_engine_.html">&quot;engine/engine&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_engine_index_.html">&quot;engine/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_engine_types_.html">&quot;engine/types&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_engine_utilities_.html">&quot;engine/utilities&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_extended_abstract_service_.html">&quot;extended/abstract-<wbr>service&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_extended_index_.html">&quot;extended/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_helpers_helpers_.html">&quot;helpers/helpers&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_helpers_index_.html">&quot;helpers/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_lib_dynamo_expressions_.html">&quot;lib/dynamo/expressions&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_lib_dynamo_query_.html">&quot;lib/dynamo/query&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_lib_dynamo_scan_.html">&quot;lib/dynamo/scan&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_lib_dynamo_serializer_.html">&quot;lib/dynamo/serializer&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_lib_dynamo_utils_.html">&quot;lib/dynamo/utils&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_lib_dynamodb_value_.html">&quot;lib/dynamodb-<wbr>value&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_lib_index_.html">&quot;lib/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_tools_express_.html">&quot;tools/express&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_tools_index_.html">&quot;tools/index&quot;</a>
+					</li>
+					<li class=" tsd-kind-external-module tsd-is-external">
+						<a href="modules/_tools_shared_.html">&quot;tools/shared&quot;</a>
+					</li>
 				</ul>
 			</nav>
 			<nav class="tsd-navigation secondary menu-sticky">
 				<ul class="before-current">
-					<li class=" tsd-kind-class">
-						<a href="classes/apiservice.html" class="tsd-kind-icon">APIService</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/awskmsservice.html" class="tsd-kind-icon">AWSKMSService</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/awsmodule.html" class="tsd-kind-icon">AWSModule</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/awss3service.html" class="tsd-kind-icon">AWSS3<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/awssnsservice.html" class="tsd-kind-icon">AWSSNSService</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/awssqsservice.html" class="tsd-kind-icon">AWSSQSService</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/configmodule.html" class="tsd-kind-icon">Config<wbr>Module</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/dummydynamoservice.html" class="tsd-kind-icon">Dummy<wbr>Dynamo<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/dummyelastic6service.html" class="tsd-kind-icon">Dummy<wbr>Elastic6<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/dummystorageservice.html" class="tsd-kind-icon">Dummy<wbr>Storage<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/dynamoqueryservice.html" class="tsd-kind-icon">Dynamo<wbr>Query<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/dynamoservice.html" class="tsd-kind-icon">Dynamo<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/dynamostorageservice.html" class="tsd-kind-icon">Dynamo<wbr>Storage<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/elastic6queryservice.html" class="tsd-kind-icon">Elastic6<wbr>Query<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/elastic6service.html" class="tsd-kind-icon">Elastic6<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdacognitohandler.html" class="tsd-kind-icon">Lambda<wbr>Cognito<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdacronhandler.html" class="tsd-kind-icon">Lambda<wbr>Cron<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/lambdacronhandlerlocal.html" class="tsd-kind-icon">Lambda<wbr>Cron<wbr>Handler<wbr>Local</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdadynamostreamhandler.html" class="tsd-kind-icon">Lambda<wbr>Dynamo<wbr>Stream<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/lambdadynamostreamhandlerlocal.html" class="tsd-kind-icon">Lambda<wbr>Dynamo<wbr>Stream<wbr>Handler<wbr>Local</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdahandler.html" class="tsd-kind-icon">Lambda<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/lambdahandlerlocal.html" class="tsd-kind-icon">Lambda<wbr>Handler<wbr>Local</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdamodule.html" class="tsd-kind-icon">Lambda<wbr>Module</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdasnshandler.html" class="tsd-kind-icon">LambdaSNSHandler</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdasqshandler.html" class="tsd-kind-icon">LambdaSQSHandler</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/lambdasqshandlerlocal.html" class="tsd-kind-icon">LambdaSQSHandler<wbr>Local</a>
-					</li>
-					<li class=" tsd-kind-class tsd-has-type-parameter">
-						<a href="classes/lambdasubhandler.html" class="tsd-kind-icon">Lambda<wbr>Sub<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdawebhandler.html" class="tsd-kind-icon">LambdaWEBHandler</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/lambdawebhandlerlocal.html" class="tsd-kind-icon">LambdaWEBHandler<wbr>Local</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/lambdawsshandler.html" class="tsd-kind-icon">LambdaWSSHandler</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/myconfigservice.html" class="tsd-kind-icon">My<wbr>Config<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/myconfigservicetest.html" class="tsd-kind-icon">My<wbr>Config<wbr>Service<wbr>Test</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/mydummysqsservice.html" class="tsd-kind-icon">My<wbr>DummySQSService</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/myenginemodules.html" class="tsd-kind-icon">My<wbr>Engine<wbr>Modules</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/mylemonwebcontroller.html" class="tsd-kind-icon">My<wbr>Lemon<wbr>Web<wbr>Controller</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/myprotocolservice.html" class="tsd-kind-icon">My<wbr>Protocol<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-class tsd-is-not-exported">
-						<a href="classes/myprotocolservicetest.html" class="tsd-kind-icon">My<wbr>Protocol<wbr>Service<wbr>Test</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/protocolmodule.html" class="tsd-kind-icon">Protocol<wbr>Module</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/query.html" class="tsd-kind-icon">Query</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/snsprotocoltransformer.html" class="tsd-kind-icon">SNSProtocol<wbr>Transformer</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/sqsprotocoltransformer.html" class="tsd-kind-icon">SQSProtocol<wbr>Transformer</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/scan.html" class="tsd-kind-icon">Scan</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/utilities.html" class="tsd-kind-icon">Utilities</a>
-					</li>
-					<li class=" tsd-kind-class">
-						<a href="classes/webprotocoltransformer.html" class="tsd-kind-icon">WEBProtocol<wbr>Transformer</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/apiheaders.html" class="tsd-kind-icon">APIHeaders</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/apiserviceclient.html" class="tsd-kind-icon">APIService<wbr>Client</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-is-not-exported">
-						<a href="interfaces/accountmodel.html" class="tsd-kind-icon">Account<wbr>Model</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter tsd-is-not-exported">
-						<a href="interfaces/adaptiveparam.html" class="tsd-kind-icon">Adaptive<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/apihttpproxy.html" class="tsd-kind-icon">Api<wbr>Http<wbr>Proxy</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/coreconfigservice.html" class="tsd-kind-icon">Core<wbr>Config<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/corekmsservice.html" class="tsd-kind-icon">Core<wbr>Kms<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/cores3service.html" class="tsd-kind-icon">Core<wbr>S3Service</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/coreservices.html" class="tsd-kind-icon">Core<wbr>Services</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/coresnsservice.html" class="tsd-kind-icon">Core<wbr>Sns<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/corewebcontroller.html" class="tsd-kind-icon">CoreWEBController</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/cronevent.html" class="tsd-kind-icon">Cron<wbr>Event</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/cronparam.html" class="tsd-kind-icon">Cron<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/dynamooption.html" class="tsd-kind-icon">Dynamo<wbr>Option</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/dynamosimplequeriable.html" class="tsd-kind-icon">Dynamo<wbr>Simple<wbr>Queriable</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/dynamostreambody.html" class="tsd-kind-icon">Dynamo<wbr>Stream<wbr>Body</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/dynamostreamparam.html" class="tsd-kind-icon">Dynamo<wbr>Stream<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/elastic6item.html" class="tsd-kind-icon">Elastic6<wbr>Item</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/elastic6option.html" class="tsd-kind-icon">Elastic6<wbr>Option</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/elastic6simplequeriable.html" class="tsd-kind-icon">Elastic6<wbr>Simple<wbr>Queriable</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/engineconsole.html" class="tsd-kind-icon">Engine<wbr>Console</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/enginecore.html" class="tsd-kind-icon">Engine<wbr>Core</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/enginemodule.html" class="tsd-kind-icon">Engine<wbr>Module</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/enginemodules.html" class="tsd-kind-icon">Engine<wbr>Modules</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/engineoption.html" class="tsd-kind-icon">Engine<wbr>Option</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/enginescope.html" class="tsd-kind-icon">Engine<wbr>Scope</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/filter.html" class="tsd-kind-icon">Filter</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/generalfuntion.html" class="tsd-kind-icon">General<wbr>Funtion</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/generalitem.html" class="tsd-kind-icon">General<wbr>Item</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-is-not-exported">
-						<a href="interfaces/handlermap.html" class="tsd-kind-icon">Handler<wbr>Map</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/incrementable.html" class="tsd-kind-icon">Incrementable</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/internalkey.html" class="tsd-kind-icon">Internal<wbr>Key</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/lambdahandlerservice.html" class="tsd-kind-icon">Lambda<wbr>Handler<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/lemonengine.html" class="tsd-kind-icon">Lemon<wbr>Engine</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/metricpostbody.html" class="tsd-kind-icon">Metric<wbr>Post<wbr>Body</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-is-not-exported">
-						<a href="interfaces/modemap.html" class="tsd-kind-icon">Mode<wbr>Map</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-is-not-exported">
-						<a href="interfaces/mygeneral.html" class="tsd-kind-icon">My<wbr>General</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-is-not-exported">
-						<a href="interfaces/mymodel.html" class="tsd-kind-icon">My<wbr>Model</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/nextcontext.html" class="tsd-kind-icon">Next<wbr>Context</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/nextidentity.html" class="tsd-kind-icon">Next<wbr>Identity</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/nextidentitycognito.html" class="tsd-kind-icon">Next<wbr>Identity<wbr>Cognito</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-is-not-exported">
-						<a href="interfaces/options.html" class="tsd-kind-icon">Options</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/parrallelcallback.html" class="tsd-kind-icon">Parrallel<wbr>Callback</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/parrallelparam.html" class="tsd-kind-icon">Parrallel<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/protocolparam.html" class="tsd-kind-icon">Protocol<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/protocolservice.html" class="tsd-kind-icon">Protocol<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/protocoltransformer.html" class="tsd-kind-icon">Protocol<wbr>Transformer</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/queryresult.html" class="tsd-kind-icon">Query<wbr>Result</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/sqsattribute.html" class="tsd-kind-icon">SQSAttribute</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/sqsservice.html" class="tsd-kind-icon">SQSService</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/simplesearchparam.html" class="tsd-kind-icon">Simple<wbr>Search<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/slackaction.html" class="tsd-kind-icon">Slack<wbr>Action</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/slackattachment.html" class="tsd-kind-icon">Slack<wbr>Attachment</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/slackpostbody.html" class="tsd-kind-icon">Slack<wbr>Post<wbr>Body</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/sqsmessage.html" class="tsd-kind-icon">Sqs<wbr>Message</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/sqsrecord.html" class="tsd-kind-icon">Sqs<wbr>Record</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/sqsstatistics.html" class="tsd-kind-icon">Sqs<wbr>Statistics</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/storagemodel.html" class="tsd-kind-icon">Storage<wbr>Model</a>
-					</li>
-					<li class=" tsd-kind-interface tsd-has-type-parameter">
-						<a href="interfaces/storageservice.html" class="tsd-kind-icon">Storage<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-interface">
-						<a href="interfaces/tagset.html" class="tsd-kind-icon">Tag<wbr>Set</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#apihttpmethod" class="tsd-kind-icon">APIHttp<wbr>Method</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#cognitohandler" class="tsd-kind-icon">Cognito<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#configservice" class="tsd-kind-icon">Config<wbr>Service</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-is-not-exported">
-						<a href="globals.html#context" class="tsd-kind-icon">Context</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#cronhandler" class="tsd-kind-icon">Cron<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#cronnexthandler" class="tsd-kind-icon">Cron<wbr>Next<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#dynamostreamhandler" class="tsd-kind-icon">Dynamo<wbr>Stream<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-						<a href="globals.html#dynamostreamnexthandler" class="tsd-kind-icon">Dynamo<wbr>Stream<wbr>Next<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#enginelogger" class="tsd-kind-icon">Engine<wbr>Logger</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#handlertype" class="tsd-kind-icon">Handler<wbr>Type</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#key_type" class="tsd-kind-icon">KEY_<wbr>TYPE</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-						<a href="globals.html#myhandler" class="tsd-kind-icon">My<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-						<a href="globals.html#nextdecoder" class="tsd-kind-icon">Next<wbr>Decoder</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-has-type-parameter">
-						<a href="globals.html#nexthandler" class="tsd-kind-icon">Next<wbr>Handler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#nextmode" class="tsd-kind-icon">Next<wbr>Mode</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-is-not-exported">
-						<a href="globals.html#requestcontext" class="tsd-kind-icon">Request<wbr>Context</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-is-not-exported">
-						<a href="globals.html#snseventparam" class="tsd-kind-icon">SNSEvent<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#snshandler" class="tsd-kind-icon">SNSHandler</a>
-					</li>
-					<li class=" tsd-kind-type-alias tsd-is-not-exported">
-						<a href="globals.html#sqseventparam" class="tsd-kind-icon">SQSEvent<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#sqshandler" class="tsd-kind-icon">SQSHandler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#stage" class="tsd-kind-icon">STAGE</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#webevent" class="tsd-kind-icon">WEBEvent</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#webhandler" class="tsd-kind-icon">WEBHandler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#webresult" class="tsd-kind-icon">WEBResult</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#wssevent" class="tsd-kind-icon">WSSEvent</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#wsshandler" class="tsd-kind-icon">WSSHandler</a>
-					</li>
-					<li class=" tsd-kind-type-alias">
-						<a href="globals.html#wssresult" class="tsd-kind-icon">WSSResult</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#_u" class="tsd-kind-icon">$U</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#__" class="tsd-kind-icon">$_</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#_engine" class="tsd-kind-icon">$engine</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#_pack" class="tsd-kind-icon">$pack</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#alias" class="tsd-kind-icon">ALIAS</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#awsutil" class="tsd-kind-icon">AWSUtil</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#blue" class="tsd-kind-icon">BLUE</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#cmd" class="tsd-kind-icon">CMD</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#default_time_zone" class="tsd-kind-icon">DEFAULT_<wbr>TIME_<wbr>ZONE</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#def_bucket" class="tsd-kind-icon">DEF_<wbr>BUCKET</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#def_service" class="tsd-kind-icon">DEF_<wbr>SERVICE</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#def_sns" class="tsd-kind-icon">DEF_<wbr>SNS</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#def_type" class="tsd-kind-icon">DEF_<wbr>TYPE</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#docclient" class="tsd-kind-icon">Doc<wbr>Client</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#endpoint" class="tsd-kind-icon">ENDPOINT</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#engine_key_in_scope" class="tsd-kind-icon">ENGINE_<wbr>KEY_<wbr>IN_<wbr>SCOPE</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#env_name" class="tsd-kind-icon">ENV_<wbr>NAME</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#ep" class="tsd-kind-icon">EP</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#header_lemon_identity" class="tsd-kind-icon">HEADER_<wbr>LEMON_<wbr>IDENTITY</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#host" class="tsd-kind-icon">HOST</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#id" class="tsd-kind-icon">ID</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#ipp" class="tsd-kind-icon">IPP</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#level_err" class="tsd-kind-icon">LEVEL_<wbr>ERR</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#level_inf" class="tsd-kind-icon">LEVEL_<wbr>INF</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#level_log" class="tsd-kind-icon">LEVEL_<wbr>LOG</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#max" class="tsd-kind-icon">MAX</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#method" class="tsd-kind-icon">METHOD</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#name" class="tsd-kind-icon">NAME</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#ns" class="tsd-kind-icon">NS</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#opt" class="tsd-kind-icon">OPT</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#page" class="tsd-kind-icon">PAGE</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#port" class="tsd-kind-icon">PORT</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#red" class="tsd-kind-icon">RED</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#reset" class="tsd-kind-icon">RESET</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#s3" class="tsd-kind-icon">S3</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#sid" class="tsd-kind-icon">SID</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#sns" class="tsd-kind-icon">SNS</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#type" class="tsd-kind-icon">TYPE</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#vers" class="tsd-kind-icon">VERS</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#wait" class="tsd-kind-icon">WAIT</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#yellow" class="tsd-kind-icon">YELLOW</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#_err" class="tsd-kind-icon">_err</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#_inf" class="tsd-kind-icon">_inf</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#_log" class="tsd-kind-icon">_log</a>
-					</li>
-					<li class=" tsd-kind-variable tsd-is-not-exported">
-						<a href="globals.html#serialize" class="tsd-kind-icon">serialize</a>
-					</li>
-					<li class=" tsd-kind-variable">
-						<a href="globals.html#serializer" class="tsd-kind-icon">serializer</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#_context" class="tsd-kind-icon">$context</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#_sns" class="tsd-kind-icon">$sns</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#geterr" class="tsd-kind-icon">GETERR</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#geterr_" class="tsd-kind-icon">GETERR$</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#_it" class="tsd-kind-icon">_it</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#asparam" class="tsd-kind-icon">as<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#asynccredentials" class="tsd-kind-icon">async<wbr>Credentials</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#buildengine" class="tsd-kind-icon">build<wbr>Engine</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#buildexpress" class="tsd-kind-icon">build<wbr>Express</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#buildfilterexpression" class="tsd-kind-icon">build<wbr>Filter<wbr>Expression</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#buildresponse" class="tsd-kind-icon">build<wbr>Response</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#build_environ" class="tsd-kind-icon">build_<wbr>environ</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#build_err" class="tsd-kind-icon">build_<wbr>err</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#build_inf" class="tsd-kind-icon">build_<wbr>inf</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#build_log" class="tsd-kind-icon">build_<wbr>log</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#build_ts" class="tsd-kind-icon">build_<wbr>ts</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#clearduplicated" class="tsd-kind-icon">clear<wbr>Duplicated</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#convdate" class="tsd-kind-icon">conv<wbr>Date</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#convdatetots" class="tsd-kind-icon">conv<wbr>Date<wbr>ToTS</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#convdatetotime" class="tsd-kind-icon">conv<wbr>Date<wbr>ToTime</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#createhttpwebproxy" class="tsd-kind-icon">create<wbr>Http<wbr>Web<wbr>Proxy</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#credentials" class="tsd-kind-icon">credentials</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#decode_next_handler" class="tsd-kind-icon">decode_<wbr>next_<wbr>handler</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#doreporterror" class="tsd-kind-icon">do<wbr>Report<wbr>Error</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#doreportmetric" class="tsd-kind-icon">do<wbr>Report<wbr>Metric</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#doreportslack" class="tsd-kind-icon">do<wbr>Report<wbr>Slack</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#do_http" class="tsd-kind-icon">do_<wbr>http</a>
-					</li>
-					<li class=" tsd-kind-function tsd-has-type-parameter">
-						<a href="globals.html#do_parrallel" class="tsd-kind-icon">do_<wbr>parrallel</a>
-					</li>
-					<li class=" tsd-kind-function tsd-has-type-parameter">
-						<a href="globals.html#do_serialize" class="tsd-kind-icon">do_<wbr>serialize</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#environ" class="tsd-kind-icon">environ</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#expect2" class="tsd-kind-icon">expect2</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#failure" class="tsd-kind-icon">failure</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#gethelloarn" class="tsd-kind-icon">get<wbr>Hello<wbr>Arn</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#getrunparam" class="tsd-kind-icon">get<wbr>Run<wbr>Param</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#instance" class="tsd-kind-icon">instance</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#isbase64" class="tsd-kind-icon">is<wbr>Base64</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#loaddatayml" class="tsd-kind-icon">load<wbr>Data<wbr>Yml</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#loadenviron" class="tsd-kind-icon">load<wbr>Environ</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#loadjsonsync" class="tsd-kind-icon">load<wbr>Json<wbr>Sync</a>
-					</li>
-					<li class=" tsd-kind-function tsd-has-type-parameter">
-						<a href="globals.html#marshal" class="tsd-kind-icon">marshal</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#mergeresults" class="tsd-kind-icon">merge<wbr>Results</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#nornamlize" class="tsd-kind-icon">nornamlize</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#notfound" class="tsd-kind-icon">notfound</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#omitnulls" class="tsd-kind-icon">omit<wbr>Nulls</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#omitprimarykeys" class="tsd-kind-icon">omit<wbr>Primary<wbr>Keys</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#paginatedrequest" class="tsd-kind-icon">paginated<wbr>Request</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#parse" class="tsd-kind-icon">parse</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#prepare_json" class="tsd-kind-icon">prepare_<wbr>json</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#region" class="tsd-kind-icon">region</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#run" class="tsd-kind-icon">run</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#run_batch" class="tsd-kind-icon">run_<wbr>batch</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#serializeupdateexpression" class="tsd-kind-icon">serialize<wbr>Update<wbr>Expression</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#strtobin" class="tsd-kind-icon">str<wbr>ToBin</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#stringify" class="tsd-kind-icon">stringify</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#success" class="tsd-kind-icon">success</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#toddb" class="tsd-kind-icon">toDDB</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#toddbvalue" class="tsd-kind-icon">toDDBValue</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#tojavascript" class="tsd-kind-icon">to<wbr>Javascript</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#tojsarray" class="tsd-kind-icon">to<wbr>JsArray</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#tojsvalue" class="tsd-kind-icon">to<wbr>JsValue</a>
-					</li>
-					<li class=" tsd-kind-function tsd-is-not-exported">
-						<a href="globals.html#wait_sometime" class="tsd-kind-icon">wait_<wbr>sometime</a>
-					</li>
-					<li class=" tsd-kind-function">
-						<a href="globals.html#waited" class="tsd-kind-icon">waited</a>
-					</li>
-					<li class=" tsd-kind-object-literal">
-						<a href="globals.html#_error" class="tsd-kind-icon">$ERROR</a>
-					</li>
-					<li class=" tsd-kind-object-literal tsd-is-not-exported">
-						<a href="globals.html#_env" class="tsd-kind-icon">$env</a>
-					</li>
-					<li class=" tsd-kind-object-literal tsd-is-not-exported">
-						<a href="globals.html#internals" class="tsd-kind-icon">internals</a>
-					</li>
 				</ul>
 			</nav>
 		</div>
