@@ -130,4 +130,3 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 | 1.2.15    | improve `doReportError` with error message
 | 1.2.12    | support `doReportMetric()` for saving metric data.
 
-minor change to see if this will update the page
