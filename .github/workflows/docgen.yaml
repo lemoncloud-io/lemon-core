@@ -3,7 +3,7 @@ name: document generator
 on: 
   push:
     branches:
-      - md
+      - develop
 
 jobs:
   build_and_lint:
