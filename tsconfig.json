@@ -35,5 +35,11 @@
         "**/tests/*",
         "**/src/**/*.spec.ts",
         "**/src/**/*.spec.js"
-    ]
+
+    ],
+    "typedocOptions": {
+        "entryPoints": ["src/index.ts"],
+        "out": "tsdoc",
+        "ignoreCompilerErrors": true
+    }
 }

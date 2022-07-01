@@ -4,6 +4,7 @@
 
 # vscode
 .vscode/
+tsdoc/
 
 ########################################################################
 # Created by https://www.gitignore.io/api/node,linux,macos,python,windows,intellij,intellij+iml,intellij+all,visualstudio,visualstudiocode,serverless,python,flask
