@@ -145,7 +145,7 @@
 						<li class="tsd-description">
 							<aside class="tsd-sources">
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L114">src/cores/api/api-service.ts:114</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L114">src/cores/api/api-service.ts:114</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -220,7 +220,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">client<span class="tsd-signature-symbol">:</span> <a href="../interfaces/_cores_api_api_service_.apiserviceclient.html" class="tsd-signature-type">APIServiceClient</a></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L114">src/cores/api/api-service.ts:114</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L114">src/cores/api/api-service.ts:114</a></li>
 						</ul>
 					</aside>
 				</section>
@@ -230,7 +230,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">endpoint<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L112">src/cores/api/api-service.ts:112</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L112">src/cores/api/api-service.ts:112</a></li>
 						</ul>
 					</aside>
 				</section>
@@ -240,7 +240,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">headers<span class="tsd-signature-symbol">:</span> <a href="../interfaces/_cores_api_api_service_.apiheaders.html" class="tsd-signature-type">APIHeaders</a></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L113">src/cores/api/api-service.ts:113</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L113">src/cores/api/api-service.ts:113</a></li>
 						</ul>
 					</aside>
 				</section>
@@ -250,7 +250,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">type<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L111">src/cores/api/api-service.ts:111</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L111">src/cores/api/api-service.ts:111</a></li>
 						</ul>
 					</aside>
 				</section>
@@ -260,7 +260,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">APIService<wbr>Client<wbr>Recorder<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">(Anonymous class)</span><span class="tsd-signature-symbol"> =&nbsp;class implements APIServiceClient {public readonly target: APIServiceClient;public readonly endpoint: string;public readonly folder: string;public static next: number &#x3D; 1;public constructor(target: APIServiceClient, endpoint: string, folder?: string) {this.target &#x3D; target;this.endpoint &#x3D; &#x60;${endpoint || &#x27;&#x27;}&#x60;;this.folder &#x3D; &#x60;${folder || &#x27;./logs&#x27;}&#x60;;}public hello &#x3D; () &#x3D;&gt; &#x60;recorder:${this.target.hello()}&#x60;;public async doRecord(method: APIHttpMethod, id: string, cmd?: string, param?: any, body?: any, hash?: string) {const index &#x3D; APIService.APIServiceClientRecorder.next++;const load &#x3D; { method, endpoint: &#x60;${this.endpoint || &#x27;&#x27;}&#x60;, id, cmd, param, body };const call &#x3D; async (method: APIHttpMethod) &#x3D;&gt; {if (method &#x3D;&#x3D; &#x27;GET&#x27;) return this.target.doGet(id, cmd, param, body, hash);if (method &#x3D;&#x3D; &#x27;PUT&#x27;) return this.target.doPut(id, cmd, param, body, hash);if (method &#x3D;&#x3D; &#x27;POST&#x27;) return this.target.doPost(id, cmd, param, body, hash);if (method &#x3D;&#x3D; &#x27;PATCH&#x27;) return this.target.doPatch(id, cmd, param, body, hash);if (method &#x3D;&#x3D; &#x27;DELETE&#x27;) return this.target.doDelete(id, cmd, param, body, hash);throw new Error(&#x60;@method is not valid. method:${method}&#x60;);};return call(method).then((data: any) &#x3D;&gt; ({ index, load, data, error: null })).catch((error: any) &#x3D;&gt; ({ index, load, data: null, error })).then(({ index, load, data, error }) &#x3D;&gt; {const baseDir &#x3D; (() &#x3D;&gt; {// eslint-disable-next-line prettier/prettierconst ts &#x3D; $U.ts().substring(0, &#x27;1999-01-01&#x27;.length).replace(/\-/ig, &#x27;&#x27;);const fn &#x3D; &#x60;${this.folder}/R${ts}&#x60;;if (index &lt;&#x3D; 1 &amp;&amp; !fs.existsSync(&#x60;${this.folder}&#x60;)) fs.mkdirSync(&#x60;${this.folder}&#x60;);if (index &lt;&#x3D; 1 &amp;&amp; !fs.existsSync(fn)) fs.mkdirSync(fn);return fn;})();// eslint-disable-next-line prettier/prettierconst message &#x3D; error instanceof Error ? &#x60;${error.message}&#x60; : typeof error !&#x3D; &#x27;object&#x27; ? &#x60;${error}&#x60; : error ? JSON.stringify(error) : &#x27;&#x27;;const fn &#x3D; (n: number): string &#x3D;&gt; {const [S, s] &#x3D; [&#x27;00000&#x27;, &#x60;${n}&#x60;];return n &gt; 0 ? &#x60;${S.substring(s.length)}${s}&#x60; : s.startsWith(&#x27;-&#x27;) ? &#x60;N${s.substring(1)}&#x60; : s;};const file &#x3D; &#x60;${baseDir}/D${fn(index)}.json&#x60;;fs.writeFileSync(file, JSON.stringify({ param: load, data, error: message }, null, &#x27;  &#x27;), &#x27;utf8&#x27;);if (error) throw error;else return data;});}public async doGet(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.doRecord(&#x27;GET&#x27;, id, cmd, param, body, hash);}public async doPut(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.doRecord(&#x27;PUT&#x27;, id, cmd, param, body, hash);}public async doPost(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.doRecord(&#x27;POST&#x27;, id, cmd, param, body, hash);}public async doPatch(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.doRecord(&#x27;PATCH&#x27;, id, cmd, param, body, hash);}public async doDelete(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.doRecord(&#x27;DELETE&#x27;, id, cmd, param, body, hash);}}</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L382">src/cores/api/api-service.ts:382</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L382">src/cores/api/api-service.ts:382</a></li>
 						</ul>
 					</aside>
 					<div class="tsd-comment tsd-typography">
@@ -275,7 +275,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">Api<wbr>Http<wbr>Proxy<wbr>Recorder<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">(Anonymous class)</span><span class="tsd-signature-symbol"> =&nbsp;class implements ApiHttpProxy {public readonly target: ApiHttpProxy;public readonly folder: string;public static next: number &#x3D; 1;public constructor(target: ApiHttpProxy, folder?: string) {this.target &#x3D; target;this.folder &#x3D; &#x60;${folder || &#x27;./logs&#x27;}&#x60;;}public hello &#x3D; () &#x3D;&gt; &#x60;recorder:${this.target.hello()}&#x60;;public async doProxy&lt;T &#x3D; any&gt;(method: APIHttpMethod,host: string,path?: string,param?: any,body?: any,context?: any,hash?: string,): Promise&lt;T&gt; {const endpoint &#x3D;host.startsWith(&#x27;http://&#x27;) || host.startsWith(&#x27;https://&#x27;) ? &#x60;${host}${path}&#x60; : &#x60;http://${host}${path}&#x60;;const index &#x3D; APIService.ApiHttpProxyRecorder.next++;const load &#x3D; { method, endpoint, param, body, context };return this.target.doProxy(method, host, path, param, body, context, hash).then((data: any) &#x3D;&gt; ({ index, load, data, error: null })).catch((error: any) &#x3D;&gt; ({ index, load, data: null, error })).then(({ index, load, data, error }) &#x3D;&gt; {const baseDir &#x3D; (() &#x3D;&gt; {// eslint-disable-next-line prettier/prettierconst ts &#x3D; $U.ts().substring(0, &#x27;1999-01-01&#x27;.length).replace(/\-/ig, &#x27;&#x27;);const fn &#x3D; &#x60;${this.folder}/R${ts}&#x60;;if (index &lt;&#x3D; 1 &amp;&amp; !fs.existsSync(&#x60;${this.folder}&#x60;)) fs.mkdirSync(&#x60;${this.folder}&#x60;);if (index &lt;&#x3D; 1 &amp;&amp; !fs.existsSync(fn)) fs.mkdirSync(fn);return fn;})();// eslint-disable-next-line prettier/prettierconst message &#x3D; error instanceof Error ? &#x60;${error.message}&#x60; : typeof error !&#x3D; &#x27;object&#x27; ? &#x60;${error}&#x60; : error ? JSON.stringify(error) : &#x27;&#x27;;const fn &#x3D; (n: number): string &#x3D;&gt; {const [S, s] &#x3D; [&#x27;00000&#x27;, &#x60;${n}&#x60;];return n &gt; 0 ? &#x60;${S.substring(s.length)}${s}&#x60; : s.startsWith(&#x27;-&#x27;) ? &#x60;N${s.substring(1)}&#x60; : s;};const file &#x3D; &#x60;${baseDir}/P${fn(index)}.json&#x60;;fs.writeFileSync(file, JSON.stringify({ param: load, data, error: message }, null, &#x27;  &#x27;), &#x27;utf8&#x27;);if (error) throw error;else return data;});}}</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L330">src/cores/api/api-service.ts:330</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L330">src/cores/api/api-service.ts:330</a></li>
 						</ul>
 					</aside>
 					<div class="tsd-comment tsd-typography">
@@ -290,7 +290,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">Proxy<wbr>Service<wbr>Client<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">(Anonymous class)</span><span class="tsd-signature-symbol"> =&nbsp;class implements APIServiceClient {public readonly proxy: ApiHttpProxy;public readonly base: string;public readonly type: string;public constructor(proxy?: ApiHttpProxy, base?: string, type?: string) {this.proxy &#x3D; proxy;this.base &#x3D; base;this.type &#x3D; type;}protected asPath &#x3D; (id?: string, cmd?: string) &#x3D;&gt; {const type &#x3D; this.type;const _isNa &#x3D; (a: any) &#x3D;&gt; a &#x3D;&#x3D;&#x3D; undefined || a &#x3D;&#x3D;&#x3D; null;return (&#x27;&#x27; +(_isNa(type) ? &#x27;&#x27; : &#x27;/&#x27; + encodeURIComponent(type)) +(_isNa(type) || _isNa(id) ? &#x27;&#x27; : &#x27;/&#x27; + encodeURIComponent(id)) +(_isNa(type) || _isNa(id) || _isNa(cmd) ? &#x27;&#x27; : &#x27;/&#x27; + encodeURI(cmd)) + //NOTE - cmd could have additional &#x27;/&#x27; char.&#x27;&#x27;);};protected asPath2 &#x3D; (id?: string, cmd?: string) &#x3D;&gt; {const _isNa &#x3D; (a: any) &#x3D;&gt; a &#x3D;&#x3D;&#x3D; undefined || a &#x3D;&#x3D;&#x3D; null;return (&#x27;&#x27; +(_isNa(id) ? &#x27;&#x27; : encodeURIComponent(id)) +(_isNa(id) || _isNa(cmd) ? &#x27;&#x27; : &#x27;/&#x27; + encodeURI(cmd)) + //NOTE - cmd could have additional &#x27;/&#x27; char.&#x27;&#x27;);};protected asHostPath &#x3D; (id?: string, cmd?: string) &#x3D;&gt; {let host &#x3D; this.base ? this.base : this.type;let path &#x3D; this.base ? this.asPath(id, cmd) : this.asPath2(id, cmd);if (this.base) {const url &#x3D; (!host.startsWith(&#x27;http&#x27;) ? &#x27;http://&#x27; : &#x27;&#x27;) + &#x60;${host}${path || &#x27;&#x27;}&#x60;;const $url &#x3D; URL.parse(url);host &#x3D; &#x60;${$url.protocol || &#x27;http&#x27;}//${$url.hostname}&#x60;;path &#x3D; &#x60;${$url.path}&#x60;;// console.info(&#x60;! asHostPath(${id}, ${cmd})@1 &#x3D;&gt; &#x60;, { host, path });} else {// console.info(&#x60;! asHostPath(${id}, ${cmd})@2 &#x3D;&gt; &#x60;, { host, path });}return { host, path };};public hello &#x3D; () &#x3D;&gt; &#x60;api-client:${this.proxy.hello()}&#x60;;public async doGet(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {const { host, path } &#x3D; this.asHostPath(id, cmd);return this.proxy.doProxy(&#x27;GET&#x27;, host, path, param, body, null, hash);}public async doPut(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {const { host, path } &#x3D; this.asHostPath(id, cmd);return this.proxy.doProxy(&#x27;PUT&#x27;, host, path, param, body, null, hash);}public async doPost(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {const { host, path } &#x3D; this.asHostPath(id, cmd);return this.proxy.doProxy(&#x27;POST&#x27;, host, path, param, body, null, hash);}public async doPatch(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {const { host, path } &#x3D; this.asHostPath(id, cmd);return this.proxy.doProxy(&#x27;PATCH&#x27;, host, path, param, body, null, hash);}public async doDelete(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {const { host, path } &#x3D; this.asHostPath(id, cmd);return this.proxy.doProxy(&#x27;DELETE&#x27;, host, path, param, body, null, hash);}}</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L227">src/cores/api/api-service.ts:227</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L227">src/cores/api/api-service.ts:227</a></li>
 						</ul>
 					</aside>
 					<div class="tsd-comment tsd-typography">
@@ -309,7 +309,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 					<div class="tsd-signature tsd-kind-icon">Sub<wbr>Type<wbr>Client<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">(Anonymous class)</span><span class="tsd-signature-symbol"> =&nbsp;class implements APIServiceClient {public readonly parent: APIServiceClient;public readonly type: string;public constructor(parent: APIServiceClient, type: string) {this.parent &#x3D; parent;this.type &#x3D; &#x60;${type || &#x27;&#x27;}&#x60;;}public hello &#x3D; () &#x3D;&gt; &#x60;sub-typed:${this.parent.hello()}&#x60;;public asCmd &#x3D; (id: string, cmd?: string) &#x3D;&gt; {if (id &#x3D;&#x3D;&#x3D; undefined || id &#x3D;&#x3D;&#x3D; null) return &#x27;&#x27;;if (id !&#x3D; encodeURI(id)) throw new Error(&#x60;@id (string) is not valid format.&#x60;);return cmd !&#x3D;&#x3D; undefined &amp;&amp; cmd !&#x3D;&#x3D; null ? &#x60;${id || &#x27;&#x27;}/${cmd}&#x60; : &#x60;${id || &#x27;&#x27;}&#x60;;};public async doGet(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.parent.doGet(this.type, this.asCmd(id, cmd), param, body, hash);}public async doPut(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.parent.doPut(this.type, this.asCmd(id, cmd), param, body, hash);}public async doPost(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.parent.doPost(this.type, this.asCmd(id, cmd), param, body, hash);}public async doPatch(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.parent.doPatch(this.type, this.asCmd(id, cmd), param, body, hash);}public async doDelete(id: string, cmd?: string, param?: any, body?: any, hash?: string): Promise&lt;any&gt; {return this.parent.doDelete(this.type, this.asCmd(id, cmd), param, body, hash);}}</span></div>
 					<aside class="tsd-sources">
 						<ul>
-							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L297">src/cores/api/api-service.ts:297</a></li>
+							<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L297">src/cores/api/api-service.ts:297</a></li>
 						</ul>
 					</aside>
 					<div class="tsd-comment tsd-typography">
@@ -334,7 +334,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 						<li class="tsd-description">
 							<aside class="tsd-sources">
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L218">src/cores/api/api-service.ts:218</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L218">src/cores/api/api-service.ts:218</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -365,7 +365,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 						<li class="tsd-description">
 							<aside class="tsd-sources">
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L209">src/cores/api/api-service.ts:209</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L209">src/cores/api/api-service.ts:209</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -403,7 +403,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 							<aside class="tsd-sources">
 								<p>Implementation of <a href="../interfaces/_cores_api_api_service_.apiserviceclient.html">APIServiceClient</a>.<a href="../interfaces/_cores_api_api_service_.apiserviceclient.html#dodelete">doDelete</a></p>
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L476">src/cores/api/api-service.ts:476</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L476">src/cores/api/api-service.ts:476</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -444,7 +444,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 							<aside class="tsd-sources">
 								<p>Implementation of <a href="../interfaces/_cores_api_api_service_.apiserviceclient.html">APIServiceClient</a>.<a href="../interfaces/_cores_api_api_service_.apiserviceclient.html#doget">doGet</a></p>
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L448">src/cores/api/api-service.ts:448</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L448">src/cores/api/api-service.ts:448</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -485,7 +485,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 							<aside class="tsd-sources">
 								<p>Implementation of <a href="../interfaces/_cores_api_api_service_.apiserviceclient.html">APIServiceClient</a>.<a href="../interfaces/_cores_api_api_service_.apiserviceclient.html#dopatch">doPatch</a></p>
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L469">src/cores/api/api-service.ts:469</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L469">src/cores/api/api-service.ts:469</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -526,7 +526,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 							<aside class="tsd-sources">
 								<p>Implementation of <a href="../interfaces/_cores_api_api_service_.apiserviceclient.html">APIServiceClient</a>.<a href="../interfaces/_cores_api_api_service_.apiserviceclient.html#dopost">doPost</a></p>
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L462">src/cores/api/api-service.ts:462</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L462">src/cores/api/api-service.ts:462</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -567,7 +567,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 							<aside class="tsd-sources">
 								<p>Implementation of <a href="../interfaces/_cores_api_api_service_.apiserviceclient.html">APIServiceClient</a>.<a href="../interfaces/_cores_api_api_service_.apiserviceclient.html#doput">doPut</a></p>
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L455">src/cores/api/api-service.ts:455</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L455">src/cores/api/api-service.ts:455</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
@@ -608,7 +608,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 							<aside class="tsd-sources">
 								<p>Implementation of <a href="../interfaces/_cores_api_api_service_.apiserviceclient.html">APIServiceClient</a>.<a href="../interfaces/_cores_api_api_service_.apiserviceclient.html#hello">hello</a></p>
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L164">src/cores/api/api-service.ts:164</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L164">src/cores/api/api-service.ts:164</a></li>
 								</ul>
 							</aside>
 							<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">string</span></h4>
@@ -625,7 +625,7 @@ api.doGet(<span class="hljs-string">''</span>);</code></pre>
 						<li class="tsd-description">
 							<aside class="tsd-sources">
 								<ul>
-									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/5dbbf30/src/cores/api/api-service.ts#L171">src/cores/api/api-service.ts:171</a></li>
+									<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/a39c594/src/cores/api/api-service.ts#L171">src/cores/api/api-service.ts:171</a></li>
 								</ul>
 							</aside>
 							<div class="tsd-comment tsd-typography">
