@@ -13,7 +13,7 @@ Lemon Core Bootloader for Serverless Micro-Service
 - Support Data Synchronization to `Elasticsearch` from `DynomoDB` via `DynamoStream`.
 
     ![](assets/2019-11-26-23-43-47.png)
-    (img src="media://assests/2019-11-26-23-43-47.png" alt='alt text")
+    <!-- (img src="media://assests/2019-11-26-23-43-47.png" alt='alt text") -->
 
 ## Architecture
 
