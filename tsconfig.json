@@ -39,7 +39,7 @@
     ],
     "typedocOptions": {
         "entryPoints": ["src/index.ts"],
-        "out": "tsdoc",
+        "out": "ghpage",
         "ignoreCompilerErrors": true
     }
 }
