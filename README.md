@@ -13,7 +13,7 @@ Lemon Core Bootloader for Serverless Micro-Service
 - Support Data Synchronization to `Elasticsearch` from `DynomoDB` via `DynamoStream`.
 
     ![](assets/2019-11-26-23-43-47.png)
-    ![alt text](media://lemon-core/assets/2019-11-26-23-42-47.png)
+    ![](https://github.com/lemoncloud-io/lemon-core/blob/md/assets/2019-11-26-23-43-47.png)
 
 ## Architecture
 
