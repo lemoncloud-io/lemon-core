@@ -18,6 +18,8 @@ import { loadDataYml } from '../../tools';
 import { GETERR } from '../../common/test-helper';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
+// export shared one
+export { elasticsearch, $hangul };
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
 // export type SearchResponse = elasticsearch.SearchResponse<any>;
@@ -94,7 +96,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * ```
      *
      * @param endpoint  service-url
-     * @param version   Elasticsearch version (default: '6.8')
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
      */
     public static instance(endpoint: string) {
