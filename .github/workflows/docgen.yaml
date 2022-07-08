@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - feature/louis-update-github-actions
 
 jobs:
   build_and_lint:
@@ -27,7 +28,17 @@ jobs:
         run: npm ci
 
       - name: Create the docs directory locally in CI
-        run: npx typedoc src/index.ts
+        run: npx typedoc src/index.ts # output => tsdoc/
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+      
+      - name: Copy docs to S3 bucket
+        run: aws s3 sync tsdoc s3://lemon-hello-www/tydocs
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@4.1.4
