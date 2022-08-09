@@ -639,11 +639,12 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required!`);
 
         // STEP.2 validate signature by KMS(iss).verify()
+        //TODO - iss 에 인증제공자의 api 넣기 (ex: api/lemon-backend-dev?)
         if (typeof iss === 'string' && iss.startsWith('kms/')) {
             const alias = iss.substring(4);
             const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
             const verified = $kms ? await $kms.verify([header, payload].join('.'), signature) : false;
-            if (!verified) throw new Error(`@signature[] is invalid - not be verified!`);
+            if (!verified) throw new Error(`@signature[] is invalid - not be verified by iss:${iss}!`);
             if (!exp || exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid - expired!`);
             return data as T;
         }
