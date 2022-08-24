@@ -507,8 +507,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      *
      * @param id        item-id
      * @param item      item to update
+     * @param options   (optional) request option of client.
      */
-    public async updateItem(id: string, item: T, increments?: Incrementable): Promise<T> {
+    public async updateItem(
+        id: string,
+        item: T,
+        increments?: Incrementable,
+        options?: { maxRetries?: number },
+    ): Promise<T> {
         const { indexName, docType, idName } = this.options;
         const type = `${docType}`;
         _log(NS, `- updateItem(${id})`);
@@ -530,7 +536,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
-        const res: ApiResponse = await client.update(params).catch(
+        const res: ApiResponse = await client.update(params, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
                 //! id 아이템이 없을 경우 발생함.

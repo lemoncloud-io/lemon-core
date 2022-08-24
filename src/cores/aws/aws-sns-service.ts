@@ -172,8 +172,8 @@ export class AWSSNSService implements CoreSnsService {
      * - default to `lemon-hello-sns` or using `env[REPORT_ERROR_ARN]`
      *
      * @param e             Error instance
-     * @param message       simple text message or object to override.
-     * @param target        (optional)
+     * @param data          simple text message or object to override.
+     * @param target        (optional) target SNS arn (default is `REPORT_ERROR_ARN`)
      */
     public reportError = async (e: Error, data: any, target?: string): Promise<string> => {
         if (!e) return 'N/A';
