@@ -619,8 +619,12 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         params?: {
             /** current ms */
             current?: number;
+            /** flag to verify JWT (default true) */
+            verify?: boolean;
         },
     ): Promise<T> => {
+        const isVerify = params?.verify ?? true;
+
         //! it must be JWT Token. verify signature, and load.
         if (typeof token !== 'string' || !token) throw new Error(`@token (string) is required - but ${typeof token}`);
         // STEP.1 decode jwt, and extract { iss, iat, exp }
@@ -639,8 +643,10 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required!`);
 
         // STEP.2 validate signature by KMS(iss).verify()
-        //TODO - iss 에 인증제공자의 api 넣기 (ex: api/lemon-backend-dev?)
-        if (typeof iss === 'string' && iss.startsWith('kms/')) {
+        if (!isVerify) {
+            return data as T;
+        } else if (typeof iss === 'string' && iss.startsWith('kms/')) {
+            //TODO - iss 에 인증제공자의 api 넣기 (ex: api/lemon-backend-dev?)
             const alias = iss.substring(4);
             const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
             const verified = $kms ? await $kms.verify([header, payload].join('.'), signature) : false;
