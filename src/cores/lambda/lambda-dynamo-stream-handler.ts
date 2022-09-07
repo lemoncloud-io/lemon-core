@@ -158,7 +158,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             const { tableName, idName } = options;
             const { region, eventId, eventName, tableName: eventTable } = param;
             if (eventTable != tableName) {
-                _log(NS, `WARN! table[${tableName}] is matched: table:${region}/${eventTable}`);
+                _log(NS, `WARN! table[${tableName}] is not matched with table[${eventTable}] @${region}`);
                 return;
             }
             const { keys, diff, prev, node } = body;
