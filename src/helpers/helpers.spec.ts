@@ -463,7 +463,12 @@ describe('utils', () => {
 
     it('should pass $T.merge()', async done => {
         expect2(() => $T.merge(null, { a: 2, b: null })).toEqual({ a: 2 });
+        expect2(() => $T.merge(undefined, { a: 2, b: null })).toEqual({ a: 2 });
+
         expect2(() => $T.merge(null, null)).toEqual(null);
+        expect2(() => $T.merge(undefined, null)).toEqual(undefined);
+        expect2(() => $T.merge(null, undefined)).toEqual(null);
+
         expect2(() => $T.merge({ a: 3, b: 2 }, { a: 2, b: null })).toEqual({ a: 2 });
 
         done();
