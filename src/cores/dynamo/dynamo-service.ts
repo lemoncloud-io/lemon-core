@@ -202,7 +202,7 @@ export class DynamoService<T extends GeneralItem> {
      */
     public prepareItemKey(id: string, sort: any) {
         const { tableName, idName, sortName } = this.options;
-        if (!id) throw new Error('@id is required!');
+        if (!id) throw new Error(`@id is required - prepareItemKey(${tableName}/${idName})`);
         // _log(NS, `prepareItemKey(${tableName}/${id}/${sort || ''})...`);
         //! prepare payload.
         const payload = {

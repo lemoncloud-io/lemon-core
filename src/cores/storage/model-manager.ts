@@ -124,7 +124,7 @@ export abstract class AbstractManager<
      */
     public async retrieve(id: string): Promise<T> {
         this.NS && _inf(this.NS, `retrieve(${this.type}/${id})...`);
-        if (!id) throw new Error(`@id is required!`);
+        if (!id) throw new Error(`@id is required - retrieve(${this.type}/${id})`);
 
         return this.storage.read(id).catch(e => {
             if (`${e.message}`.startsWith('404 NOT FOUND')) e = new Error(`404 NOT FOUND - ${this.type}:${id}`);
@@ -161,7 +161,7 @@ export abstract class AbstractManager<
      */
     public async delete(id: string, destroy: boolean = true): Promise<T> {
         this.NS && _inf(this.NS, `delete(${this.type}/${id})...`);
-        if (!id) throw new Error(`@id is required!`);
+        if (!id) throw new Error(`@id is required - delete(${this.type}/${id})`);
 
         const $org = await this.prepare(id, null, false);
         this.NS && _log(this.NS, `> model.org =`, $U.json($org));
@@ -180,7 +180,7 @@ export abstract class AbstractManager<
      * @private
      */
     private async _updateModel(id: string, model: T, $inc?: T, isCreate = true): Promise<T> {
-        if (!id) throw new Error(`@id is required!`);
+        if (!id) throw new Error(`@id is required - updateModel(${this.type}/${id})`);
 
         const $org = await this.prepare(id, null, isCreate);
         this.NS && _log(this.NS, `> model.org =`, $U.json($org));

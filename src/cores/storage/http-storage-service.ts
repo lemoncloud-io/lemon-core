@@ -62,8 +62,8 @@ export class HttpStorageService<T extends StorageModel> implements StorageServic
     }
 
     public async increment(id: string, $inc: T, $upt?: T): Promise<T> {
-        if (!id) throw new Error('@id is required!');
-        if (!id.trim()) throw new Error('@id (string) is required!');
+        if (!id) throw new Error(`@id is required - http.increment(${this.service.hello})`);
+        if (!id.trim()) throw new Error(`@id (string) is required - http.increment(${this.service.hello})`);
         if (!$inc && !$upt) throw new Error('@item is required!');
 
         const $I = await this.validateIncrement(id, $inc);

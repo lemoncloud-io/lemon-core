@@ -572,6 +572,10 @@ export function parseRange(exp: string): any {
 /**
  * customized of `do_parrallel` for safe error-handling.
  * - use `.error` to report the internal error.
+ *
+ * @param list list of model.
+ * @param func callback to process of each
+ * @param size (optional) size of parrallel (default 10)
  */
 export const my_parrallel = async <
     T extends { id?: string; error?: string },
@@ -601,9 +605,12 @@ export const my_parrallel = async <
 
 /**
  * run in sequence order
- * = my_parrallel(list, func, 1);
+ * - same as `my_parrallel(list, func, 1)`;
  *
  * 주의) 내부 error를 throw 하지 않으니, list 를 전부 처리할때까지 안끝남.
+ *
+ * @param list list of model.
+ * @param func callback to process of each
  */
 export const my_sequence = <T extends { id?: string; error?: string }, U = T>(
     list: T[],
