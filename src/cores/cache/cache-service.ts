@@ -1165,14 +1165,14 @@ class RedisBackend implements CacheBackend {
             .get(key) // read
             .del(key) // and delete
             .exec();
-        if (!err && data !== null) return JSON.parse(data);
+        if (!err && data !== null) return JSON.parse(data as any);
     }
 
     /**
      * CacheBackend.incr implementation
      */
     public async incr(key: string, increment: number): Promise<number> {
-        return await this.redis.incrbyfloat(key, increment); // Support both integer and floating point
+        return this.redis.incrbyfloat(key, increment); // Support both integer and floating point
     }
 
     /**

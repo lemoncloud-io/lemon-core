@@ -21,6 +21,7 @@ import AWS from 'aws-sdk';
 import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
+import { Body, GetObjectOutput } from 'aws-sdk/clients/s3';
 
 /** ****************************************************************************************************************
  *  Core Types.
@@ -39,6 +40,13 @@ export interface PutObjectResult {
     ContentLength?: number;
     ContentType?: string;
     Metadata?: Metadata;
+}
+export interface GetObjectResult {
+    ETag: string;
+    ContentLength?: number;
+    ContentType?: string;
+    Metadata?: Metadata;
+    Body?: Body;
 }
 
 export interface CoreS3Service extends CoreServices {
@@ -184,7 +192,7 @@ export class AWSS3Service implements CoreS3Service {
      *
      * @param {string} key
      */
-    public getObject = async (key: string): Promise<any> => {
+    public getObject = async (key: string): Promise<GetObjectResult> => {
         if (!key) throw new Error('@key is required!');
 
         const Bucket = this.bucket();
@@ -193,9 +201,10 @@ export class AWSS3Service implements CoreS3Service {
         //! call s3.getObject.
         const s3 = instance();
         try {
-            const data = await s3.getObject(params).promise();
+            const data: GetObjectOutput = await s3.getObject(params).promise();
             _log(NS, '> data.type =', typeof data);
-            return data as any;
+            const { ContentType, ContentLength, Body, ETag, Metadata } = data;
+            return { ContentType, ContentLength, Body, ETag, Metadata };
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
@@ -207,7 +216,7 @@ export class AWSS3Service implements CoreS3Service {
      *
      * @param {string} key  ex) 'hello-0001.json' , 'dist/hello-0001.json
      */
-    public getDecodedObject = async (key: string): Promise<any> => {
+    public getDecodedObject = async <T = object>(key: string): Promise<T> => {
         if (!key) throw new Error('@key is required!');
 
         const Bucket = this.bucket();
@@ -219,7 +228,7 @@ export class AWSS3Service implements CoreS3Service {
             const data = await s3.getObject(params).promise();
             _log(NS, '> data.type =', typeof data);
             const content = data.Body.toString();
-            return JSON.parse(content);
+            return JSON.parse(content) as T;
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
