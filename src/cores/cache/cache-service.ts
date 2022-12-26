@@ -1172,7 +1172,9 @@ class RedisBackend implements CacheBackend {
      * CacheBackend.incr implementation
      */
     public async incr(key: string, increment: number): Promise<number> {
-        return this.redis.incrbyfloat(key, increment); // Support both integer and floating point
+        // Support both integer and floating point
+        const ret = await this.redis.incrbyfloat(key, increment);
+        return Number(ret);
     }
 
     /**

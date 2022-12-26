@@ -163,11 +163,12 @@ describe('abstract-service', () => {
             await service
                 .guardProxy({}, async proxy => {
                     const a = await proxy.tests.get('a', false);
+                    // must be null.
                     a.name = 'hi a';
                     return a;
                 })
                 .catch(GETERR),
-        ).toEqual(`Cannot set property 'name' of null`);
+        ).toEqual(`Cannot set properties of null (setting 'name')`);
         expect2(await service.$test.find('a')).toEqual(null);
 
         //! get w/ default.
