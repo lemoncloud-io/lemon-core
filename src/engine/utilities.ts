@@ -106,7 +106,7 @@ export class Utilities {
         const chain = new Promise(function (resolve, reject) {
             // Get document, or throw exception on error
             try {
-                const doc = yaml.safeLoad(fs.readFileSync(fname, 'utf8'));
+                const doc = yaml.load(fs.readFileSync(fname, 'utf8'));
                 resolve(doc);
             } catch (e) {
                 reject(e);
@@ -125,7 +125,7 @@ export class Utilities {
         // Get document, or throw exception on error
         try {
             this.log(NS, 'load-sync-file =', fname);
-            const doc = yaml.safeLoad(fs.readFileSync(fname, 'utf8'));
+            const doc = yaml.load(fs.readFileSync(fname, 'utf8'));
             return doc;
         } catch (e) {
             this.err(NS, `error:load-sync-yaml(${name})=`, e);

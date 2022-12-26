@@ -517,7 +517,7 @@ export const $event = (context: NextContext, defEndpoint: string = '') => {
  * @param ctx
  */
 export function getIdentityId(ctx: NextContext): string | undefined {
-    const identityId = (ctx.identity as NextIdentityCognito)?.identityId;
+    const identityId = (ctx?.identity as NextIdentityCognito)?.identityId;
     // for localhost development
     if (!identityId) {
         const profile = process.env.NAME;
