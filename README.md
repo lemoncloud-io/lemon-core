@@ -78,7 +78,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 - [x] on protocol, use local account name as accountId for NextContext.
 - [x] for protocol.enqueue(), use the optional delayed wait time.
 - [x] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
-- [ ] upgrade `js-yaml@4.1.0`
+- [x] upgrade `js-yaml@4.1.0`
 
 
 ----------------

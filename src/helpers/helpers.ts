@@ -11,20 +11,11 @@
  *
  * @copyright (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import $cores, { NextContext, NextIdentityCognito, ProtocolModule, ProtocolService } from '../cores/';
+import $cores, { NextContext, NextIdentityCognito, ProtocolModule, ProtocolService, SimpleSet } from '../cores/';
 import { $U, doReportSlack, do_parrallel } from '../engine/';
 import { GETERR } from '../common/test-helper';
 import querystring from 'querystring';
 import { performance } from 'perf_hooks';
-
-/**
- * type: simple data-types
- * - it should be compartible with elastic-search.
- * - it should be consistancy within same key name.
- */
-export interface SimpleSet {
-    [key: string]: string | number;
-}
 
 /**
  * Helpers to transform data-types.
