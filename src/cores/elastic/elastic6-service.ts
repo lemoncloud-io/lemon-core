@@ -18,6 +18,8 @@ import { loadDataYml } from '../../tools';
 import { GETERR } from '../../common/test-helper';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
+// export shared one
+export { elasticsearch, $hangul };
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
 // export type SearchResponse = elasticsearch.SearchResponse<any>;
@@ -94,7 +96,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * ```
      *
      * @param endpoint  service-url
-     * @param version   Elasticsearch version (default: '6.8')
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
      */
     public static instance(endpoint: string) {
@@ -506,8 +507,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      *
      * @param id        item-id
      * @param item      item to update
+     * @param options   (optional) request option of client.
      */
-    public async updateItem(id: string, item: T, increments?: Incrementable): Promise<T> {
+    public async updateItem(
+        id: string,
+        item: T,
+        increments?: Incrementable,
+        options?: { maxRetries?: number },
+    ): Promise<T> {
         const { indexName, docType, idName } = this.options;
         const type = `${docType}`;
         _log(NS, `- updateItem(${id})`);
@@ -529,7 +536,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
-        const res: ApiResponse = await client.update(params).catch(
+        const res: ApiResponse = await client.update(params, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
                 //! id 아이템이 없을 경우 발생함.

@@ -584,6 +584,10 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             current?: number;
         },
     ) => {
+        // STEP.0 validate paramters.
+        if (!identity || typeof identity !== 'object')
+            throw new Error(`@identity (object) is required - but ${typeof identity}`);
+
         // STEP.1 prepare payload data
         const current = params?.current ?? $U.current_time_ms();
         const alias = params?.alias;
@@ -619,8 +623,12 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         params?: {
             /** current ms */
             current?: number;
+            /** flag to verify JWT (default true) */
+            verify?: boolean;
         },
     ): Promise<T> => {
+        const isVerify = params?.verify ?? true;
+
         //! it must be JWT Token. verify signature, and load.
         if (typeof token !== 'string' || !token) throw new Error(`@token (string) is required - but ${typeof token}`);
         // STEP.1 decode jwt, and extract { iss, iat, exp }
@@ -639,11 +647,16 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required!`);
 
         // STEP.2 validate signature by KMS(iss).verify()
-        if (typeof iss === 'string' && iss.startsWith('kms/')) {
-            const alias = iss.substring(4);
+        //TODO - iss 에 인증제공자의 api 넣기 (ex: api/lemon-backend-dev?)
+        const _alias = (iss: string, prefix = 'kms/') =>
+            iss.includes(',') ? iss.substring(prefix.length, iss.indexOf(',')) : iss.substring(prefix.length);
+        if (!isVerify) {
+            return data as T;
+        } else if (typeof iss === 'string' && iss.startsWith('kms/')) {
+            const alias = _alias(iss);
             const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
             const verified = $kms ? await $kms.verify([header, payload].join('.'), signature) : false;
-            if (!verified) throw new Error(`@signature[] is invalid - not be verified!`);
+            if (!verified) throw new Error(`@signature[] is invalid - not be verified by iss:${iss}!`);
             if (!exp || exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid - expired!`);
             return data as T;
         }

@@ -71,16 +71,6 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 
 ----------------
-# TODO TASK #
-
-- [x] use environ as default region like `ap-northeast-2` (or use current region).
-- [x] draw protocol's sequence diagram w/ `callback` mechanism.
-- [x] on protocol, use local account name as accountId for NextContext.
-- [x] for protocol.enqueue(), use the optional delayed wait time.
-- [x] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
-
-
-----------------
 # VERSION INFO #
 
 | Version   | Description
@@ -92,7 +82,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 | 3.0.0     | improve search-client with `@elastic/elasticsearch@7.12` to support AWS `OpenSearch 1.1` (compartible with `ES6.2`).
 | 2.2.20    | improve an extra feature from `aws-s3-service` to 'lemon-images-api'
 | 2.2.19    | improve search filtering feature for `ES6 autocomplete search`.
-| 2.2.18    | support `$U.jwt(passcode).encode(...)` w/ `jsonwebtoken`.
+| 2.2.18    | support `$U.jwt(passcode).encode(...)` w/ `npm`.
 | 2.2.16    | hot-fix `utf8 encoding of json` in `AWS.S3`.
 | 2.2.15    | hot-fix `Cannot read property 'setIndex' of null` in `Dynamo`.
 | 2.2.14    | support `CacheService`, and support appending entry into list in `Dynamo`.

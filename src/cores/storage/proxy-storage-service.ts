@@ -398,17 +398,20 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * get next auto-sequence number.
      *
      * @param type      type of seqeunce.
-     * @param initNext  initial next value if not exist.
+     * @param nextInit  (optional) initial next value if not exist.
+     * @param nextStep  (optional) the incremental step to get next. (default 1)
      */
-    public async nextSeq(type: ModelType, initNext?: number): Promise<number> {
-        _log(NS, `nextSeq(${type})..`);
+    public async nextSeq(type: ModelType, nextInit?: number, nextStep = 1): Promise<number> {
+        _log(NS, `nextSeq(${type}, ${nextInit ?? ''})..`);
+        if (typeof nextStep !== 'number' || nextStep < 0)
+            throw new Error(`@stepNext[${nextStep}] is invalid - nextSeq(${type})`);
         const { createdAt, updatedAt } = this.asTime();
         const _id = this.asKey(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
-        let res = await this.storage.increment(_id, { next: 1 } as T, { updatedAt } as T); // it will create new row if not exists. (like upset)
+        let res = await this.storage.increment(_id, { next: nextStep } as T, { updatedAt } as T); // it will create new row if not exists. (like upset)
         if (res.next == 1) {
             const $key = this.service.asKey$(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
-            initNext = initNext === undefined ? ProxyStorageService.AUTO_SEQUENCE : initNext;
-            const $upd: T = { next: initNext } as T;
+            nextInit = nextInit === undefined || nextInit === null ? ProxyStorageService.AUTO_SEQUENCE : nextInit;
+            const $upd: T = { next: nextInit } as T;
             const $inc: T = { ...$key, createdAt, updatedAt } as T;
             res = await this.storage.increment(_id, $upd, $inc); //! increment w/ update-set
         }
