@@ -233,7 +233,7 @@ export class DynamoService<T extends GeneralItem> {
         debug && $update && _log(NS, `> $update =`, $U.json($update));
         debug && $increment && _log(NS, `> $increment =`, $U.json($increment));
         const Key = this.prepareItemKey(id, sort).Key;
-        const norm = (_: string) => `${_}`.replace(/[.\\:\/]/g, '_');
+        const norm = (_: string) => `${_}`.replace(/[.\\:\/$]/g, '_');
 
         //! prepare payload.
         let payload = Object.entries($update).reduce(
