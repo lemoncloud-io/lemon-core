@@ -54,7 +54,6 @@
     "@types/ioredis": "^4.28.10",
     "@types/jsonwebtoken": "^8.5.9",
     "@types/lodash": "^4.14.185",
-    "@types/serve-static": "^1.13.9",
     "async": "^3.2.4",
     "aws-lambda": "^1.0.6",
     "aws-sdk": "2.814",
