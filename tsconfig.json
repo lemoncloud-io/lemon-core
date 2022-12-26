@@ -39,7 +39,6 @@
     ],
     "typedocOptions": {
         "entryPoints": ["src/index.ts"],
-        "out": "tsdoc",
-        "ignoreCompilerErrors": true
+        "out": "tsdoc"
     }
 }
