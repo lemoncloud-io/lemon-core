@@ -15,6 +15,9 @@ test:
   <<: *default_env
   STAGE: 'test'
 
+  #! only for local test.
+  LOCAL_ACCOUNT: 'my-local-iid'
+
 #-----------------------------------
 # local development configuration.
 local:

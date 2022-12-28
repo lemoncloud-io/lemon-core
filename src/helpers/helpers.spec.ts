@@ -453,10 +453,60 @@ describe('utils', () => {
     it('should pass getIdentityId()', async done => {
         const { $context, identityId } = await instance();
 
-        /* eslint-disable prettier/prettier */
+        //! check in `env/none.yml`
+        const LOCAL_ACCOUNT = 'my-local-iid';
+        expect2(() => $U.env('LOCAL_ACCOUNT')).toEqual(LOCAL_ACCOUNT);
+
         expect2(() => getIdentityId($context.signed)).toBe(identityId);
         expect2(() => getIdentityId($context.unsigned)).toBeNull();
-        /* eslint-enable prettier/prettier */
+        expect2(() => getIdentityId(null)).toEqual();
+        expect2(() => getIdentityId({})).toEqual();
+        expect2(() => getIdentityId({ domain: 'localhost' })).toEqual(LOCAL_ACCOUNT);
+
+        expect2(() => isUserAuthorized($context.signed)).toBe(true);
+        expect2(() => isUserAuthorized($context.unsigned)).toBe(false);
+
+        expect2(() => isUserAuthorized({ ...$context.signed, domain: 'localhost', identity: {} })).toBe(true);
+        expect2(() => isUserAuthorized({ ...$context.unsigned, domain: 'localhost', identity: {} })).toBe(true);
+
+        //* tracking context (1st try)
+        const preCtx1 = { ...$context.unsigned, domain: 'localhost', identity: { ...$context.unsigned.identity } };
+        expect2(() => preCtx1, 'identity,domain').toEqual({
+            domain: 'localhost',
+            identity: {
+                accountId: null,
+                caller: undefined,
+                identityId: null,
+                identityPoolId: null,
+                identityProvider: null,
+                lang: 'ko',
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            },
+        });
+        expect2(() => isUserAuthorized(preCtx1)).toBe(true);
+        expect2(() => preCtx1, 'identity,domain').toEqual({
+            domain: 'localhost',
+            identity: {
+                accountId: null,
+                caller: undefined,
+                identityId: LOCAL_ACCOUNT,
+                identityPoolId: null,
+                identityProvider: null,
+                lang: 'ko',
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            },
+        });
+
+        //* tracking context (1st try)
+        const preCtx2 = { ...$context.unsigned, domain: 'localhost', identity: { ...$context.unsigned.identity } };
+        expect2(() => isUserAuthorized(preCtx2, { lang: 'en' })).toBe(true);
+        expect2(() => preCtx2, 'identity,domain').toEqual({
+            domain: 'localhost',
+            identity: {
+                identityId: LOCAL_ACCOUNT,
+                lang: 'en',
+            },
+        });
 
         done();
     });

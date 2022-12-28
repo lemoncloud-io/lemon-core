@@ -505,17 +505,13 @@ export const $event = (context: NextContext, defEndpoint: string = '') => {
 };
 /**
  * authentication helper - get identity-id from context
- * @param ctx
+ * @param context the current context
  */
-export function getIdentityId(ctx: NextContext): string | undefined {
-    const identityId = (ctx?.identity as NextIdentityCognito)?.identityId;
-    // for localhost development
-    if (!identityId) {
-        const profile = process.env.NAME;
-        if (ctx.domain === 'localhost' && profile === 'lemon')
-            return 'ap-northeast-2:009fa3a9-173f-440b-be74-2cf83370b08b';
-        if (ctx.domain === 'localhost' && profile === 'colover')
-            return 'ap-northeast-2:cef62bef-2f3e-4775-893f-7addb6efbeb3';
+export function getIdentityId(context: NextContext): string | undefined {
+    const identityId = (context?.identity as NextIdentityCognito)?.identityId;
+    if (!identityId && context?.domain === 'localhost') {
+        //! use `env[LOCAL_ACCOUNT]` only if runs in local server.
+        return $U.env('LOCAL_ACCOUNT', '');
     }
     return identityId;
 }
@@ -525,15 +521,20 @@ export function getIdentityId(ctx: NextContext): string | undefined {
  * - 이 메서드는 AWS IAM 인증 여부만을 확인한다.
  * - 따라서 true를 반환한다고 하여 회원 가입이 되어있다는 의미는 아니다.
  *
- * @param ctx the current context
- * @param param (optional) to override `identity` when running local.
+ * @param context the current context
+ * @params params (optional) to override `identity` when running local.
  */
-export function isUserAuthorized(ctx: NextContext, param?: any): boolean {
-    const identityId = getIdentityId(ctx);
-    //NOTE - local 실행이라면 넘기자...
-    if (ctx?.clientIp === '::1' && ctx?.domain === 'localhost') {
-        ctx.identity = { ...param }; //! override with parameter.
-        return true;
+export function isUserAuthorized(context: NextContext, params?: any): boolean {
+    const identityId = getIdentityId(context);
+    //WARN - in local server, override the identity w/ param
+    if (context?.domain === 'localhost') {
+        //!* override with optional parameter.
+        if (context) {
+            context.identity = {
+                ...(params !== undefined ? params : context.identity),
+                identityId,
+            };
+        }
     }
     return !!identityId;
 }
