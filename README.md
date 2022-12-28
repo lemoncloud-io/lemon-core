@@ -75,6 +75,8 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.2.1     | improve `getIdentityId()` w/ `env:LOCAL_ACCOUNT`.
+| 3.2.0     | upgrade all packages, and clear `audit fix`.
 | 3.1.2     | refactoring with `lemon-model@1.0.0` for shared types.
 | 3.1.1     | support `ManagerProxy`, `AbstractProxy` and `$ES6`. (`x-lemon-identity` as WebToken)
 | 3.1.0     | upgrade `typescript^4.6.2`, and optimized.
