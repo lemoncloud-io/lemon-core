@@ -15,28 +15,28 @@
 <h1>Function isUserAuthorized</h1></div>
 <section class="tsd-panel">
 <ul class="tsd-signatures tsd-kind-function">
-<li class="tsd-signature tsd-anchor-link" id="isUserAuthorized">is<wbr/>User<wbr/>Authorized<span class="tsd-signature-symbol">(</span>ctx<span class="tsd-signature-symbol">: </span><a href="../interfaces/NextContext.html" class="tsd-signature-type" data-tsd-kind="Interface">NextContext</a><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/NextIdentity.html" class="tsd-signature-type" data-tsd-kind="Interface">NextIdentity</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span>, param<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">boolean</span><a href="#isUserAuthorized" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" id="icon-anchor-a"></path><path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" id="icon-anchor-b"></path><path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" id="icon-anchor-c"></path></svg></a></li>
+<li class="tsd-signature tsd-anchor-link" id="isUserAuthorized">is<wbr/>User<wbr/>Authorized<span class="tsd-signature-symbol">(</span>context<span class="tsd-signature-symbol">: </span><a href="../interfaces/NextContext.html" class="tsd-signature-type" data-tsd-kind="Interface">NextContext</a><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/NextIdentity.html" class="tsd-signature-type" data-tsd-kind="Interface">NextIdentity</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span>, params<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">boolean</span><a href="#isUserAuthorized" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" id="icon-anchor-a"></path><path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" id="icon-anchor-b"></path><path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" id="icon-anchor-c"></path></svg></a></li>
 <li class="tsd-description">
 <div class="tsd-comment tsd-typography"><p>authentication helper - check user is authorized</p>
 <ul>
 <li>이 메서드는 AWS IAM 인증 여부만을 확인한다.</li>
 <li>따라서 true를 반환한다고 하여 회원 가입이 되어있다는 의미는 아니다.</li>
 </ul>
+
+<h3>Params</h3><p>params (optional) to override <code>identity</code> when running local.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
 <ul class="tsd-parameter-list">
 <li>
-<h5>ctx: <a href="../interfaces/NextContext.html" class="tsd-signature-type" data-tsd-kind="Interface">NextContext</a><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/NextIdentity.html" class="tsd-signature-type" data-tsd-kind="Interface">NextIdentity</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></h5>
+<h5>context: <a href="../interfaces/NextContext.html" class="tsd-signature-type" data-tsd-kind="Interface">NextContext</a><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/NextIdentity.html" class="tsd-signature-type" data-tsd-kind="Interface">NextIdentity</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></h5>
 <div class="tsd-comment tsd-typography"><p>the current context</p>
 </div></li>
 <li>
-<h5><code class="tsd-tag ts-flagOptional">Optional</code> param: <span class="tsd-signature-type">any</span></h5>
-<div class="tsd-comment tsd-typography"><p>(optional) to override <code>identity</code> when running local.</p>
-</div></li></ul></div>
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> params: <span class="tsd-signature-type">any</span></h5></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">boolean</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f8b0bc5/src/helpers/helpers.ts#L531">src/helpers/helpers.ts:531</a></li></ul></aside></li></ul></section></div>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/7a3fb07/src/helpers/helpers.ts#L527">src/helpers/helpers.ts:527</a></li></ul></aside></li></ul></section></div>
 <div class="col-4 col-menu menu-sticky-wrap menu-highlight">
 <div class="tsd-navigation settings">
 <details class="tsd-index-accordion"><summary class="tsd-accordion-summary">
