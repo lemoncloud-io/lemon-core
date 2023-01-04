@@ -324,6 +324,21 @@ export const $T = {
             return $ret;
         }
     },
+    /**
+     * clear the undefined properties from the cloned object.
+     * - applied only to 1st depth.
+     *
+     * @param N object
+     * @param $def default if not valid object.
+     * @returns cloned object
+     */
+    onlyDefined: <T extends object>(N: T, $def: T = null): T =>
+        N && typeof N === 'object'
+            ? Object.entries(N).reduce<T>((N, [k, v]) => {
+                  if (v !== undefined) N[k as keyof T] = v;
+                  return N;
+              }, {} as T)
+            : ($def as T),
 };
 
 /**
@@ -463,6 +478,7 @@ export const $slack = async (
         fields?: { title: string; value: string; short?: boolean }[];
         footer?: string;
         context?: NextContext;
+        ts?: number;
     },
 ) => {
     //! about current service.................
@@ -473,15 +489,23 @@ export const $slack = async (
         {
             channel: params?.channel ?? undefined,
             attachments: [
-                {
+                $T.onlyDefined({
                     color: `${params?.color || '#FFB71B' || 'good'}`,
                     title,
-                    pretext: pretext ?? (params?.scope ? `#${name} [\`${params.scope}\`]` : undefined),
-                    text: typeof text === 'string' ? text : $U.json(text),
-                    ts: Math.floor($U.current_time_ms() / 1000),
+                    pretext:
+                        pretext === null
+                            ? undefined
+                            : pretext ?? (params?.scope ? `#${name} [\`${params.scope}\`]` : undefined),
+                    text:
+                        text === null || text === undefined
+                            ? undefined
+                            : typeof text === 'string'
+                            ? text
+                            : $U.json(text),
                     fields: params?.fields,
-                    footer: params?.footer ?? `${service}/${stage}#${version}`,
-                },
+                    footer: params?.footer === null ? undefined : params?.footer ?? `${service}/${stage}#${version}`,
+                    ts: params?.ts === null ? undefined : Math.floor($U.current_time_ms() / 1000),
+                }),
             ],
         },
         params?.context,

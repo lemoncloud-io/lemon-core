@@ -280,6 +280,14 @@ describe('utils', () => {
         expect2(() => $T.parseMeta(true)).toEqual({ type: 'boolean', value: true });
     });
 
+    it('should pass $T.onlyDefined', () => {
+        expect2(() => $T.onlyDefined(null, null)).toBe(null);
+        expect2(() => $T.onlyDefined({ a: 1, b: null, c: undefined }, null)).toEqual({ a: 1, b: null });
+
+        expect2(() => Object.keys({ a: 1, b: null, c: undefined })).toEqual(['a', 'b', 'c']);
+        expect2(() => Object.keys($T.onlyDefined({ a: 1, b: null, c: undefined }, null))).toEqual(['a', 'b']);
+    });
+
     it('should pass $rand', () => {
         // range
         expect2(() => $rand.range(3)).toEqual([0, 1, 2]);
