@@ -1,0 +1,44 @@
+{
+    "!": "version info of open-search @230105",
+    "$": {
+        "name": "7889148c307e82FF3ec",
+        "cluster_name": "000000000000:es68",
+        "cluster_uuid": "axGWhR6XXB62qZMuJ",
+        "version": {
+            "number": "7.10.2",
+            "build_type": "tar",
+            "build_hash": "unknown",
+            "build_date": "2022-09-01T14:21:57.461917Z",
+            "build_snapshot": false,
+            "lucene_version": "8.10.1",
+            "minimum_wire_compatibility_version": "6.8.0",
+            "minimum_index_compatibility_version": "6.0.0-beta1"
+        },
+        "tagline": "The OpenSearch Project: https://opensearch.org/"
+    },
+    "statusCode": 200,
+    "headers": {
+        "date": "Fri, 06 Jan 2023 02:18:09 GMT",
+        "content-type": "application/json; charset=UTF-8",
+        "content-length": "1020",
+        "connection": "keep-alive",
+        "access-control-allow-origin": "*"
+    },
+    "body": {
+        "_index": "pools2-v1",
+        "_type": "_doc",
+        "_id": "SS:item:0045394",
+        "_version": 21,
+        "_seq_no": 370693,
+        "_primary_term": 9,
+        "found": true,
+        "_source": {
+            "no": "0045394",
+            "ns": "SS",
+            "type": "item",
+            "$id": "SS:item:0045394",
+            "_decomposed": {},
+            "_qwerty": {}
+        }
+    }
+}
