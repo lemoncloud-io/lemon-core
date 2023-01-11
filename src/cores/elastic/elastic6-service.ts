@@ -461,7 +461,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const _id = res.body?._id;
         const _version = res.body?._version;
-        const data: T = (res as any)?._source || {};
+        const data: T = (res as any)?._source || res.body?._source || {};
         // delete internal (analyzed) field
         delete data[Elastic6Service.DECOMPOSED_FIELD];
         delete data[Elastic6Service.QWERTY_FIELD];
@@ -497,7 +497,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const _id = res.body?._id;
         const _version = res.body?._version;
-        const data: T = res.body?._source || {};
+        const data: T = res.body?._source || res.body?._source || {};
         const res2: T = { ...data, _id, _version };
         return res2;
     }

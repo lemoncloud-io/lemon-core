@@ -153,6 +153,9 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
         onBeforeSync?: DynamoStreamCallback<T>,
         onAfterSync?: DynamoStreamCallback<T>,
     ): DynamoStreamNextHandler {
+        //FIXED - if it has decomposed, then update full set.
+        const hasDecomposed = !!service?.options?.autocompleteFields?.length;
+
         // const _log = console.log;
         const handler: DynamoStreamNextHandler = async (id, param, body, $ctx) => {
             const { tableName, idName } = options;
@@ -177,7 +180,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             }
 
             //! origin object, and apply filter.
-            const item: T = 0 ? node : $U.cleanup(node || {}); //! remove internals like '_' '$'.
+            const item: T = $U.cleanup({ ...node }); //! remove internals like '_' '$'.
             const passed: boolean = !filter ? true : filter(_id, item, diff, prev);
             if (passed !== true && passed !== undefined) {
                 _log(NS, `WARN! node[${_id}] is by-passed`);
@@ -193,22 +196,26 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                 //! clear data.
                 const res = await service.deleteItem(_id); // ignore error.
                 _log(NS, `> deleted[${_id}] =`, $U.json(res));
+            } else if (hasDecomposed) {
+                //! overwrite all.
+                const res = await service.saveItem(_id, item);
+                _log(NS, `> saved[${_id}] @1 =`, $U.json(res));
             } else if (diff && Array.isArray(diff) && diff.length) {
                 //! try to update in advance, then save.
                 const $upt = diff.reduce<any>((M: any, key: string) => {
                     M[key] = item[key as keyof Elastic6Item];
                     return M;
                 }, {});
-                _log(NS, `> updates[${_id}] =`, $U.json($upt));
+                _log(NS, `> updates[${_id}] @1 =`, $U.json($upt));
                 const res = await service.updateItem(_id, $upt).catch((e: Error) => {
                     if (`${e.message}`.startsWith('404 NOT FOUND')) return service.saveItem(_id, item);
                     throw e;
                 });
-                _log(NS, `> updated[${_id}] =`, $U.json(res));
+                _log(NS, `> updated[${_id}] @2 =`, $U.json(res));
             } else {
                 //! overwrite all.
                 const res = await service.saveItem(_id, item);
-                _log(NS, `> saved[${_id}] =`, $U.json(res));
+                _log(NS, `> saved[${_id}] @2 =`, $U.json(res));
             }
 
             //! call post sync function

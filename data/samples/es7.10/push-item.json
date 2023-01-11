@@ -1,0 +1,25 @@
+{
+    "!": "response of client.index()",
+    "statusCode": 201,
+    "headers": {
+        "date": "Fri, 06 Jan 2023 04:10:26 GMT",
+        "content-type": "application/json; charset=UTF-8",
+        "content-length": "189",
+        "connection": "keep-alive",
+        "access-control-allow-origin": "*"
+    },
+    "body": {
+        "_index": "pools2-v1",
+        "_type": "_doc",
+        "_id": "cMJFhYUB6gjeLhCe3Ezs",
+        "_version": 1,
+        "result": "created",
+        "_shards": {
+            "total": 2,
+            "successful": 2,
+            "failed": 0
+        },
+        "_seq_no": 368963,
+        "_primary_term": 10
+    }
+}

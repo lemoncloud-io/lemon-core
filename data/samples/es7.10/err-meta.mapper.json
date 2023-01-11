@@ -1,0 +1,66 @@
+{
+    "!": "content of `error.meta` ",
+    "statusCode": 400,
+    "headers": {
+        "date": "Fri, 06 Jan 2023 04:07:32 GMT",
+        "content-type": "application/json; charset=UTF-8",
+        "content-length": "539",
+        "connection": "keep-alive",
+        "access-control-allow-origin": "*"
+    },
+    "body": {
+        "error": {
+            "root_cause": [
+                {
+                    "type": "mapper_parsing_exception",
+                    "reason": "Field [_id] is a metadata field and cannot be added inside a document. Use the index API request parameters."
+                }
+            ],
+            "type": "mapper_parsing_exception",
+            "reason": "failed to parse field [_id] of type [_id] in document with id 'b8JDhYUB6gjeLhCeNUwP'. Preview of field's value: 'SS:item:0045394'",
+            "caused_by": {
+                "type": "mapper_parsing_exception",
+                "reason": "Field [_id] is a metadata field and cannot be added inside a document. Use the index API request parameters."
+            }
+        },
+        "status": 400
+    },
+    "meta": {
+        "context": null,
+        "request": {
+            "params": {
+                "method": "POST",
+                "path": "/pools2-v1/_doc",
+                "body": "{\"_id\":\"SS:item:0045394\"}",
+                "querystring": "",
+                "headers": {
+                    "user-agent": "elasticsearch-js/7.12.0 (darwin 22.2.0-arm64; Node.js v16.17.0)",
+                    "x-elastic-client-meta": "es=7.12.0,js=16.17.0,t=7.12.0,hc=16.17.0",
+                    "content-type": "application/json",
+                    "content-length": "918"
+                },
+                "timeout": 30000
+            },
+            "options": {},
+            "id": 2
+        },
+        "name": "elasticsearch-js",
+        "connection": {
+            "url": "https://localhost:9683/",
+            "id": "https://localhost:9683/",
+            "headers": {},
+            "deadCount": 0,
+            "resurrectTimeout": 0,
+            "_openRequests": 0,
+            "status": "alive",
+            "roles": {
+                "master": true,
+                "data": true,
+                "ingest": true,
+                "ml": false
+            }
+        },
+        "attempts": 0,
+        "aborted": false
+    }
+}
