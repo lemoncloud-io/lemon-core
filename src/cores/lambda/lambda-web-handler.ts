@@ -187,22 +187,32 @@ export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) =>
         }
 
         //! report error and returns
-        if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
+        if (LambdaHandler.REPORT_ERROR)
+            return doReportError(e, $ctx, event)
+                .catch(GETERR)
+                .then(() => failure(message, status));
         return failure(message, status);
     } else if (typeof message == 'string' && /^\.[a-zA-Z0-9_\-]+/.test(message)) {
         //! handle for message `.name () is required!`
-        //! report error and returns
-        if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
+        if (LambdaHandler.REPORT_ERROR)
+            return doReportError(e, $ctx, event)
+                .catch(GETERR)
+                .then(() => failure(message, 400));
         return failure(message, 400);
     } else if (typeof message == 'string' && /^\@[a-zA-Z0-9_\-]+/.test(message)) {
         //! handle for message `@name () is required!`
-        //! report error and returns
-        if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
+        if (LambdaHandler.REPORT_ERROR)
+            return doReportError(e, $ctx, event)
+                .catch(GETERR)
+                .then(() => failure(message, 400));
         return failure(message, 400);
     }
 
     //! report error and returns
-    if (LambdaHandler.REPORT_ERROR) doReportError(e, $ctx, event).catch(GETERR);
+    if (LambdaHandler.REPORT_ERROR)
+        return doReportError(e, $ctx, event)
+            .catch(GETERR)
+            .then(() => failure(e instanceof Error ? message : e));
     return failure(e instanceof Error ? message : e);
 };
 
