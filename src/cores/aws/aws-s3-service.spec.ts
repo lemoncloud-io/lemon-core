@@ -17,13 +17,10 @@ process.env = Object.assign(process.env, {
 
 //! load $engine, and prepare dummy handler
 import { loadProfile } from '../../environ';
-import { GETERR } from '../../common/test-helper';
+import { expect2, GETERR } from '../../common/test-helper';
 import { AWSS3Service, PutObjectResult } from './aws-s3-service';
-// import { credentials } from '../../tools';
-// import { environ } from '../..';
 
 const S3 = new AWSS3Service();
-
 describe(`test AWSS3Service`, () => {
     //! use `env.PROFILE`
     const PROFILE = loadProfile(process); // override process.env.
@@ -40,15 +37,16 @@ describe(`test AWSS3Service`, () => {
     test('check bucket() function', async () => {
         expect(AWSS3Service.ENV_S3_NAME).toEqual(ENV_NAME);
         expect(AWSS3Service.DEF_S3_BUCKET).toEqual(DEF_BUCKET);
+
         expect(S3.bucket()).toEqual(DEF_BUCKET);
         expect(S3.bucket('TEMP_BUCKET')).toEqual('hello-bucket');
         expect(S3.bucket('MY_BUCKET')).toEqual(DEF_BUCKET);
         expect(S3.bucket('my-bucket')).toEqual('my-bucket');
     });
 
+    //! test headObject()
     test('check headObject() function', async () => {
         if (!PROFILE) return;
-        /* eslint-disable prettier/prettier */
 
         // if the objects not exists
         expect(await S3.headObject('invalid-file')).toBeNull();
@@ -58,56 +56,75 @@ describe(`test AWSS3Service`, () => {
         // expect(await S3.headObject('invalid-file').catch(GETERR)).toMatchObject({ ContentType: 'application/json; charset=utf-8', ContentLength: json.length });
         expect(await S3.headObject('invalid-file').catch(GETERR)).toEqual(null);
         await S3.deleteObject(fileName);
-
-        /* eslint-enable prettier/prettier */
     });
 
+    //! test putObject(), and getObject()
     test('check putObject() function', async () => {
         if (!PROFILE) return;
         const json = { hello: 'world', lemon: true, name: '한글!' };
         const body = JSON.stringify(json);
         let res: PutObjectResult;
-        /* eslint-disable prettier/prettier */
 
         // manual key
         res = await S3.putObject(body, 'sample.json');
         expect(res.Bucket).toEqual(DEF_BUCKET);
         expect(res.Key).toEqual('sample.json');
-        expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
-        expect(res.ContentType).toEqual('application/json; charset=utf-8');
-        expect(res.ContentLength).toEqual(body.length + 4);  // +2 due to unicode for hangul
-        expect(await S3.getObject(res.Key)).toMatchObject({
-            ContentType: 'application/json; charset=utf-8',
-            Body: Buffer.from(body),
-        });
-        await S3.deleteObject(res.Key);
-
-        // automatic key
-        res = await S3.putObject(body);
-        expect(res.Bucket).toEqual(DEF_BUCKET);
-        expect(res.Key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/);
-        expect(res.Location).toMatch(new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`));
+        expect(res.Location).toMatch(
+            new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`),
+        );
         expect(res.ContentType).toEqual('application/json; charset=utf-8');
         expect(res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
         expect(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
         });
-        await S3.deleteObject(res.Key);
+        expect2(await S3.deleteObject(res.Key)).toEqual();
+
+        // automatic key
+        res = await S3.putObject(body);
+        expect(res.Bucket).toEqual(DEF_BUCKET);
+        expect(res.Key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/);
+        expect(res.Location).toMatch(
+            new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`),
+        );
+        expect(res.ContentType).toEqual('application/json; charset=utf-8');
+        expect(res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
+        expect(await S3.getObject(res.Key)).toMatchObject({
+            ContentType: 'application/json; charset=utf-8',
+            Body: Buffer.from(body),
+        });
+        expect2(await S3.deleteObject(res.Key)).toEqual();
 
         // check tags
         const tags = { company: 'lemoncloud', service: 'lemon-core' };
         res = await S3.putObject(body, 'sample.json', null, tags);
-        expect(await S3.getObject(res.Key)).toMatchObject({
+        expect2(() => ({ ...res })).toEqual({
+            Bucket: DEF_BUCKET,
+            ContentLength: 47,
             ContentType: 'application/json; charset=utf-8',
+            ETag: '"51f209a54902230ac3395826d7fa1851"',
+            Key: 'sample.json',
+            Location: `https://${DEF_BUCKET}.s3.ap-northeast-2.amazonaws.com/sample.json`,
+            Metadata: {
+                md5: '51f209a54902230ac3395826d7fa1851',
+            },
+        });
+        expect2(await S3.getObject(res.Key), '!Body').toEqual({
+            ContentType: 'application/json; charset=utf-8',
+            ContentLength: 47,
+            ETag: '"51f209a54902230ac3395826d7fa1851"',
+            Metadata: {
+                md5: '51f209a54902230ac3395826d7fa1851',
+            },
             TagCount: 2,
         });
-        expect(await S3.getObjectTagging(res.Key)).toMatchObject(tags);
-        await S3.deleteObject(res.Key);
+        expect2(await S3.getObjectTagging(res.Key)).toEqual({ ...tags });
 
-        /* eslint-enable prettier/prettier */
+        //* cleanup object
+        expect2(await S3.deleteObject(res.Key)).toEqual();
     });
 
+    //! test getDecodedObject()
     test('check getDecodedObject() function', async () => {
         if (!PROFILE) return;
         const fileName = 'sample.json';

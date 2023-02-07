@@ -32,21 +32,61 @@ export interface TagSet {
     [key: string]: string;
 }
 
+/**
+ * type: `PutObjectResult`
+ * - only some properties from origin-result.
+ */
 export interface PutObjectResult {
     Location: string;
-    ETag: string;
     Bucket: string;
     Key: string;
+    /**
+     * An ETag is an opaque identifier assigned by a web server to a specific version of a resource found at a URL.
+     */
+    ETag: string;
+    /**
+     * Size of the body in bytes.
+     */
     ContentLength?: number;
+    /**
+     * A standard MIME type describing the format of the object data.
+     */
     ContentType?: string;
+    /**
+     * A map of metadata to store with the object in S3.
+     */
     Metadata?: Metadata;
 }
+
+/**
+ * type: `GetObjectResult`
+ * - only some properties from origin-result.
+ */
 export interface GetObjectResult {
-    ETag: string;
+    /**
+     * Size of the body in bytes.
+     */
     ContentLength?: number;
+    /**
+     * A standard MIME type describing the format of the object data.
+     */
     ContentType?: string;
+    /**
+     * A map of metadata to store with the object in S3.
+     */
     Metadata?: Metadata;
+    /**
+     * Object data.
+     */
     Body?: Body;
+    /**
+     * An ETag is an opaque identifier assigned by a web server to a specific version of a resource found at a URL.
+     */
+    ETag: string;
+    /**
+     * The number of tags, if any, on the object.
+     */
+    TagCount?: number;
 }
 
 export interface CoreS3Service extends CoreServices {
@@ -175,12 +215,16 @@ export class AWSS3Service implements CoreS3Service {
             delete (data as any).key; // NOTE: remove undeclared property 'key' returned from aws-sdk
             _log(NS, `> data[${data.Bucket}].Location =`, $U.json(data.Location));
 
-            return {
-                ...data,
+            const result: PutObjectResult = {
+                Bucket: data.Bucket,
+                Location: data.Location,
+                Key: data.Key,
+                ETag: data.ETag,
                 ContentType: params.ContentType,
                 ContentLength: params.ContentLength,
                 Metadata: params.Metadata,
             };
+            return result;
         } catch (e) {
             _err(NS, `! err[${params.Bucket}] =`, e);
             throw e;
@@ -203,8 +247,10 @@ export class AWSS3Service implements CoreS3Service {
         try {
             const data: GetObjectOutput = await s3.getObject(params).promise();
             _log(NS, '> data.type =', typeof data);
-            const { ContentType, ContentLength, Body, ETag, Metadata } = data;
-            return { ContentType, ContentLength, Body, ETag, Metadata };
+            const { ContentType, ContentLength, Body, ETag, Metadata, TagCount } = data;
+            const result: GetObjectResult = { ContentType, ContentLength, Body, ETag, Metadata };
+            if (TagCount) result.TagCount = TagCount;
+            return result;
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
