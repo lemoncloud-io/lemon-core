@@ -120,6 +120,14 @@ describe(`test AWSS3Service`, () => {
         });
         expect2(await S3.getObjectTagging(res.Key)).toEqual({ ...tags });
 
+        //* check list-objects
+        expect2(await S3.listObjects(), '!Contents').toEqual({
+            IsTruncated: true,
+            KeyCount: 10,
+            MaxKeys: 10,
+            T: '1TFgocygtF3XAAu+JBHJZRJMy2BGgSHA+BAECZx61uDqjC7BRCBGE9BC3dMmvmTogDVWV2sEFt3+Y7+YteyGcTilx6uxel8MP',
+        });
+
         //* cleanup object
         expect2(await S3.deleteObject(res.Key)).toEqual();
     });

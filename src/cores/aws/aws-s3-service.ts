@@ -6,6 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-07-19 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2023-02-08 support of `listObject()`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -123,12 +124,17 @@ const instance = () => {
     return new AWS.S3(config); // SQS Instance. shared one???
 };
 
-//! main service instance.
+/**
+ * main service implement.
+ */
 export class AWSS3Service implements CoreS3Service {
     /**
-     * environ name config.
+     * environ name to use `bucket`
      */
     public static ENV_S3_NAME = 'MY_S3_BUCKET';
+    /**
+     * default `bucket` name
+     */
     public static DEF_S3_BUCKET = 'lemon-hello-www';
 
     /**
@@ -283,6 +289,7 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * get tag-set of object
+     *
      * @param {string} key
      */
     public getObjectTagging = async (key: string): Promise<TagSet> => {
@@ -307,6 +314,7 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * delete object from bucket
+     *
      * @param {string} key
      */
     public deleteObject = async (key: string): Promise<void> => {
@@ -320,6 +328,41 @@ export class AWSS3Service implements CoreS3Service {
         try {
             const data = await s3.deleteObject(params).promise();
             _log(NS, '> data =', $U.json(data));
+        } catch (e) {
+            _err(NS, '! err=', e);
+            throw e;
+        }
+    };
+
+    /**
+     * list objects in bucket
+     *
+     * @param {string} key
+     */
+    public listObjects = async (key?: string) => {
+        // if (!key) throw new Error('@key is required!');
+
+        const Bucket = this.bucket();
+        const params: AWS.S3.ListObjectsV2Request = {
+            Bucket,
+            Prefix: '',
+            Delimiter: '/',
+            MaxKeys: 10,
+        };
+
+        //! call s3.deleteObject.
+        const s3 = instance();
+        try {
+            const data = await s3.listObjectsV2(params).promise();
+            _log(NS, '> data =', $U.json(data));
+            const result = {
+                IsTruncated: data.IsTruncated,
+                Contents: data.Contents,
+                MaxKeys: data.MaxKeys,
+                KeyCount: data.KeyCount,
+                T: data.NextContinuationToken,
+            };
+            return result;
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
