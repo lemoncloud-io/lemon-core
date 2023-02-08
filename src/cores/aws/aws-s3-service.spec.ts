@@ -63,18 +63,19 @@ describe(`test AWSS3Service`, () => {
         if (!PROFILE) return;
         const json = { hello: 'world', lemon: true, name: '한글!' };
         const body = JSON.stringify(json);
+        const _key = `tests/sample.json`;
         let res: PutObjectResult;
 
         // manual key
-        res = await S3.putObject(body, 'sample.json');
-        expect(res.Bucket).toEqual(DEF_BUCKET);
-        expect(res.Key).toEqual('sample.json');
-        expect(res.Location).toMatch(
+        res = await S3.putObject(body, _key);
+        expect2(() => res.Bucket).toEqual(DEF_BUCKET);
+        expect2(() => res.Key).toEqual(_key);
+        expect2(() => res.Location).toMatch(
             new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`),
         );
-        expect(res.ContentType).toEqual('application/json; charset=utf-8');
-        expect(res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
-        expect(await S3.getObject(res.Key)).toMatchObject({
+        expect2(() => res.ContentType).toEqual('application/json; charset=utf-8');
+        expect2(() => res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
+        expect2(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
         });
@@ -82,14 +83,16 @@ describe(`test AWSS3Service`, () => {
 
         // automatic key
         res = await S3.putObject(body);
-        expect(res.Bucket).toEqual(DEF_BUCKET);
-        expect(res.Key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/);
-        expect(res.Location).toMatch(
+        expect2(() => res.Bucket).toEqual(DEF_BUCKET);
+        expect2(() => res.Key).toMatch(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/,
+        );
+        expect2(() => res.Location).toMatch(
             new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`),
         );
-        expect(res.ContentType).toEqual('application/json; charset=utf-8');
-        expect(res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
-        expect(await S3.getObject(res.Key)).toMatchObject({
+        expect2(() => res.ContentType).toEqual('application/json; charset=utf-8');
+        expect2(() => res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
+        expect2(await S3.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
         });
@@ -97,14 +100,14 @@ describe(`test AWSS3Service`, () => {
 
         // check tags
         const tags = { company: 'lemoncloud', service: 'lemon-core' };
-        res = await S3.putObject(body, 'sample.json', null, tags);
+        res = await S3.putObject(body, _key, null, tags);
         expect2(() => ({ ...res })).toEqual({
             Bucket: DEF_BUCKET,
             ContentLength: 47,
             ContentType: 'application/json; charset=utf-8',
             ETag: '"51f209a54902230ac3395826d7fa1851"',
-            Key: 'sample.json',
-            Location: `https://${DEF_BUCKET}.s3.ap-northeast-2.amazonaws.com/sample.json`,
+            Key: _key,
+            Location: `https://${DEF_BUCKET}.s3.ap-northeast-2.amazonaws.com/${_key}`,
             Metadata: {
                 md5: '51f209a54902230ac3395826d7fa1851',
             },
@@ -121,12 +124,13 @@ describe(`test AWSS3Service`, () => {
         expect2(await S3.getObjectTagging(res.Key)).toEqual({ ...tags });
 
         //* check list-objects
-        expect2(await S3.listObjects(), '!Contents').toEqual({
-            IsTruncated: true,
-            KeyCount: 10,
+        const $list = await S3.listObjects({ prefix: 'tests/' });
+        expect2(() => ({ ...$list }), '!Contents,!NextContinuationToken').toEqual({
+            IsTruncated: false,
+            KeyCount: 1,
             MaxKeys: 10,
-            T: '1TFgocygtF3XAAu+JBHJZRJMy2BGgSHA+BAECZx61uDqjC7BRCBGE9BC3dMmvmTogDVWV2sEFt3+Y7+YteyGcTilx6uxel8MP',
         });
+        expect2(() => $list.Contents, 'Key,Size').toEqual([{ Key: 'tests/sample.json', Size: 47 }]);
 
         //* cleanup object
         expect2(await S3.deleteObject(res.Key)).toEqual();

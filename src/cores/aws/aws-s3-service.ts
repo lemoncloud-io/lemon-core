@@ -28,6 +28,7 @@ import { Body, GetObjectOutput } from 'aws-sdk/clients/s3';
  *  Core Types.
  ** ****************************************************************************************************************/
 export type Metadata = AWS.S3.Metadata;
+export type S3Object = AWS.S3.Object;
 
 export interface TagSet {
     [key: string]: string;
@@ -88,6 +89,18 @@ export interface GetObjectResult {
      * The number of tags, if any, on the object.
      */
     TagCount?: number;
+}
+
+/**
+ * type: `ListObjectResult`
+ * - only some properties from origin-result.
+ */
+export interface ListObjectResult {
+    IsTruncated: boolean;
+    Contents: S3Object[];
+    MaxKeys: number;
+    KeyCount: number;
+    NextContinuationToken?: string;
 }
 
 export interface CoreS3Service extends CoreServices {
@@ -158,7 +171,7 @@ export class AWSS3Service implements CoreS3Service {
      * @return  metadata object / null if not exists
      */
     public headObject = async (key: string): Promise<any> => {
-        if (!key) throw new Error('@key is required!');
+        if (!key) throw new Error(`@key (string) is required - headObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
@@ -201,7 +214,7 @@ export class AWSS3Service implements CoreS3Service {
         metadata?: Metadata,
         tags?: TagSet,
     ): Promise<PutObjectResult> => {
-        if (!content) throw new Error('@content is required!');
+        if (!content) throw new Error(`@content (buffer) is required - putObject()`);
 
         const paramBuilder = new S3PutObjectRequestBuilder(this.bucket(), content);
         key && paramBuilder.setKey(key);
@@ -243,12 +256,12 @@ export class AWSS3Service implements CoreS3Service {
      * @param {string} key
      */
     public getObject = async (key: string): Promise<GetObjectResult> => {
-        if (!key) throw new Error('@key is required!');
+        if (!key) throw new Error(`@key (string) is required - getObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        //* call s3.getObject.
         const s3 = instance();
         try {
             const data: GetObjectOutput = await s3.getObject(params).promise();
@@ -269,7 +282,7 @@ export class AWSS3Service implements CoreS3Service {
      * @param {string} key  ex) 'hello-0001.json' , 'dist/hello-0001.json
      */
     public getDecodedObject = async <T = object>(key: string): Promise<T> => {
-        if (!key) throw new Error('@key is required!');
+        if (!key) throw new Error(`@key (string) is required - getDecodedObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
@@ -293,6 +306,7 @@ export class AWSS3Service implements CoreS3Service {
      * @param {string} key
      */
     public getObjectTagging = async (key: string): Promise<TagSet> => {
+        if (!key) throw new Error(`@key (string) is required - getObjectTagging(${key ?? ''})`);
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
@@ -318,7 +332,7 @@ export class AWSS3Service implements CoreS3Service {
      * @param {string} key
      */
     public deleteObject = async (key: string): Promise<void> => {
-        if (!key) throw new Error('@key is required!');
+        if (!key) throw new Error(`@key (string) is required - deleteObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
@@ -336,31 +350,39 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * list objects in bucket
-     *
-     * @param {string} key
      */
-    public listObjects = async (key?: string) => {
+    public listObjects = async (options?: {
+        /** keys that begin with the specified prefix. */
+        prefix?: string;
+        /** use to group keys */
+        delimiter?: string;
+        /** maximum number of keys returned in the response (default 10) */
+        limit?: number;
+    }): Promise<ListObjectResult> => {
         // if (!key) throw new Error('@key is required!');
+        const Prefix = options?.prefix ?? '';
+        const Delimiter = options?.delimiter ?? '/';
+        const MaxKeys = options?.limit ?? 10;
 
         const Bucket = this.bucket();
         const params: AWS.S3.ListObjectsV2Request = {
             Bucket,
-            Prefix: '',
-            Delimiter: '/',
-            MaxKeys: 10,
+            Prefix,
+            Delimiter,
+            MaxKeys,
         };
 
-        //! call s3.deleteObject.
+        //* call s3.listObjectsV2.
         const s3 = instance();
         try {
             const data = await s3.listObjectsV2(params).promise();
             _log(NS, '> data =', $U.json(data));
-            const result = {
+            const result: ListObjectResult = {
                 IsTruncated: data.IsTruncated,
                 Contents: data.Contents,
                 MaxKeys: data.MaxKeys,
                 KeyCount: data.KeyCount,
-                T: data.NextContinuationToken,
+                NextContinuationToken: data.NextContinuationToken,
             };
             return result;
         } catch (e) {
