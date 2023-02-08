@@ -35,6 +35,18 @@ export interface TagSet {
 }
 
 /**
+ * type: `HeadObjectResult`
+ * - some properties of `HeadObjectOutput`
+ */
+export interface HeadObjectResult {
+    ContentType: string;
+    ContentLength: number;
+    Metadata: Metadata;
+    ETag: string;
+    LastModified: string;
+}
+
+/**
  * type: `PutObjectResult`
  * - only some properties from origin-result.
  */
@@ -167,21 +179,30 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * retrieve metadata without returning the object
+     *
      * @param {string} key
      * @return  metadata object / null if not exists
      */
-    public headObject = async (key: string): Promise<any> => {
+    public headObject = async (key: string): Promise<HeadObjectResult> => {
         if (!key) throw new Error(`@key (string) is required - headObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        // call s3.headObject.
         const s3 = instance();
         try {
             const data = await s3.headObject(params).promise();
             _log(NS, '> data =', $U.json(data));
-            return data;
+            // {"AcceptRanges": "bytes", "ContentLength": 47, "ContentType": "application/json; charset=utf-8", "ETag": "\"51f209a54902230ac3395826d7fa1851\"", "Expiration": "expiry-date=\"Mon, 10 Apr 2023 00:00:00 GMT\", rule-id=\"delete-old-json\"", "LastModified": 2023-02-08T14:53:12.000Z, "Metadata": {"contenttype": "application/json; charset=utf8", "md5": "51f209a54902230ac3395826d7fa1851"}, "ServerSideEncryption": "AES256"}
+            const result: HeadObjectResult = {
+                ContentType: data.ContentType,
+                ContentLength: data.ContentLength,
+                Metadata: data.Metadata,
+                ETag: data.ETag,
+                LastModified: $U.ts(data.LastModified),
+            };
+            return result;
         } catch (e) {
             if (e.statusCode == 404) return null;
             _err(NS, '! err=', e);
@@ -287,7 +308,7 @@ export class AWSS3Service implements CoreS3Service {
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        //* call s3.getObject.
         const s3 = instance();
         try {
             const data = await s3.getObject(params).promise();
@@ -310,7 +331,7 @@ export class AWSS3Service implements CoreS3Service {
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        //* call s3.getObjectTagging.
         const s3 = instance();
         try {
             const data = await s3.getObjectTagging(params).promise();
@@ -337,7 +358,7 @@ export class AWSS3Service implements CoreS3Service {
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.deleteObject.
+        //* call s3.deleteObject.
         const s3 = instance();
         try {
             const data = await s3.deleteObject(params).promise();

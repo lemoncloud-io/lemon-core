@@ -4,6 +4,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-08-16 initial unit test.
+ * @date        2023-02-08 support of `listObject()`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -18,7 +19,7 @@ process.env = Object.assign(process.env, {
 //! load $engine, and prepare dummy handler
 import { loadProfile } from '../../environ';
 import { expect2, GETERR } from '../../common/test-helper';
-import { AWSS3Service, PutObjectResult } from './aws-s3-service';
+import { AWSS3Service, Metadata, PutObjectResult } from './aws-s3-service';
 
 const S3 = new AWSS3Service();
 describe(`test AWSS3Service`, () => {
@@ -66,7 +67,7 @@ describe(`test AWSS3Service`, () => {
         const _key = `tests/sample.json`;
         let res: PutObjectResult;
 
-        // manual key
+        //* manual key
         res = await S3.putObject(body, _key);
         expect2(() => res.Bucket).toEqual(DEF_BUCKET);
         expect2(() => res.Key).toEqual(_key);
@@ -81,7 +82,7 @@ describe(`test AWSS3Service`, () => {
         });
         expect2(await S3.deleteObject(res.Key)).toEqual();
 
-        // automatic key
+        //* automatic key
         res = await S3.putObject(body);
         expect2(() => res.Bucket).toEqual(DEF_BUCKET);
         expect2(() => res.Key).toMatch(
@@ -98,17 +99,19 @@ describe(`test AWSS3Service`, () => {
         });
         expect2(await S3.deleteObject(res.Key)).toEqual();
 
-        // check tags
-        const tags = { company: 'lemoncloud', service: 'lemon-core' };
-        res = await S3.putObject(body, _key, null, tags);
+        //* check tags, and meta
+        const meta: Metadata = { ContentType: 'application/json; charset=utf8' };
+        const tags = { Company: 'LemonCloud', Service: 'lemon-core', author: 'steve' };
+        res = await S3.putObject(body, _key, meta, tags);
         expect2(() => ({ ...res })).toEqual({
             Bucket: DEF_BUCKET,
-            ContentLength: 47,
-            ContentType: 'application/json; charset=utf-8',
-            ETag: '"51f209a54902230ac3395826d7fa1851"',
             Key: _key,
+            ContentType: 'application/json; charset=utf-8',
+            ContentLength: 47,
+            ETag: '"51f209a54902230ac3395826d7fa1851"',
             Location: `https://${DEF_BUCKET}.s3.ap-northeast-2.amazonaws.com/${_key}`,
             Metadata: {
+                ...meta,
                 md5: '51f209a54902230ac3395826d7fa1851',
             },
         });
@@ -117,11 +120,22 @@ describe(`test AWSS3Service`, () => {
             ContentLength: 47,
             ETag: '"51f209a54902230ac3395826d7fa1851"',
             Metadata: {
+                //WARN - the key is changed to lower-case.
+                contenttype: 'application/json; charset=utf8',
                 md5: '51f209a54902230ac3395826d7fa1851',
             },
-            TagCount: 2,
+            TagCount: Object.keys(tags).length,
         });
         expect2(await S3.getObjectTagging(res.Key)).toEqual({ ...tags });
+        expect2(await S3.headObject(res.Key), `!LastModified`).toEqual({
+            ContentType: 'application/json; charset=utf-8',
+            ContentLength: 47,
+            ETag: '"51f209a54902230ac3395826d7fa1851"',
+            Metadata: {
+                contenttype: 'application/json; charset=utf8',
+                md5: '51f209a54902230ac3395826d7fa1851',
+            },
+        });
 
         //* check list-objects
         const $list = await S3.listObjects({ prefix: 'tests/' });
