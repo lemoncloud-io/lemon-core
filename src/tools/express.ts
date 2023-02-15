@@ -278,7 +278,8 @@ export const buildExpress = (
 
         //! register automatically endpont.
         const RESERVES = 'id,log,inf,err,extend,ts,dt,environ'.split(',');
-        const isValidName = (name: string) => /^[a-z][a-z0-9\-_]+$/.test(name) && RESERVES.indexOf(name) < 0;
+        // support single char path.
+        const isValidName = (name: string) => /^[a-z][a-z0-9\-_]*$/.test(name) && RESERVES.indexOf(name) < 0;
         const $map: any = $web.getHandlerDecoders();
         const keys = Object.keys($map);
         // _inf(NS, '! express.keys =', keys);
