@@ -20,6 +20,7 @@ process.env = Object.assign(process.env, {
 import { loadProfile } from '../../environ';
 import { expect2, GETERR } from '../../common/test-helper';
 import { AWSS3Service, Metadata, PutObjectResult } from './aws-s3-service';
+import { $rand, my_parrallel } from '../../helpers';
 
 const S3 = new AWSS3Service();
 describe(`test AWSS3Service`, () => {
@@ -64,13 +65,14 @@ describe(`test AWSS3Service`, () => {
         if (!PROFILE) return;
         const json = { hello: 'world', lemon: true, name: '한글!' };
         const body = JSON.stringify(json);
-        const _key = `tests/sample.json`;
+        const _key = (n?: number) => `tests/sample${n ? n : ''}.json`;
+        const key00 = _key();
         let res: PutObjectResult;
 
         //* manual key
-        res = await S3.putObject(body, _key);
+        res = await S3.putObject(body, key00);
         expect2(() => res.Bucket).toEqual(DEF_BUCKET);
-        expect2(() => res.Key).toEqual(_key);
+        expect2(() => res.Key).toEqual(key00);
         expect2(() => res.Location).toMatch(
             new RegExp(`^https:\/\/${DEF_BUCKET}\.s3\.ap-northeast-2.amazonaws.com\/${res.Key}`),
         );
@@ -102,14 +104,14 @@ describe(`test AWSS3Service`, () => {
         //* check tags, and meta
         const meta: Metadata = { ContentType: 'application/json; charset=utf8' };
         const tags = { Company: 'LemonCloud', Service: 'lemon-core', author: 'steve' };
-        res = await S3.putObject(body, _key, meta, tags);
+        res = await S3.putObject(body, key00, meta, tags);
         expect2(() => ({ ...res })).toEqual({
             Bucket: DEF_BUCKET,
-            Key: _key,
+            Key: key00,
             ContentType: 'application/json; charset=utf-8',
             ContentLength: 47,
             ETag: '"51f209a54902230ac3395826d7fa1851"',
-            Location: `https://${DEF_BUCKET}.s3.ap-northeast-2.amazonaws.com/${_key}`,
+            Location: `https://${DEF_BUCKET}.s3.ap-northeast-2.amazonaws.com/${key00}`,
             Metadata: {
                 ...meta,
                 md5: '51f209a54902230ac3395826d7fa1851',
@@ -139,12 +141,60 @@ describe(`test AWSS3Service`, () => {
 
         //* check list-objects
         const $list = await S3.listObjects({ prefix: 'tests/' });
-        expect2(() => ({ ...$list }), '!Contents,!NextContinuationToken').toEqual({
-            IsTruncated: false,
-            KeyCount: 1,
-            MaxKeys: 10,
+        expect2(() => ({ ...$list }), 'MaxKeys').toEqual({
+            MaxKeys: 10, // default is `10`
         });
-        expect2(() => $list.Contents, 'Key,Size').toEqual([{ Key: 'tests/sample.json', Size: 47 }]);
+        expect2(() => $list.Contents.slice(0, 1), 'Key,Size').toEqual([{ Key: 'tests/sample.json', Size: 47 }]);
+
+        //* make sample1~10
+        const MAX_COUNT = 10;
+        const keys = $rand.range(MAX_COUNT).map(i => _key(i + 1));
+        const objs = await my_parrallel(
+            keys.map(id => ({ id })),
+            N => S3.putObject(body, N.id).then(R => ({ ...N, Key: R.Key })),
+        );
+        expect2(() => objs?.length).toEqual(MAX_COUNT);
+        if (objs) {
+            // use only `limit`
+            const list1 = await S3.listObjects({ prefix: 'tests/', limit: 1 });
+            expect2(() => list1?.Contents.length).toEqual(1);
+            expect2(() => list1, 'IsTruncated,KeyCount,MaxKeys').toEqual({
+                IsTruncated: true,
+                KeyCount: 1,
+                MaxKeys: 1,
+            });
+
+            // use `unlimited`
+            const list2 = await S3.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
+            expect2(() => list2?.Contents.length).toEqual(11);
+            expect2(() => list2, 'IsTruncated,KeyCount,MaxKeys,NextContinuationToken').toEqual({
+                IsTruncated: false,
+                KeyCount: 11,
+                MaxKeys: 1,
+                NextContinuationToken: undefined,
+            });
+            expect2(() => list2.Contents.map(N => N.Key)).toEqual([
+                'tests/sample.json',
+                'tests/sample1.json',
+                'tests/sample10.json',
+                'tests/sample2.json',
+                'tests/sample3.json',
+                'tests/sample4.json',
+                'tests/sample5.json',
+                'tests/sample6.json',
+                'tests/sample7.json',
+                'tests/sample8.json',
+                'tests/sample9.json',
+            ]);
+
+            //* delete all objects.
+            const dels = await my_parrallel(objs, N => S3.deleteObject(N.Key).then(() => ({ ...N })));
+            expect2(() => dels?.length).toEqual(MAX_COUNT);
+
+            const list3 = await S3.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
+            expect2(() => list3?.Contents.length).toEqual(1);
+            expect2(() => list3.Contents.map(N => N.Key)).toEqual(['tests/sample.json']);
+        }
 
         //* cleanup object
         expect2(await S3.deleteObject(res.Key)).toEqual();

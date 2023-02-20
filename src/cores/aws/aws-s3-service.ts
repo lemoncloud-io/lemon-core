@@ -23,6 +23,7 @@ import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { Body, GetObjectOutput } from 'aws-sdk/clients/s3';
+import { GETERR } from '../../common/test-helper';
 
 /** ****************************************************************************************************************
  *  Core Types.
@@ -108,11 +109,18 @@ export interface GetObjectResult {
  * - only some properties from origin-result.
  */
 export interface ListObjectResult {
-    IsTruncated: boolean;
+    /** list of object infor */
     Contents: S3Object[];
+    /** limit of each request */
     MaxKeys: number;
+    /** total key-count read */
     KeyCount: number;
+    /** flag to have more */
+    IsTruncated?: boolean;
+    /** valid only if truncated, and has more */
     NextContinuationToken?: string;
+    /** internal error-string */
+    error?: string;
 }
 
 export interface CoreS3Service extends CoreServices {
@@ -377,14 +385,24 @@ export class AWSS3Service implements CoreS3Service {
         prefix?: string;
         /** use to group keys */
         delimiter?: string;
-        /** maximum number of keys returned in the response (default 10) */
+        /** maximum number of keys returned in single request (default 10, max 1000) */
         limit?: number;
+        /** flag to read all keys (each request contains `limit`) */
+        unlimited?: boolean;
+        /** same as NextContinuationToken */
+        nextToken?: string;
+        /** (optional) flag to throw error if error, or see `.error` in result */
+        throwable?: boolean;
     }): Promise<ListObjectResult> => {
         // if (!key) throw new Error('@key is required!');
         const Prefix = options?.prefix ?? '';
         const Delimiter = options?.delimiter ?? '/';
-        const MaxKeys = options?.limit ?? 10;
+        const MaxKeys = Math.min(options?.limit ?? 10, 1000);
+        const unlimited = options?.unlimited ?? false;
+        const nextToken = options?.nextToken;
+        const throwable = options?.throwable ?? true;
 
+        //* build the req-params.
         const Bucket = this.bucket();
         const params: AWS.S3.ListObjectsV2Request = {
             Bucket,
@@ -392,24 +410,49 @@ export class AWSS3Service implements CoreS3Service {
             Delimiter,
             MaxKeys,
         };
+        if (nextToken) params.ContinuationToken = nextToken;
 
         //* call s3.listObjectsV2.
         const s3 = instance();
+        const result: ListObjectResult = {
+            Contents: null,
+            MaxKeys,
+            KeyCount: 0,
+        };
         try {
             const data = await s3.listObjectsV2(params).promise();
             _log(NS, '> data =', $U.json(data));
-            const result: ListObjectResult = {
-                IsTruncated: data.IsTruncated,
-                Contents: data.Contents,
-                MaxKeys: data.MaxKeys,
-                KeyCount: data.KeyCount,
-                NextContinuationToken: data.NextContinuationToken,
-            };
-            return result;
+            if (data) {
+                result.Contents = data.Contents;
+                result.MaxKeys = data.MaxKeys;
+                result.KeyCount = data.KeyCount;
+                result.IsTruncated = data.IsTruncated;
+                result.NextContinuationToken = data.NextContinuationToken;
+            }
+
+            //* list all keys.
+            if (unlimited) {
+                while (result.IsTruncated) {
+                    //* fetch next list.
+                    const res2 = await s3
+                        .listObjectsV2({ ...params, ContinuationToken: result.NextContinuationToken })
+                        .promise();
+
+                    //* update contents.
+                    result.Contents = result.Contents.concat(0 ? res2.Contents.slice(1) : res2.Contents);
+                    result.IsTruncated = res2.IsTruncated;
+                    result.KeyCount += $U.N(res2.KeyCount, 0);
+                    result.NextContinuationToken = res2.NextContinuationToken;
+                }
+            }
         } catch (e) {
             _err(NS, '! err=', e);
-            throw e;
+            if (throwable) throw e;
+            result.error = GETERR(e);
         }
+
+        // returns.
+        return result;
     };
 }
 
