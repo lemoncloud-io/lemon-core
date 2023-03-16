@@ -108,7 +108,13 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         const { tableName, idName, sortName, idType, sortType } = this.options;
         const query = new Query(
             pkey,
-            { schema: { hashKey: idName, rangeKey: sortName }, tableName: () => tableName },
+            {
+                schema: {
+                    hashKey: idName,
+                    rangeKey: sortName,
+                },
+                tableName: () => tableName,
+            },
             Serializer,
         );
         // _log(NS, '> query =', query);
