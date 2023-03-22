@@ -13,6 +13,9 @@
 <li><a href="../modules.html">lemon-core</a></li>
 <li><a href="AWSS3Service.html">AWSS3Service</a></li></ul>
 <h1>Class AWSS3Service</h1></div>
+<section class="tsd-panel tsd-comment">
+<div class="tsd-comment tsd-typography"><p>main service implement.</p>
+</div></section>
 <section class="tsd-panel tsd-hierarchy">
 <h4>Hierarchy</h4>
 <ul class="tsd-hierarchy">
@@ -22,7 +25,7 @@
 <ul class="tsd-hierarchy">
 <li><span class="tsd-signature-type">CoreS3Service</span></li></ul></section><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L87">src/cores/aws/aws-s3-service.ts:87</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L163">src/cores/aws/aws-s3-service.ts:163</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-index-accordion" open><summary class="tsd-accordion-summary tsd-index-summary">
@@ -46,6 +49,7 @@
 <a href="AWSS3Service.html#getObjectTagging" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>get<wbr/>Object<wbr/>Tagging</span></a>
 <a href="AWSS3Service.html#headObject" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>head<wbr/>Object</span></a>
 <a href="AWSS3Service.html#hello" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>hello</span></a>
+<a href="AWSS3Service.html#listObjects" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>list<wbr/>Objects</span></a>
 <a href="AWSS3Service.html#name" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>name</span></a>
 <a href="AWSS3Service.html#putObject" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>put<wbr/>Object</span></a>
 </div></section></div></details></section></section>
@@ -61,16 +65,18 @@
 <h2>Properties</h2>
 <section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-class"><a id="DEF_S3_BUCKET" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><code class="tsd-tag ts-flagStatic">Static</code> <span>DEF_<wbr/>S3_<wbr/>BUCKET</span><a href="#DEF_S3_BUCKET" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
-<div class="tsd-signature">DEF_<wbr/>S3_<wbr/>BUCKET<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol"> = &#39;lemon-hello-www&#39;</span></div><aside class="tsd-sources">
+<div class="tsd-signature">DEF_<wbr/>S3_<wbr/>BUCKET<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol"> = &#39;lemon-hello-www&#39;</span></div>
+<div class="tsd-comment tsd-typography"><p>default <code>bucket</code> name</p>
+</div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L92">src/cores/aws/aws-s3-service.ts:92</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L171">src/cores/aws/aws-s3-service.ts:171</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-class"><a id="ENV_S3_NAME" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><code class="tsd-tag ts-flagStatic">Static</code> <span>ENV_<wbr/>S3_<wbr/>NAME</span><a href="#ENV_S3_NAME" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <div class="tsd-signature">ENV_<wbr/>S3_<wbr/>NAME<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol"> = &#39;MY_S3_BUCKET&#39;</span></div>
-<div class="tsd-comment tsd-typography"><p>environ name config.</p>
+<div class="tsd-comment tsd-typography"><p>environ name to use <code>bucket</code></p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L91">src/cores/aws/aws-s3-service.ts:91</a></li></ul></aside></section></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L167">src/cores/aws/aws-s3-service.ts:167</a></li></ul></aside></section></section>
 <section class="tsd-panel-group tsd-member-group">
 <h2>Methods</h2>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="bucket" class="tsd-anchor"></a>
@@ -88,7 +94,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">string</span></h4><aside class="tsd-sources">
 <p>Implementation of CoreS3Service.bucket</p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L107">src/cores/aws/aws-s3-service.ts:107</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L186">src/cores/aws/aws-s3-service.ts:186</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="deleteObject" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>delete<wbr/>Object</span><a href="#deleteObject" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -104,7 +110,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <p>Implementation of CoreS3Service.deleteObject</p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L266">src/cores/aws/aws-s3-service.ts:266</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L363">src/cores/aws/aws-s3-service.ts:363</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="getDecodedObject" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>get<wbr/>Decoded<wbr/>Object</span><a href="#getDecodedObject" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -127,7 +133,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type" data-tsd-kind="Type parameter">T</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <p>Implementation of CoreS3Service.getDecodedObject</p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L219">src/cores/aws/aws-s3-service.ts:219</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L313">src/cores/aws/aws-s3-service.ts:313</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="getObject" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>get<wbr/>Object</span><a href="#getObject" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -143,7 +149,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">GetObjectResult</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <p>Implementation of CoreS3Service.getObject</p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L195">src/cores/aws/aws-s3-service.ts:195</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L287">src/cores/aws/aws-s3-service.ts:287</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="getObjectTagging" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>get<wbr/>Object<wbr/>Tagging</span><a href="#getObjectTagging" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -159,11 +165,11 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">TagSet</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <p>Implementation of CoreS3Service.getObjectTagging</p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L242">src/cores/aws/aws-s3-service.ts:242</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L337">src/cores/aws/aws-s3-service.ts:337</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="headObject" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>head<wbr/>Object</span><a href="#headObject" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
-<li class="tsd-signature tsd-anchor-link" id="headObject.headObject-1">head<wbr/>Object<span class="tsd-signature-symbol">(</span>key<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">&gt;</span><a href="#headObject.headObject-1" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></li>
+<li class="tsd-signature tsd-anchor-link" id="headObject.headObject-1">head<wbr/>Object<span class="tsd-signature-symbol">(</span>key<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">HeadObjectResult</span><span class="tsd-signature-symbol">&gt;</span><a href="#headObject.headObject-1" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></li>
 <li class="tsd-description">
 <div class="tsd-comment tsd-typography"><p>retrieve metadata without returning the object</p>
 
@@ -174,9 +180,9 @@
 <ul class="tsd-parameter-list">
 <li>
 <h5>key: <span class="tsd-signature-type">string</span></h5></li></ul></div>
-<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">any</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">HeadObjectResult</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L114">src/cores/aws/aws-s3-service.ts:114</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L194">src/cores/aws/aws-s3-service.ts:194</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="hello" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>hello</span><a href="#hello" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -187,7 +193,47 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">string</span></h4><aside class="tsd-sources">
 <p>Implementation of CoreS3Service.hello</p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L102">src/cores/aws/aws-s3-service.ts:102</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L181">src/cores/aws/aws-s3-service.ts:181</a></li></ul></aside></li></ul></section>
+<section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="listObjects" class="tsd-anchor"></a>
+<h3 class="tsd-anchor-link"><span>list<wbr/>Objects</span><a href="#listObjects" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
+<ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
+<li class="tsd-signature tsd-anchor-link" id="listObjects.listObjects-1">list<wbr/>Objects<span class="tsd-signature-symbol">(</span>options<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-symbol">{ </span>delimiter<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">; </span>limit<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">; </span>nextToken<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">; </span>prefix<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">; </span>throwable<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">; </span>unlimited<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol"> }</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">ListObjectResult</span><span class="tsd-signature-symbol">&gt;</span><a href="#listObjects.listObjects-1" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></li>
+<li class="tsd-description">
+<div class="tsd-comment tsd-typography"><p>list objects in bucket</p>
+</div>
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li>
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> options: <span class="tsd-signature-symbol">{ </span>delimiter<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">; </span>limit<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">; </span>nextToken<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">; </span>prefix<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">; </span>throwable<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">; </span>unlimited<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol"> }</span></h5>
+<ul class="tsd-parameters">
+<li class="tsd-parameter">
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> delimiter<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span></h5>
+<div class="tsd-comment tsd-typography"><p>use to group keys</p>
+</div></li>
+<li class="tsd-parameter">
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> limit<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">number</span></h5>
+<div class="tsd-comment tsd-typography"><p>maximum number of keys returned in single request (default 10, max 1000)</p>
+</div></li>
+<li class="tsd-parameter">
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> next<wbr/>Token<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span></h5>
+<div class="tsd-comment tsd-typography"><p>same as NextContinuationToken</p>
+</div></li>
+<li class="tsd-parameter">
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> prefix<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">string</span></h5>
+<div class="tsd-comment tsd-typography"><p>keys that begin with the specified prefix.</p>
+</div></li>
+<li class="tsd-parameter">
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> throwable<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">boolean</span></h5>
+<div class="tsd-comment tsd-typography"><p>(optional) flag to throw error if error, or see <code>.error</code> in result</p>
+</div></li>
+<li class="tsd-parameter">
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> unlimited<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">boolean</span></h5>
+<div class="tsd-comment tsd-typography"><p>flag to read all keys (each request contains <code>limit</code>)</p>
+</div></li></ul></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">ListObjectResult</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L383">src/cores/aws/aws-s3-service.ts:383</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="name" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>name</span><a href="#name" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -197,7 +243,7 @@
 </div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">string</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L97">src/cores/aws/aws-s3-service.ts:97</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L176">src/cores/aws/aws-s3-service.ts:176</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="putObject" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>put<wbr/>Object</span><a href="#putObject" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -229,7 +275,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">PutObjectResult</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <p>Implementation of CoreS3Service.putObject</p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/f700774/src/cores/aws/aws-s3-service.ts#L152">src/cores/aws/aws-s3-service.ts:152</a></li></ul></aside></li></ul></section></section></div>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/6dd6f41/src/cores/aws/aws-s3-service.ts#L240">src/cores/aws/aws-s3-service.ts:240</a></li></ul></aside></li></ul></section></section></div>
 <div class="col-4 col-menu menu-sticky-wrap menu-highlight">
 <div class="tsd-navigation settings">
 <details class="tsd-index-accordion"><summary class="tsd-accordion-summary">
@@ -275,6 +321,7 @@
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="AWSS3Service.html#getObjectTagging" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>get<wbr/>Object<wbr/>Tagging</a></li>
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="AWSS3Service.html#headObject" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>head<wbr/>Object</a></li>
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="AWSS3Service.html#hello" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>hello</a></li>
+<li class="tsd-kind-method tsd-parent-kind-class"><a href="AWSS3Service.html#listObjects" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>list<wbr/>Objects</a></li>
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="AWSS3Service.html#name" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>name</a></li>
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="AWSS3Service.html#putObject" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>put<wbr/>Object</a></li></ul></li></ul></nav></div></div>
 <div class="container tsd-generator">
