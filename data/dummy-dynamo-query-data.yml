@@ -13,3 +13,11 @@ data:
   - ID: B2
     type: account
     name: last
+
+  - ID: U:1
+    type: user
+    name: hong
+
+  - ID: U:2
+    type: user
+    name: gil
