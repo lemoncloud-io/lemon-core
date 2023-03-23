@@ -23,7 +23,8 @@ interface MyModel extends GeneralItem {
 export const instance = () => {
     const tableName = 'DynamoTest';
     const idName = 'ID';
-    const options: DynamoOption = { tableName, idName };
+    const sortName = 0 ? 'ID' : undefined;
+    const options: DynamoOption = { tableName, idName, sortName };
     const dynamo = new DynamoService<MyModel>(options);
     const dynamoQuery = new DynamoQueryService<MyModel>(options);
     return { dynamo, dynamoQuery, options };
@@ -55,24 +56,25 @@ describe('DynamoQueryService', () => {
         expect2(dynamoQuery.hello()).toEqual(`dynamo-query-service:${options.tableName}`);
         if (!PROFILE) return;
 
-        //* check by each item
-        expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
-        for (const [id, item] of dataMap.entries())
-            expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
-        for (const [id, item] of dataMap.entries())
-            expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
-
-        //* check query by prefix
-        expect2(() => dynamoQuery.buildQuery(null, -1, -1, undefined, null, false, 'U')).toEqual({
+        //* check query builder
+        expect2(() => dynamoQuery.buildQuery('00', -1, -1, undefined, null, undefined)).toEqual({
             ExpressionAttributeNames: { '#ID': 'ID' },
-            ExpressionAttributeValues: { ':ID': 'U' },
-            KeyConditionExpression: '(begins_with(#ID, :ID))',
+            ExpressionAttributeValues: { ':ID': '00' },
+            KeyConditionExpression: '(#ID = :ID)',
             ScanIndexForward: true,
             TableName: 'DynamoTest',
         });
-        expect2(await dynamoQuery.queryRangeBy(null, -1, -1, undefined, null, false, 'U').catch(GETERR)).toEqual(
-            'Query key condition not supported',
-        );
+
+        //* check of none
+        expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
+
+        //* check by each item
+        for (const [id, item] of dataMap.entries())
+            expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
+
+        //* check by range
+        for (const [id, item] of dataMap.entries())
+            expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
 
         // TODO: Need to add sort key query test cases
     });

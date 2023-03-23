@@ -101,12 +101,11 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         limit?: number,
         last?: number,
         isDesc?: boolean,
-        prefix?: string,
     ): Promise<DynamoQueryResult<T>> {
         _log(NS, `queryRangeBy(${pkey}, ${from}, ${to})...`);
 
         const { sortName } = this.options;
-        const payload = this.buildQuery(pkey, from, to, limit, last, isDesc, prefix);
+        const payload = this.buildQuery(pkey, from, to, limit, last, isDesc);
 
         //! get instance of dynamodoc, and execute query().
         const { dynamodoc } = DynamoService.instance();
@@ -139,15 +138,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
      * query by range of sort-key.
      * NOTE - `dynamodb`의 일부 코드를 이용하여, 간단버전으로 지원함.
      */
-    public buildQuery(
-        pkey: string,
-        from: number,
-        to: number,
-        limit?: number,
-        last?: number,
-        isDesc?: boolean,
-        prefix?: string,
-    ) {
+    public buildQuery(pkey: string, from: number, to: number, limit?: number, last?: number, isDesc?: boolean) {
         _log(NS, `buildQuery(${pkey}, ${from}, ${to})...`);
 
         //! load table information..
@@ -170,12 +161,9 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
             const keyCondition = query.where(sortName);
             from !== -1 && to !== -1 ? keyCondition.between(from, to) : keyCondition.gte(0);
         }
-        if (prefix) {
-            query.where(idName).beginsWith(prefix);
-        }
         isDesc ? query.descending() : query.ascending();
         if (limit !== undefined) query.limit(limit);
-        if (pkey) query.addKeyCondition(query.buildKey());
+        query.addKeyCondition(query.buildKey());
         if (last) query.startKey(pkey, last);
 
         //TODO - replace '@' prefix of properties.
