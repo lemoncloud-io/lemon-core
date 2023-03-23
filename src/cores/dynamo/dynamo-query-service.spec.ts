@@ -62,6 +62,18 @@ describe('DynamoQueryService', () => {
         for (const [id, item] of dataMap.entries())
             expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
 
+        //* check query by prefix
+        expect2(() => dynamoQuery.buildQuery(null, -1, -1, undefined, null, false, 'U')).toEqual({
+            ExpressionAttributeNames: { '#ID': 'ID' },
+            ExpressionAttributeValues: { ':ID': 'U' },
+            KeyConditionExpression: '(begins_with(#ID, :ID))',
+            ScanIndexForward: true,
+            TableName: 'DynamoTest',
+        });
+        expect2(await dynamoQuery.queryRangeBy(null, -1, -1, undefined, null, false, 'U').catch(GETERR)).toEqual(
+            'Query key condition not supported',
+        );
+
         // TODO: Need to add sort key query test cases
     });
 

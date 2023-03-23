@@ -101,50 +101,12 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         limit?: number,
         last?: number,
         isDesc?: boolean,
+        prefix?: string,
     ): Promise<DynamoQueryResult<T>> {
         _log(NS, `queryRangeBy(${pkey}, ${from}, ${to})...`);
 
-        //! load table information..
-        const { tableName, idName, sortName, idType, sortType } = this.options;
-        const query = new Query(
-            pkey,
-            {
-                schema: {
-                    hashKey: idName,
-                    rangeKey: sortName,
-                },
-                tableName: () => tableName,
-            },
-            Serializer,
-        );
-        // _log(NS, '> query =', query);
-
-        //! build query with builder.
-        if (sortName) {
-            const keyCondition = query.where(sortName);
-            from !== -1 && to !== -1 ? keyCondition.between(from, to) : keyCondition.gte(0);
-        }
-        isDesc ? query.descending() : query.ascending();
-        if (limit !== undefined) query.limit(limit);
-        query.addKeyCondition(query.buildKey());
-        if (last) {
-            query.startKey(pkey, last);
-        }
-
-        //TODO - replace '@' prefix of properties.
-        const payload = query.buildRequest();
-        const filter = (N: any) =>
-            Object.keys(N).reduce((O: any, key: string) => {
-                const val = N[key];
-                key = key.startsWith('#@') ? '#_' + key.substring(2) : key;
-                key = key.startsWith(':@') ? ':_' + key.substring(2) : key;
-                O[key] = val;
-                return O;
-            }, {});
-        payload.ExpressionAttributeNames = filter(payload.ExpressionAttributeNames);
-        payload.ExpressionAttributeValues = filter(payload.ExpressionAttributeValues);
-        payload.KeyConditionExpression = payload.KeyConditionExpression.replace(/([\#\:])@/g, '$1_');
-        _log(NS, `> payload[${pkey}] =`, $U.json(payload));
+        const { sortName } = this.options;
+        const payload = this.buildQuery(pkey, from, to, limit, last, isDesc, prefix);
 
         //! get instance of dynamodoc, and execute query().
         const { dynamodoc } = DynamoService.instance();
@@ -171,5 +133,66 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
 
         //! avoid null exception
         return { list: [] };
+    }
+
+    /**
+     * query by range of sort-key.
+     * NOTE - `dynamodb`의 일부 코드를 이용하여, 간단버전으로 지원함.
+     */
+    public buildQuery(
+        pkey: string,
+        from: number,
+        to: number,
+        limit?: number,
+        last?: number,
+        isDesc?: boolean,
+        prefix?: string,
+    ) {
+        _log(NS, `buildQuery(${pkey}, ${from}, ${to})...`);
+
+        //! load table information..
+        const { tableName, idName, sortName, idType, sortType } = this.options;
+        const query = new Query(
+            pkey,
+            {
+                schema: {
+                    hashKey: idName,
+                    rangeKey: sortName,
+                },
+                tableName: () => tableName,
+            },
+            Serializer,
+        );
+        // _log(NS, '> query =', query);
+
+        //* build query with builder.
+        if (sortName) {
+            const keyCondition = query.where(sortName);
+            from !== -1 && to !== -1 ? keyCondition.between(from, to) : keyCondition.gte(0);
+        }
+        if (prefix) {
+            query.where(idName).beginsWith(prefix);
+        }
+        isDesc ? query.descending() : query.ascending();
+        if (limit !== undefined) query.limit(limit);
+        if (pkey) query.addKeyCondition(query.buildKey());
+        if (last) query.startKey(pkey, last);
+
+        //TODO - replace '@' prefix of properties.
+        const payload = query.buildRequest();
+        const filter = (N: any) =>
+            Object.keys(N).reduce((O: any, key: string) => {
+                const val = N[key];
+                key = key.startsWith('#@') ? '#_' + key.substring(2) : key;
+                key = key.startsWith(':@') ? ':_' + key.substring(2) : key;
+                O[key] = val;
+                return O;
+            }, {});
+        payload.ExpressionAttributeNames = filter(payload.ExpressionAttributeNames);
+        payload.ExpressionAttributeValues = filter(payload.ExpressionAttributeValues);
+        payload.KeyConditionExpression = payload.KeyConditionExpression.replace(/([\#\:])@/g, '$1_');
+        _log(NS, `> payload[${pkey}] =`, $U.json(payload));
+
+        return payload;
     }
 }
