@@ -33,7 +33,7 @@
 <ul class="tsd-hierarchy">
 <li><a href="../interfaces/DynamoSimpleQueriable.html" class="tsd-signature-type" data-tsd-kind="Interface">DynamoSimpleQueriable</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type" data-tsd-kind="Type parameter">T</span><span class="tsd-signature-symbol">&gt;</span></li></ul></section><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0db1957/src/cores/dynamo/dynamo-query-service.ts#L64">src/cores/dynamo/dynamo-query-service.ts:64</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L64">src/cores/dynamo/dynamo-query-service.ts:64</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-index-accordion" open><summary class="tsd-accordion-summary tsd-index-summary">
@@ -49,7 +49,8 @@
 </div></section>
 <section class="tsd-index-section">
 <h3 class="tsd-index-heading">Methods</h3>
-<div class="tsd-index-list"><a href="DynamoQueryService.html#hello" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><rect fill="var(--color-icon-background)" stroke="#FF4DB8" stroke-width="1.5" x="1" y="1" width="22" height="22" rx="12" id="icon-2048-path"></rect><path d="M9.162 16V7.24H10.578L11.514 10.072C11.602 10.328 11.674 10.584 11.73 10.84C11.794 11.088 11.842 11.28 11.874 11.416C11.906 11.28 11.954 11.088 12.018 10.84C12.082 10.584 12.154 10.324 12.234 10.06L13.122 7.24H14.538V16H13.482V12.82C13.482 12.468 13.49 12.068 13.506 11.62C13.53 11.172 13.558 10.716 13.59 10.252C13.622 9.78 13.654 9.332 13.686 8.908C13.726 8.476 13.762 8.1 13.794 7.78L12.366 12.16H11.334L9.894 7.78C9.934 8.092 9.97 8.456 10.002 8.872C10.042 9.28 10.078 9.716 10.11 10.18C10.142 10.636 10.166 11.092 10.182 11.548C10.206 12.004 10.218 12.428 10.218 12.82V16H9.162Z" fill="var(--color-text)" id="icon-2048-text"></path></svg><span>hello</span></a>
+<div class="tsd-index-list"><a href="DynamoQueryService.html#buildQuery" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><rect fill="var(--color-icon-background)" stroke="#FF4DB8" stroke-width="1.5" x="1" y="1" width="22" height="22" rx="12" id="icon-2048-path"></rect><path d="M9.162 16V7.24H10.578L11.514 10.072C11.602 10.328 11.674 10.584 11.73 10.84C11.794 11.088 11.842 11.28 11.874 11.416C11.906 11.28 11.954 11.088 12.018 10.84C12.082 10.584 12.154 10.324 12.234 10.06L13.122 7.24H14.538V16H13.482V12.82C13.482 12.468 13.49 12.068 13.506 11.62C13.53 11.172 13.558 10.716 13.59 10.252C13.622 9.78 13.654 9.332 13.686 8.908C13.726 8.476 13.762 8.1 13.794 7.78L12.366 12.16H11.334L9.894 7.78C9.934 8.092 9.97 8.456 10.002 8.872C10.042 9.28 10.078 9.716 10.11 10.18C10.142 10.636 10.166 11.092 10.182 11.548C10.206 12.004 10.218 12.428 10.218 12.82V16H9.162Z" fill="var(--color-text)" id="icon-2048-text"></path></svg><span>build<wbr/>Query</span></a>
+<a href="DynamoQueryService.html#hello" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>hello</span></a>
 <a href="DynamoQueryService.html#queryAll" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>query<wbr/>All</span></a>
 <a href="DynamoQueryService.html#queryRange" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>query<wbr/>Range</span></a>
 <a href="DynamoQueryService.html#queryRangeBy" class="tsd-index-link tsd-kind-method tsd-parent-kind-class"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg><span>query<wbr/>Range<wbr/>By</span></a>
@@ -73,16 +74,42 @@
 <h5>options: <a href="../interfaces/DynamoOption.html" class="tsd-signature-type" data-tsd-kind="Interface">DynamoOption</a></h5></li></ul></div>
 <h4 class="tsd-returns-title">Returns <a href="DynamoQueryService.html" class="tsd-signature-type" data-tsd-kind="Class">DynamoQueryService</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type" data-tsd-kind="Type parameter">T</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0db1957/src/cores/dynamo/dynamo-query-service.ts#L66">src/cores/dynamo/dynamo-query-service.ts:66</a></li></ul></aside></li></ul></section></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L66">src/cores/dynamo/dynamo-query-service.ts:66</a></li></ul></aside></li></ul></section></section>
 <section class="tsd-panel-group tsd-member-group">
 <h2>Properties</h2>
 <section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-class tsd-is-protected"><a id="options" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><code class="tsd-tag ts-flagProtected">Protected</code> <span>options</span><a href="#options" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <div class="tsd-signature">options<span class="tsd-signature-symbol">:</span> <a href="../interfaces/DynamoOption.html" class="tsd-signature-type" data-tsd-kind="Interface">DynamoOption</a></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0db1957/src/cores/dynamo/dynamo-query-service.ts#L65">src/cores/dynamo/dynamo-query-service.ts:65</a></li></ul></aside></section></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L65">src/cores/dynamo/dynamo-query-service.ts:65</a></li></ul></aside></section></section>
 <section class="tsd-panel-group tsd-member-group">
 <h2>Methods</h2>
+<section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="buildQuery" class="tsd-anchor"></a>
+<h3 class="tsd-anchor-link"><span>build<wbr/>Query</span><a href="#buildQuery" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
+<ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
+<li class="tsd-signature tsd-anchor-link" id="buildQuery.buildQuery-1">build<wbr/>Query<span class="tsd-signature-symbol">(</span>pkey<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">string</span>, from<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">number</span>, to<span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">number</span>, limit<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">number</span>, last<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">number</span>, isDesc<span class="tsd-signature-symbol">?: </span><span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">: </span><span class="tsd-signature-type">any</span><a href="#buildQuery.buildQuery-1" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></li>
+<li class="tsd-description">
+<div class="tsd-comment tsd-typography"><p>query by range of sort-key.
+NOTE - <code>dynamodb</code>의 일부 코드를 이용하여, 간단버전으로 지원함.</p>
+</div>
+<div class="tsd-parameters">
+<h4 class="tsd-parameters-title">Parameters</h4>
+<ul class="tsd-parameter-list">
+<li>
+<h5>pkey: <span class="tsd-signature-type">string</span></h5></li>
+<li>
+<h5>from: <span class="tsd-signature-type">number</span></h5></li>
+<li>
+<h5>to: <span class="tsd-signature-type">number</span></h5></li>
+<li>
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> limit: <span class="tsd-signature-type">number</span></h5></li>
+<li>
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> last: <span class="tsd-signature-type">number</span></h5></li>
+<li>
+<h5><code class="tsd-tag ts-flagOptional">Optional</code> isDesc: <span class="tsd-signature-type">boolean</span></h5></li></ul></div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">any</span></h4><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L141">src/cores/dynamo/dynamo-query-service.ts:141</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="hello" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>hello</span><a href="#hello" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -92,7 +119,7 @@
 </div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">string</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0db1957/src/cores/dynamo/dynamo-query-service.ts#L77">src/cores/dynamo/dynamo-query-service.ts:77</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L77">src/cores/dynamo/dynamo-query-service.ts:77</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="queryAll" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>query<wbr/>All</span><a href="#queryAll" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -114,7 +141,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/DynamoQueryResult.html" class="tsd-signature-type" data-tsd-kind="Interface">DynamoQueryResult</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type" data-tsd-kind="Type parameter">T</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <p>Implementation of <a href="../interfaces/DynamoSimpleQueriable.html">DynamoSimpleQueriable</a>.<a href="../interfaces/DynamoSimpleQueriable.html#queryAll">queryAll</a></p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0db1957/src/cores/dynamo/dynamo-query-service.ts#L79">src/cores/dynamo/dynamo-query-service.ts:79</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L79">src/cores/dynamo/dynamo-query-service.ts:79</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="queryRange" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>query<wbr/>Range</span><a href="#queryRange" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -148,7 +175,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/DynamoQueryResult.html" class="tsd-signature-type" data-tsd-kind="Interface">DynamoQueryResult</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type" data-tsd-kind="Type parameter">T</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <p>Implementation of <a href="../interfaces/DynamoSimpleQueriable.html">DynamoSimpleQueriable</a>.<a href="../interfaces/DynamoSimpleQueriable.html#queryRange">queryRange</a></p>
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0db1957/src/cores/dynamo/dynamo-query-service.ts#L83">src/cores/dynamo/dynamo-query-service.ts:83</a></li></ul></aside></li></ul></section>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L83">src/cores/dynamo/dynamo-query-service.ts:83</a></li></ul></aside></li></ul></section>
 <section class="tsd-panel tsd-member tsd-kind-method tsd-parent-kind-class"><a id="queryRangeBy" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><span>query<wbr/>Range<wbr/>By</span><a href="#queryRangeBy" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-anchor-a"></use><use href="#icon-anchor-b"></use><use href="#icon-anchor-c"></use></svg></a></h3>
 <ul class="tsd-signatures tsd-kind-method tsd-parent-kind-class">
@@ -174,7 +201,7 @@ NOTE - <code>dynamodb</code>의 일부 코드를 이용하여, 간단버전으�
 <h5><code class="tsd-tag ts-flagOptional">Optional</code> isDesc: <span class="tsd-signature-type">boolean</span></h5></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/DynamoQueryResult.html" class="tsd-signature-type" data-tsd-kind="Interface">DynamoQueryResult</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type" data-tsd-kind="Type parameter">T</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0db1957/src/cores/dynamo/dynamo-query-service.ts#L97">src/cores/dynamo/dynamo-query-service.ts:97</a></li></ul></aside></li></ul></section></section></div>
+<li>Defined in <a href="https://github.com/lemoncloud-io/lemon-core/blob/0695aaa/src/cores/dynamo/dynamo-query-service.ts#L97">src/cores/dynamo/dynamo-query-service.ts:97</a></li></ul></aside></li></ul></section></section></div>
 <div class="col-4 col-menu menu-sticky-wrap menu-highlight">
 <div class="tsd-navigation settings">
 <details class="tsd-index-accordion"><summary class="tsd-accordion-summary">
@@ -212,6 +239,7 @@ NOTE - <code>dynamodb</code>의 일부 코드를 이용하여, 간단버전으�
 <ul>
 <li class="tsd-kind-constructor tsd-parent-kind-class"><a href="DynamoQueryService.html#constructor" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-512-path"></use><use href="#icon-512-text"></use></svg>constructor</a></li>
 <li class="tsd-kind-property tsd-parent-kind-class tsd-is-protected"><a href="DynamoQueryService.html#options" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-1024-path"></use><use href="#icon-1024-text"></use></svg>options</a></li>
+<li class="tsd-kind-method tsd-parent-kind-class"><a href="DynamoQueryService.html#buildQuery" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>build<wbr/>Query</a></li>
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="DynamoQueryService.html#hello" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>hello</a></li>
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="DynamoQueryService.html#queryAll" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>query<wbr/>All</a></li>
 <li class="tsd-kind-method tsd-parent-kind-class"><a href="DynamoQueryService.html#queryRange" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-2048-path"></use><use href="#icon-2048-text"></use></svg>query<wbr/>Range</a></li>
