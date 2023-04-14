@@ -74,6 +74,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.2.6     | improve `listObjects()` in `AWSS3Service` w/ prefix.
 | 3.2.5     | improve `doReportError` in `lambda-web-handler`.
 | 3.2.4     | updated with `lemon-model@1.0.2`.
 | 3.2.3     | support `ES7.10`, and improve sync to elastic.
