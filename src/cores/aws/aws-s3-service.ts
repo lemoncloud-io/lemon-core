@@ -430,6 +430,7 @@ export class AWSS3Service implements CoreS3Service {
         };
         try {
             const data = await s3.listObjectsV2(params).promise();
+            //INFO! - minimize log output....
             _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
             _log(NS, '> data[0] =', $U.json(data?.Contents?.[0]));
             if (data) {
