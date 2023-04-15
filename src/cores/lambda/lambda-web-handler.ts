@@ -366,10 +366,17 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     }
 
     /**
+     * builder for `HttpHeaderTool`
+     * - overwrite this to use custome http-header-tool
+     */
+    public $tools: (headers: HttpHeaderSet) => HttpHeaderTool = (headers: HttpHeaderSet): HttpHeaderTool =>
+        new MyHttpHeaderTool(this, headers);
+
+    /**
      * builder of tools for http-headers
      * - extracting header content, and parse.
      */
-    public tools = (headers: HttpHeaderSet): HttpHeaderTool => new MyHttpHeaderTool(this, headers);
+    public tools = (headers: HttpHeaderSet): HttpHeaderTool => this.$tools(headers);
 
     /**
      * pack the request context for Http request.
