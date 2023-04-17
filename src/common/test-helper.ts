@@ -47,27 +47,31 @@ export const NUL404 = (e: Error) => {
  * @param test      function or data.
  * @param view      projection attributes.
  */
-export const expect2 = (test: any, view?: string): any => {
-    const project = (data: any): any => {
+export const expect2 = <T = any>(test: T, view?: string) => {
+    const project = <U = any>(data: U): U => {
         if (!view) return data;
         if (data === null || data === undefined) return data;
         if (typeof data != 'object') return data;
         if (Array.isArray(data)) {
-            return (data as any[]).map(project);
+            return (data as any[]).map(N => project(N)) as U;
         }
         const views = view.split(',');
         const excludes = views.filter(_ => _.startsWith('!')).map(_ => _.substring(1));
         const includes = views.filter(_ => !_.startsWith('!')).map(_ => _.substring(0));
-        const V = excludes.reduce((N: any, key) => {
-            delete N[key];
-            return N;
-        }, data);
+        const V = excludes.reduce<U>(
+            (N: any, key) => {
+                if (N[key] !== undefined) delete N[key];
+                return N;
+            },
+            { ...data },
+        );
         if (includes.length < 1) return V; // if no includes.
-        return includes.reduce((N: any, key) => {
-            N[key] = V[key];
+        return includes.reduce<U>((N: any, key) => {
+            if (V[key as keyof U] !== undefined) N[key] = V[key as keyof U];
             return N;
-        }, {});
+        }, {} as U);
     };
+    // catch all error.
     try {
         const ret = typeof test == 'function' ? test() : test;
         if (ret instanceof Promise) {
