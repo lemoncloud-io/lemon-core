@@ -844,7 +844,7 @@ export class Utilities {
              */
             public encode = (data: T & JwtCommon, algorithm: JwtAlgorithm = 'HS256'): string => {
                 data = current_ms ? { ...data, iat: Math.floor(current_ms / 1000) } : data;
-                const token = $jwt.sign(data, passcode, { algorithm });
+                const token = this.$.sign(data, passcode, { algorithm });
                 return token;
             };
 
@@ -854,7 +854,7 @@ export class Utilities {
              * @param token string
              */
             public decode = (token: string, options?: DecodeOptions): T & JwtCommon => {
-                const N = $jwt.decode(token, options) as T & JwtCommon;
+                const N = this.$.decode(token, options) as T & JwtCommon;
                 return N;
             };
 
@@ -867,7 +867,9 @@ export class Utilities {
              * @throws `jwt expired` if exp has expired!.
              */
             public verify = (token: string, algorithm: JwtAlgorithm = 'HS256'): T & JwtCommon => {
-                const verified = $jwt.verify(token, passcode, { algorithms: [algorithm] }) as T & JwtCommon;
+                const options: $jwt.VerifyOptions = { algorithms: [algorithm] };
+                if (current_ms) options.clockTimestamp = current_ms;
+                const verified = this.$.verify(token, passcode, options) as T & JwtCommon;
                 const cur = $U.N(current_ms, 0);
                 const exp = $U.N(verified?.exp, 0) * 1000;
                 if (cur > 0 && exp > 0 && exp < current_ms) throw new Error(`jwt expired at ${$U.ts(exp)}`);

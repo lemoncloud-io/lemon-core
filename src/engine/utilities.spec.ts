@@ -303,7 +303,7 @@ describe(`core/utilities.ts`, () => {
         //! test expired.
         const token2 = jwt2.encode({ name, exp: iat + 1 });
         expect2(() => jwt2.decode(token2)).toEqual({ name, iat, exp: iat + 1 });
-        expect2(() => jwt2.verify(token2)).toEqual(`jwt expired`); //! due to real current-time.
+        expect2(() => jwt2.verify(token2)).toEqual(`jwt expired`);
 
         //! make jwt3 w/ current + 5sec
         const curr = $U.current_time_ms() + 5 * 1000;
