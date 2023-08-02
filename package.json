@@ -47,6 +47,7 @@
   "author": "Steve Jung <steve@lemoncloud.io>",
   "license": "MIT",
   "dependencies": {
+    "@azure/cosmos": "^3.17.3",
     "@elastic/elasticsearch": "7.12",
     "@types/aws-lambda": "^8.10.62",
     "@types/express": "^4.17.11",
