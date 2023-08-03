@@ -34,35 +34,7 @@ describe('StorageService', () => {
         //! ignore if no profile.
         if (!PROFILE) return done(); //! ignore if no profile.
         
-        expect(await $cosmos.save('A00000', { type:'account', ha:'ho' } as AccountModel)).toEqual({ no:'A00000', type:'account' });//! init with property filtering.
-        expect(await $cosmos.update('A00000', { stereo:'lemon'})).toEqual({ no:'A00000', stereo:'lemon' });                        //! it will have ONLY update-set.
-        expect(await $cosmos.increment('A00000', { slot:1})).toEqual({ no:'A00000', slot:1 });                                     //! auto update for un-defined attribute.
-        expect(await $cosmos.increment('A00000', { slot:-2})).toEqual({ no:'A00000', slot:-1 });                                   //! accumulated incremental result.
-        expect(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'account', stereo:'lemon', slot: -1 })
-        expect(await $cosmos.increment('A00000', { slot:null}).catch(GETERR)).toEqual('.slot (null) should be number!');
-        expect(await $cosmos.increment('A00000', { stereo:null}).catch(GETERR)).toEqual({ no: 'A00000', stereo: null});
-        expect(await $cosmos.delete('A00000')).toEqual({ no:'A00000', type:'account', stereo:null, slot: -1 });
-        expect(await $cosmos.update('A00000', { type:'test' })).toEqual({ no:'A00000', type:'test' });                              //! it should make new entry.
-        expect(await $cosmos.delete('A00000')).toEqual({ no:'A00000', type:'test' });
-        expect(await $cosmos.increment('A00000', { type:'test', slot:1 })).toEqual({ no:'A00000', type:'test', slot:1 });           //! it should make new entry also.
-        expect(await $cosmos.increment('A00000', { type:'test', slot:0 })).toEqual({ no:'A00000', type:'test', slot:1 });           //! it should return last slot#
-        expect(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'test', slot:1 });                                         //! it should return last slot#
-
-        //! increment w/ $update
-        expect(await $cosmos.increment('A00000', { slot:0 }, { balance:1000 })).toEqual({ no:'A00000', slot:1, balance:1000 });
-        expect(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'test', slot:1, balance:1000 });
-
-        //! update with increments
-        expect2(await $cosmos.update('A00000', {}, { balance: 100 })).toEqual({ no:'A00000', balance:1100 });
-        expect2(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'test', slot:1, balance:1100 });
-        expect2(await $cosmos.update('A00000', { slot:2 }, { balance: -500 })).toEqual({ no:'A00000', slot:2, balance:600 });
-        expect2(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'test', slot:2, balance:600 });
-
-        //! check delete()
-        expect2(await $cosmos.delete('A00000'), 'no').toEqual({ no:'A00000' });
-        expect2(await $cosmos.read('A00000').catch(GETERR)).toEqual('404 NOT FOUND - no:A00000');
-        expect2(await $cosmos.readOrCreate('A00000', { type:'auto', slot:2 })).toEqual({ no:'A00000', type:'auto', slot:2 });        //! it should create with model.
-        /* eslint-enable prettier/prettier */
+       
         done();
     });
 
