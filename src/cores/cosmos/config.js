@@ -1,8 +1,5 @@
 var config = {}
 
-config.endpoint = 'https://instance.documents.azure.com:443/'
-config.key = 'vBsrri5egKlxIt5x6ydK8FyX72o48wfPIf12gHTAMtBYlovgOslL5jWLiG2V1MkCHlMvSLmBfj3LACDbxBFioA=='
-
 config.database = {
   id: 'ToDoList'
 }

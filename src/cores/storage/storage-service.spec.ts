@@ -31,10 +31,8 @@ describe('StorageService', () => {
         expect2(() => $cosmos.hello()).toEqual('cosmos-storage-service:TestTable/no/8');
         expect2(() => $cosmos.fields()).toEqual('balance,id,meta,name,no,slot,stereo,type'.split(','));                         //! must be sorted w/o duplicated
 
-        //! ignore if no profile.
-        if (!PROFILE) return done(); //! ignore if no profile.
-        
-       
+        expect(await $cosmos.save('A00000', { type:'account', ha:'ho' } as AccountModel)).toEqual({ no:'A00000', type:'account' });//! init with property filtering.
+        expect(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'account'})
         done();
     });
 

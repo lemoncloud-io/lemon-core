@@ -124,12 +124,29 @@ export class CosmosStorageService<T extends StorageModel>  {
     public fields = () => [...this._fields];
 
     /**
+     * simply save(or overwrite) all model
+     *
+     * @param id        id
+     * @param model     whole object.
+     */
+    public async save(id: string, model: T): Promise<T> {
+        const fields = this._fields || [];
+        const data: MyGeneral = fields.reduce((N: any, key) => {
+            const val = (model as any)[key];
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+        await this.$cosmos.saveItem(id, data); // must be `{}`
+        const item: T = Object.assign({ [this._idName]: id }, data) as unknown as T;
+        return item;
+    }
+    /**
      * Read whole model via database.
      *
      * @param id        id
      */
     public async read(id: string): Promise<T> {
-        const data = await this.$cosmos.scaleContainer();
+        const data = await this.$cosmos.readItem(id);
         const fields = this._fields || [];
         const item = fields.reduce((N: any, key) => {
             const val = (data as any)[key];
