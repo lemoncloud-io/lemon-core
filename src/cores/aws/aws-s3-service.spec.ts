@@ -82,7 +82,7 @@ describe(`test AWSS3Service`, () => {
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
         });
-        expect2(await S3.deleteObject(res.Key)).toEqual();
+        expect2(await S3.deleteObject(res.Key)).toEqual(undefined);
 
         //* automatic key
         res = await S3.putObject(body);
@@ -99,7 +99,7 @@ describe(`test AWSS3Service`, () => {
             ContentType: 'application/json; charset=utf-8',
             Body: Buffer.from(body),
         });
-        expect2(await S3.deleteObject(res.Key)).toEqual();
+        expect2(await S3.deleteObject(res.Key)).toEqual(undefined);
 
         //* check tags, and meta
         const meta: Metadata = { ContentType: 'application/json; charset=utf8' };
@@ -197,7 +197,7 @@ describe(`test AWSS3Service`, () => {
         }
 
         //* cleanup object
-        expect2(await S3.deleteObject(res.Key)).toEqual();
+        expect2(await S3.deleteObject(res.Key)).toEqual(undefined);
     });
 
     //! test getDecodedObject()

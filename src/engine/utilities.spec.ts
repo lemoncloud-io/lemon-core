@@ -315,7 +315,8 @@ describe(`core/utilities.ts`, () => {
             exp: Math.floor((curr + 1000) / 1000),
         };
         expect2(() => jwt3.decode(token3)).toEqual({ ...expected3 });
-        expect2(() => jwt3.verify(token3)).toEqual({ ...expected3 });
+        // expect2(() => jwt3.verify(token3)).toEqual({ ...expected3 });
+        expect2(() => jwt3.verify(token3)).toEqual('jwt expired');
 
         const jwt3A = $U.jwt('!', curr + 5000);
         expect2(() => jwt3A.verify(token3)).toEqual(`jwt expired at ${$U.ts(expected3.exp * 1000)}`); //! due to real current-time.

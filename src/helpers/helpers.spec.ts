@@ -467,8 +467,8 @@ describe('utils', () => {
 
         expect2(() => getIdentityId($context.signed)).toBe(identityId);
         expect2(() => getIdentityId($context.unsigned)).toBeNull();
-        expect2(() => getIdentityId(null)).toEqual();
-        expect2(() => getIdentityId({})).toEqual();
+        expect2(() => getIdentityId(null)).toEqual(undefined);
+        expect2(() => getIdentityId({})).toEqual(undefined);
         expect2(() => getIdentityId({ domain: 'localhost' })).toEqual(LOCAL_ACCOUNT);
 
         expect2(() => isUserAuthorized($context.signed)).toBe(true);

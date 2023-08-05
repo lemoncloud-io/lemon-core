@@ -123,7 +123,7 @@ describe('LambdaWEBHandler', () => {
             }) as MyHttpHeaderTool;
 
             expect2(() => $t.isExternal()).toEqual(true);
-            expect2(() => $t.parseLanguageHeader()).toEqual();
+            expect2(() => $t.parseLanguageHeader()).toEqual(undefined);
             expect2(() => $t.parseIdentityHeader()).toEqual({ lang: undefined as string });
         }
 
