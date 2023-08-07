@@ -188,14 +188,13 @@ export class CosmosService<T extends GeneralItem>  {
       ]
     };
 
-    const { resources: results } = await client
+    const { resources: readDoc } = await client
       .database(databaseId)
       .container(containerId)
       .items.query(querySpec)
       .fetchAll();
-  
-      console.log(results[0].Item)
-      return results[0].Item
+
+      return readDoc[0].Item
   }
 
 
@@ -216,7 +215,7 @@ export class CosmosService<T extends GeneralItem>  {
     debug && $increment && _log(NS, `> $increment =`, $U.json($increment));
     const Key = this.prepareItemKey(id, sort).Key;
     const norm = (_: string) => `${_}`.replace(/[.\\:\/$]/g, '_');
-
+    
     //! prepare payload.
     let payload = Object.entries($update).reduce(
         (memo: any, [key, value]: any[]) => {
@@ -252,7 +251,7 @@ export class CosmosService<T extends GeneralItem>  {
         },
         {
             TableName: tableName,
-            Key,
+            Item:Key,
             UpdateExpression: { SET: [], REMOVE: [], ADD: [], DELETE: [] },
             ExpressionAttributeNames: {},
             ExpressionAttributeValues: {},
@@ -309,20 +308,87 @@ export class CosmosService<T extends GeneralItem>  {
       updates: Updatable,
       increments?: Incrementable,
     ){
-
+    
     const { idName } = this.options;
     // _log(NS, `updateItem(${id})...`);
-
-    const payload = this.prepareUpdateItem(id, sort, updates, increments);
-
-    const { item } = await client
-        .database(databaseId)
-        .container(containerId)
-        .items(id) 
-        .replace(payload); 
-        
     
+    const payload = this.prepareUpdateItem(id, sort, updates, increments);
+    
+    const querySpec = {
+      query: `SELECT * FROM c WHERE c.TableName = @tableName AND c.Item.no = @id`,
+      parameters: [
+          {
+              name: "@id",
+              value: id
+          },
+          {
+              name: "@tableName",
+              value: payload.TableName
+          }
+      ]
+    };
+    
+    const { resources: readDoc } = await client
+      .database(databaseId)
+      .container(containerId)
+      .items.query(querySpec)
+      .fetchAll()
+    
+
+    const data = {
+      ...payload,
+      "Item": { "no":payload.Item.no, "type":readDoc[0].Item.type, ...updates}, 
+      "id" : readDoc[0].id
+    }
+    
+    const { resource: updateDoc } = await client
+      .database(databaseId)
+      .container(containerId)
+      .item(readDoc[0].id).replace(data)
+    
+    let returndata = {"no":payload.Item.no, ...updates, }
+    
+    return returndata
   }
-  
+
+
+   /**
+     * delete-item
+     * - destroy whole data of item.
+     *
+     * @param id
+     * @param sort
+     */
+   public async deleteItem(id: string, sort?: string | number) {
+    // _log(NS, `deleteItem(${id})...`);
+    const payload = this.prepareItemKey(id, sort);
+    const querySpec = {
+      query: `SELECT * FROM c WHERE c.TableName = @tableName AND c.Item.no = @id`,
+      parameters: [
+          {
+              name: "@id",
+              value: id
+          },
+          {
+              name: "@tableName",
+              value: payload.TableName
+          }
+      ]
+    };
+    
+    const { resources: readDoc } = await client
+      .database(databaseId)
+      .container(containerId)
+      .items.query(querySpec)
+      .fetchAll()
+
+      const { resource: deleteDoc } = await client
+      .database(databaseId)
+      .container(containerId)
+      .item(readDoc[0].id)
+      .delete()
+
+      return readDoc[0].Item
+  }
 }
 

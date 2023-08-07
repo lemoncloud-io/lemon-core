@@ -155,6 +155,82 @@ export class CosmosStorageService<T extends StorageModel>  {
         }, {});
         return item;
     }
+
+    /**
+     * update some attributes
+     *
+     * @param id        id
+     * @param model     attributes to update
+     * @param incrementals (optional) attributes to increment
+     */
+    public async update(id: string, model: T, incrementals?: T): Promise<T> {
+        const fields = this._fields || [];
+        const $U: MyGeneral = fields.reduce((N: any, key) => {
+            const val = (model as any)[key];
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+        /* eslint-disable prettier/prettier */
+        const $I: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
+            const val = (incrementals as any)[key];
+            if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
+            M[key] = val;
+            return M;
+        }, {});
+        /* eslint-enable prettier/prettier */
+        const ret: any = await this.$cosmos.updateItem(id, undefined, $U, $I);
+        return ret as T;
+    }
+
+    /**
+     * increment number attribute (or overwrite string field)
+     * - if not exists, then just update property with base zero 0.
+     *
+     * @param id        id
+     * @param model     attributes of number.
+     * @param $update   (optional) update-set.
+     */
+    public async increment(id: string, model: T, $update?: T): Promise<T> {
+        if (!model && !$update) throw new Error('@item is required!');
+        const $org: any = await this.read(id).catch(e => {
+            if (`${e.message || e}`.startsWith('404 NOT FOUND')) return { id };
+            throw e;
+        });
+        const fields = this._fields || [];
+        const $U: MyGeneral = fields.reduce((N: any, key) => {
+            const val = $update ? ($update as any)[key] : undefined;
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+        const $I: Incrementable = fields.reduce((N: any, key) => {
+            const val = (model as any)[key];
+            if (val !== undefined) {
+                const org = ($org as any)[key];
+                //! check type matched!
+                if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
+                    throw new Error(`.${key} (${val}) should be number!`);
+                //! if not exists, update it.
+                if (org === undefined && typeof val === 'number') N[key] = val;
+                else if (typeof val !== 'number' && !Array.isArray(val)) $U[key] = val;
+                else N[key] = val;
+            }
+            return N;
+        }, {});
+        const ret: any = await this.$cosmos.updateItem(id, undefined, $U, $I);
+        return ret as T;
+    }
+
+    /**
+     * delete set.
+     * - if not exists, then just update property with base zero 0.
+     *
+     * @param id        id
+     */
+    public async delete(id: string): Promise<T> {
+        const $org = await this.read(id);
+        await this.$cosmos.deleteItem(id);
+        return $org;
+    }
 }
 
 /**
