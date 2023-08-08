@@ -25,16 +25,24 @@ describe('StorageService', () => {
 
     // azure storage service.
     it(`should pass azure[${PROFILE}] storage-service`, async done => {
-    
+        
         expect2(() => new CosmosStorageService<AccountModel>('', [], 'no')).toEqual(`@table (table-name) is required!`);
         const $cosmos = new CosmosStorageService<AccountModel>('TestTable', ['name','slot','balance'], 'no');
         expect2(() => $cosmos.hello()).toEqual('cosmos-storage-service:TestTable/no/8');
         expect2(() => $cosmos.fields()).toEqual('balance,id,meta,name,no,slot,stereo,type'.split(','));                         //! must be sorted w/o duplicated
 
+         //! ignore if no profile.
+        if (!PROFILE) return done(); //! ignore if no profile.
+
         expect(await $cosmos.save('A00000', { type:'account', ha:'ho' } as AccountModel)).toEqual({ no:'A00000', type:'account' });//! init with property filtering.
-        expect(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'account'})
         expect(await $cosmos.update('A00000', { stereo:'lemon'})).toEqual({ no:'A00000', stereo:'lemon' });                        //! it will have ONLY update-set.
-        expect(await $cosmos.delete('A00000')).toEqual({ no:'A00000', type:'account', stereo:'lemon'});
+        expect(await $cosmos.increment('A00000', { slot:1})).toEqual({ no:'A00000', slot:1 });                                     //! auto update for un-defined attribute.
+        expect(await $cosmos.increment('A00000', { slot:-2})).toEqual({ no:'A00000', slot:-1 });                                   //! accumulated incremental result.
+        expect(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'account', stereo:'lemon', slot: -1 })
+        expect(await $cosmos.increment('A00000', { slot:null}).catch(GETERR)).toEqual('.slot (null) should be number!');
+        expect(await $cosmos.increment('A00000', { stereo:null}).catch(GETERR)).toEqual({ no: 'A00000', stereo: null});
+        expect(await $cosmos.delete('A00000')).toEqual({ no:'A00000', type:'account', stereo:'lemon', slot: -1 });
+        
         done();
     });
 

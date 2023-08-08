@@ -333,22 +333,54 @@ export class CosmosService<T extends GeneralItem>  {
       .container(containerId)
       .items.query(querySpec)
       .fetchAll()
-    
 
-    const data = {
-      ...payload,
-      "Item": { "no":payload.Item.no, "type":readDoc[0].Item.type, ...updates}, 
-      "id" : readDoc[0].id
+    let data
+    if(payload.UpdateExpression=='SET #stereo = :stereo'){
+        
+        if (updates.stereo == null){
+            const stereo_null: { no: string; stereo: string | null } = { "no": payload.Item.no, "stereo": null };
+            return stereo_null
+        }
+        data = {
+            ...payload,
+            "Item": { "no":payload.Item.no, "type":readDoc[0].Item.type, ...updates}, 
+            "id" : readDoc[0].id
+        }
     }
-    
+
+    if(payload.UpdateExpression=='ADD #slot :slot'){
+        
+        if (increments == null){
+            const message = '.slot (null) should be number!'
+            return message
+        }
+        if (typeof increments.slot === 'number' && !isNaN(increments.slot)){
+            
+            let newSlot = increments.slot + (readDoc[0].Item.slot || 0)
+            data = {
+                ...payload,
+                "Item": { "no":payload.Item.no, "type":readDoc[0].Item.type, "stereo":readDoc[0].Item.stereo, "slot": newSlot}, 
+                "id" : readDoc[0].id
+            }
+        }
+    }
+
     const { resource: updateDoc } = await client
       .database(databaseId)
       .container(containerId)
       .item(readDoc[0].id).replace(data)
     
-    let returndata = {"no":payload.Item.no, ...updates, }
+    let returnData
+
+    if(payload.UpdateExpression=='SET #stereo = :stereo'){
+        returnData = {"no":payload.Item.no, ...updates, }
+    }
+
+    if(payload.UpdateExpression=='ADD #slot :slot'){
+        returnData = {"no":payload.Item.no,  "slot":data.Item.slot}
+    }
     
-    return returndata
+    return returnData
   }
 
 
@@ -387,7 +419,7 @@ export class CosmosService<T extends GeneralItem>  {
       .container(containerId)
       .item(readDoc[0].id)
       .delete()
-
+      
       return readDoc[0].Item
   }
 }
