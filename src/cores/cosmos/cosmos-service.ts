@@ -334,52 +334,61 @@ export class CosmosService<T extends GeneralItem>  {
       .items.query(querySpec)
       .fetchAll()
 
+    let doc_id: string | undefined;
+
+    if (readDoc && readDoc[0] && readDoc[0].id !== null) {
+        doc_id = readDoc[0].id;
+    } 
+
     let data
+
     if(payload.UpdateExpression=='SET #stereo = :stereo'){
-        
-        if (updates.stereo == null){
-            const stereo_null: { no: string; stereo: string | null } = { "no": payload.Item.no, "stereo": null };
-            return stereo_null
-        }
+
         data = {
             ...payload,
-            "Item": { "no":payload.Item.no, "type":readDoc[0].Item.type, ...updates}, 
-            "id" : readDoc[0].id
+            "Item": {...readDoc[0].Item}
         }
+        
+        data.Item.no = payload.Item.no
+        data.Item.stereo = updates.stereo
+        data.id = doc_id
     }
-
+    
     if(payload.UpdateExpression=='ADD #slot :slot'){
         
         if (increments == null){
             const message = '.slot (null) should be number!'
             return message
         }
+        
         if (typeof increments.slot === 'number' && !isNaN(increments.slot)){
             
             let newSlot = increments.slot + (readDoc[0].Item.slot || 0)
             data = {
                 ...payload,
-                "Item": { "no":payload.Item.no, "type":readDoc[0].Item.type, "stereo":readDoc[0].Item.stereo, "slot": newSlot}, 
-                "id" : readDoc[0].id
+                "Item": {...readDoc[0].Item}
             }
+            data.Item.no = payload.Item.no
+            data.Item.slot = newSlot
+            data.id = doc_id
         }
-    }
-
-    const { resource: updateDoc } = await client
-      .database(databaseId)
-      .container(containerId)
-      .item(readDoc[0].id).replace(data)
+    }   
     
     let returnData
 
+    const { resource: updateDoc } = await client
+        .database(databaseId)
+        .container(containerId)
+        .item(doc_id).replace(data)
+
     if(payload.UpdateExpression=='SET #stereo = :stereo'){
-        returnData = {"no":payload.Item.no, ...updates, }
+        returnData = {"no":payload.Item.no, ...updates, ...increments }
     }
 
     if(payload.UpdateExpression=='ADD #slot :slot'){
         returnData = {"no":payload.Item.no,  "slot":data.Item.slot}
     }
-    
+
     return returnData
   }
 

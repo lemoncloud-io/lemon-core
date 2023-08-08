@@ -41,8 +41,8 @@ describe('StorageService', () => {
         expect(await $cosmos.read('A00000')).toEqual({ no:'A00000', type:'account', stereo:'lemon', slot: -1 })
         expect(await $cosmos.increment('A00000', { slot:null}).catch(GETERR)).toEqual('.slot (null) should be number!');
         expect(await $cosmos.increment('A00000', { stereo:null}).catch(GETERR)).toEqual({ no: 'A00000', stereo: null});
-        expect(await $cosmos.delete('A00000')).toEqual({ no:'A00000', type:'account', stereo:'lemon', slot: -1 });
-        
+        expect(await $cosmos.delete('A00000')).toEqual({ no:'A00000', type:'account', stereo:null, slot: -1 });
+
         done();
     });
 
