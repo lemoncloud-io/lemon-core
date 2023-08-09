@@ -2,10 +2,10 @@
  * `cosmos-service.ts`
  * - common service for cosmos
  *
- * @author      
- * @date        
+ * @author    Ian Kim <ian@lemoncloud.io>  
+ * @date      2023-08-02 initial version
  *
- * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
+ * @copyright (C) 2023 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine';
@@ -13,6 +13,7 @@ import { GeneralItem, Incrementable } from 'lemon-model';
 import { loadDataYml } from '../../tools';
 import { IncludeExecutionData } from 'aws-sdk/clients/stepfunctions';
 import 'dotenv/config'
+import { Items } from '@azure/cosmos';
 const CosmosClient = require('@azure/cosmos').CosmosClient
 
 const config = require('./config')
@@ -22,7 +23,7 @@ const endpoint = process.env.AZURE_ENDPOINT ;
 const key = process.env.AZURE_KEY;
 
 const databaseId = config.database.id
-const containerId = config.container.id
+
 const partitionKey = { kind: 'Hash', paths: ['/partitionKey'] }
 
 const options = {
@@ -112,324 +113,176 @@ export class CosmosService<T extends GeneralItem>  {
    */
   public static normalize = normalize;
 
-
-  public prepareSaveItem(id: string, item: T) {
-    const { tableName, idName, sortName } = this.options;
-    // _log(NS, `prepareSaveItem(${tableName})...`);
-    // item && _log(NS, '> item =', item);
-    if (sortName && item[sortName] === undefined) throw new Error(`.${sortName} is required. ${idName}:${id}`);
-    delete item[idName]; // clear the saved id.
-    const node: T = Object.assign({ [idName]: id }, item); // copy
-    const data = normalize(node);
-    //! prepare payload.
-    const payload = {
-        TableName: tableName,
-        Item: data,
-    };
-    return payload;
-}
-  
   public async saveItem(id: string, item: T){
-    const { tableName, idName, sortName } = this.options;
-    // _log(NS, `saveItem(${id})...`);
-    const payload = this.prepareSaveItem(id, item);
-    const { client_item } = await client
+    const { tableName, idName } = this.options;
+    const key = Object.keys(item)[0]
+    const value = Object.values(item)[0]
+
+    const payload = {
+        [idName]:id,                          
+        [key]:value                         
+        
+    };
+    
+    const { saveDoc } = await client
       .database(databaseId)
-      .container(containerId)
+      .container(tableName)
       .items.upsert(payload)
   } 
   
   /**
-     * prepare `Key` by id + sort key.
-     *
-     * @param id            partition-key
-     * @param sort          sort-key
-     */
-  public prepareItemKey(id: string, sort: any) {
-    const { tableName, idName, sortName } = this.options;
-    if (!id) throw new Error(`@id is required - prepareItemKey(${tableName}/${idName})`);
-    // _log(NS, `prepareItemKey(${tableName}/${id}/${sort || ''})...`);
-    //! prepare payload.
-    const payload = {
-        TableName: tableName,
-        Key: {
-            [idName]: id,
-        },
-    };
-    if (sortName) {
-        if (sort === undefined) throw new Error(`@sort is required. ${idName}:${id}`);
-        payload.Key[sortName] = sort;
-    }
-    return payload;
-  }
-
-  /**
-     * read-item
-     * - read whole data of item.
-     *
-     * @param id
-     * @param sort
-     */
+   * read-item
+   * - read whole data of item.
+   *
+   * @param id
+   * @param sort
+   */
   public async readItem(id: string, sort?: string | number){
-    const { tableName, idName, sortName } = this.options;
-    // _log(NS, `readItem(${id})...`);
-    const itemKey = this.prepareItemKey(id, sort);
+    const { tableName, idName } = this.options;
+    
     const querySpec = {
-      query: `SELECT * FROM c WHERE c.TableName = @tableName AND c.Item.no = @id`,
-      parameters: [
-          {
-              name: "@id",
-              value: id
-          },
-          {
-              name: "@tableName",
-              value: tableName
-          }
-      ]
+        query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
+        parameters: [
+            {
+                name: "@id",
+                value: id
+            },
+            {
+                name: "@idName",
+                value: idName
+            }
+        ]
     };
 
     const { resources: readDoc } = await client
       .database(databaseId)
-      .container(containerId)
+      .container(tableName)
       .items.query(querySpec)
       .fetchAll();
-
-      return readDoc[0].Item
-  }
-
-
-
-  /**
-     * prepare `UpdateItem` payload.
-     *
-     * @param id            partition-key
-     * @param sort          sort-key
-     * @param $update       update set
-     * @param $increment    increment set.
-     */
-  public prepareUpdateItem(id: string, sort: any, $update: Updatable, $increment?: Incrementable) {
-    const debug = 0 ? true : false;
-    const { tableName, idName, sortName } = this.options;
-    debug && _log(NS, `prepareUpdateItem(${tableName}/${id}/${sort || ''})...`);
-    debug && $update && _log(NS, `> $update =`, $U.json($update));
-    debug && $increment && _log(NS, `> $increment =`, $U.json($increment));
-    const Key = this.prepareItemKey(id, sort).Key;
-    const norm = (_: string) => `${_}`.replace(/[.\\:\/$]/g, '_');
+      
     
-    //! prepare payload.
-    let payload = Object.entries($update).reduce(
-        (memo: any, [key, value]: any[]) => {
-            //! ignore if key
-            if (key === idName || key === sortName) return memo;
-            const key2 = norm(key);
-            value = normalize(value);
-            if (value && Array.isArray(value.setIndex)) {
-                //! support set items in list
-                value.setIndex.forEach(([idx, value]: [number, string | number], seq: number) => {
-                    if (idx !== undefined && value !== undefined) {
-                        memo.ExpressionAttributeNames[`#${key2}`] = key;
-                        memo.ExpressionAttributeValues[`:${key2}_${seq}_`] = value;
-                        memo.UpdateExpression.SET.push(`#${key2}[${idx}] = :${key2}_${seq}_`);
-                    }
-                });
-            } else if (value && Array.isArray(value.removeIndex)) {
-                //! support removing items from list
-                value.removeIndex.forEach((idx: number) => {
-                    if (idx !== undefined) {
-                        memo.ExpressionAttributeNames[`#${key2}`] = key2;
-                        memo.UpdateExpression.REMOVE.push(`#${key2}[${idx}]`);
-                    }
-                });
-            } else {
-                //! prepare update-expression.
-                memo.ExpressionAttributeNames[`#${key2}`] = key;
-                memo.ExpressionAttributeValues[`:${key2}`] = value === '' ? null : value;
-                memo.UpdateExpression.SET.push(`#${key2} = :${key2}`);
-                debug && _log(NS, '>> ' + `#${key} :=`, typeof value, $U.json(value));
-            }
-            return memo;
-        },
-        {
-            TableName: tableName,
-            Item:Key,
-            UpdateExpression: { SET: [], REMOVE: [], ADD: [], DELETE: [] },
-            ExpressionAttributeNames: {},
-            ExpressionAttributeValues: {},
-            ConditionExpression: null, // "size(a) > :num "
-            ReturnValues: 'UPDATED_NEW',
-        },
-    );
-    //! prepare increment update.
-    if ($increment) {
-        //! increment field.
-        payload = Object.entries($increment).reduce((memo: any, [key, value]) => {
-            const key2 = norm(key);
-            if (!Array.isArray(value)) {
-                memo.ExpressionAttributeNames[`#${key2}`] = key;
-                memo.ExpressionAttributeValues[`:${key2}`] = value;
-                memo.UpdateExpression.ADD.push(`#${key2} :${key2}`);
-                debug && _log(NS, '>> ' + `#${key2} = #${key2} + :${value}`);
-            } else {
-                memo.ExpressionAttributeNames[`#${key2}`] = key; // target attribute name
-                memo.ExpressionAttributeValues[`:${key2}`] = value; // list to append like `[1,2,3]`
-                memo.ExpressionAttributeValues[`:${key2}_0`] = []; // empty array if not exists.
-                memo.UpdateExpression.SET.push(
-                    `#${key2} = list_append(if_not_exists(#${key2}, :${key2}_0), :${key2})`,
-                );
-                debug && _log(NS, '>> ' + `#${key2} = #${key2} + ${value}`);
-            }
-            return memo;
-        }, payload);
-    }
-    //! build final update expression.
-    payload.UpdateExpression = Object.keys(payload.UpdateExpression) // ['SET', 'REMOVE', 'ADD', 'DELETE']
-        .map(actionName => {
-            const actions: string[] = payload.UpdateExpression[actionName];
-            return actions.length > 0 ? `${actionName} ${actions.join(', ')}` : ''; // e.g 'SET #a = :a, #b = :b'
-        })
-        .filter(exp => exp.length > 0)
-        .join(' ');
-    _log(NS, `> UpdateExpression[${id}] =`, payload.UpdateExpression);
-    return payload;
+    const { id: documentId, ...rest } = readDoc[0];
+    return rest
   }
 
   /**
-     * update-item (or increment-item)
-     * - update or create if not exists.
-     *
-     * @param id
-     * @param sort
-     * @param updates
-     * @param increments
-     */
-  public async updateItem(
-      id: string,
-      sort: string | number,
-      updates: Updatable,
-      increments?: Incrementable,
-    ){
-    
-    const { idName } = this.options;
-    // _log(NS, `updateItem(${id})...`);
-    
-    const payload = this.prepareUpdateItem(id, sort, updates, increments);
-    
+  * delete-item
+  *  - destroy whole data of item.
+  * 
+  * @param id
+  * @param sort
+  */
+  public async deleteItem(id: string, sort?: string | number) {
+    const { tableName, idName } = this.options;
     const querySpec = {
-      query: `SELECT * FROM c WHERE c.TableName = @tableName AND c.Item.no = @id`,
-      parameters: [
-          {
-              name: "@id",
-              value: id
-          },
-          {
-              name: "@tableName",
-              value: payload.TableName
-          }
-      ]
+        query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
+        parameters: [
+            {
+                name: "@id",
+                value: id
+            },
+            {
+                name: "@idName",
+                value: idName
+            }
+        ]
     };
     
     const { resources: readDoc } = await client
       .database(databaseId)
-      .container(containerId)
-      .items.query(querySpec)
-      .fetchAll()
-
-    let doc_id: string | undefined;
-
-    if (readDoc && readDoc[0] && readDoc[0].id !== null) {
-        doc_id = readDoc[0].id;
-    } 
-
-    let data
-
-    if(payload.UpdateExpression=='SET #stereo = :stereo'){
-
-        data = {
-            ...payload,
-            "Item": {...readDoc[0].Item}
-        }
-        
-        data.Item.no = payload.Item.no
-        data.Item.stereo = updates.stereo
-        data.id = doc_id
-    }
-    
-    if(payload.UpdateExpression=='ADD #slot :slot'){
-        
-        if (increments == null){
-            const message = '.slot (null) should be number!'
-            return message
-        }
-        
-        if (typeof increments.slot === 'number' && !isNaN(increments.slot)){
-            
-            let newSlot = increments.slot + (readDoc[0].Item.slot || 0)
-            data = {
-                ...payload,
-                "Item": {...readDoc[0].Item}
-            }
-            data.Item.no = payload.Item.no
-            data.Item.slot = newSlot
-            data.id = doc_id
-        }
-    }   
-    
-    let returnData
-
-    const { resource: updateDoc } = await client
-        .database(databaseId)
-        .container(containerId)
-        .item(doc_id).replace(data)
-
-    if(payload.UpdateExpression=='SET #stereo = :stereo'){
-        returnData = {"no":payload.Item.no, ...updates, ...increments }
-    }
-
-    if(payload.UpdateExpression=='ADD #slot :slot'){
-        returnData = {"no":payload.Item.no,  "slot":data.Item.slot}
-    }
-
-    return returnData
-  }
-
-
-   /**
-     * delete-item
-     * - destroy whole data of item.
-     *
-     * @param id
-     * @param sort
-     */
-   public async deleteItem(id: string, sort?: string | number) {
-    // _log(NS, `deleteItem(${id})...`);
-    const payload = this.prepareItemKey(id, sort);
-    const querySpec = {
-      query: `SELECT * FROM c WHERE c.TableName = @tableName AND c.Item.no = @id`,
-      parameters: [
-          {
-              name: "@id",
-              value: id
-          },
-          {
-              name: "@tableName",
-              value: payload.TableName
-          }
-      ]
-    };
-    
-    const { resources: readDoc } = await client
-      .database(databaseId)
-      .container(containerId)
+      .container(tableName)
       .items.query(querySpec)
       .fetchAll()
 
       const { resource: deleteDoc } = await client
       .database(databaseId)
-      .container(containerId)
+      .container(tableName)
       .item(readDoc[0].id)
       .delete()
       
-      return readDoc[0].Item
+    const { id: documentId, ...rest } = readDoc[0];
+    return rest
   }
+  /**
+  * update-item (or increment-item)
+  * - update or create if not exists.
+  *    
+  * @param id
+  * @param sort
+  * @param updates
+  * @param increments
+  */
+  public async updateItem(
+    id: string,
+    sort: string | number,
+    updates: Updatable,
+    increments?: Incrementable,
+  ){
+
+  let TYPE = ''
+  
+  const { tableName, idName } = this.options;
+  let key
+  let value
+  if (updates){
+    key = Object.keys(updates)[0]
+    value = Object.values(updates)[0]
+  }
+  if (increments){
+    key = Object.keys(increments)[0]
+    value = Object.values(increments)[0]
+  }
+  const querySpec = {
+    query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
+        parameters: [
+            {
+                name: "@id",
+                value: id
+            },
+            {
+                name: "@idName",
+                value: idName
+            }
+        ]
+  };
+  
+  const { resources: readDoc } = await client
+    .database(databaseId)
+    .container(tableName)
+    .items.query(querySpec)
+    .fetchAll()
+
+  let payload
+  let {slot, ...rest } = readDoc[0]
+  
+  if (slot == undefined || slot == null){
+    slot = 0
+  }
+
+  if (updates){
+    payload = {  
+        ...readDoc[0],     
+        [key]:value            
+      };
+  }
+
+  let new_slot = slot + value
+  if (increments){
+    payload = {    
+        ...readDoc[0],   
+        [key]:new_slot      
+      };
+  }
+  
+  const { resource: updateDoc } = await client
+      .database(databaseId)
+      .container(tableName)
+      .item(readDoc[0].id).replace(payload)
+
+      return {
+        no: updateDoc.no,
+        [key]: updateDoc[key]
+      }
+}
 }
 

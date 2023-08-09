@@ -145,7 +145,7 @@ export class CosmosStorageService<T extends StorageModel>  {
      *
      * @param id        id
      */
-    public async read(id: string): Promise<T> {
+    public async read(id: string) {
         const data = await this.$cosmos.readItem(id);
         const fields = this._fields || [];
         const item = fields.reduce((N: any, key) => {
@@ -154,6 +154,12 @@ export class CosmosStorageService<T extends StorageModel>  {
             return N;
         }, {});
         return item;
+    }
+
+    public async delete(id: string): Promise<T> {
+        const $org = await this.read(id);
+        await this.$cosmos.deleteItem(id);
+        return $org;
     }
 
     /**
@@ -218,18 +224,6 @@ export class CosmosStorageService<T extends StorageModel>  {
         }, {});
         const ret: any = await this.$cosmos.updateItem(id, undefined, $U, $I);
         return ret as T;
-    }
-
-    /**
-     * delete set.
-     * - if not exists, then just update property with base zero 0.
-     *
-     * @param id        id
-     */
-    public async delete(id: string): Promise<T> {
-        const $org = await this.read(id);
-        await this.$cosmos.deleteItem(id);
-        return $org;
     }
 }
 

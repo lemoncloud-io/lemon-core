@@ -25,7 +25,6 @@
 import fs from 'fs';
 import * as yaml from 'js-yaml';
 import AWS from 'aws-sdk';
-import 'dotenv/config'
 
 interface Options {
     ENV?: string;
@@ -75,7 +74,7 @@ export const loadEnviron = (process: any, options?: Options) => {
                 //! join array with ', '.
                 $O[key] = val.join(', ');
             } else if ($det[key] === undefined) {
-                //! ov998rride only if undefined.
+                //! override only if undefined.
                 $O[key] = `${val}`; // as string.
             } else {
                 //! ignore!.
@@ -102,16 +101,12 @@ const credentials = (profile: string): string => {
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
-    // Create a new object with the updated values.
     const updatedCredentials = {
         ...credentials,
         accessKeyId: accessKeyId,
         secretAccessKey: secretAccessKey,
     };
-
-    // Assign the updated credentials to AWS.config.credentials.
     AWS.config.credentials = updatedCredentials;
-    
     return `${profile}`;
 };
 
