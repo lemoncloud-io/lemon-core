@@ -83,7 +83,7 @@ export interface StorageService<T extends StorageModel> {
  *  Data Storage Service
  ** ****************************************************************************************************************/
 import { DynamoService, KEY_TYPE } from '../dynamo/';
-import { CosmosService, KEY_TYPE_for_cosmos } from '../cosmos/';
+import { CosmosService } from '../cosmos/';
 import { loadDataYml } from '../../tools/shared';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
@@ -104,14 +104,16 @@ export class CosmosStorageService<T extends StorageModel>  {
     private _fields: string[]; // fields set.
     private $cosmos: CosmosService<MyGeneral>;
 
-    public constructor(table: string, fields: string[], idName: string = 'id', idType: KEY_TYPE_for_cosmos = 'string') {
+    public constructor(table: string, fields: string[], idName: string = 'id') {
         if (!table) throw new Error(`@table (table-name) is required!`);
         this._table = table;
         this._idName = idName;
         this._fields = clearDuplicated(['id', 'type', 'stereo', 'meta', idName].concat(fields));
-        this.$cosmos = new CosmosService({ tableName: this._table, idName, idType });
-    }
+        this.$cosmos = new CosmosService({ tableName: this._table, idName });
 
+        this.$cosmos.createTable();
+    }
+    
     /**
      * say hello()
      * @param name  (optional) given name
@@ -140,6 +142,19 @@ export class CosmosStorageService<T extends StorageModel>  {
         const item: T = Object.assign({ [this._idName]: id }, data) as unknown as T;
         return item;
     }
+    /**
+     * auto-create if not found.
+     *
+     * @param id
+     * @param model
+     */
+    public async readOrCreate(id: string, model: T): Promise<T> {
+        return this.read(id).catch((e: Error) => {
+            if (`${e.message}`.startsWith('404 NOT FOUND')) return this.update(id, model);
+            throw e;
+        });
+    }
+
     /**
      * Read whole model via database.
      *
