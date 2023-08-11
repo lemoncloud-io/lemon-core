@@ -16,30 +16,30 @@ const CosmosClient = require('@azure/cosmos').CosmosClient
 const config = require('./config')
 const url = require('url')
 
-const endpoint = process.env.AZURE_ENDPOINT ;
+const endpoint = process.env.AZURE_ENDPOINT;
 const key = process.env.AZURE_KEY;
 const databaseName = config.database.id
 const partitionKey = { kind: 'Hash', paths: ['/partitionKey'] }
 
 const options = {
-      endpoint: endpoint,
-      key: key,
-      userAgentSuffix: 'CosmosDBJavascriptQuickstart'
-    };
+  endpoint: endpoint,
+  key: key,
+  userAgentSuffix: 'CosmosDBJavascriptQuickstart'
+};
 
 const client = new CosmosClient(options)
 
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export interface CosmosOption {
-    tableName: string;
-    idName: string;
-    sortName?: string;
-    // //TODO - do improve cosmos support.
-    // timestamps?: boolean; // flag to use timestamp.
-    // createdAt?: boolean | string; // flag (or overrided name).
-    // updatedAt?: boolean | string; // flag (or overrided name).
-    // deletedAt?: boolean | string; // flag (or overrided name).
+  tableName: string;
+  idName: string;
+  sortName?: string;
+  // //TODO - do improve cosmos support.
+  // timestamps?: boolean; // flag to use timestamp.
+  // createdAt?: boolean | string; // flag (or overrided name).
+  // updatedAt?: boolean | string; // flag (or overrided name).
+  // deletedAt?: boolean | string; // flag (or overrided name).
 }
 
 /**
@@ -49,7 +49,7 @@ export interface CosmosOption {
  *  - 'removeIndex': array of indices - remove elements from list field
  */
 export interface Updatable {
-    [key: string]: GeneralItem['key'] | { setIndex: [number, string | number][] } | { removeIndex: number[] };
+  [key: string]: GeneralItem['key'] | { setIndex: [number, string | number][] } | { removeIndex: number[] };
 }
 
 /**
@@ -60,12 +60,12 @@ export class CosmosService<T extends GeneralItem>  {
 
   protected options: CosmosOption;
   public constructor(options: CosmosOption) {
-        // eslint-disable-next-line prettier/prettier
-        _inf(NS, `CosmosService(${options.tableName}/${options.idName}${options.sortName ? '/' : ''}${options.sortName || ''})...`);
-        if (!options.tableName) throw new Error('.tableName is required');
-        if (!options.idName) throw new Error('.idName is required');
-        this.options = options;
-    }
+    // eslint-disable-next-line prettier/prettier
+    _inf(NS, `CosmosService(${options.tableName}/${options.idName}${options.sortName ? '/' : ''}${options.sortName || ''})...`);
+    if (!options.tableName) throw new Error('.tableName is required');
+    if (!options.idName) throw new Error('.idName is required');
+    this.options = options;
+  }
 
   /**
    * say hello of identity.
@@ -73,37 +73,86 @@ export class CosmosService<T extends GeneralItem>  {
   public hello = () => `cosmos-service:${this.options.tableName}`;
 
 
-  public async createTable(){
+  public async createTable() {
     const { tableName, idName } = this.options;
     const { database } = await client.databases.createIfNotExists({ id: databaseName }); // DynamoDB: Not applicable / CosmosDB: Database
     const { container } = await database.containers.createIfNotExists({ id: tableName });
   }
-  
- /**
-  * save-item
-  * - save whole data with param (use update if partial save)
-  *
-  * **WARN** overwrited if exists.
-  *
-  * @param id
-  * @param item
-  */
-  public async saveItem(id: string, item: T){
+
+  /**
+   * save-item
+   * - save whole data with param (use update if partial save)
+   *
+   * **WARN** overwrited if exists.
+   *
+   * @param id
+   * @param item
+   */
+  public async saveItem(id: string, item: T) {
     const { tableName, idName } = this.options;
     const key = Object.keys(item)[0]
     const value = Object.values(item)[0]
-    
-    const payload = {
-        [idName]:id,                          
-        [key]:value                         
-        
+
+    const querySpec = {
+      query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
+      parameters: [
+        {
+          name: "@id",
+          value: id
+        },
+        {
+          name: "@idName",
+          value: idName
+        }
+      ]
     };
-    const { resources: saveDoc } = await client
+    let payload: any = { [idName]: id };
+
+    const { resources: readDoc } = await client
       .database(databaseName)
       .container(tableName)
-      .items.create(payload)
-  } 
-  
+      .items.query(querySpec)
+      .fetchAll();
+
+    payload[key] = value
+
+    if (readDoc.length === 0) {
+      const { resources: saveDoc } = await client
+        .database(databaseName)
+        .container(tableName)
+        .items.create(payload)
+      return
+    }
+
+    const { id:documentId, _rid, _self, _etag, _attachments, _ts, ..._rest } = readDoc[0];
+    const update_payload = {
+      ...payload,
+      id,
+      _rid,
+      _self,
+      _etag,
+      _attachments,
+      _ts
+    }
+    
+    const { resource: updateDoc } = await client
+      .database(databaseName)
+      .container(tableName)
+      .item(readDoc[0].id).replace(update_payload)
+
+    const result: any = {};
+    for (const key in payload) {
+      if (payload.hasOwnProperty(key)) {
+        result[key] = payload[key];
+      }
+    }
+    return result;
+
+
+
+
+  }
+
   /**
    * read-item
    * - read whole data of item.
@@ -111,21 +160,21 @@ export class CosmosService<T extends GeneralItem>  {
    * @param id
    * @param sort
    */
-  public async readItem(id: string, sort?: string | number){
+  public async readItem(id: string, sort?: string | number) {
     const { tableName, idName } = this.options;
-    
+
     const querySpec = {
-        query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
-        parameters: [
-            {
-                name: "@id",
-                value: id
-            },
-            {
-                name: "@idName",
-                value: idName
-            }
-        ]
+      query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
+      parameters: [
+        {
+          name: "@id",
+          value: id
+        },
+        {
+          name: "@idName",
+          value: idName
+        }
+      ]
     };
 
     const { resources: readDoc } = await client
@@ -134,14 +183,14 @@ export class CosmosService<T extends GeneralItem>  {
       .items.query(querySpec)
       .fetchAll();
 
-      if(readDoc.length > 0){
-        const { id: documentId, ...rest } = readDoc[0];
-        return rest
-      }
-      if (readDoc.length === 0) {
-        const notFoundMessage = `404 NOT FOUND - ${idName}:${id}`;
-        throw new Error(notFoundMessage);
-      }
+    if (readDoc.length > 0) {
+      const { id: documentId, ...rest } = readDoc[0];
+      return rest
+    }
+    if (readDoc.length === 0) {
+      const notFoundMessage = `404 NOT FOUND - ${idName}:${id}`;
+      throw new Error(notFoundMessage);
+    }
   }
 
   /**
@@ -154,31 +203,31 @@ export class CosmosService<T extends GeneralItem>  {
   public async deleteItem(id: string, sort?: string | number) {
     const { tableName, idName } = this.options;
     const querySpec = {
-        query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
-        parameters: [
-            {
-                name: "@id",
-                value: id
-            },
-            {
-                name: "@idName",
-                value: idName
-            }
-        ]
+      query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
+      parameters: [
+        {
+          name: "@id",
+          value: id
+        },
+        {
+          name: "@idName",
+          value: idName
+        }
+      ]
     };
-    
+
     const { resources: readDoc } = await client
       .database(databaseName)
       .container(tableName)
       .items.query(querySpec)
       .fetchAll()
 
-      const { resource: deleteDoc } = await client
+    const { resource: deleteDoc } = await client
       .database(databaseName)
       .container(tableName)
       .item(readDoc[0].id)
       .delete()
-      
+
     const { id: documentId, ...rest } = readDoc[0];
     return rest
   }
@@ -196,151 +245,130 @@ export class CosmosService<T extends GeneralItem>  {
     sort: string | number,
     updates: Updatable,
     increments?: Incrementable,
-  ){
-  
-  const { tableName, idName } = this.options;
-  let updates_key, updates_value, increments_key, increments_value
-  let updates_key_list: string[] = [];
-  let updates_value_list: (string | number)[] = [];
-  for (const value of Object.values(updates)) {
-    if (typeof value === 'string' || typeof value === 'number') {
-      updates_value_list.push(value);
+  ) {
+
+    const { tableName, idName } = this.options;
+
+    let updates_key_list: string[] = [];
+    let increments_key_list: string[] = [];
+    let updates_value_list: (string | number)[] = [];
+    let increments_value_list: (string | number)[] = [];
+
+    if (updates !== null && updates !== undefined) {
+      for (const value of Object.values(updates)) {
+        if (typeof value === 'string' || typeof value === 'number') {
+          updates_value_list.push(value);
+        }
+      }
+      updates_key_list = Object.keys(updates)
     }
-  }
-  if (updates !=null && Object.keys(updates).length > 0){
-    updates_key = Object.keys(updates)[0]
-    updates_value = Object.values(updates)[0]
+    if (increments !== null && increments !== undefined) {
+      for (const value of Object.values(increments)) {
+        if (typeof value === 'string' || typeof value === 'number') {
+          increments_value_list.push(value);
+        }
+      }
+      increments_key_list = Object.keys(increments)
+    }
 
-    updates_key_list = Object.keys(updates)
-  }
-  if (increments !=null && Object.keys(increments).length > 0){
-    increments_key = Object.keys(increments)[0]
-    increments_value = Object.values(increments)[0]
-  }
-  if (updates == null && increments==null){
-    const message = '.slot (null) should be number!'
-    return message
-  }
+    if (updates == null && increments == null) {
+      const message = '.slot (null) should be number!'
+      return message
+    }
 
-  const querySpec = {
-        query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
-        parameters: [
-            {
-                name: "@id",
-                value: id
-            },
-            {
-                name: "@idName",
-                value: idName
-            }
-        ]
-  };
-  
-  const { resources: readDoc } = await client
-    .database(databaseName)
-    .container(tableName)
-    .items.query(querySpec)
-    .fetchAll()
+    const querySpec = {
+      query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
+      parameters: [
+        {
+          name: "@id",
+          value: id
+        },
+        {
+          name: "@idName",
+          value: idName
+        }
+      ]
+    };
 
-  // Upsert
-  if (readDoc.length === 0) {
-    let payload: any = { [idName]: id }; 
-    
+    const { resources: readDoc } = await client
+      .database(databaseName)
+      .container(tableName)
+      .items.query(querySpec)
+      .fetchAll()
+
+    //Upsert
+    if (readDoc.length === 0) {
+      let payload: any = { [idName]: id };
+
+      for (let i = 0; i < updates_key_list.length; i++) {
+        const key = updates_key_list[i];
+        let value = updates_value_list[i];
+        if (value == undefined) {
+          value = null
+        }
+        payload[key] = value;
+      }
+      for (let i = 0; i < increments_key_list.length; i++) {
+        const key = increments_key_list[i];
+        const value = increments_value_list[i];
+        payload[key] = value
+      }
+      const update_payload = {
+        ...payload,
+      }
+      const { resource: updateDoc } = await client
+        .database(databaseName)
+        .container(tableName)
+        .items.upsert(update_payload)
+      const result: any = {};
+      for (const key in payload) {
+        if (payload.hasOwnProperty(key)) {
+          result[key] = payload[key];
+        }
+      }
+      return result;
+    }
+    // Update
+    let payload: any = { [idName]: id };
 
     for (let i = 0; i < updates_key_list.length; i++) {
       const key = updates_key_list[i];
-      const value = updates_value_list[i];
+      let value = updates_value_list[i];
+      if (value == undefined) {
+        value = null
+      }
       payload[key] = value;
     }
 
-    if (updates !=null && Object.keys(updates).length > 0){
-      payload = {
-          ...payload,
-          [increments_key]: increments_value
-      };
+    for (let i = 0; i < increments_key_list.length; i++) {
+      const key = increments_key_list[i];
+      const value = increments_value_list[i];
+      const existValue = readDoc[0][key] || 0;
+      payload[key] = value + existValue;
     }
 
+    const { _rid, _self, _etag, _attachments, _ts, ..._rest } = readDoc[0];
+    const update_payload = {
+      ..._rest,
+      ...payload,
+      _rid,
+      _self,
+      _etag,
+      _attachments,
+      _ts
+    }
     const { resource: updateDoc } = await client
-        .database(databaseName)
-        .container(tableName)
-        .items.upsert(payload)
+      .database(databaseName)
+      .container(tableName)
+      .item(readDoc[0].id).replace(update_payload)
 
-    const { id: documentId, ...rest } = payload
-    return rest
-    
-  }
-  // Update
-  else{ 
-    let payload
-    let {slot, balance, ...rest } = readDoc[0]
-    
-    if (slot == undefined || slot == null){
-        slot = 0
-    }
-    if (balance == undefined || balance == null){
-      balance = 0
-    }
-
-    let new_slot = slot + increments_value
-    let new_balance = balance + increments_value
-
-    //updates only
-    if (updates !=null && updates_key != undefined && increments_key == undefined){
-        payload = {  
-            ...readDoc[0],     
-            [updates_key]:updates_value            
-        };
-    }
-    //increments only
-    else if(increments_key != undefined && updates_key == undefined){
-
-      //when increments is the 'balance'
-      if (increments_key=='balance'){
-        payload = {    
-          ...readDoc[0],   
-          [increments_key]:new_balance      
-        };
+    const result: any = {};
+    for (const key in payload) {
+      if (payload.hasOwnProperty(key)) {
+        result[key] = payload[key];
       }
-      //when increments is the 'slot'
-      else {
-        payload = {    
-          ...readDoc[0],   
-          [increments_key]:new_slot      
-        };
-      }
-        
     }
-    //both updates and increments
-    else{
-      //when increments is the 'balance'
-      if (increments_key=='balance'){
-        payload = {    
-          ...readDoc[0],
-          [updates_key]:updates_value, 
-          [increments_key]:new_balance      
-        };
-      }
-      //when increments is the 'slot'
-      else {
-        payload = {  
-          ...readDoc[0],     
-          [updates_key]:updates_value,
-          [increments_key]:new_slot   
-        }
-      };
-    }
-    
-    const { resource: updateDoc } = await client
-        .database(databaseName)
-        .container(tableName)
-        .item(readDoc[0].id).replace(payload)
-
-        return {
-            no: updateDoc.no,
-            [updates_key]:updateDoc[updates_key],    
-            [increments_key]: updateDoc[increments_key]
-        }
-    }
+    return result;
   }
 }
 
