@@ -88,27 +88,14 @@ export class CosmosService<T extends GeneralItem>  {
      * @param id
      * @param item
      */
-    public async saveItem(id: string, item: T) {
+    public async saveItem(_id: string, item: T) {
         const { tableName, idName } = this.options;
-
-        let key_list: string[] = [];
-        let value_list: (string | number)[] = [];
-
-        if (item !== null && item !== undefined) {
-            for (const value of Object.values(item)) {
-                if (typeof value === 'string' || typeof value === 'number') {
-                    value_list.push(value);
-                }
-            }
-            key_list = Object.keys(item)
-        }
-
         const querySpec = {
             query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
             parameters: [
                 {
                     name: "@id",
-                    value: id
+                    value: _id
                 },
                 {
                     name: "@idName",
@@ -123,40 +110,32 @@ export class CosmosService<T extends GeneralItem>  {
             .items.query(querySpec)
             .fetchAll();
 
-        let payload: any = {[idName]: id};
-
-        for (let i = 0; i < key_list.length; i++) {
-            const key = key_list[i];
-            let value = value_list[i];
-            if (value == undefined) {
-                value = null
-            }
+        let payload: any = {[idName]: _id};
+        for (const [key, value] of Object.entries(item)) {
             payload[key] = value;
         }
-
+         
         if (readDoc.length === 0) {
             const { resources: saveDoc } = await client
                 .database(databaseName)
                 .container(tableName)
                 .items.create(payload)
-            return
+            return saveDoc
         }
 
-        const { id: documentId, _rid, _self, _etag, _attachments, _ts, ..._rest } = readDoc[0];
+        const { id, _rid, _self, _etag, _attachments, _ts, ..._rest } = readDoc[0];
         const update_payload = {
             ...payload,
-            documentId,
+            id,
             _rid,
             _self,
-            _etag,
             _attachments,
-            _ts
         }
-
         const { resource: updateDoc } = await client
             .database(databaseName)
             .container(tableName)
-            .item(readDoc[0].id).replace(update_payload)
+            .item(readDoc[0].id)
+            .replace(update_payload)
 
         const result: any = {};
         for (const key in payload) {
@@ -174,7 +153,7 @@ export class CosmosService<T extends GeneralItem>  {
      * @param id
      * @param sort
      */
-    public async readItem(id: string, sort?: string | number) {
+    public async readItem(_id: string, sort?: string | number) {
         const { tableName, idName } = this.options;
 
         const querySpec = {
@@ -182,7 +161,7 @@ export class CosmosService<T extends GeneralItem>  {
             parameters: [
                 {
                     name: "@id",
-                    value: id
+                    value: _id
                 },
                 {
                     name: "@idName",
@@ -198,11 +177,11 @@ export class CosmosService<T extends GeneralItem>  {
             .fetchAll();
 
         if (readDoc.length > 0) {
-            const { id: documentId, ...rest } = readDoc[0];
+            const {id, ...rest } = readDoc[0];
             return rest
         }
         if (readDoc.length === 0) {
-            const notFoundMessage = `404 NOT FOUND - ${idName}:${id}`;
+            const notFoundMessage = `404 NOT FOUND - ${idName}:${_id}`;
             throw new Error(notFoundMessage);
         }
     }
@@ -214,14 +193,14 @@ export class CosmosService<T extends GeneralItem>  {
     * @param id
     * @param sort
     */
-    public async deleteItem(id: string, sort?: string | number) {
+    public async deleteItem(_id: string, sort?: string | number) {
         const { tableName, idName } = this.options;
         const querySpec = {
             query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
             parameters: [
                 {
                     name: "@id",
-                    value: id
+                    value: _id
                 },
                 {
                     name: "@idName",
@@ -242,7 +221,7 @@ export class CosmosService<T extends GeneralItem>  {
             .item(readDoc[0].id)
             .delete()
 
-        const { id: documentId, ...rest } = readDoc[0];
+        const { id, ...rest } = readDoc[0];
         return rest
     }
 
@@ -256,35 +235,12 @@ export class CosmosService<T extends GeneralItem>  {
     * @param increments
     */
     public async updateItem(
-        id: string,
+        _id: string,
         sort: string | number,
         updates: Updatable,
         increments?: Incrementable,
     ) {
-
         const { tableName, idName } = this.options;
-
-        let updates_key_list: string[] = [];
-        let increments_key_list: string[] = [];
-        let updates_value_list: (string | number)[] = [];
-        let increments_value_list: (string | number)[] = [];
-
-        if (updates !== null && updates !== undefined) {
-            for (const value of Object.values(updates)) {
-                if (typeof value === 'string' || typeof value === 'number') {
-                    updates_value_list.push(value);
-                }
-            }
-            updates_key_list = Object.keys(updates)
-        }
-        if (increments !== null && increments !== undefined) {
-            for (const value of Object.values(increments)) {
-                if (typeof value === 'string' || typeof value === 'number') {
-                    increments_value_list.push(value);
-                }
-            }
-            increments_key_list = Object.keys(increments)
-        }
 
         if (updates == null && increments == null) {
             const message = '.slot (null) should be number!'
@@ -296,7 +252,7 @@ export class CosmosService<T extends GeneralItem>  {
             parameters: [
                 {
                     name: "@id",
-                    value: id
+                    value: _id
                 },
                 {
                     name: "@idName",
@@ -313,21 +269,19 @@ export class CosmosService<T extends GeneralItem>  {
 
         //Upsert
         if (readDoc.length === 0) {
-            let payload: any = { [idName]: id };
-
-            for (let i = 0; i < updates_key_list.length; i++) {
-                const key = updates_key_list[i];
-                let value = updates_value_list[i];
-                if (value == undefined) {
-                    value = null
+            let payload: any = { [idName]: _id };
+            
+            if (updates !== null && updates !== undefined) {
+                for (const [key, value] of Object.entries(updates)) {
+                    payload[key] = value;
                 }
-                payload[key] = value;
             }
-            for (let i = 0; i < increments_key_list.length; i++) {
-                const key = increments_key_list[i];
-                const value = increments_value_list[i];
-                payload[key] = value
+            if (increments !== null && increments !== undefined) {
+                for (const [key, value] of Object.entries(increments)) {
+                    payload[key] = value;
+                }
             }
+
             const update_payload = {
                 ...payload,
             }
@@ -346,33 +300,24 @@ export class CosmosService<T extends GeneralItem>  {
         }
 
         //Update
-        let payload: any = { [idName]: id };
+        let payload: any = { [idName]: _id };
 
-        for (let i = 0; i < updates_key_list.length; i++) {
-            const key = updates_key_list[i];
-            let value = updates_value_list[i];
-            if (value == undefined) {
-                value = null
+        if (updates !== null && updates !== undefined) {
+            for (const [key, value] of Object.entries(updates)) {
+                payload[key] = value;
             }
-            payload[key] = value;
+        }
+        if (increments !== null && increments !== undefined) {
+            for (const [key, value] of Object.entries(increments)) {
+                const existValue = readDoc[0][key] || 0;
+                payload[key] = value + existValue;
+            }
         }
 
-        for (let i = 0; i < increments_key_list.length; i++) {
-            const key = increments_key_list[i];
-            const value = increments_value_list[i];
-            const existValue = readDoc[0][key] || 0;
-            payload[key] = value + existValue;
-        }
-
-        const { _rid, _self, _etag, _attachments, _ts, ..._rest } = readDoc[0];
+        const { _etag, _ts, ..._rest } = readDoc[0];
         const update_payload = {
             ..._rest,
             ...payload,
-            _rid,
-            _self,
-            _etag,
-            _attachments,
-            _ts
         }
         const { resource: updateDoc } = await client
             .database(databaseName)
