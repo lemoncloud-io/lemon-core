@@ -14,6 +14,9 @@ import { GeneralItem } from 'lemon-model';
 import { CosmosOption, CosmosService } from './cosmos-service';
 const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 
+/**
+ * Cosmos config.
+ */
 const CosmosClient = require('@azure/cosmos').CosmosClient
 const config = require('./config')
 
@@ -30,6 +33,91 @@ const options = {
 const client = new CosmosClient(options)
 
 /**
+ * ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
+ * NOTE: '!=' is shortcut to { not: { comparator: '=' } }
+ */
+
+interface ComparisonCondition {
+    key: string;
+    comparator: '=' | '!=' | '<=' | '<' | '>=' | '>';
+    value: number | string;
+}
+function isComparisonCondition(c: Condition): c is ComparisonCondition {
+    return 'comparator' in c;
+}
+// BetweenCondition - {from} <= value <= {to}
+interface BetweenCondition {
+    key: string;
+    from: number | string;
+    to: number | string;
+}
+function isBetweenCondition(c: Condition): c is BetweenCondition {
+    return 'from' in c && 'to' in c;
+}
+// ExistenceCondition - given field exists or not
+interface ExistenceCondition {
+    key: string;
+    exists: boolean;
+}
+function isExistenceCondition(c: Condition): c is ExistenceCondition {
+    return 'exists' in c;
+}
+// StringCondition - begins with {value}, contains {value}
+interface StringCondition {
+    key: string;
+    operator: 'begins_with' | 'contains';
+    value: string;
+}
+function isStringCondition(c: Condition): c is StringCondition {
+    return 'operator' in c;
+}
+
+type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition;
+
+/**
+ * convertToCondition - Use Record<string, any> to Condition
+ */
+function convertToCondition(record: Record<string, any>): Condition {
+    if ('comparator' in record) {
+        const condition: ComparisonCondition = {
+            key: record.key,
+            comparator: record.comparator,
+            value: record.value,
+        };
+        return condition;
+    }
+
+    if ('from' in record && 'to' in record) {
+        const condition: BetweenCondition = {
+            key: record.key,
+            from: record.from,
+            to: record.to,
+        };
+        return condition;
+    }
+
+    if ('exists' in record) {
+        const condition: ExistenceCondition = {
+            key: record.key,
+            exists: record.exists,
+        };
+        return condition;
+    }
+
+    if ('operator' in record) {
+        const condition: StringCondition = {
+            key: record.key,
+            operator: record.operator,
+            value: record.value,
+        };
+        return condition;
+    }
+
+    throw new Error(`Invalid condition: ${JSON.stringify(record)}`);
+}
+
+
+/**
  * class: CosmosQueryResult
  * - result information of scan.
  */
@@ -38,10 +126,20 @@ export interface CosmosQueryResult<T> {
     list: T[];
     // number of data
     count?: number;
-    // last evaluated key for pagination
-    last?: any;
 }
 
+/**
+ * feature: `CosmosScannable`
+ * - simple scan capable class.
+ */
+export interface CosmosScannable<T extends GeneralItem> {
+    /**
+     * simple scan w/ limit.
+     *
+     * @param conditions
+     */
+    readItemsByConditions(conditions: Record<string, any>):Promise<CosmosQueryResult<T>>;
+}
 
 /**
  * class: QueryResult
@@ -49,53 +147,46 @@ export interface CosmosQueryResult<T> {
  */
 
 class QueryBuilder {
+    static buildConditionExpression(condition: Condition): string {
+        if (isComparisonCondition(condition)) {
+            const valueExpression = condition.value === null ? 'null' : `'${condition.value}'`;
+            return `c['${condition.key}'] ${condition.comparator} ${valueExpression}`;
+        }
+        if (isStringCondition(condition)) {
+            if (condition.operator === 'begins_with')
+                return `STARTSWITH(c['${condition.key}'], '${condition.value}')`;
+            if (condition.operator === 'contains')
+                return `CONTAINS(c['${condition.key}'], '${condition.value}')`;
+        }
+        if (isBetweenCondition(condition)) {
+            return `c['${condition.key}'] >= ${condition.from} AND c['${condition.key}'] <= ${condition.to}`;
+        }
+        if (isExistenceCondition(condition)) {
+            return condition.exists ? `IS_DEFINED(c['${condition.key}'])` : `NOT IS_DEFINED(c['${condition.key}'])`;
+        }
+    }
+    
     static buildQueryByConditions(conditions: Record<string, any>) {
-        
-        const queryParts = Object.entries(conditions).map(([index, elements]) => {
-            let { key, comparator, value, from, to, exists, operator, not, or } = elements;
-            if (or) {
-                // Map over each condition in the 'or' array
-                const orConditions = or.map((orCondition: Record<string, any>) => {
-                    let { key: orKey, comparator: orComparator, value: orValue, operator: orOperator } = orCondition;
-            
-                    if (orOperator === 'begins_with' && orValue) {
-                        return `STARTSWITH(c['${orKey}'], '${orValue}')`;
-                    }
-                    if (orKey && orComparator && (orValue || orValue === null)) {
-                        orValue === null ? 'null' : `'${orValue}'`;
-                        return `c['${orKey}'] ${orComparator} ${orValue}`;
-                    }
+        const queryParts = Object.values(conditions).map((condition) => {
+            if (condition.hasOwnProperty('or')) {
+                const orConditions = condition.or.map((orConditionRecord: Record<string, any>) => {
+                    const orCondition = convertToCondition(orConditionRecord);
+                    return this.buildConditionExpression(orCondition);
                 });
-                // Combine 'or' conditions using 'OR'
                 return `(${orConditions.join(' OR ')})`;
             }
-            if (not) {
-                if(not.key && not.comparator && (not.value || not.value===null)){
-                    value = elements.not.value === null ? 'null' : `'${elements.not.value}'`;
-                    return `c['${elements.not.key}'] !${elements.not.comparator} ${value}`;
-                }
-                if (not.key && not.operator === 'begins_with' && not.value) {
-                    return `NOT STARTSWITH(c['${not.key}'], '${not.value}')`;
-                }
+            if (condition.hasOwnProperty('not')) {
+                const notCondition = condition.not;
+                const notExpression = this.buildConditionExpression(notCondition);
+                return `NOT (${notExpression})`;
             }
-            if(key && comparator && (value || value===null)){
-                value = elements.value === null ? 'null' : `'${elements.value}'`;
-                return `c['${elements.key}'] ${elements.comparator} ${value}`;
-            }
-            if(key && from && to){
-                return `c['${key}'] >= ${from} AND c['${key}'] <= ${to}`;
-            }
-            if(key && exists){
-                return `IS_DEFINED(c['${key}'])`;
-            }
-            if (key && operator === 'begins_with' && value) {
-                return `STARTSWITH(c['${key}'], '${value}')`;
-            }
+            return this.buildConditionExpression(condition);
         });
-        
+    
         const queryString = `SELECT * FROM c WHERE ${queryParts.join(' AND ')}`;
         return queryString;
     }
+    
 }
 
 class QueryService {
@@ -106,7 +197,7 @@ class QueryService {
         this.options = options;
     }
     async queryItems(query: string) {
-        const { tableName } = this.options; // Ensure that options is accessible here
+        const { tableName } = this.options; 
 
         const querySpec = {
             query,        
@@ -122,7 +213,7 @@ class QueryService {
     }
 }
 
-export class CosmosQueryService{
+export class CosmosQueryService<T extends GeneralItem> implements CosmosScannable<T>{
     protected options: CosmosOption;
     private queryService: QueryService;
     
@@ -144,15 +235,15 @@ export class CosmosQueryService{
     /**
      * Read items by conditions using dynamic query
      */
-    public async readItemsByConditions(conditions: Record<string, any>) {
+    public async readItemsByConditions(conditions: Record<string, any>): Promise<CosmosQueryResult<T>> {
         
         const queryString = QueryBuilder.buildQueryByConditions(conditions);
         const queryResult = await this.queryService.queryItems(queryString);
         
         if (queryResult.length > 0) {
             return {
-                list : queryResult,
-                count: {count:queryResult.length}
+                list : queryResult as T[],
+                count: queryResult.length
             }
         } else {
             throw new Error('No items found.');
