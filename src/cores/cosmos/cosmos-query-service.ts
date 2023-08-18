@@ -73,49 +73,7 @@ function isStringCondition(c: Condition): c is StringCondition {
 }
 
 type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition;
-
-/**
- * convertToCondition - Use Record<string, any> to Condition
- */
-function convertToCondition(record: Record<string, any>): Condition {
-    if ('comparator' in record) {
-        const condition: ComparisonCondition = {
-            key: record.key,
-            comparator: record.comparator,
-            value: record.value,
-        };
-        return condition;
-    }
-
-    if ('from' in record && 'to' in record) {
-        const condition: BetweenCondition = {
-            key: record.key,
-            from: record.from,
-            to: record.to,
-        };
-        return condition;
-    }
-
-    if ('exists' in record) {
-        const condition: ExistenceCondition = {
-            key: record.key,
-            exists: record.exists,
-        };
-        return condition;
-    }
-
-    if ('operator' in record) {
-        const condition: StringCondition = {
-            key: record.key,
-            operator: record.operator,
-            value: record.value,
-        };
-        return condition;
-    }
-
-    throw new Error(`Invalid condition: ${JSON.stringify(record)}`);
-}
-
+export type CosmosQueryFilter = (Condition | { not: Condition }) | CosmosQueryFilter[] | { or: CosmosQueryFilter[] };
 
 /**
  * class: CosmosQueryResult
@@ -138,7 +96,7 @@ export interface CosmosScannable<T extends GeneralItem> {
      *
      * @param conditions
      */
-    readItemsByConditions(conditions: Record<string, any>):Promise<CosmosQueryResult<T>>;
+    readItemsByConditions(conditions: CosmosQueryFilter):Promise<CosmosQueryResult<T>>;
 }
 
 /**
@@ -166,11 +124,10 @@ class QueryBuilder {
         }
     }
     
-    static buildQueryByConditions(conditions: Record<string, any>) {
+    static buildQueryByConditions(conditions: CosmosQueryFilter) {
         const queryParts = Object.values(conditions).map((condition) => {
             if (condition.hasOwnProperty('or')) {
-                const orConditions = condition.or.map((orConditionRecord: Record<string, any>) => {
-                    const orCondition = convertToCondition(orConditionRecord);
+                const orConditions = condition.or.map((orCondition: Condition) => {
                     return this.buildConditionExpression(orCondition);
                 });
                 return `(${orConditions.join(' OR ')})`;
@@ -235,7 +192,7 @@ export class CosmosQueryService<T extends GeneralItem> implements CosmosScannabl
     /**
      * Read items by conditions using dynamic query
      */
-    public async readItemsByConditions(conditions: Record<string, any>): Promise<CosmosQueryResult<T>> {
+    public async readItemsByConditions(conditions: CosmosQueryFilter): Promise<CosmosQueryResult<T>> {
         
         const queryString = QueryBuilder.buildQueryByConditions(conditions);
         const queryResult = await this.queryService.queryItems(queryString);

@@ -13,7 +13,7 @@ import { loadProfile } from '../../environ';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { CosmosService, CosmosOption } from './cosmos-service';
 import { GeneralItem } from 'lemon-model';
-import { CosmosQueryService } from './cosmos-query-service';
+import { CosmosQueryService, CosmosQueryFilter} from './cosmos-query-service';
 import { loadDataYml } from '../../tools';
 
 interface MyModel extends GeneralItem {
@@ -66,8 +66,8 @@ describe('CosmosQueryService', () => {
         expect2(queryService.hello()).toEqual(`cosmos-query-service:${options.tableName}`);
         
         if (!PROFILE) return;
-        let conditions
-        let expectedCount
+        let conditions:CosmosQueryFilter[]
+        let expectedCount:number
         
         // 은행이 KB국민(bank = KB국민)인 개수
         conditions = [
@@ -129,6 +129,7 @@ describe('CosmosQueryService', () => {
         ];
         expectedCount = data.filter(item => item.name.startsWith('이')).length;
         expect2((await queryService.readItemsByConditions(conditions)).count).toEqual(expectedCount);
+        
     });
 
 
@@ -136,8 +137,8 @@ describe('CosmosQueryService', () => {
         const { queryService, options } = instance();
         
         if (!PROFILE) return;
-        let conditions
-        let expectedCount
+        let conditions:CosmosQueryFilter[]
+        let expectedCount:number
 
         // 성이 신씨이거나 정씨인 개수
         conditions = [
