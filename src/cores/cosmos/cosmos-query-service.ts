@@ -28,6 +28,21 @@ const options = {
 };
 
 const client = new CosmosClient(options)
+
+/**
+ * class: CosmosQueryResult
+ * - result information of scan.
+ */
+export interface CosmosQueryResult<T> {
+    // list of data
+    list: T[];
+    // number of data
+    count?: number;
+    // last evaluated key for pagination
+    last?: any;
+}
+
+
 /**
  * class: QueryResult
  * - result information of query.
@@ -133,22 +148,12 @@ export class CosmosQueryService{
         
         const queryString = QueryBuilder.buildQueryByConditions(conditions);
         const queryResult = await this.queryService.queryItems(queryString);
-
+        
         if (queryResult.length > 0) {
-            let count = 0
-            for(let i=0; i<queryResult.length; i++){
-                count += 1
+            return {
+                list : queryResult,
+                count: {count:queryResult.length}
             }
-            return {"count":count}
-            
-            /*
-            // when return queryResult data
-
-            return queryResult.map((item:any, index: any) => {
-                return queryResult.length
-            });
-            */
-            
         } else {
             throw new Error('No items found.');
         }
