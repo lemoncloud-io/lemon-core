@@ -31,12 +31,10 @@ const options = {
 };
 
 const client = new CosmosClient(options)
-
 /**
  * ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
  * NOTE: '!=' is shortcut to { not: { comparator: '=' } }
  */
-
 interface ComparisonCondition {
     key: string;
     comparator: '=' | '!=' | '<=' | '<' | '>=' | '>';
@@ -83,7 +81,9 @@ export interface CosmosQueryResult<T> {
     // list of data
     list: T[];
     // number of data
-    count?: number;
+    total?: number;
+    // Last result on previous page
+    last?: any;
 }
 
 /**
@@ -93,10 +93,11 @@ export interface CosmosQueryResult<T> {
 export interface CosmosScannable<T extends GeneralItem> {
     /**
      * simple scan w/ limit.
-     *
+     * @param limit     limit of page
+     * @param last      last result on previous page using continuation token
      * @param conditions
      */
-    readItemsByConditions(conditions: CosmosQueryFilter):Promise<CosmosQueryResult<T>>;
+    readItemsByConditions(limit?: number, last?: any, conditions?: CosmosQueryFilter): Promise<CosmosQueryResult<T>>;
 }
 
 /**
@@ -105,6 +106,7 @@ export interface CosmosScannable<T extends GeneralItem> {
  */
 
 class QueryBuilder {
+
     static buildConditionExpression(condition: Condition): string {
         if (isComparisonCondition(condition)) {
             const valueExpression = condition.value === null ? 'null' : `'${condition.value}'`;
@@ -123,64 +125,72 @@ class QueryBuilder {
             return condition.exists ? `IS_DEFINED(c['${condition.key}'])` : `NOT IS_DEFINED(c['${condition.key}'])`;
         }
     }
-    
+
     static buildQueryByConditions(conditions: CosmosQueryFilter) {
-        const queryParts = Object.values(conditions).map((condition) => {
-            if (condition.hasOwnProperty('or')) {
-                const orConditions = condition.or.map((orCondition: Condition) => {
-                    return this.buildConditionExpression(orCondition);
-                });
-                return `(${orConditions.join(' OR ')})`;
-            }
-            if (condition.hasOwnProperty('not')) {
-                const notCondition = condition.not;
-                const notExpression = this.buildConditionExpression(notCondition);
-                return `NOT (${notExpression})`;
-            }
-            return this.buildConditionExpression(condition);
-        });
-    
-        const queryString = `SELECT * FROM c WHERE ${queryParts.join(' AND ')}`;
-        return queryString;
+        if (conditions) {
+            const queryParts = Object.values(conditions).map((condition) => {
+                if (condition.hasOwnProperty('or')) {
+                    const orConditions = condition.or.map((orCondition: Condition) => {
+                        return this.buildConditionExpression(orCondition);
+                    });
+                    return `(${orConditions.join(' OR ')})`;
+                }
+                if (condition.hasOwnProperty('not')) {
+                    const notCondition = condition.not;
+                    const notExpression = this.buildConditionExpression(notCondition);
+                    return `NOT (${notExpression})`;
+                }
+                return this.buildConditionExpression(condition);
+            });
+
+            const queryString = `SELECT * FROM c WHERE ${queryParts.join(' AND ')}`;
+            return queryString;
+        }
+        return 'SELECT * FROM c';
     }
-    
 }
 
 class QueryService {
-    protected options: CosmosOption;
 
+    protected options: CosmosOption;
     // Add constructor that takes options as a parameter
     constructor(options: CosmosOption) {
         this.options = options;
     }
-    async queryItems(query: string) {
-        const { tableName } = this.options; 
 
+    async queryItems(query: string, limit?: number, last?: any): Promise<{ queryResult: any[]; continuationToken?: any }> {
+
+        const { tableName } = this.options;
         const querySpec = {
-            query,        
+            query,
         };
-        
-        const { resources: queryResult } = await client
+
+        // cosmos DB needs continuation token for pagination
+        const { resources: queryResult, continuationToken } = await client
             .database(databaseName)
             .container(tableName)
-            .items.query(querySpec)
-            .fetchAll();
+            .items.query(querySpec, { continuationToken: last, maxItemCount: limit })
+            .fetchNext();
         
-        return queryResult;
+        return {
+            queryResult,
+            continuationToken: continuationToken || undefined
+        };
     }
 }
 
 export class CosmosQueryService<T extends GeneralItem> implements CosmosScannable<T>{
+
     protected options: CosmosOption;
     private queryService: QueryService;
-    
+
     public constructor(options: CosmosOption) {
         // eslint-disable-next-line prettier/prettier
         _inf(NS, `CosmosQueryService(${options.tableName}/${options.idName}${options.sortName ? '/' : ''}${options.sortName || ''})...`);
         if (!options.tableName) throw new Error('.tableName is required');
         if (!options.idName) throw new Error('.idName is required');
         this.options = options;
-        
+
         // Initialize the queryService
         this.queryService = new QueryService(options);
     }
@@ -188,20 +198,21 @@ export class CosmosQueryService<T extends GeneralItem> implements CosmosScannabl
      * say hello of identity.
      */
     public hello = () => `cosmos-query-service:${this.options.tableName}`;
-    
+
     /**
      * Read items by conditions using dynamic query
      */
-    public async readItemsByConditions(conditions: CosmosQueryFilter): Promise<CosmosQueryResult<T>> {
-        
+    public async readItemsByConditions(limit?: number, last?: any, conditions?: CosmosQueryFilter): Promise<CosmosQueryResult<T>> {
+
         const queryString = QueryBuilder.buildQueryByConditions(conditions);
-        const queryResult = await this.queryService.queryItems(queryString);
-        
+        const { queryResult, continuationToken } = await this.queryService.queryItems(queryString, limit, last);
+
         if (queryResult.length > 0) {
             return {
-                list : queryResult as T[],
-                count: queryResult.length
-            }
+                list: queryResult as T[],
+                total: queryResult.length,
+                last: continuationToken
+            };
         } else {
             throw new Error('No items found.');
         }
