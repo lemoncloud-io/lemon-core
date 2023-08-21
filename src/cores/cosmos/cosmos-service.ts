@@ -310,7 +310,7 @@ export class CosmosService<T extends GeneralItem>  {
         if (increments !== null && increments !== undefined) {
             for (const [key, value] of Object.entries(increments)) {
                 const existValue = readDoc[0][key] || 0;
-                payload[key] = value + existValue;
+                payload[key] = value + existValue; 
             }
         }
 
@@ -319,10 +319,19 @@ export class CosmosService<T extends GeneralItem>  {
             ..._rest,
             ...payload,
         }
-        const { resource: updateDoc } = await client
-            .database(databaseName)
-            .container(tableName)
-            .item(readDoc[0].id).replace(update_payload)
+        try {
+            // Compare the ETag values ​​of the document and update only if they match for atomicity
+            const { resource: updateDoc } = await client
+                .database(databaseName)
+                .container(tableName)
+                .item(readDoc[0].id)
+                .replace(update_payload, { accessCondition: { type: "IfMatch", condition: readDoc[0]._etag } });
+        }
+        catch (error) {
+            // Handle concurrency conflict
+            const message = "Increments do not satisfy atomicity";
+            return message;
+        }
 
         const result: any = {};
         for (const key in payload) {
