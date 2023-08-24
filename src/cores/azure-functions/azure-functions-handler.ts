@@ -1,3 +1,14 @@
+/**
+ * API: `/hello`
+ * - public service api
+ *
+ *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-08-23 initial version
+ *
+ * @copyright (C) 2023 LemonCloud Co Ltd. - All Rights Reserved.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { AzureFunction, Context, HttpRequest } from '@azure/functions';
 import { ProtocolParam, CoreConfigService } from './../core-services';
 
@@ -24,7 +35,7 @@ export abstract class AzureFunctionsHandler {
     }
 
     public async handle(context: Context, req: HttpRequest): Promise<any> {
-        const type = req.headers['x-amz-sns-message-type'] ? 'sns' : 'web'; // Adjust for SNS detection
+        const type = req.headers['type']=="httpTrigger" ? 'web' : 'sns';
         const handler = this._map[type];
         if (handler && typeof handler === 'function') {
             return handler(context, req);

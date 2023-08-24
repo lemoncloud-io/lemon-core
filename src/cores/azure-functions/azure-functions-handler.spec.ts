@@ -1,3 +1,14 @@
+/**
+ * API: `/hello`
+ * - public service api
+ *
+ *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-08-23 initial version
+ *
+ * @copyright (C) 2023 LemonCloud Co Ltd. - All Rights Reserved.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { AzureFunctionsHandler } from './azure-functions-handler';
 import { expect2, GETERR$ } from '../../common/test-helper';
 import { Context, HttpRequest, HttpResponse, Form } from '@azure/functions';
@@ -14,13 +25,10 @@ export const instance = () => {
 };
 
 describe('AzureFunctionsHandler', () => {
-    // ...
-
     // Test for handling 'hello' event
     it('should respond with "world" for "hello" event', async () => {
         const { service } = instance();
         service.setHandler('web', async (_: Context, req: HttpRequest): Promise<HttpResponse> => {
-            // Your logic here
             // You can access request body and headers using `req.body` and `req.headers`
             return {
                 status: 200,
@@ -31,8 +39,8 @@ describe('AzureFunctionsHandler', () => {
         const context: Context = {} as Context;
         const req: HttpRequest = {
             method: 'GET',
-            url: 'https://api-management-lemon.azure-api.net',
-            headers: {},
+            url: 'https://sls-korc-dev-azure-hello-api.azurewebsites.net', // Deployed Azure Functions URL
+            headers: {type:"httpTrigger"},
             query: {},
             params: {},
             user: {
@@ -56,6 +64,4 @@ describe('AzureFunctionsHandler', () => {
         expect2(response.status).toEqual(200); // Expecting HTTP status code 200
         expect2(response.body).toEqual('world'); // Expecting 'world' response
     });
-
-    // ...
 });
