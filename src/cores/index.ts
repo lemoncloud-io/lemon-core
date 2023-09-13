@@ -23,12 +23,14 @@ export * from './dynamo/';
 export * from './elastic/';
 export * from './cache/';
 export * from './api/';
+export * from './az_function/'
 
 //! import `default` with named.
 import aws from './aws/';
 import config from './config/';
 import lambda from './lambda/';
 import protocol from './protocol/';
+import az_function from './az_function';
 
 //! export default.
-export default { aws, config, lambda, protocol };
+export default { aws, config, lambda, protocol, az_function };
