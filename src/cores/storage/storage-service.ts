@@ -83,6 +83,7 @@ export interface StorageService<T extends StorageModel> {
  *  Data Storage Service
  ** ****************************************************************************************************************/
 import { DynamoService, KEY_TYPE } from '../dynamo/';
+import { CosmosService } from '../cosmos/';
 import { loadDataYml } from '../../tools/shared';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
@@ -92,6 +93,154 @@ const clearDuplicated = (arr: string[]) =>
         if (L.indexOf(val) < 0) L.push(val);
         return L;
     }, []);
+/**
+ * class: `CosmosStorageService`
+ * - service via CosmosDB with id + json data.
+ */
+
+export class CosmosStorageService<T extends StorageModel>  {
+    private _table: string; // target table-name
+    private _idName: string; // target table-name
+    private _fields: string[]; // fields set.
+    private $cosmos: CosmosService<MyGeneral>;
+
+    public constructor(table: string, fields: string[], idName: string = 'id') {
+        if (!table) throw new Error(`@table (table-name) is required!`);
+        this._table = table;
+        this._idName = idName;
+        this._fields = clearDuplicated(['id', 'type', 'stereo', 'meta', idName].concat(fields));
+        this.$cosmos = new CosmosService({ tableName: this._table, idName });
+
+        this.$cosmos.createTable();
+    }
+    
+    /**
+     * say hello()
+     * @param name  (optional) given name
+     */
+    public hello = () => `cosmos-storage-service:${this._table}/${this._idName}/${this._fields.length}`;
+
+    /**
+     * (extended) get copy of fields.
+     */
+    public fields = () => [...this._fields];
+
+    /**
+     * simply save(or overwrite) all model
+     *
+     * @param id        id
+     * @param model     whole object.
+     */
+    public async save(id: string, model: T): Promise<T> {
+        const fields = this._fields || [];
+        const data: MyGeneral = fields.reduce((N: any, key) => {
+            const val = (model as any)[key];
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+        await this.$cosmos.saveItem(id, data); // must be `{}`
+        const item: T = Object.assign({ [this._idName]: id }, data) as unknown as T;
+        return item;
+    }
+    /**
+     * auto-create if not found.
+     *
+     * @param id
+     * @param model
+     */
+    public async readOrCreate(id: string, model: T): Promise<T> {
+        return this.read(id).catch((e: Error) => {
+            if (`${e.message}`.startsWith('404 NOT FOUND')) return this.update(id, model);
+            throw e;
+        });
+    }
+
+    /**
+     * Read whole model via database.
+     *
+     * @param id        id
+     */
+    public async read(id: string) {
+        const data = await this.$cosmos.readItem(id);
+        const fields = this._fields || [];
+        const item = fields.reduce((N: any, key) => {
+            const val = (data as any)[key];
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+        return item;
+    }
+
+    public async delete(id: string): Promise<T> {
+        const $org = await this.read(id);
+        await this.$cosmos.deleteItem(id);
+        return $org;
+    }
+
+    /**
+     * update some attributes
+     *
+     * @param id        id
+     * @param model     attributes to update
+     * @param incrementals (optional) attributes to increment
+     */
+    public async update(id: string, model: T, incrementals?: T): Promise<T> {
+        const fields = this._fields || [];
+        const $U: MyGeneral = fields.reduce((N: any, key) => {
+            const val = (model as any)[key];
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+        /* eslint-disable prettier/prettier */
+        const $I: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
+            const val = (incrementals as any)[key];
+            if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
+            M[key] = val;
+            return M;
+        }, {});
+        /* eslint-enable prettier/prettier */
+        const ret: any = await this.$cosmos.updateItem(id, undefined, $U, $I);
+        return ret as T;
+    }
+
+    /**
+     * increment number attribute (or overwrite string field)
+     * - if not exists, then just update property with base zero 0.
+     *
+     * @param id        id
+     * @param model     attributes of number.
+     * @param $update   (optional) update-set.
+     */
+    public async increment(id: string, model: T, $update?: T): Promise<T> {
+        if (!model && !$update) throw new Error('@item is required!');
+        const $org: any = await this.read(id).catch(e => {
+            if (`${e.message || e}`.startsWith('404 NOT FOUND')) return { id };
+            throw e;
+        });
+        const fields = this._fields || [];
+        const $U: MyGeneral = fields.reduce((N: any, key) => {
+            const val = $update ? ($update as any)[key] : undefined;
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+        const $I: Incrementable = fields.reduce((N: any, key) => {
+            const val = (model as any)[key];
+            if (val !== undefined) {
+                const org = ($org as any)[key];
+                //! check type matched!
+                if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
+                    throw new Error(`.${key} (${val}) should be number!`);
+                //! if not exists, update it.
+                if (org === undefined && typeof val === 'number') N[key] = val;
+                else if (typeof val !== 'number' && !Array.isArray(val)) $U[key] = val;
+                else N[key] = val;
+            }
+            return N;
+        }, {});
+        const ret: any = await this.$cosmos.updateItem(id, undefined, $U, $I);
+        return ret as T;
+    }
+}
 
 /**
  * class: `DynamoStorageService`

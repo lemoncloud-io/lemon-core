@@ -97,6 +97,16 @@ const credentials = (profile: string): string => {
     if (!profile) return '';
     const credentials = new AWS.SharedIniFileCredentials({ profile });
     AWS.config.credentials = credentials;
+
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
+    const updatedCredentials = {
+        ...credentials,
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey,
+    };
+    AWS.config.credentials = updatedCredentials;
     return `${profile}`;
 };
 
