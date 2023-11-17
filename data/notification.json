@@ -1,0 +1,12 @@
+{
+    "service": "lemon-accounts-api",
+    "type": "oauth",
+    "stage": "dev",
+    "id": "kakao",
+    "cmd": "token",
+    "event": "login",
+    "data": {
+        "accountId": "010203040506",
+        "provider": "kakao"
+    }
+}

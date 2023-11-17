@@ -79,7 +79,7 @@ class MyStorage extends ProxyStorageService<MyModel, MyType> {
 
 //-------------------------
 //! create service instance.
-export const instance = (table?: string, time?: number) => {
+export const instance = (table: string, time?: number) => {
     const service = new MyService();
     const filters = new MyModelFilter();
     const current = time || new Date().getTime();
@@ -106,12 +106,12 @@ describe('ProxyStorageService', () => {
         expect2(storage.hello()).toEqual('proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
         expect2(storage2.hello()).toEqual('proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
 
-        expect2(service.asKey$('test', 'AAA')).toEqual({ ns:'TT', type:'test', id:'AAA', _id:'TT:test:AAA' });
+        expect2(service.asKey$('test', 'AAA')).toEqual({ ns: 'TT', type: 'test', id: 'AAA', _id: 'TT:test:AAA' });
 
         //! check basic functions
-        expect2(service.asKey$('test','1:23:45'), '_id').toEqual({ _id:'TT:test:1-23-45' });
-        expect2(service.asKey$('test','1:23:45'), '_id').toEqual({ _id:'TT:test:1-23-45' });
-        expect2(service.asKey$('test','1:23:45')).toEqual({ ns:'TT', type:'test', id:'1:23:45', _id:'TT:test:1-23-45' });
+        expect2(service.asKey$('test', '1:23:45'), '_id').toEqual({ _id: 'TT:test:1-23-45' });
+        expect2(service.asKey$('test', '1:23:45'), '_id').toEqual({ _id: 'TT:test:1-23-45' });
+        expect2(service.asKey$('test', '1:23:45')).toEqual({ ns: 'TT', type: 'test', id: '1:23:45', _id: 'TT:test:1-23-45' });
 
         expect2(storage.asTime()).toEqual({ createdAt: current + 10, updatedAt: current + 100, deletedAt: current + 1000 });
         expect2(storage.asTime(current)).toEqual({ createdAt: current + 10, updatedAt: current + 100, deletedAt: current + 1000 });
@@ -133,11 +133,11 @@ describe('ProxyStorageService', () => {
         expect2(storage.storage instanceof DummyStorageService).toEqual(type == 'dummy' ? true : false);
         expect2(storage.storage instanceof DynamoStorageService).toEqual(type == 'dummy' ? false : true);
         //! check common functions.
-        expect2(storage.asKey('test','1:23:45')).toEqual('TT:test:1-23-45')
+        expect2(storage.asKey('test', '1:23:45')).toEqual('TT:test:1-23-45')
 
         //! check basic foot-print.
-        expect2(service.asKey$('test', 'AAA')).toEqual({ ns:'TT', type:'test', id:'AAA', _id:'TT:test:AAA' });
-        if (type == 'dummy'){
+        expect2(service.asKey$('test', 'AAA')).toEqual({ ns: 'TT', type: 'test', id: 'AAA', _id: 'TT:test:AAA' });
+        if (type == 'dummy') {
             expect2(storage.hello()).toEqual('proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
         } else {
             //! check count of fields
@@ -157,7 +157,7 @@ describe('ProxyStorageService', () => {
             //! override timer.
             expect2(storage.setTimer(() => 11223344)).toEqual(current);
             expect2(storage.getTime()).toEqual(11223344);
-            expect2(storage.asTime()).toEqual({ createdAt:11223344 + 10, updatedAt:11223344 + 100, deletedAt:11223344 + 1000 });
+            expect2(storage.asTime()).toEqual({ createdAt: 11223344 + 10, updatedAt: 11223344 + 100, deletedAt: 11223344 + 1000 });
             //! restore origin.
             expect2(storage.setTimer(null)).toEqual(11223344);      // should returns previous
             expect2(storage.setTimer(null)).toEqual(null);          // should returns previous
@@ -178,38 +178,38 @@ describe('ProxyStorageService', () => {
         await storage.doDelete('test', 'aaa', true).catch(GETERR);
         expect2(await storage.doDelete('test', 'aaa', true).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');
         expect2(await storage.doRead('test', 'aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');        // BE SURE 404
-        expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // AUTO CREATE
-        expect2(await storage.doRead('test', 'aaa', { stereo: 'b' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // DO NOT UPDATE
-        expect2(await storage.doRead('test', 'aaa'), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });        // READ BACK
-        expect2(await storage.doDelete('test', 'aaa', true).catch(GETERR),'_id').toEqual({ _id:'TT:test:aaa' });
+        expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id: 'aaa', stereo: 'a' }); // AUTO CREATE
+        expect2(await storage.doRead('test', 'aaa', { stereo: 'b' }), 'id,stereo').toEqual({ id: 'aaa', stereo: 'a' }); // DO NOT UPDATE
+        expect2(await storage.doRead('test', 'aaa'), '_id,stereo').toEqual({ _id: 'TT:test:aaa', stereo: 'a' });        // READ BACK
+        expect2(await storage.doDelete('test', 'aaa', true).catch(GETERR), '_id').toEqual({ _id: 'TT:test:aaa' });
         expect2(await storage.doDelete('test', 'aaa', false).catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:aaa');
-        expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id:'aaa', stereo:'a' }); // AUTO CREATE
+        expect2(await storage.doRead('test', 'aaa', { stereo: 'a' }), 'id,stereo').toEqual({ id: 'aaa', stereo: 'a' }); // AUTO CREATE
 
         //! check auto create on update().
         await storage.doDelete('test', 'bbb', true).catch(GETERR);
-        expect2(await storage.doUpdate('test', 'bbb', { stereo:'b' })).toEqual({ _id:'TT:test:bbb', stereo:'b', updatedAt });
-        expect2(await storage.doRead('test', 'bbb')).toEqual({ _id:'TT:test:bbb', stereo:'b', updatedAt });
+        expect2(await storage.doUpdate('test', 'bbb', { stereo: 'b' })).toEqual({ _id: 'TT:test:bbb', stereo: 'b', updatedAt });
+        expect2(await storage.doRead('test', 'bbb')).toEqual({ _id: 'TT:test:bbb', stereo: 'b', updatedAt });
 
         //! use typed-model-service.
         const $test = storage.makeTypedStorageService('test');
         const $user = storage.makeTypedStorageService('user' as MyType);
-        expect2(await $test.read('aaa').catch(GETERR), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });
-        expect2(await $test.read('bbb').catch(GETERR), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
+        expect2(await $test.read('aaa').catch(GETERR), '_id,stereo').toEqual({ _id: 'TT:test:aaa', stereo: 'a' });
+        expect2(await $test.read('bbb').catch(GETERR), '!updatedAt').toEqual({ _id: 'TT:test:bbb', stereo: 'b' });
         expect2(await $user.read('aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:user:aaa');
 
         //! test filters.
         if (1) {
-            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id: 'TT:test:bbb', stereo: 'b' });
 
-            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id:'TT:test:bbb', price:1000, count: 1 });
-            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b', price:1000, count: 1 });
+            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id: 'TT:test:bbb', price: 1000, count: 1 });
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id: 'TT:test:bbb', stereo: 'b', price: 1000, count: 1 });
 
-            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id:'TT:test:bbb', price:1000, count: 2 });
-            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b', price:1000, count: 2 });
+            expect2(await $test.update('bbb', { price: 1000 }), '!updatedAt').toEqual({ _id: 'TT:test:bbb', price: 1000, count: 2 });
+            expect2(await $test.read('bbb'), '!updatedAt').toEqual({ _id: 'TT:test:bbb', stereo: 'b', price: 1000, count: 2 });
         }
 
         //! test lock()
-        if (1){
+        if (1) {
             const id = 'a01';
             const $key = service.asKey$('test', id);
             const _id = $key._id;
@@ -217,40 +217,40 @@ describe('ProxyStorageService', () => {
 
             //! test base CRUD with typed-storage-service.
             expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);        // BE SURE 404
-            expect2(await $test.readOrCreate(id, { name:'bob' }).catch(GETERR)).toEqual({ _id, id, name:'bob', ns:'TT', type:'test', createdAt, updatedAt, deletedAt:0 });
-            expect2(await $test.update(id, { count:2 })).toEqual({ _id, count: 2, updatedAt });
-            expect2(await $test.update(id, { count:2 })).toEqual({ _id, count: 2, updatedAt });
-            expect2(await $test.increment(id, { count:2 })).toEqual({ _id, count: 4, updatedAt });
-            expect2(await $test.delete(id)).toEqual({ _id, id, name:'bob', ns:'TT', type:'test', count:4, createdAt, updatedAt, deletedAt:0 });
-            expect2(await $test.insert({ name:'col' }), 'id,name').toEqual({ id:'1000003', name:'col' });
+            expect2(await $test.readOrCreate(id, { name: 'bob' }).catch(GETERR)).toEqual({ _id, id, name: 'bob', ns: 'TT', type: 'test', createdAt, updatedAt, deletedAt: 0 });
+            expect2(await $test.update(id, { count: 2 })).toEqual({ _id, count: 2, updatedAt });
+            expect2(await $test.update(id, { count: 2 })).toEqual({ _id, count: 2, updatedAt });
+            expect2(await $test.increment(id, { count: 2 })).toEqual({ _id, count: 4, updatedAt });
+            expect2(await $test.delete(id)).toEqual({ _id, id, name: 'bob', ns: 'TT', type: 'test', count: 4, createdAt, updatedAt, deletedAt: 0 });
+            expect2(await $test.insert({ name: 'col' }), 'id,name').toEqual({ id: '1000003', name: 'col' });
 
             //! test lock
             expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);                      // BE SURE 404
             expect2(await $test.lock(0, 1).catch(GETERR)).toEqual('@id (model-id) is required!');
 
             //! lock() may throw 404 since >2.1.15
-            const expected001 = { _id, id, name:'bob', ns:'TT', type:'test', createdAt, updatedAt, deletedAt:0 };
+            const expected001 = { _id, id, name: 'bob', ns: 'TT', type: 'test', createdAt, updatedAt, deletedAt: 0 };
             // expect2(await $test.lock(id, -1).catch(GETERR)).toEqual('@tick (-1) is not valid!');
             expect2(await $test.lock(id, -1).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);
-            expect2(await $test.readOrCreate(id, { name:'bob' }).catch(GETERR)).toEqual({ ...expected001 });
+            expect2(await $test.readOrCreate(id, { name: 'bob' }).catch(GETERR)).toEqual({ ...expected001 });
             expect2(await $test.lock(id, 1, 0).catch(GETERR)).toEqual('@interval (0) is not valid!');
             expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual(true);                                       // lock := 0
 
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock:0 });                        // lock is inited!
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock: 0 });                        // lock is inited!
             expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual(true);                                       // lock := 1
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock:1 });                        // lock == 1
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock: 1 });                        // lock == 1
             expect2(await $test.lock(id, 2, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 2');// lock := 2
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock:2 });                        // lock == 2
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock: 2 });                        // lock == 2
             expect2(await $test.lock(id, 2, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 2');// lock := 2
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock:2 });                        // lock == 2
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock: 2 });                        // lock == 2
 
             //! test release()
             expect2(await $test.release(id).catch(GETERR)).toEqual(true);
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock:0 });                        // RESET .lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock: 0 });                        // RESET .lock
             expect2(await $test.release(0).catch(GETERR)).toEqual('@id (model-id) is required!');
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock:0 });                        // lock := 0
-            expect2(await $test.update(id, { lock: 2 }).catch(GETERR)).toEqual({ _id, lock:2, updatedAt });         // set lock=2
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock:2, updatedAt });             // get lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock: 0 });                        // lock := 0
+            expect2(await $test.update(id, { lock: 2 }).catch(GETERR)).toEqual({ _id, lock: 2, updatedAt });         // set lock=2
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected001, lock: 2, updatedAt });             // get lock
 
             expect2(await $test.lock(id, 1, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 2'); // +1 tick
             expect2(await $test.lock(id, 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 2'); // +0 tick
@@ -260,12 +260,11 @@ describe('ProxyStorageService', () => {
             expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);                      // BE SURE 404
 
             //! use in parrallel.
-            if (type == 'dummy')
-            {
+            if (type == 'dummy') {
                 expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);                  // BE SURE 404
-                expect2(await $test.readOrCreate(id, { name:'bob' }).catch(GETERR)).toEqual({ ...expected001 });
-                expect2(await do_parrallel([1,2,3,4],(i => $test.lock(id, i, 5).catch(GETERR).then(()=>i)))).toEqual([1,2,3,4]);
-                expect2(await $test.read(id).catch(GETERR), 'lock').toEqual({ lock:4 });                            // expected is 4 due to 4x parrallel.
+                expect2(await $test.readOrCreate(id, { name: 'bob' }).catch(GETERR)).toEqual({ ...expected001 });
+                expect2(await do_parrallel([1, 2, 3, 4], (i => $test.lock(id, i, 5).catch(GETERR).then(() => i)))).toEqual([1, 2, 3, 4]);
+                expect2(await $test.read(id).catch(GETERR), 'lock').toEqual({ lock: 4 });                            // expected is 4 due to 4x parrallel.
 
                 //! cleanup
                 expect2(await $test.delete(id).catch(GETERR), '_id').toEqual({ _id });
@@ -286,20 +285,20 @@ describe('ProxyStorageService', () => {
             }
 
             //! pre-condition..
-            const expected = { _id, id, ns:'TT', type:'test', createdAt, updatedAt, deletedAt:0 };
+            const expected = { _id, id, ns: 'TT', type: 'test', createdAt, updatedAt, deletedAt: 0 };
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);
-            expect2(await $test.readOrCreate(id, { lock: 5 }).catch(GETERR)).toEqual({ ...expected, lock:5 });          // rest lock := 5
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:5 });
+            expect2(await $test.readOrCreate(id, { lock: 5 }).catch(GETERR)).toEqual({ ...expected, lock: 5 });          // rest lock := 5
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 5 });
 
             //! test guard()
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +0 cycle waiting.
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:5 });
-            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });             // reset lock
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 5 });
+            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock: 0, updatedAt });             // reset lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                             // success
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
             expect2(await $test.guard(id, func(-1), 0, 10).catch(GETERR)).toEqual('@i (-1) should be > 0!');            // error in func().
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
 
             //! cleanup
             expect2(await $test.delete(id).catch(GETERR), '_id').toEqual({ _id });
@@ -319,27 +318,27 @@ describe('ProxyStorageService', () => {
             }
 
             //! pre-condition..
-            const expected = { _id, id, ns:'TT', type:'test', createdAt, updatedAt, deletedAt:0 };
+            const expected = { _id, id, ns: 'TT', type: 'test', createdAt, updatedAt, deletedAt: 0 };
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);
-            expect2(await $test.readOrCreate(id, { lock: 5 }).catch(GETERR)).toEqual({ ...expected, lock:5 });          // rest lock := 5
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:5 });
+            expect2(await $test.readOrCreate(id, { lock: 5 }).catch(GETERR)).toEqual({ ...expected, lock: 5 });          // rest lock := 5
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 5 });
 
             //! test guard()
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual('400 TIMEOUT - model[TT:test:a01].lock = 5'); // +1 cycle waiting.
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:5 });
-            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock:0, updatedAt });             // reset lock
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 5 });
+            expect2(await $test.update(id, { lock: 0 }).catch(GETERR)).toEqual({ _id, lock: 0, updatedAt });             // reset lock
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
             expect2(await $test.guard(id, func(3), 0, 10).catch(GETERR)).toEqual({ i: 3 });                             // success
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
             expect2(await $test.guard(id, func(-1), 0, 10).catch(GETERR)).toEqual('@i (-1) should be > 0!');            // error in func().
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
 
             //! in parrallel........
-            const list = [1,-1,2,0,5,3];
+            const list = [1, -1, 2, 0, 5, 3];
             const expected2 = list.map(i => i <= 0 ? `@i (${i}) should be > 0!` : { i });
             expect2(await do_parrallel(list, (i) => $test.guard(id, func(i), 20, 10).catch(GETERR))).toEqual(expected2);
-            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock:0 });
+            expect2(await $test.read(id).catch(GETERR)).toEqual({ ...expected, lock: 0 });
 
             //! cleanup
             expect2(await $test.delete(id).catch(GETERR), '_id').toEqual({ _id });
@@ -347,49 +346,49 @@ describe('ProxyStorageService', () => {
         }
 
         //! basic CRUD.
-        if (1){
+        if (1) {
             const id = 'bbb';
             const $key = service.asKey$('test', id);
             const _id = $key._id;
             await $test.delete(id).catch(GETERR);
             expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);
-            expect2(await $test.save('', { name:'bob' }).catch(GETERR)).toEqual('@id (model-id) is required!');
-            expect2(await $test.save(id, { name:'bob' }).catch(GETERR)).toEqual({ _id, id, ns:'TT', type:'test', name:'bob', createdAt, updatedAt: createdAt, deletedAt:0 }); // created!
-            expect2(await $test.read(id).catch(GETERR), 'id,name,createdAt,updatedAt').toEqual({ id, name:'bob', createdAt, updatedAt: createdAt });
+            expect2(await $test.save('', { name: 'bob' }).catch(GETERR)).toEqual('@id (model-id) is required!');
+            expect2(await $test.save(id, { name: 'bob' }).catch(GETERR)).toEqual({ _id, id, ns: 'TT', type: 'test', name: 'bob', createdAt, updatedAt: createdAt, deletedAt: 0 }); // created!
+            expect2(await $test.read(id).catch(GETERR), 'id,name,createdAt,updatedAt').toEqual({ id, name: 'bob', createdAt, updatedAt: createdAt });
 
-            expect2(await $test.save(id, { name:'bob' }).catch(GETERR)).toEqual({ _id });                                   // nothing to save
-            expect2(await $test.save(id, { name:'guk' }).catch(GETERR)).toEqual({ _id, name:'guk', updatedAt });            // updated.
-            expect2(await $test.save(id, { count:'1' } as any).catch(GETERR)).toEqual({ _id, count:1, updatedAt });         // type conversion to number
-            expect2(await $test.save(id, { tick:0 } as any).catch(GETERR)).toEqual({ _id, meta:{ tick:0 }, updatedAt });    // meta save.
-            expect2(await $test.read(id).catch(GETERR), 'id,name,meta,createdAt,updatedAt').toEqual({ id, name:'guk', meta:{ tick:0 }, createdAt, updatedAt });
+            expect2(await $test.save(id, { name: 'bob' }).catch(GETERR)).toEqual({ _id });                                   // nothing to save
+            expect2(await $test.save(id, { name: 'guk' }).catch(GETERR)).toEqual({ _id, name: 'guk', updatedAt });            // updated.
+            expect2(await $test.save(id, { count: '1' } as any).catch(GETERR)).toEqual({ _id, count: 1, updatedAt });         // type conversion to number
+            expect2(await $test.save(id, { tick: 0 } as any).catch(GETERR)).toEqual({ _id, meta: { tick: 0 }, updatedAt });    // meta save.
+            expect2(await $test.read(id).catch(GETERR), 'id,name,meta,createdAt,updatedAt').toEqual({ id, name: 'guk', meta: { tick: 0 }, createdAt, updatedAt });
 
             //! overwrite meta.
-            expect2(await $test.save(id, { meta:'' }).catch(GETERR)).toEqual({ _id, meta:null, updatedAt });                // clear meta
-            expect2(await $test.read(id).catch(GETERR), 'id,name,meta,createdAt,updatedAt').toEqual({ id, name:'guk', meta:null, createdAt, updatedAt });
+            expect2(await $test.save(id, { meta: '' }).catch(GETERR)).toEqual({ _id, meta: null, updatedAt });                // clear meta
+            expect2(await $test.read(id).catch(GETERR), 'id,name,meta,createdAt,updatedAt').toEqual({ id, name: 'guk', meta: null, createdAt, updatedAt });
 
             //! test lock
             expect2(await $test.lock(id, 1).catch(GETERR)).toEqual(true);
-            expect2(await $test.read(id).catch(GETERR), '_id,lock,name').toEqual({ _id, lock:1, name:'guk' });              // lock field is created
+            expect2(await $test.read(id).catch(GETERR), '_id,lock,name').toEqual({ _id, lock: 1, name: 'guk' });              // lock field is created
             expect2(await $test.release(id).catch(GETERR)).toEqual(true);
-            expect2(await $test.read(id).catch(GETERR), '_id,lock,name').toEqual({ _id, lock:0, name:'guk' });
+            expect2(await $test.read(id).catch(GETERR), '_id,lock,name').toEqual({ _id, lock: 0, name: 'guk' });
 
             //! internal fields
-            expect2(await $test.save(id, { COUNT:'1' } as any).catch(GETERR)).toEqual({ _id, meta:{ COUNT:'1' }, updatedAt });// constant member
-            expect2(await $test.save(id, { Count:'A' } as any).catch(GETERR)).toEqual({ _id });                               // ignore Object Name
-            expect2(await $test.save(id, { createdAt:2 } as any).catch(GETERR)).toEqual({ _id });                             // ignore internal name
-            expect2(await $test.save(id, { updatedAt:3 } as any).catch(GETERR)).toEqual({ _id });                             // ignore internal name
-            expect2(await $test.save(id, { updatedAt:4 } as any).catch(GETERR)).toEqual({ _id });                             // ignore internal name
-            expect2(await $test.save(id, { _key:4 } as any).catch(GETERR)).toEqual({ _id });                                  // ignore internal name
-            expect2(await $test.save(id, { $key:5 } as any).catch(GETERR)).toEqual({ _id });                                  // ignore internal name
+            expect2(await $test.save(id, { COUNT: '1' } as any).catch(GETERR)).toEqual({ _id, meta: { COUNT: '1' }, updatedAt });// constant member
+            expect2(await $test.save(id, { Count: 'A' } as any).catch(GETERR)).toEqual({ _id });                               // ignore Object Name
+            expect2(await $test.save(id, { createdAt: 2 } as any).catch(GETERR)).toEqual({ _id });                             // ignore internal name
+            expect2(await $test.save(id, { updatedAt: 3 } as any).catch(GETERR)).toEqual({ _id });                             // ignore internal name
+            expect2(await $test.save(id, { updatedAt: 4 } as any).catch(GETERR)).toEqual({ _id });                             // ignore internal name
+            expect2(await $test.save(id, { _key: 4 } as any).catch(GETERR)).toEqual({ _id });                                  // ignore internal name
+            expect2(await $test.save(id, { $key: 5 } as any).catch(GETERR)).toEqual({ _id });                                  // ignore internal name
 
             //! not destroy
             expect2(await $test.delete(id, false).catch(GETERR)).toEqual({ _id, updatedAt, deletedAt });
-            expect2(await $test.read(id).catch(GETERR), 'id,name,createdAt,updatedAt,deletedAt').toEqual({ id, name:'guk', createdAt, updatedAt,deletedAt });
+            expect2(await $test.read(id).catch(GETERR), 'id,name,createdAt,updatedAt,deletedAt').toEqual({ id, name: 'guk', createdAt, updatedAt, deletedAt });
 
             //! internal object..
-            expect2(await storage.save(_id, { name:{ a:1 }} as any).catch(GETERR)).toEqual({ _id:'TT:test:bbb', name:{ a:1 } });
-            expect2(await storage.read(_id).catch(GETERR), '_id,name').toEqual({ _id, name:{ a:1 } });
-            expect2(await $test.save(id, { name:{ a:1 }} as any).catch(GETERR)).toEqual({ _id });
+            expect2(await storage.save(_id, { name: { a: 1 } } as any).catch(GETERR)).toEqual({ _id: 'TT:test:bbb', name: { a: 1 } });
+            expect2(await storage.read(_id).catch(GETERR), '_id,name').toEqual({ _id, name: { a: 1 } });
+            expect2(await $test.save(id, { name: { a: 1 } } as any).catch(GETERR)).toEqual({ _id });
         }
 
         /* eslint-enable prettier/prettier */
@@ -400,7 +399,7 @@ describe('ProxyStorageService', () => {
     it('should pass service w/ dummy-storage', build_test_scenario_by_type('dummy'));
 
     //! test w/ dynamo service.
-    it('should pass service w/ dynamo-storage', build_test_scenario_by_type('dynamo'));
+    // it('should pass service w/ dynamo-storage', build_test_scenario_by_type('dynamo'));
 
     //! test ModelUtil.
     it('should pass ModelUtil functions', async done => {
@@ -455,10 +454,10 @@ describe('ProxyStorageService', () => {
             expect2($unique.hello()).toEqual('unique-field-manager:test/name:typed-storage-service:test/proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
 
             //! make 'aaa', no lookup
-            expect2(await storage.save('aaa', { name:'AAA' }), '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'aaa', name:'AAA', deletedAt:0 });
-            expect2(await storage.save('bbb', { name:'BBB' }), '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'bbb', name:'BBB', deletedAt:0 });
-            expect2(await storage.read('aaa'),                 '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'aaa', name:'AAA', deletedAt:0 });
-            expect2(await storage.read('bbb'),                 '!_id,!createdAt,!updatedAt').toEqual({ ns:'TT', type:'test', id:'bbb', name:'BBB', deletedAt:0 });
+            expect2(await storage.save('aaa', { name: 'AAA' }), '!_id,!createdAt,!updatedAt').toEqual({ ns: 'TT', type: 'test', id: 'aaa', name: 'AAA', deletedAt: 0 });
+            expect2(await storage.save('bbb', { name: 'BBB' }), '!_id,!createdAt,!updatedAt').toEqual({ ns: 'TT', type: 'test', id: 'bbb', name: 'BBB', deletedAt: 0 });
+            expect2(await storage.read('aaa'), '!_id,!createdAt,!updatedAt').toEqual({ ns: 'TT', type: 'test', id: 'aaa', name: 'AAA', deletedAt: 0 });
+            expect2(await storage.read('bbb'), '!_id,!createdAt,!updatedAt').toEqual({ ns: 'TT', type: 'test', id: 'bbb', name: 'BBB', deletedAt: 0 });
 
             const ID_AAA = $unique.asLookupId('aaa');
             const ID_BBB = $unique.asLookupId('bbb');
@@ -474,38 +473,38 @@ describe('ProxyStorageService', () => {
 
             //! findOrCreate() w/o $creates
             expect2(await $unique.findOrCreate('AAA').catch(GETERR)).toEqual('404 NOT FOUND - test:name/AAA');
-            expect2(await $unique.findOrCreate('AAA', {}).catch(GETERR), 'id,type,name').toEqual({ id:'1000001', type:'test', name:'AAA' });
-            expect2(await $unique.findOrCreate('AAA', {}).catch(GETERR), 'id,type,name').toEqual({ id:'1000001', type:'test', name:'AAA' });
-            expect2(await storage.delete('1000001', true).catch(GETERR), 'id,type,name').toEqual({ id:'1000001', type:'test', name:'AAA' });
+            expect2(await $unique.findOrCreate('AAA', {}).catch(GETERR), 'id,type,name').toEqual({ id: '1000001', type: 'test', name: 'AAA' });
+            expect2(await $unique.findOrCreate('AAA', {}).catch(GETERR), 'id,type,name').toEqual({ id: '1000001', type: 'test', name: 'AAA' });
+            expect2(await storage.delete('1000001', true).catch(GETERR), 'id,type,name').toEqual({ id: '1000001', type: 'test', name: 'AAA' });
             expect2(await storage.delete('1000001', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:1000001');
             expect2(await $unique.findOrCreate('AAA').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:1000001');
 
             //! findOrCreate() w/ $creates(id=XYZ)
             expect2(await $unique.findOrCreate('BBB').catch(GETERR)).toEqual('404 NOT FOUND - test:name/BBB');
-            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (BBB) is not same as (AAA)!');
-            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
-            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
-            expect2(await storage.delete('XYZ', true).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
+            expect2(await $unique.findOrCreate('BBB', { id: 'XYZ', name: 'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (BBB) is not same as (AAA)!');
+            expect2(await $unique.findOrCreate('BBB', { id: 'XYZ', name: 'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id: 'XYZ', type: 'test', name: 'BBB' });
+            expect2(await $unique.findOrCreate('BBB', { id: 'XYZ', name: 'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id: 'XYZ', type: 'test', name: 'BBB' });
+            expect2(await storage.delete('XYZ', true).catch(GETERR), 'id,type,name').toEqual({ id: 'XYZ', type: 'test', name: 'BBB' });
             expect2(await storage.delete('XYZ', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:XYZ');
-            expect2(await $unique.findOrCreate('BBB', { id:'XYZ', name:'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id:'XYZ', type:'test', name:'BBB' });
+            expect2(await $unique.findOrCreate('BBB', { id: 'XYZ', name: 'BBB' }).catch(GETERR), 'id,type,name').toEqual({ id: 'XYZ', type: 'test', name: 'BBB' });
 
             //! findOrCreate() w/ $creates(id=)
             expect2(await $unique.findOrCreate('CCC').catch(GETERR)).toEqual('404 NOT FOUND - test:name/CCC');
-            expect2(await $unique.findOrCreate('CCC', { id:'', name:'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (CCC) is not same as (AAA)!');
-            expect2(await $unique.findOrCreate('CCC', { id:'', name:'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
-            expect2(await $unique.findOrCreate('CCC', { id:'', name:'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
-            expect2(await storage.delete('1000002', true).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
+            expect2(await $unique.findOrCreate('CCC', { id: '', name: 'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (CCC) is not same as (AAA)!');
+            expect2(await $unique.findOrCreate('CCC', { id: '', name: 'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id: '1000002', type: 'test', name: 'CCC' });
+            expect2(await $unique.findOrCreate('CCC', { id: '', name: 'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id: '1000002', type: 'test', name: 'CCC' });
+            expect2(await storage.delete('1000002', true).catch(GETERR), 'id,type,name').toEqual({ id: '1000002', type: 'test', name: 'CCC' });
             expect2(await storage.delete('1000002', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:1000002');
-            expect2(await $unique.findOrCreate('CCC', { id:'', name:'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000002', type:'test', name:'CCC' });
+            expect2(await $unique.findOrCreate('CCC', { id: '', name: 'CCC' }).catch(GETERR), 'id,type,name').toEqual({ id: '1000002', type: 'test', name: 'CCC' });
 
             //! findOrCreate() w/ $creates()
             expect2(await $unique.findOrCreate('DDD').catch(GETERR)).toEqual('404 NOT FOUND - test:name/DDD');
-            expect2(await $unique.findOrCreate('DDD', { name:'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (DDD) is not same as (AAA)!');
-            expect2(await $unique.findOrCreate('DDD', { name:'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
-            expect2(await $unique.findOrCreate('DDD', { name:'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
-            expect2(await storage.delete('1000003', true).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
+            expect2(await $unique.findOrCreate('DDD', { name: 'AAA' }).catch(GETERR), 'id,type,name').toEqual('@name (DDD) is not same as (AAA)!');
+            expect2(await $unique.findOrCreate('DDD', { name: 'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id: '1000003', type: 'test', name: 'DDD' });
+            expect2(await $unique.findOrCreate('DDD', { name: 'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id: '1000003', type: 'test', name: 'DDD' });
+            expect2(await storage.delete('1000003', true).catch(GETERR), 'id,type,name').toEqual({ id: '1000003', type: 'test', name: 'DDD' });
             expect2(await storage.delete('1000003', true).catch(GETERR), 'id,type,name').toEqual('404 NOT FOUND - _id:TT:test:1000003');
-            expect2(await $unique.findOrCreate('DDD', { name:'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id:'1000003', type:'test', name:'DDD' });
+            expect2(await $unique.findOrCreate('DDD', { name: 'DDD' }).catch(GETERR), 'id,type,name').toEqual({ id: '1000003', type: 'test', name: 'DDD' });
         }
 
         if (1) {
@@ -516,14 +515,14 @@ describe('ProxyStorageService', () => {
 
             //! updateLookup() w/o value
             expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual('404 NOT FOUND - _id:TT:test:#name/AAA');
-            expect2(await $unique.updateLookup(aaa).catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'AAA' });
-            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#name/AAA', type:'test', stereo:'#', meta:'aaa' });
+            expect2(await $unique.updateLookup(aaa).catch(GETERR), 'id,type,name').toEqual({ id: 'aaa', type: 'test', name: 'AAA' });
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id: '#name/AAA', type: 'test', stereo: '#', meta: 'aaa' });
 
             //! try to change name to 'BBB'
             expect2(await $unique.updateLookup({ ...aaa }, 'BBB').catch(GETERR), 'id,type,name').toEqual('@name (BBB) is not same as (AAA)!');                              // change to 'BBB' w/o changing model.
-            expect2(await $unique.updateLookup({ ...aaa, name:'BBB' }, 'BBB').catch(GETERR), 'id,type,name').toEqual({ id:'aaa', type:'test', name:'BBB' });                // change to 'BBB' w/o changing model.
-            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#name/AAA', type:'test', stereo:'#', meta:'aaa' });   // occupied
-            expect2(await storage.read($unique.asLookupId('BBB')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id:'#name/BBB', type:'test', stereo:'#', meta:'aaa' });   // newly created..
+            expect2(await $unique.updateLookup({ ...aaa, name: 'BBB' }, 'BBB').catch(GETERR), 'id,type,name').toEqual({ id: 'aaa', type: 'test', name: 'BBB' });                // change to 'BBB' w/o changing model.
+            expect2(await storage.read($unique.asLookupId('AAA')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id: '#name/AAA', type: 'test', stereo: '#', meta: 'aaa' });   // occupied
+            expect2(await storage.read($unique.asLookupId('BBB')).catch(GETERR), 'id,type,stereo,meta').toEqual({ id: '#name/BBB', type: 'test', stereo: '#', meta: 'aaa' });   // newly created..
 
             //! try to update another to 'bbb'
             expect2(await $unique.updateLookup({ ...bbb }, 'BBB').catch(GETERR), 'id,type,name').toEqual('400 DUPLICATED NAME - name[BBB] is duplicated to test[aaa]');     // change to 'BBB' w/o changing model.

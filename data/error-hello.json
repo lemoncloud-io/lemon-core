@@ -1,0 +1,77 @@
+{
+    "attachments": [{
+        "username": "hello-alarm",
+        "color": "#FFB71B",
+        "pretext": "hello lemon",
+        "title": "error-report",
+        "text": {
+            "service": "api://lemon-hello-api#1.4.1",
+            "message": "hello lemon",
+            "context": {
+                "stage": "",
+                "apiId": "",
+                "resourcePath": "",
+                "identity": {},
+                "domainPrefix": "",
+                "event": {
+                    "headers": {
+                        "Host": "localhost:8888",
+                        "User-Agent": "HTTPie/1.0.2",
+                        "Accept-Encoding": "gzip, deflate",
+                        "Accept": "*/*",
+                        "Connection": "keep-alive"
+                    },
+                    "multiValueHeaders": {
+                        "Host": ["localhost:8888"],
+                        "User-Agent": ["HTTPie/1.0.2"],
+                        "Accept-Encoding": ["gzip, deflate"],
+                        "Accept": ["*/*"],
+                        "Connection": ["keep-alive"]
+                    },
+                    "path": "/hello/0/test-error",
+                    "pathParameters": {
+                        "id": "0",
+                        "cmd": "test-error"
+                    },
+                    "requestContext": {
+                        "accountId": "offlineContext_accountId",
+                        "resourceId": "offlineContext_resourceId",
+                        "apiId": "offlineContext_apiId",
+                        "stage": "local",
+                        "requestId": "offlineContext_requestId_27471037369840223",
+                        "identity": {
+                            "cognitoIdentityPoolId": "offlineContext_cognitoIdentityPoolId",
+                            "accountId": "offlineContext_accountId",
+                            "cognitoIdentityId": "offlineContext_cognitoIdentityId",
+                            "caller": "offlineContext_caller",
+                            "apiKey": "offlineContext_apiKey",
+                            "sourceIp": "127.0.0.1",
+                            "cognitoAuthenticationType": "offlineContext_cognitoAuthenticationType",
+                            "cognitoAuthenticationProvider": "offlineContext_cognitoAuthenticationProvider",
+                            "userArn": "offlineContext_userArn",
+                            "userAgent": "HTTPie/1.0.2",
+                            "user": "offlineContext_user"
+                        },
+                        "authorizer": {
+                            "principalId": "offlineContext_authorizer_principalId"
+                        },
+                        "protocol": "HTTP/1.1",
+                        "resourcePath": "/hello/{id}/{cmd}",
+                        "httpMethod": "GET"
+                    },
+                    "resource": "/hello/{id}/{cmd}",
+                    "httpMethod": "GET",
+                    "queryStringParameters": null,
+                    "multiValueQueryStringParameters": null,
+                    "stageVariables": null,
+                    "body": null,
+                    "isOffline": true
+                }
+            },
+            "stack-trace": ["Error: hello lemon", "    at /var/www/lemon-hello-api/src/api/hello-api.js:667:11", "    at Generator.next (<anonymous>)", "    at /var/www/lemon-hello-api/dist/api/hello-api.js:7:71", "    at new Promise (<anonymous>)"],
+            "error": "hello lemon"
+        },
+        "ts": 1566403080,
+        "fields": []
+    }]
+}

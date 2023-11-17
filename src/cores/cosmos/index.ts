@@ -8,3 +8,4 @@
  * @copyright (C) lemoncloud.io 2023 - All Rights Reserved.
  */
 export * from './cosmos-service';
+export * from './cosmos-query-service';

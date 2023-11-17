@@ -5,14 +5,15 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading 
+ * 
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
-import { APIGatewayProxyResult } from 'aws-lambda';
-import { LambdaHandler, WSSHandler, LambdaSubHandler } from './lambda-handler';
-const NS = $U.NS('HWSS', 'yellow'); // NAMESPACE TO BE PRINTED.
+import { APIGatewayProxyResult, LambdaHandler, WSSHandler, LambdaSubHandler } from './lambda-handler';
+const NS = $U.NS('LWSS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 export const buildResponse = (statusCode: number, body: any): APIGatewayProxyResult => {
     // @0612 - body 가 string일 경우, 응답형식을 텍스트로 바꿔서 출력한다.
@@ -60,7 +61,7 @@ export class LambdaWSSHandler extends LambdaSubHandler<WSSHandler> {
         // _log(NS, `LambdaWSSHandler()..`);
     }
 
-    public addListener() {}
+    public addListener() { }
 
     /**
      * Default WSS Handler.

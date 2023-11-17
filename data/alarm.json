@@ -1,0 +1,35 @@
+{
+    "!":"Example for CloudWatch's ALARM message.",
+    "!!":"subject: ALARM: \"awsapplicationelb-targetgroup-prod-kwonsun-r2-8ae26393706048e8-H...\" in Asia Pacific (Seoul)",
+    "AlarmName": "awsapplicationelb-targetgroup-prod-kwonsun-r2-8ae26393706048e8-High-Unhealthy-Hosts",
+    "AlarmDescription": "Created from EC2 Console",
+    "AWSAccountId": "....",
+    "NewStateValue": "ALARM",
+    "NewStateReason": "Threshold Crossed: 1 datapoint [0.0 (25/04/19 07:47:00)] was less than or equal to the threshold (1.0).",
+    "StateChangeTime": "2019-04-25T07:52:46.212+0000",
+    "Region": "Asia Pacific (Seoul)",
+    "OldStateValue": "INSUFFICIENT_DATA",
+    "Trigger": {
+        "MetricName": "UnHealthyHostCount",
+        "Namespace": "AWS/ApplicationELB",
+        "StatisticType": "Statistic",
+        "Statistic": "AVERAGE",
+        "Unit": null,
+        "Dimensions": [
+            {
+                "value": "app/.....",
+                "name": "LoadBalancer"
+            },
+            {
+                "value": "targetgroup/.....",
+                "name": "TargetGroup"
+            }
+        ],
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "ComparisonOperator": "LessThanOrEqualToThreshold",
+        "Threshold": 1,
+        "TreatMissingData": "",
+        "EvaluateLowSampleCountPercentile": ""
+    }
+}

@@ -5,7 +5,8 @@
  *
  * @author      Tim Hong <tim@lemoncloud.io>
  * @date        2020-01-20 initial version
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified dynamo to dynamic loading 
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { _log, _inf, $U } from '../../engine/';
@@ -69,7 +70,7 @@ export interface DynamoScanResult<T> {
     // list of data
     list: T[];
     // number of data
-    count?: number;
+    total?: number;
     // last evaluated key for pagination
     last?: any;
 }
@@ -123,16 +124,16 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         _log(NS, `> payload =`, $U.json(payload));
 
         //! get instance of dynamodoc, and execute query().
-        const { dynamodoc } = DynamoService.instance();
+        const { dynamodoc } = await DynamoService.instance();
         const res = await dynamodoc.scan(payload).promise();
         _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
         res?.Items && _log(NS, `> scan[0] =`, $U.json(res?.Items?.[0]));
 
         const items: unknown[] = res.Items || [];
-        const count = res.Count;
+        const total = res.Count;
         const scannedCount = res.ScannedCount;
         const $lek = res.LastEvaluatedKey || {};
-        _log(NS, `> scan.count =`, count);
+        _log(NS, `> scan.count =`, total);
         _log(NS, `> scan.items.len =`, items.length);
         _log(NS, `> scan.scannedCount =`, scannedCount);
         _log(NS, `> scan.last =`, $lek);
@@ -140,7 +141,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         //! return result-set
         return {
             list: items as T[],
-            count,
+            total,
             last: $lek,
         };
     }

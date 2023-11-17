@@ -12,7 +12,7 @@
 import { _log, _inf, _err, $U } from '../../engine/';
 import { Elastic6SimpleQueriable, CoreModel, CORE_FIELDS } from 'lemon-model';
 import { NUL404 } from '../../common/test-helper';
-import { StorageService, DummyStorageService, DynamoStorageService } from './storage-service';
+import { StorageService, DummyStorageService, CosmosStorageService, DynamoStorageService } from './storage-service';
 import { GeneralAPIController } from '../../controllers/general-api-controller';
 const NS = $U.NS('PSTR', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -312,11 +312,12 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         fields: string[],
         filters?: CoreModelFilterable<T>,
         idName?: string,
+        database?: string
     ) {
         this.idName = idName === undefined ? '_id' : `${idName || ''}`;
         this.service = service;
         this.storage =
-            typeof storage == 'string' ? ProxyStorageService.makeStorageService(storage, fields, idName) : storage;
+            typeof storage == 'string' ? ProxyStorageService.makeStorageService(storage, fields, idName, database) : storage;
         this.filters = filters || new GeneralModelFilter<T, ModelType>(fields);
     }
 
@@ -334,8 +335,9 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         fields?: string[],
         filters?: CoreModelFilterable<T>,
         idName?: string,
+        database?: string,
     ) {
-        const storage = ProxyStorageService.makeStorageService(table, fields, idName);
+        const storage = ProxyStorageService.makeStorageService(table, fields, idName, database);
         const res: ProxyStorageService<T, ModelType> = new ProxyStorageService<T, ModelType>(
             service,
             storage as any,
@@ -662,7 +664,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param fields    required for dynamo table.
      * @param idName    internal partition-key name (default '_id')
      */
-    public static makeStorageService<T>(table: string, fields?: string[], idName?: string): StorageService<T> {
+    public static makeStorageService<T>(table: string, fields?: string[], idName?: string, database?: string): StorageService<T> {
         if (!table) throw new Error(`@table (table-name) is required!`);
         idName = idName === undefined ? '_id' : `${idName || ''}`;
         //! clear the duplicated string
@@ -678,7 +680,13 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         } else {
             if (!fields) throw new Error(`@fields (list of field) is required!`);
             fields = clearDuplicated(CORE_FIELDS.concat(fields));
-            return new DynamoStorageService<T>(table, fields, idName);
+            const service = $U.env('SERVICE', 'aws');
+            if (service === 'azure') {
+                return new CosmosStorageService<T>(database, table, fields, idName)
+            }
+            if (service === 'aws') {
+                return new DynamoStorageService<T>(table, fields, idName);
+            }
         }
     }
 

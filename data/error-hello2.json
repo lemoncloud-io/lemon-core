@@ -1,0 +1,54 @@
+{
+    "attachments": [
+        {
+            "username": "hello-alarm",
+            "color": "#FFB71B",
+            "pretext": "403 SESSION FAILURE",
+            "title": "error-report",
+            "text": {
+                "service": "api://lemon-sessions-api#2.2.3",
+                "message": "403 SESSION FAILURE",
+                "context": {
+                    "stage": "",
+                    "apiId": "",
+                    "resourcePath": "",
+                    "identity": {},
+                    "domainPrefix": "",
+                    "event": {
+                        "httpMethod": "POST",
+                        "pathParameters": {
+                            "id": "login:cocoya.imweb.me:admin",
+                            "cmd": "execute-task"
+                        },
+                        "queryStringParameters": {},
+                        "body": {
+                            "protocol": "http",
+                            "domain": "cocoya.imweb.me",
+                            "action": "/admin/shopping/product?mode=add",
+                            "mode": "pull",
+                            "shadow": "",
+                            "idx": "169",
+                            "prodId": "s201808225b7cf1266a646"
+                        }
+                    }
+                },
+                "stack-trace": [
+                    "Error: 403 SESSION FAILURE",
+                    "    at Request._callback (/var/task/node_modules/lemon-engine/src/plugins/http-proxy.ts:124:62)",
+                    "    at Request.self.callback (/var/task/node_modules/request/request.js:185:22)",
+                    "    at emitTwo (events.js:126:13)",
+                    "    at Request.emit (events.js:214:7)",
+                    "    at Request.<anonymous> (/var/task/node_modules/request/request.js:1161:10)",
+                    "    at emitOne (events.js:116:13)",
+                    "    at Request.emit (events.js:211:7)",
+                    "    at IncomingMessage.<anonymous> (/var/task/node_modules/request/request.js:1083:12)",
+                    "    at Object.onceWrapper (events.js:313:30)",
+                    "    at emitNone (events.js:111:20)"
+                ],
+                "error": "403 SESSION FAILURE"
+            },
+            "ts": 1574745601,
+            "fields": []
+        }
+    ]
+}

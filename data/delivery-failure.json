@@ -1,0 +1,13 @@
+{ 
+    "!": "Example for SNS's DeliveryFailure event notifications.",
+    "!Subject": "DeliveryFailure event for app swks-android (GCM)",
+    "DeliveryAttempts": 1,
+    "EndpointArn": "arn:aws:sns:ap-northeast-2:540298831859:endpoint/GCM/swks-android/acc59122-ebe8-35ab-afc6-e814b80d6d91",
+    "EventType": "DeliveryFailure",
+    "FailureMessage": "gcm behaved in an unexpected way",
+    "FailureType": "DeliveryFailedPerm",
+    "MessageId": "7e9db0ed-9ad7-5f88-a703-e5a90ca85c83",
+    "Resource": "arn:aws:sns:ap-northeast-2:540298831859:app/GCM/swks-android",
+    "Service": "SNS",
+    "Time": "2019-05-02T06:54:55.326Z" 
+}

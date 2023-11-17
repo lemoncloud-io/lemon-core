@@ -10,7 +10,7 @@
  */
 import { expect2, GETERR$ } from '../../common/test-helper';
 import { LambdaHandler } from './lambda-handler';
-import { Handler } from 'aws-lambda';
+
 
 class LambdaHandlerLocal extends LambdaHandler {
     public constructor() {
@@ -22,6 +22,13 @@ export const instance = () => {
     return { service };
 };
 
+const $lambda = () => {
+    return (LambdaHandler as any).instance();
+};
+export type Handler = ReturnType<typeof $lambda>['Handler'];
+export type WEBEvent = ReturnType<typeof $lambda>['APIGatewayProxyEvent'];
+export type Callback<T = any> = ReturnType<typeof $lambda>['Callback<T>'];
+export type Context = ReturnType<typeof $lambda>['Context'];
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('LambdaHandler', () => {
@@ -29,10 +36,12 @@ describe('LambdaHandler', () => {
     it('should pass success w/ callback', async done => {
         /* eslint-disable prettier/prettier */
         const { service } = instance();
-        service.setHandler('web', (event, context, callback) => {
+        const $lambda = service.instance()
+
+        service.setHandler('web', (event: WEBEvent, context: Context, callback: Callback) => {
             return callback(null, { statusCode: 200, body: 'ok' });
         })
-        const event: any = { requestContext:{}, pathParameters: null };
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
         //! call handler.
@@ -50,7 +59,7 @@ describe('LambdaHandler', () => {
         service.setHandler('web', async (): Promise<any> => {
             return ({ statusCode: 200, body: 'ok' });
         })
-        const event: any = { requestContext:{}, pathParameters: null };
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
         //! call handler.
@@ -68,12 +77,12 @@ describe('LambdaHandler', () => {
         service.setHandler('web', () => {
             throw new Error('404 NOT FOUND');
         })
-        const event: any = { requestContext:{}, pathParameters: null };
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
         //! call handler.
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({ error:'404 NOT FOUND' });
+        expect2(response).toEqual({ error: '404 NOT FOUND' });
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -85,12 +94,12 @@ describe('LambdaHandler', () => {
         service.setHandler('web', async (): Promise<any> => {
             throw new Error('404 NOT FOUND');
         })
-        const event: any = { requestContext:{}, pathParameters: null };
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
         //! call handler.
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({ error:'404 NOT FOUND' });
+        expect2(response).toEqual({ error: '404 NOT FOUND' });
         /* eslint-enable prettier/prettier */
         done();
     });
@@ -105,18 +114,18 @@ describe('LambdaHandler', () => {
         }
         const $a = new class implements InnerA {
             private name: string = 'inner-a';
-            public hello: Handler = async (event, context) => {
+            public hello: Handler = async (event: WEBEvent, context: Context) => {
                 const id = event.pathParameters && event.pathParameters.id;
                 return ({ statusCode: 200, body: `hi - ${id}/${this.name}` });
             };
         }
         service.setHandler('web', $a.hello); // set class's method.
-        const event: any = { requestContext:{}, pathParameters: { id:'!' } };
+        const event: any = { requestContext: {}, pathParameters: { id: '!' } };
         const context: any = {};
 
         //! call handler.
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({  statusCode: 200, body: "hi - !/inner-a"});
+        expect2(response).toEqual({ statusCode: 200, body: "hi - !/inner-a" });
         /* eslint-enable prettier/prettier */
         done();
     });

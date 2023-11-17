@@ -1,0 +1,15 @@
+{
+    "attachments": [{
+        "username": "hello-alarm",
+        "color": "#FFB71B",
+        "pretext": "error sample",
+        "title": "error-report",
+        "text": {
+            "service": "api://lemon-hello-api#1.4.1",
+            "message": "hello lemon/error",
+            "error": "hello lemon/error"
+        },
+        "ts": 1566403080,
+        "fields": []
+    }]
+}

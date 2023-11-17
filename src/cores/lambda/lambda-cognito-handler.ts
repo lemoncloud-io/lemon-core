@@ -5,13 +5,13 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
- *
+ * 
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 import { LambdaHandler, CognitoHandler, LambdaSubHandler } from './lambda-handler';
-const NS = $U.NS('HCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: LambdaCognitoHandler
@@ -29,7 +29,7 @@ export class LambdaCognitoHandler extends LambdaSubHandler<CognitoHandler> {
         // _log(NS, `LambdaCognitoHandler()..`);
     }
 
-    public addListener() {}
+    public addListener() { }
 
     /**
      * Default COGNITO Handler.

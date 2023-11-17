@@ -5,14 +5,14 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
- *
+ * 
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 import { NextHandler } from 'lemon-model';
 import { LambdaHandler, CronHandler, LambdaSubHandler } from './lambda-handler';
-const NS = $U.NS('HCRN', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LCRN', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 export interface CronParam {
     name?: string;

@@ -6,13 +6,15 @@
  * @date        2019-09-26 initial version
  * @date        2019-10-01 moved from ticket-data-service to storage-service.
  * @date        2019-12-01 migrated to storage-service.
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-09-01 added cosmos-storage-service
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
 import { StorageModel, GeneralItem, Incrementable } from 'lemon-model';
-export { StorageModel };
+
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -82,11 +84,12 @@ export interface StorageService<T extends StorageModel> {
 /** ****************************************************************************************************************
  *  Data Storage Service
  ** ****************************************************************************************************************/
-import { DynamoService, KEY_TYPE } from '../dynamo/';
+
 import { CosmosService } from '../cosmos/';
+import { DynamoService, KEY_TYPE } from '../dynamo/';
 import { loadDataYml } from '../../tools/shared';
 
-interface MyGeneral extends GeneralItem, StorageModel {}
+interface MyGeneral extends GeneralItem, StorageModel { }
 
 const clearDuplicated = (arr: string[]) =>
     arr.sort().reduce((L, val) => {
@@ -99,21 +102,23 @@ const clearDuplicated = (arr: string[]) =>
  */
 
 export class CosmosStorageService<T extends StorageModel>  {
+    private _databaseName: string; // target database-name
     private _table: string; // target table-name
     private _idName: string; // target table-name
     private _fields: string[]; // fields set.
     private $cosmos: CosmosService<MyGeneral>;
 
-    public constructor(table: string, fields: string[], idName: string = 'id') {
+    public constructor(databaseName: string, table: string, fields: string[], idName: string) {
         if (!table) throw new Error(`@table (table-name) is required!`);
+        this._databaseName = databaseName
         this._table = table;
         this._idName = idName;
         this._fields = clearDuplicated(['id', 'type', 'stereo', 'meta', idName].concat(fields));
-        this.$cosmos = new CosmosService({ tableName: this._table, idName });
-
-        this.$cosmos.createTable();
+        this.$cosmos = new CosmosService({ databaseName: this._databaseName, tableName: this._table, idName: this._idName });
+        this.$cosmos.createTable()
+            .then(() => { }).catch(error => { });
     }
-    
+
     /**
      * say hello()
      * @param name  (optional) given name

@@ -8,7 +8,7 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { expect2, GETERR } from '../..';
-import { StorageModel } from './storage-service';
+import { StorageModel } from 'lemon-model';
 import { RedisStorageService, DummyRedisStorageService } from './redis-storage-service';
 import { isLocalCacheAvailable } from '../cache/cache-service.spec';
 

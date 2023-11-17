@@ -5,13 +5,16 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-12-17 initial version via backbone
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading 
+ * 
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
 import { NextContext, NextHandler } from 'lemon-model';
 import {
+    APIGatewayEventRequestContext,
     LambdaHandler,
     LambdaSubHandler,
     NotificationHandler,
@@ -20,8 +23,8 @@ import {
     buildReportError,
 } from './lambda-handler';
 import { success } from './lambda-web-handler';
-import { APIGatewayEventRequestContext } from 'aws-lambda';
-const NS = $U.NS('HNOT', 'yellow'); // NAMESPACE TO BE PRINTED.
+
+const NS = $U.NS('LNOT', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * param for containing headers infor

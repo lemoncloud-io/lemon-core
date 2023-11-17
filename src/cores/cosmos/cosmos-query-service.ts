@@ -12,29 +12,15 @@
 import { _log, _inf, _err, $U } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { CosmosOption, CosmosService } from './cosmos-service';
-const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 
-/**
- * Cosmos config.
- */
-const CosmosClient = require('@azure/cosmos').CosmosClient
-const config = require('./config')
+const NS = $U.NS('CMQR', 'green'); // NAMESPACE TO BE PRINTED.
 
-const endpoint = process.env.AZURE_ENDPOINT;
-const key = process.env.AZURE_KEY;
-const databaseName = config.database.id
-
-const options = {
-    endpoint: endpoint,
-    key: key,
-    userAgentSuffix: 'CosmosDBJavascriptQuickstart'
-};
-
-const client = new CosmosClient(options)
 /**
  * ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
  * NOTE: '!=' is shortcut to { not: { comparator: '=' } }
  */
+
+type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition;
 interface ComparisonCondition {
     key: string;
     comparator: '=' | '!=' | '<=' | '<' | '>=' | '>';
@@ -70,7 +56,6 @@ function isStringCondition(c: Condition): c is StringCondition {
     return 'operator' in c;
 }
 
-type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition;
 export type CosmosQueryFilter = (Condition | { not: Condition }) | CosmosQueryFilter[] | { or: CosmosQueryFilter[] };
 
 /**
@@ -97,19 +82,15 @@ export interface CosmosScannable<T extends GeneralItem> {
      * @param last      last result on previous page using continuation token
      * @param conditions
      */
-    readItemsByConditions(limit?: number, last?: any, conditions?: CosmosQueryFilter): Promise<CosmosQueryResult<T>>;
+    scan(limit?: number, last?: any, conditions?: CosmosQueryFilter): Promise<CosmosQueryResult<T>>;
 }
 
-/**
- * class: QueryResult
- * - result information of query.
- */
 
-class QueryBuilder {
-
-    static buildConditionExpression(condition: Condition): string {
+export class QueryBuilder {
+    public async buildConditionExpression(condition: Condition): Promise<string> {
         if (isComparisonCondition(condition)) {
-            const valueExpression = condition.value === null ? 'null' : `'${condition.value}'`;
+            const valueExpression =
+                condition.value === null ? 'null' : typeof condition.value === 'number' ? condition.value : `'${condition.value}'`;
             return `c['${condition.key}'] ${condition.comparator} ${valueExpression}`;
         }
         if (isStringCondition(condition)) {
@@ -126,52 +107,49 @@ class QueryBuilder {
         }
     }
 
-    static buildQueryByConditions(conditions: CosmosQueryFilter) {
+    public async buildQueryByConditions(conditions: CosmosQueryFilter): Promise<string> {
         if (conditions) {
-            const queryParts = Object.values(conditions).map((condition) => {
+            const queryParts = Object.values(conditions).map(async (condition) => {
                 if (condition.hasOwnProperty('or')) {
-                    const orConditions = condition.or.map((orCondition: Condition) => {
-                        return this.buildConditionExpression(orCondition);
+                    const orConditions = condition.or.map(async (orCondition: Condition) => {
+                        return await this.buildConditionExpression(orCondition);
                     });
-                    return `(${orConditions.join(' OR ')})`;
+                    return `(${(await Promise.all(orConditions)).join(' OR ')})`;
                 }
                 if (condition.hasOwnProperty('not')) {
                     const notCondition = condition.not;
-                    const notExpression = this.buildConditionExpression(notCondition);
+                    const notExpression = await this.buildConditionExpression(notCondition);
                     return `NOT (${notExpression})`;
                 }
-                return this.buildConditionExpression(condition);
+                return await this.buildConditionExpression(condition);
             });
 
-            const queryString = `SELECT * FROM c WHERE ${queryParts.join(' AND ')}`;
+            const queryString = `SELECT * FROM c WHERE ${(await Promise.all(queryParts)).join(' AND ')}`;
             return queryString;
         }
         return 'SELECT * FROM c';
     }
 }
 
-class QueryService {
-
+export class QueryService {
     protected options: CosmosOption;
     // Add constructor that takes options as a parameter
     constructor(options: CosmosOption) {
         this.options = options;
     }
 
-    async queryItems(query: string, limit?: number, last?: any): Promise<{ queryResult: any[]; continuationToken?: any }> {
-
-        const { tableName } = this.options;
+    public async queryItems(query: string, limit?: number, last?: any): Promise<{ queryResult: any[]; continuationToken?: any }> {
+        const { databaseName, tableName } = this.options;
+        const { client } = await CosmosService.instance();
         const querySpec = {
             query,
         };
-
         // cosmos DB needs continuation token for pagination
         const { resources: queryResult, continuationToken } = await client
             .database(databaseName)
             .container(tableName)
             .items.query(querySpec, { continuationToken: last, maxItemCount: limit })
             .fetchNext();
-        
         return {
             queryResult,
             continuationToken: continuationToken || undefined
@@ -180,9 +158,9 @@ class QueryService {
 }
 
 export class CosmosQueryService<T extends GeneralItem> implements CosmosScannable<T>{
-
     protected options: CosmosOption;
     private queryService: QueryService;
+    private queryBuilder: QueryBuilder;
 
     public constructor(options: CosmosOption) {
         // eslint-disable-next-line prettier/prettier
@@ -193,6 +171,7 @@ export class CosmosQueryService<T extends GeneralItem> implements CosmosScannabl
 
         // Initialize the queryService
         this.queryService = new QueryService(options);
+        this.queryBuilder = new QueryBuilder();
     }
     /**
      * say hello of identity.
@@ -202,20 +181,17 @@ export class CosmosQueryService<T extends GeneralItem> implements CosmosScannabl
     /**
      * Read items by conditions using dynamic query
      */
-    public async readItemsByConditions(limit?: number, last?: any, conditions?: CosmosQueryFilter): Promise<CosmosQueryResult<T>> {
-
-        const queryString = QueryBuilder.buildQueryByConditions(conditions);
+    public async scan(limit?: number, last?: any, conditions?: CosmosQueryFilter): Promise<CosmosQueryResult<T>> {
+        const queryString = await this.queryBuilder.buildQueryByConditions(conditions);
         const { queryResult, continuationToken } = await this.queryService.queryItems(queryString, limit, last);
-
-        if (queryResult.length > 0) {
+        if (queryResult.length >= 0) {
             return {
                 list: queryResult as T[],
                 total: queryResult.length,
                 last: continuationToken
             };
         } else {
-            throw new Error('No items found.');
+            throw new Error('error');
         }
     }
 }
-

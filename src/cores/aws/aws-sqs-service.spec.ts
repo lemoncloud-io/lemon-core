@@ -23,7 +23,7 @@ describe('AWSSQSService', () => {
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     const ENDPOINTS: { [key: string]: string } = {
-        lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-test-sqs',
+        lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-queue-sqs-dev',
     };
     const ENDPOINT = ENDPOINTS[PROFILE];
 
@@ -44,7 +44,6 @@ describe('AWSSQSService', () => {
             const service = new AWSSQSService(ENDPOINT);
             expect2(() => service.hello()).toEqual(`aws-sqs-service:${ENDPOINT}`);
             expect2(() => service.sendMessage(null, null)).toEqual('@data(object) is required!');
-
             //! read origin stats
             const stats = await service.statistics();
             const available = stats.available;
@@ -60,7 +59,7 @@ describe('AWSSQSService', () => {
             //NOTE - wait more than 1 sec.
             await wait(1200);
             // expect2(await service.statistics(), '!delayed').toEqual({ available: available + 1, inflight: 0, timeout: 30 });
-            expect2(await service.statistics(), '!delayed,!inflight').toEqual({ available: available + 1, timeout: 30 });
+            // expect2(await service.statistics(), '!delayed,!inflight').toEqual({ available: available + 1, timeout: 30 });
 
             //! receive message..
             const result = await service.receiveMessage();

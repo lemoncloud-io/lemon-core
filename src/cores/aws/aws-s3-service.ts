@@ -7,7 +7,8 @@
  * @date        2019-07-19 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2023-02-08 support of `listObject()`
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified aws to dynamic loading 
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 /** ****************************************************************************************************************
@@ -18,19 +19,26 @@ import { $engine, $U, _log, _inf, _err } from '../../engine';
 const NS = $U.NS('S3', 'blue');
 
 import path from 'path';
-import AWS from 'aws-sdk';
 import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { Body, GetObjectOutput } from 'aws-sdk/clients/s3';
 import { GETERR } from '../../common/test-helper';
 
+
 /** ****************************************************************************************************************
  *  Core Types.
  ** ****************************************************************************************************************/
-export type Metadata = AWS.S3.Metadata;
-export type S3Object = AWS.S3.Object;
 
+// import AWS from 'aws-sdk';
+// export type Metadata = AWS.S3.Metadata;
+// export type S3Object = AWS.S3.Object;
+// export type ListObjectsV2Request = AWS.S3.ListObjectsV2Request
+// export type PutObjectRequest = AWS.S3.PutObjectRequest
+export type Metadata = ReturnType<typeof instance>['S3']['Metadata'];
+export type S3Object = ReturnType<typeof instance>['S3']['Object'];
+export type ListObjectsV2Request = ReturnType<typeof instance>['S3']['ListObjectsV2Request'];
+export type PutObjectRequest = ReturnType<typeof instance>['S3']['PutObjectRequest'];
 export interface TagSet {
     [key: string]: string;
 }
@@ -150,11 +158,11 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
     return `${target || val}`;
 };
 
-//! get aws client for S3
 const instance = () => {
     const _region = region();
     const config = { region: _region };
-    return new AWS.S3(config); // SQS Instance. shared one???
+    const AWS = require('aws-sdk');
+    return new AWS.S3(config);
 };
 
 /**
@@ -353,11 +361,12 @@ export class AWSS3Service implements CoreS3Service {
         try {
             const data = await s3.getObjectTagging(params).promise();
             _log(NS, `> data =`, $U.json(data));
-            return data?.TagSet?.reduce<TagSet>((tagSet, tag) => {
+            return data?.TagSet?.reduce((tagSet: any, tag: any) => {
                 const { Key, Value } = tag;
                 tagSet[Key] = Value;
                 return tagSet;
-            }, {});
+            }, {} as TagSet);
+
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
@@ -413,7 +422,7 @@ export class AWSS3Service implements CoreS3Service {
 
         //* build the req-params.
         const Bucket = this.bucket();
-        const params: AWS.S3.ListObjectsV2Request = {
+        const params: ListObjectsV2Request = {
             Bucket,
             Prefix,
             Delimiter,
@@ -474,12 +483,12 @@ export class AWSS3Service implements CoreS3Service {
 class S3PutObjectRequestBuilder {
     // properties consisting S3.PutObjectRequest
     private readonly Body: Buffer;
-    private readonly Bucket: AWS.S3.PutObjectRequest['Bucket'];
-    private readonly ContentLength: AWS.S3.PutObjectRequest['ContentLength'];
-    private ContentType?: AWS.S3.PutObjectRequest['ContentType'];
-    private Key?: AWS.S3.PutObjectRequest['Key'];
-    private Metadata: AWS.S3.PutObjectRequest['Metadata'];
-    private Tagging?: AWS.S3.PutObjectRequest['Tagging'];
+    private readonly Bucket: PutObjectRequest['Bucket'];
+    private readonly ContentLength: PutObjectRequest['ContentLength'];
+    private ContentType?: PutObjectRequest['ContentType'];
+    private Key?: PutObjectRequest['Key'];
+    private Metadata: PutObjectRequest['Metadata'];
+    private Tagging?: PutObjectRequest['Tagging'];
 
     /**
      * constructor
@@ -533,7 +542,7 @@ class S3PutObjectRequestBuilder {
     /**
      * return PutObjectRequest object
      */
-    public asParams(): AWS.S3.PutObjectRequest {
+    public asParams(): PutObjectRequest {
         const { Body, Bucket, ContentLength, Metadata, Tagging } = this;
         let { ContentType, Key } = this;
 

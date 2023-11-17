@@ -1,0 +1,5 @@
+{
+  "!": "sample error message",
+  "error": "Hello Error",
+  "stack-trace": "Error: Hello Error\n    at $sns.arn.then.arn (/var/task/src/api/loopers-api.js:1007:23)\n    at <anonymous>"
+}

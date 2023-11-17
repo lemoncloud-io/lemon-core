@@ -1,0 +1,20 @@
+{
+    "!": "sample payload of doReportSlack()",
+    "channel": "!public",
+    "service": "lemon-hello-api",
+    "param": {},
+    "body": {
+        "attachments": [{
+            "text": "hello test",
+            "pretext": "hi test",
+            "fields": [{
+                "title": "test",
+                "value": 222,
+                "short": true
+            }]
+        }]
+    },
+    "context": {
+        "stage": "dev"
+    }
+}

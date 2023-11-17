@@ -7,20 +7,25 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 refactoring to ts via origin
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-09-16 modifyed docClient instance
+ * 
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 
 import _ from 'lodash';
 import * as utils from './utils';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const DocClient = require('aws-sdk/lib/dynamodb/document_client');
-
+// const DocClient = require('aws-sdk/lib/dynamodb/document_client');
 const serializer = {} as any;
-
 const internals = {
-    docClient: new DocClient(),
-    createSet: function (value: any, opt?: string) {
+    docClient: null as any,
+    createSet: async function (value: any, opt?: string) {
+        if (!internals.docClient) {
+            const { DynamoDB } = await require('aws-sdk');
+            internals.docClient = new DynamoDB.DocumentClient();
+        }
+
         if (_.isArray(value)) {
             return internals.docClient.createSet(value);
         } else {

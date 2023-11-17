@@ -5,7 +5,9 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-27 initial version.
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-17 modified aws to dynamic loading 
+ * 
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -19,16 +21,24 @@ import {
     ProtocolBody,
     CallbackParam,
 } from './../core-services';
-import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
+import { SendMessageResult } from '../aws/aws-sqs-service'
+import { PublishInput, PublishResponse } from '../aws/aws-sns-service'
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
 import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
+import $azure from '../azure/'; // load config-module.
 import queryString from 'qs';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
+const instance = () => {
+    return (MyProtocolService as any).instance();
+};
+
+export type InvocationRequest = ReturnType<typeof instance>['Lambda']['Types']['InvocationRequest'];
+export type InvocationResponse = ReturnType<typeof instance>['Lambda']['Types']['InvocationResponse'];
 /**
  * header name to exchange `next-context`
  */
@@ -43,7 +53,7 @@ export type MyProtocolType = 'web' | 'sns' | 'sqs' | 'api';
 /**
  * type: MySNSEventParam
  */
-export type MySNSEventParam = AWS.SNS.Types.PublishInput;
+export type MySNSEventParam = PublishInput;
 
 /**
  * type of ProtocolParam w/ callback
@@ -89,6 +99,15 @@ export class MyProtocolService implements ProtocolService {
      * say hello() of this service
      */
     public hello = (): string => `protocol-service:${this.selfService || ''}`;
+
+    /**
+     * dynamic loading
+     */
+    public static async instance(region?: string) {
+        region = `${region || 'ap-northeast-2'}`;
+        const AWS = await require('aws-sdk');
+        return { AWS };
+    }
 
     //! determine path part
     public static asPath = (type: string, id?: string, cmd?: string): string => {
@@ -243,7 +262,7 @@ export class MyProtocolService implements ProtocolService {
         if (!MyProtocolService.REPORT_ERROR) throw e;
         _err(NS, `! err@report =`, e);
         return doReportError(e, context, event, data)
-            .catch(() => {})
+            .catch(() => { })
             .then(() => {
                 throw e instanceof Error ? e : new Error(typeof e == 'string' ? e : $U.json(e));
             });
@@ -328,7 +347,7 @@ export class MyProtocolService implements ProtocolService {
         const payload = this.transformEvent(uri, param);
 
         //! prepare lambda payload.
-        const params: Lambda.Types.InvocationRequest = {
+        const params: InvocationRequest = {
             FunctionName: url.hostname,
             Payload: payload ? $U.json(payload) : '',
             ClientContext: null,
@@ -338,6 +357,7 @@ export class MyProtocolService implements ProtocolService {
 
         //! call lambda.
         const region = 'ap-northeast-2'; //TODO - optimize of aws region....
+        const { AWS } = await instance();
         const lambda = new AWS.Lambda({ region });
         const response = await lambda
             .invoke(params)
@@ -347,7 +367,7 @@ export class MyProtocolService implements ProtocolService {
                 // return this.doReportError(e, param.context, null, { protocol: uri, param });
                 throw e;
             })
-            .then((data: Lambda.Types.InvocationResponse) => {
+            .then((data: InvocationResponse) => {
                 _log(NS, `! execute[${param.service || ''}].res =`, $U.S(data, 320, 64, ' .... '));
                 const payload = data && data.Payload ? JSON.parse(`${data.Payload}`) : {};
                 const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
@@ -394,13 +414,14 @@ export class MyProtocolService implements ProtocolService {
         _inf(NS, `> uri[${service}] =`, uri);
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
-        const params: SNS.Types.PublishInput = this.sns.transformToEvent(uri, param, cbUrl);
+        const params: PublishInput = this.sns.transformToEvent(uri, param, cbUrl);
         const arn = params.TopicArn; // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
         // _inf(NS, `> arn[${service}] =`, arn);
         _inf(NS, `> payload[${arn}] =`, $U.json(params));
 
         //! call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
+        const { AWS } = await instance();
         const sns = new AWS.SNS({ region });
         const res = await sns
             .publish(params)
@@ -409,7 +430,7 @@ export class MyProtocolService implements ProtocolService {
                 _err(NS, `! notify[${param.service || ''}].err =`, typeof e, e);
                 return this.doReportError(e, param.context, null, { protocol: uri, param });
             })
-            .then((data: SNS.Types.PublishResponse) => {
+            .then((data: PublishResponse) => {
                 _log(NS, `> res[${service}] =`, $U.json(data));
                 return data.MessageId;
             });
@@ -450,6 +471,7 @@ export class MyProtocolService implements ProtocolService {
 
         //! call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
+        const { AWS } = await instance();
         const sqs = new AWS.SQS({ region });
         const res = await sqs
             .sendMessage(params)
@@ -458,7 +480,7 @@ export class MyProtocolService implements ProtocolService {
                 _err(NS, `! enqueue[${param.service || ''}].err =`, typeof e, e);
                 return this.doReportError(e, param.context, null, { protocol: uri, param });
             })
-            .then((data: SQS.Types.SendMessageResult) => {
+            .then((data: SendMessageResult) => {
                 _log(NS, `> res[${endpoint}] =`, $U.json(data));
                 return data.MessageId;
             });
@@ -484,7 +506,7 @@ export class MyProtocolService implements ProtocolService {
 
         const accountId = `${(context && context.accountId) || ''}`;
         const requestId = `${(context && context.requestId) || ''}`;
-        const params: SNS.Types.PublishInput = {
+        const params: PublishInput = {
             TopicArn: arn,
             Subject: `x-protocol-service/broadcast`, //NOTE! - can be no 'Subject' if subscribed as HTTP SNS.
             Message: JSON.stringify({ default: $U.json(body) }), //NOTE! - only body data is required.
@@ -500,6 +522,7 @@ export class MyProtocolService implements ProtocolService {
 
         //! call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
+        const { AWS } = await instance();
         const sns = new AWS.SNS({ region });
         const res = await sns
             .publish(params)
@@ -508,7 +531,7 @@ export class MyProtocolService implements ProtocolService {
                 _err(NS, `! broadcast[${service || ''}].err =`, typeof e, e);
                 return this.doReportError(e, context, null, { endpoint, body });
             })
-            .then((data: SNS.Types.PublishResponse) => {
+            .then((data: PublishResponse) => {
                 _log(NS, `> res[${service}] =`, $U.json(data));
                 return data.MessageId;
             });

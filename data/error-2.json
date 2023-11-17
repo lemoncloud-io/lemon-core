@@ -1,0 +1,26 @@
+{
+  "!": "sample error with message",
+  "error": "Invalid phone number format.",
+  "message": "Invalid phone number format.",
+  "stack-trace": "Error: Invalid phone number format.\n    at Request._callback (/var/task/node_modules/lemon-engine/src/plugins/http-proxy.ts:130:62)\n    at Request.self.callback (/var/task/node_modules/request/request.js:185:22)\n    at emitTwo (events.js:126:13)\n    at Request.emit (events.js:214:7)\n    at Request.<anonymous> (/var/task/node_modules/request/request.js:1161:10)\n    at emitOne (events.js:116:13)\n    at Request.emit (events.js:211:7)\n    at IncomingMessage.<anonymous> (/var/task/node_modules/request/request.js:1083:12)\n    at Object.onceWrapper (events.js:313:30)\n    at emitNone (events.js:111:20)",
+  "context": {
+    "stage": "",
+    "apiId": "",
+    "resourcePath": "",
+    "identity": {},
+    "domainPrefix": "",
+    "event": {
+      "version": "1",
+      "region": "ap-northeast-2",
+      "triggerSource": "PostAuthentication_Authentication",
+      "request": {
+        "userAttributes": {
+          "sub": "71cbbb1d-48d4-4d7e-886d-a369b9140021",
+          "email": "hello@lemoncloud.io"
+        },
+        "newDeviceUsed": false
+      },
+      "response": {}
+    }
+  }
+}

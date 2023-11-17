@@ -1,0 +1,17 @@
+{
+    "attachments": [
+        {
+            "fallback": "Hello Cute Animal!",
+            "color": "#2eb886",
+            "title": "귀여운 사진을 드리겠습니다.",
+            "fields": [
+                {
+                    "title": "Priority",
+                    "value": "High",
+                    "short": false
+                }
+            ],
+            "image_url": "https://pbs.twimg.com/profile_images/625633822235693056/lNGUneLX_400x400.jpg"
+        }
+    ]
+}

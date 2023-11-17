@@ -7,15 +7,23 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-09-27 initial version
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified aws to dynamic loading 
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
-const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
-
-import AWS, { SQS } from 'aws-sdk';
 import { CoreServices } from '../core-services';
+
+const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
+const instance = () => {
+    return (AWSSQSService as any).instance();
+};
+
+export type SQSEventParam = ReturnType<typeof instance>['SQS']['Types']['SendMessageRequest'];
+export type SendMessageRequest = ReturnType<typeof instance>['SQS']['Types']['SendMessageRequest'];
+export type SendMessageResult = ReturnType<typeof instance>['SQS']['Types']['SendMessageResult'];
+export type ReceiveMessageRequest = ReturnType<typeof instance>['SQS']['Types']['ReceiveMessageRequest'];
 
 /**
  * interface: SQSService
@@ -96,6 +104,14 @@ export class AWSSQSService implements SQSService {
     public hello = () => `aws-sqs-service:${this._endpoint || ''}`;
 
     /**
+     * dynamic loading
+     */
+    public static async instance(region?: string) {
+        region = `${region || 'ap-northeast-2'}`;
+        const AWS = await require('aws-sdk');
+        return { AWS };
+    }
+    /**
      * send message into SQS.
      *
      * @param data      object data to be json.
@@ -114,7 +130,8 @@ export class AWSSQSService implements SQSService {
                 };
                 return O;
             }, {});
-        const params: SQS.Types.SendMessageRequest = {
+        const { AWS } = await instance();
+        const params: SendMessageRequest = {
             // DelaySeconds: 10, //NOTE - use SQS's configuration.
             MessageAttributes: asAttr(attr),
             MessageBody: $U.json(data && typeof data == 'object' ? data : { data }),
@@ -139,7 +156,8 @@ export class AWSSQSService implements SQSService {
         if (!size) throw new Error('@size(number) is required!');
 
         //! prepare param.
-        const params: SQS.Types.ReceiveMessageRequest = {
+        const { AWS } = await instance();
+        const params: ReceiveMessageRequest = {
             AttributeNames: ['SentTimestamp'],
             MaxNumberOfMessages: size,
             MessageAttributeNames: ['All'],
@@ -155,7 +173,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, '> result =', $U.json(result));
 
         //! transform list.
-        const list: SqsMessage[] = (result && result.Messages).map(_ => {
+        const list: SqsMessage[] = (result && result.Messages).map((_: any) => {
             const N: any = {};
             N.sent = _.Attributes.SentTimestamp;
             const $attr = _.MessageAttributes || {};
@@ -191,6 +209,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //! call delete.
+        const { AWS } = await instance();
         const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.deleteMessage(params).promise();
         _log(NS, '> result =', $U.json(result));
@@ -210,6 +229,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //! call delete.
+        const { AWS } = await instance();
         const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.getQueueAttributes(params).promise();
         _log(NS, '> result =', $U.json(result));

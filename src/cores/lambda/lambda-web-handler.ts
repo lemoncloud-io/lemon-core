@@ -11,7 +11,9 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @date        2022-04-07 use env, and opt header-parser
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading 
+ * 
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -26,15 +28,14 @@ import {
     NextIdentityJwt,
 } from 'lemon-model';
 import { ProtocolParam } from './../core-services';
-import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
+import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent, LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
-import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 
 import $protocol from '../protocol/';
-const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 //! header definitions by environment.
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
@@ -141,28 +142,28 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
  */
 export const mxNextHandler =
     (thiz: LambdaWEBHandler) =>
-    async (params: ProxyChain): Promise<ProxyResult> => {
-        //! determine if param or func.
-        const fx: ProxyResponser = typeof params == 'function' ? params : null;
-        const $param: ProxyParams = params && typeof params == 'object' ? params : null;
-        const { param, event } = $param || {};
+        async (params: ProxyChain): Promise<ProxyResult> => {
+            //! determine if param or func.
+            const fx: ProxyResponser = typeof params == 'function' ? params : null;
+            const $param: ProxyParams = params && typeof params == 'object' ? params : null;
+            const { param, event } = $param || {};
 
-        //! call the main handler()
-        const R = $param ? await thiz.handleProtocol(param, event) : fx;
+            //! call the main handler()
+            const R = $param ? await thiz.handleProtocol(param, event) : fx;
 
-        //! - if like to override the full response, then return function.
-        if (R && typeof R == 'function') return R();
+            //! - if like to override the full response, then return function.
+            if (R && typeof R == 'function') return R();
 
-        //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
-        const { httpMethod: method, headers } = event || {};
-        if (method && method != 'GET') {
-            const origin = `${(headers && headers['origin']) || ''}`;
-            return success(R, null, origin);
-        }
+            //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+            const { httpMethod: method, headers } = event || {};
+            if (method && method != 'GET') {
+                const origin = `${(headers && headers['origin']) || ''}`;
+                return success(R, null, origin);
+            }
 
-        //! returns response..
-        return success(R);
-    };
+            //! returns response..
+            return success(R);
+        };
 
 /**
  * builder for failure promised.
@@ -691,7 +692,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         const parseCookies = (str: string) => {
             const rx = /([^;=\s]*)=([^;]*)/g;
             const obj: { [key: string]: string } = {};
-            for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
+            for (let m; (m = rx.exec(str));) obj[m[1]] = decodeURIComponent(m[2]);
             return obj;
         };
         return parseCookies(cookie);

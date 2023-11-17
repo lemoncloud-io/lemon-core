@@ -5,7 +5,9 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2018-05-23 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-16 deleted 'latin1 of md5/hmac'
+ * 
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { EngineCore, GeneralFuntion } from './types';
@@ -679,7 +681,7 @@ export class Utilities {
     /**
      * get md5 hash
      */
-    public md5(data: any, digest: 'latin1' | 'hex' | 'base64') {
+    public md5(data: any, digest: 'hex' | 'base64') {
         digest = digest === undefined ? 'hex' : digest;
         return crypto.createHash('md5').update(data).digest(digest);
     }
@@ -687,7 +689,7 @@ export class Utilities {
     /**
      * get hmac hash
      */
-    public hmac(data: any, KEY?: string, algorithm?: string, encoding?: 'latin1' | 'hex' | 'base64') {
+    public hmac(data: any, KEY?: string, algorithm?: string, encoding?: 'hex' | 'base64') {
         KEY = KEY || 'XENI';
         encoding = encoding || 'base64';
         algorithm = algorithm || 'sha256';
@@ -829,7 +831,7 @@ export class Utilities {
          * main class.
          */
         return new (class JWTHelper {
-            public constructor() {}
+            public constructor() { }
             /**
              * use `jsonwebtoken` directly.
              */

@@ -12,26 +12,10 @@ import { _log, _inf, _err, $U } from '../../engine';
 import { GeneralItem, Incrementable } from 'lemon-model';
 import 'dotenv/config'
 
-const CosmosClient = require('@azure/cosmos').CosmosClient
-const config = require('./config')
-const url = require('url')
-
-const endpoint = process.env.AZURE_ENDPOINT;
-const key = process.env.AZURE_KEY;
-const databaseName = config.database.id
-const partitionKey = { kind: 'Hash', paths: ['/partitionKey'] }
-
-const options = {
-    endpoint: endpoint,
-    key: key,
-    userAgentSuffix: 'CosmosDBJavascriptQuickstart'
-};
-
-const client = new CosmosClient(options)
-
-const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('CSMS', 'green'); // NAMESPACE TO BE PRINTED.
 
 export interface CosmosOption {
+    databaseName: string;
     tableName: string;
     idName: string;
     sortName?: string;
@@ -48,35 +32,48 @@ export interface CosmosOption {
  *  - 'setIndex': array of [index, value] - replace elements in list field
  *  - 'removeIndex': array of indices - remove elements from list field
  */
-export interface Updatable {
+interface Updatable {
     [key: string]: GeneralItem['key'] | { setIndex: [number, string | number][] } | { removeIndex: number[] };
 }
+
+const instance = () => {
+    return CosmosService.instance();
+};
 
 /**
  * class: `CosmosService`
  * - basic CRUD service for AZURE CosmosDB.
  */
 export class CosmosService<T extends GeneralItem>  {
-
     protected options: CosmosOption;
+
     public constructor(options: CosmosOption) {
-        // eslint-disable-next-line prettier/prettier
-        _inf(NS, `CosmosService(${options.tableName}/${options.idName}${options.sortName ? '/' : ''}${options.sortName || ''})...`);
+        _inf(NS, `CosmosService(${options.databaseName}/${options.tableName}/${options.idName}${options.sortName ? '/' : ''}${options.sortName || ''})...`);
+        if (!options.databaseName) throw new Error('.databaseName is required');
         if (!options.tableName) throw new Error('.tableName is required');
         if (!options.idName) throw new Error('.idName is required');
         this.options = options;
     }
 
-    /**
-     * say hello of identity.
-     */
     public hello = () => `cosmos-service:${this.options.tableName}`;
 
+    public static async instance() {
+
+        const { CosmosClient } = await require('@azure/cosmos');
+        const endpoint = process.env.AZ_COSMOS_ENDPOINT;
+        const key = process.env.AZ_COSMOS_KEY;
+        const client = new CosmosClient({ endpoint: endpoint, key: key });
+        return { client };
+    }
 
     public async createTable() {
-        const { tableName, idName } = this.options;
-        const { database } = await client.databases.createIfNotExists({ id: databaseName }); // DynamoDB: Not applicable / CosmosDB: Database
-        const { container } = await database.containers.createIfNotExists({ id: tableName });
+        const { databaseName, tableName, idName } = this.options;
+        const { client } = await CosmosService.instance();
+        const { database } = await client.databases.createIfNotExists({ id: databaseName });
+        const { container } = await database.containers.createIfNotExists({
+            id: tableName,
+            partitionKey: { paths: [`/${idName}`] }
+        });
     }
 
     /**
@@ -89,7 +86,8 @@ export class CosmosService<T extends GeneralItem>  {
      * @param item
      */
     public async saveItem(_id: string, item: T) {
-        const { tableName, idName } = this.options;
+        const { databaseName, tableName, idName } = this.options;
+        const { client } = await CosmosService.instance();
         const querySpec = {
             query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
             parameters: [
@@ -110,11 +108,14 @@ export class CosmosService<T extends GeneralItem>  {
             .items.query(querySpec)
             .fetchAll();
 
-        let payload: any = {[idName]: _id};
+        let payload: any = { [idName]: _id };
         for (const [key, value] of Object.entries(item)) {
             payload[key] = value;
         }
-         
+        if (!payload.hasOwnProperty('id')) {
+            payload['id'] = _id
+        }
+
         if (readDoc.length === 0) {
             const { resources: saveDoc } = await client
                 .database(databaseName)
@@ -154,8 +155,8 @@ export class CosmosService<T extends GeneralItem>  {
      * @param sort
      */
     public async readItem(_id: string, sort?: string | number) {
-        const { tableName, idName } = this.options;
-
+        const { databaseName, tableName, idName } = this.options;
+        const { client } = await CosmosService.instance();
         const querySpec = {
             query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
             parameters: [
@@ -176,8 +177,9 @@ export class CosmosService<T extends GeneralItem>  {
             .items.query(querySpec)
             .fetchAll();
 
+        // ! Error occurs when try-catch is used
         if (readDoc.length > 0) {
-            const {id, ...rest } = readDoc[0];
+            const { ...rest } = readDoc[0];
             return rest
         }
         if (readDoc.length === 0) {
@@ -194,7 +196,8 @@ export class CosmosService<T extends GeneralItem>  {
     * @param sort
     */
     public async deleteItem(_id: string, sort?: string | number) {
-        const { tableName, idName } = this.options;
+        const { databaseName, tableName, idName } = this.options;
+        const { client } = await CosmosService.instance();
         const querySpec = {
             query: `SELECT * FROM c WHERE c[@idName] = @id`,        //c : each document of Cosmos DB container
             parameters: [
@@ -218,8 +221,8 @@ export class CosmosService<T extends GeneralItem>  {
         const { resource: deleteDoc } = await client
             .database(databaseName)
             .container(tableName)
-            .item(readDoc[0].id)
-            .delete()
+            .item(readDoc[0].id, readDoc[0][idName])                //! id, partition key
+            .delete();
 
         const { id, ...rest } = readDoc[0];
         return rest
@@ -240,7 +243,8 @@ export class CosmosService<T extends GeneralItem>  {
         updates: Updatable,
         increments?: Incrementable,
     ) {
-        const { tableName, idName } = this.options;
+        const { databaseName, tableName, idName } = this.options;
+        const { client } = await CosmosService.instance();
 
         if (updates == null && increments == null) {
             const message = '.slot (null) should be number!'
@@ -267,10 +271,14 @@ export class CosmosService<T extends GeneralItem>  {
             .items.query(querySpec)
             .fetchAll()
 
-        //Upsert
+        /**
+         * 
+         * upsert
+         * 
+         */
         if (readDoc.length === 0) {
             let payload: any = { [idName]: _id };
-            
+
             if (updates !== null && updates !== undefined) {
                 for (const [key, value] of Object.entries(updates)) {
                     payload[key] = value;
@@ -281,7 +289,9 @@ export class CosmosService<T extends GeneralItem>  {
                     payload[key] = value;
                 }
             }
-
+            if (!payload.hasOwnProperty('id')) {
+                payload['id'] = _id
+            }
             const update_payload = {
                 ...payload,
             }
@@ -289,7 +299,7 @@ export class CosmosService<T extends GeneralItem>  {
                 .database(databaseName)
                 .container(tableName)
                 .items.upsert(update_payload)
-                
+
             const result: any = {};
             for (const key in payload) {
                 if (payload.hasOwnProperty(key)) {
@@ -299,7 +309,11 @@ export class CosmosService<T extends GeneralItem>  {
             return result;
         }
 
-        //Update
+        /**
+         * 
+         * update
+         * 
+         */
         let payload: any = { [idName]: _id };
 
         if (updates !== null && updates !== undefined) {
@@ -310,10 +324,12 @@ export class CosmosService<T extends GeneralItem>  {
         if (increments !== null && increments !== undefined) {
             for (const [key, value] of Object.entries(increments)) {
                 const existValue = readDoc[0][key] || 0;
-                payload[key] = value + existValue; 
+                payload[key] = value + existValue;
             }
         }
-
+        if (!payload.hasOwnProperty('id')) {
+            payload['id'] = _id
+        }
         const { _etag, _ts, ..._rest } = readDoc[0];
         const update_payload = {
             ..._rest,
@@ -342,4 +358,3 @@ export class CosmosService<T extends GeneralItem>  {
         return result;
     }
 }
-

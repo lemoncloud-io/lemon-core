@@ -7,14 +7,14 @@
  * @date        2019-10-16 cleanup and optimize log
  * @date        2019-11-19 optimize 404 error case, and normalize key.
  * @date        2019-12-10 support `DummyDynamoService.listItems()` for mocks
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified dynamo to dynamic loading 
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
 import { GeneralItem, Incrementable } from 'lemon-model';
 import { loadDataYml } from '../../tools/';
-import AWS from 'aws-sdk';
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type KEY_TYPE = 'number' | 'string';
@@ -86,9 +86,10 @@ export class DynamoService<T extends GeneralItem> {
      * simple instance maker.
      * @param region    (default as `ap-northeast-2`)
      */
-    public static instance(region?: string) {
+    public static async instance(region?: string) {
         region = `${region || 'ap-northeast-2'}`;
         const config = { region };
+        const AWS = await require('aws-sdk');
         const dynamo = new AWS.DynamoDB(config); // DynamoDB Main.
         const dynamodoc = new AWS.DynamoDB.DocumentClient(config); // DynamoDB Document.
         const dynamostr = new AWS.DynamoDBStreams(config); // DynamoDB Stream.
@@ -321,10 +322,10 @@ export class DynamoService<T extends GeneralItem> {
     public async createTable(ReadCapacityUnits: number = 1, WriteCapacityUnits: number = 1) {
         _log(NS, `createTable(${ReadCapacityUnits}, ${WriteCapacityUnits})...`);
         const payload = this.prepareCreateTable(ReadCapacityUnits, WriteCapacityUnits);
-        return instance()
-            .dynamo.createTable(payload)
+        const { dynamo } = await instance();
+        return dynamo.createTable(payload)
             .promise()
-            .then(res => {
+            .then((res: any) => {
                 _log(NS, '> createTable.res =', res);
                 return res;
             });
@@ -337,10 +338,10 @@ export class DynamoService<T extends GeneralItem> {
     public async deleteTable() {
         _log(NS, `deleteTable()...`);
         const payload = this.prepareDeleteTable();
-        return instance()
-            .dynamo.deleteTable(payload)
+        const { dynamo } = await instance();
+        return dynamo.deleteTable(payload)
             .promise()
-            .then(res => {
+            .then((res: any) => {
                 _log(NS, '> deleteTable.res =', res);
                 return res;
             });
@@ -358,10 +359,10 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `readItem(${id})...`);
         const itemKey = this.prepareItemKey(id, sort);
         // _log(NS, `> pkey[${id}${sort ? '/' : ''}${sort || ''}] =`, $U.json(itemKey));
-        return instance()
-            .dynamodoc.get(itemKey)
+        const { dynamodoc } = await instance();
+        return dynamodoc.get(itemKey)
             .promise()
-            .then(res => {
+            .then((res: any) => {
                 // _log(NS, '> readItem.res =', $U.json(res));
                 if (!res.Item) throw new Error(`404 NOT FOUND - ${idName}:${id}${sort ? '/' : ''}${sort || ''}`);
                 return res.Item as T;
@@ -387,10 +388,10 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `saveItem(${id})...`);
         const payload = this.prepareSaveItem(id, item);
         // _log(NS, '> payload :=', payload);
-        return instance()
-            .dynamodoc.put(payload)
+        const { dynamodoc } = await instance();
+        return dynamodoc.put(payload)
             .promise()
-            .then(res => {
+            .then((res: any) => {
                 _log(NS, '> saveItem.res =', $U.json(res));
                 return payload.Item;
             })
@@ -411,13 +412,13 @@ export class DynamoService<T extends GeneralItem> {
     public async deleteItem(id: string, sort?: string | number): Promise<T> {
         // _log(NS, `deleteItem(${id})...`);
         const payload = this.prepareItemKey(id, sort);
-        return instance()
-            .dynamodoc.delete(payload)
+        const { dynamodoc } = await instance();
+        return dynamodoc.delete(payload)
             .promise()
-            .then(res => {
+            .then((res: any) => {
                 _log(NS, '> deleteItem.res =', $U.json(res));
                 //TODO - improve the returned result
-                return null;
+                return;
             })
             .catch((e: Error) => {
                 if (`${e.message}` == 'Requested resource not found') return {};
@@ -443,10 +444,10 @@ export class DynamoService<T extends GeneralItem> {
         const { idName } = this.options;
         // _log(NS, `updateItem(${id})...`);
         const payload = this.prepareUpdateItem(id, sort, updates, increments);
-        return instance()
-            .dynamodoc.update(payload)
+        const { dynamodoc } = await instance();
+        return dynamodoc.update(payload)
             .promise()
-            .then(res => {
+            .then((res: any) => {
                 _log(NS, `> updateItem[${id}].res =`, $U.json(res));
                 const attr: any = res.Attributes;
                 const $key = Object.assign({}, payload.Key);

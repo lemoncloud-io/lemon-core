@@ -5,29 +5,35 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading 
+ * 
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, doReportError } from '../../engine/';
-import {
-    Handler,
-    Callback,
-    APIGatewayProxyEvent,
-    APIGatewayProxyResult,
-    CognitoUserPoolTriggerEvent,
-    DynamoDBStreamEvent,
-    SNSEvent as AWSSNSEvent,
-    SQSEvent as AWSSQSEvent,
-} from 'aws-lambda';
 import { NextContext } from 'lemon-model';
 import { ProtocolParam, CoreConfigService } from './../core-services';
 import { GETERR } from '../../common/test-helper';
-import * as $lambda from 'aws-lambda';
+
 const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.
 
-export type ConfigService = CoreConfigService;
-export type Context = $lambda.Context;
+const instance = () => {
+    return (LambdaHandler as any).instance();
+};
+
+type ConfigService = CoreConfigService;
+export type Handler = ReturnType<typeof instance>['Handler'];
+export type Callback<T = any> = ReturnType<typeof instance>['Callback<T>'];
+export type Context = ReturnType<typeof instance>['Context'];
+
+export type APIGatewayProxyResult = ReturnType<typeof instance>['APIGatewayProxyResult'];
+export type APIGatewayEventRequestContext = ReturnType<typeof instance>['APIGatewayEventRequestContext'];
+export type APIGatewayProxyEvent = ReturnType<typeof instance>['APIGatewayProxyEvent'];
+export type SQSRecord = ReturnType<typeof instance>['SQSRecord'];
+export type SNSEventRecord = ReturnType<typeof instance>['SNSEventRecord'];
+export type SNSMessage = ReturnType<typeof instance>['SNSMessage'];
+export type DynamoDBRecord = ReturnType<typeof instance>['DynamoDBRecord'];
 
 /**
  * cron event
@@ -45,13 +51,16 @@ export type Context = $lambda.Context;
 export interface CronEvent {
     cron: { name: string; action: string };
 }
-export type WEBEvent = APIGatewayProxyEvent;
-export type WEBResult = APIGatewayProxyResult;
-export type WSSEvent = APIGatewayProxyEvent;
-export type DDSEvent = DynamoDBStreamEvent;
-export type SNSEvent = AWSSNSEvent;
-export type SQSEvent = AWSSQSEvent;
+
+export type WEBEvent = ReturnType<typeof instance>['APIGatewayProxyEvent'];
+export type WEBResult = ReturnType<typeof instance>['APIGatewayProxyResult'];
+export type WSSEvent = ReturnType<typeof instance>['APIGatewayProxyEvent'];
+export type DDSEvent = ReturnType<typeof instance>['DynamoDBStreamEvent'];
+export type SNSEvent = ReturnType<typeof instance>['AWSSNSEvent'];
+export type SQSEvent = ReturnType<typeof instance>['AWSSQSEvent'];
 export type WSSResult = any;
+export type CognitoUserPoolTriggerEvent = ReturnType<typeof instance>['CognitoUserPoolTriggerEvent'];
+
 
 //! define and export all types.
 export type MyHandler<TEvent = any, TResult = any> = (event: TEvent, context: NextContext) => Promise<TResult>;
@@ -62,7 +71,7 @@ export type SNSHandler = MyHandler<SNSEvent, void>;
 export type SQSHandler = MyHandler<SQSEvent, void>;
 export type CronHandler = MyHandler<CronEvent, void>;
 export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
-export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
+export type DynamoStreamHandler = MyHandler<DDSEvent, void>;
 export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
 
 export type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'dds' | 'cron' | 'cognito' | 'dynamo-stream' | 'notification';
@@ -119,11 +128,11 @@ export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHan
  */
 export const buildReportError =
     (isReport?: boolean) =>
-    (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
-        return (isReport ? doReportError(e, context, event, data) : Promise.resolve(data))
-            .then(() => GETERR(e))
-            .catch(GETERR);
-    };
+        (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
+            return (isReport ? doReportError(e, context, event, data) : Promise.resolve(data))
+                .then(() => GETERR(e))
+                .catch(GETERR);
+        };
 
 /**
  * class: `LambdaHandler`
@@ -141,6 +150,12 @@ export class LambdaHandler {
     public constructor(config?: ConfigService) {
         this.config = config;
     }
+
+    // Dynamically load aws-lambda
+    public instance = async () => {
+        const $lambda = await require('aws-lambda');
+        return { $lambda };
+    };
 
     /**
      * set service lambda handler.
@@ -236,7 +251,7 @@ export class LambdaHandler {
             new Promise((resolve, reject) => {
                 try {
                     let resolved = false;
-                    const R = main(event, context, (error?, result?: any) => {
+                    const R = main(event, context, (error?: any, result?: any) => {
                         error && _err(NS, '! err@cb =', error);
                         // !error && _inf(NS, '! res@cb =', result);
                         if (error) reject(error);
