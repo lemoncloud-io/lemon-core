@@ -22,7 +22,7 @@ import {
     CallbackParam,
 } from './../core-services';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
-import { SendMessageResult } from '../aws/aws-sqs-service'
+import { SendMessageRequest, SendMessageResult } from '../aws/aws-sqs-service'
 import { PublishInput, PublishResponse } from '../aws/aws-sns-service'
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
@@ -726,7 +726,7 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
     }
 }
 
-type SQSEventParam = AWS.SQS.Types.SendMessageRequest;
+type SQSEventParam = SendMessageRequest;
 /**
  * class: `SQSProtocolTransformer`
  * - transformer for `SQS` Handler
