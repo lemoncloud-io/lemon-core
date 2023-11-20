@@ -20,9 +20,9 @@ export { FunctionWEBHandler } from './functions-web-handler';
 
 //! export by group
 
-import * as $webAZ from './functions-web-handler';
+import * as _$web from './functions-web-handler';
 
-export { $webAZ };
+export { _$web };
 
 //! import default with named.
 import { FunctionHandler } from './functions-handler';
