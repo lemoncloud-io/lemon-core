@@ -120,11 +120,10 @@ export class KeyVaultService implements CoreKmsService {
      */
     public encrypt = async (message: string): Promise<any> => {
         const keyId = this.keyId();
-        // _inf(NS, `encrypt(${keyId}, ${message.substring(0, 10)}...)..`);
+        _inf(NS, `encrypt(${keyId}, ${message.substring(0, 10)}...)..`);
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
-
         const EncryptResult: ReturnType<typeof this.instance>['EncryptResult'] = await cryptographyClient.encrypt({
             algorithm: "RSA1_5",
             plaintext: (message)
@@ -138,13 +137,12 @@ export class KeyVaultService implements CoreKmsService {
      * @param {*} encryptedSecret
      */
     public decrypt = async (encryptedSecret: any): Promise<any> => {
-        // _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
+        _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
         const bufferedEncryptedSecret = Buffer.from(encryptedSecret, 'base64');
         const keyId = this.keyId();
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
-        // const ciphertextBuffer = Buffer.from(encryptedSecret, 'base64');
         const decryptedSecret: ReturnType<typeof this.instance>['DecryptResult'] = await cryptographyClient.decrypt({
             algorithm: "RSA1_5",
             ciphertext: bufferedEncryptedSecret
@@ -164,9 +162,8 @@ export class KeyVaultService implements CoreKmsService {
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey.id, credentials);
-        // _inf(NS, `sign(${keyId}, ${message.substring(0, 10)}...)..`);
+        _inf(NS, `sign(${keyId}, ${message.substring(0, 10)}...)..`);
         const result = await cryptographyClient.signData("RS256", Buffer.from(message));
-
         const signature = result.result;
         return signature;
     };
@@ -185,8 +182,7 @@ export class KeyVaultService implements CoreKmsService {
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey.id, credentials);
-        // _inf(NS, `verify(${keyId}, ${message.substring(0, 10)}...)..`);
-
+        _inf(NS, `verify(${keyId}, ${message.substring(0, 10)}...)..`);
         const result = await cryptographyClient.verifyData("RS256", Buffer.from(message), Buffer.from(signature));
         return result.result;
     };
