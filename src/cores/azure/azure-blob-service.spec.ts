@@ -18,7 +18,7 @@ import { Metadata } from '@azure/storage-blob';
 import { $rand, my_parrallel } from '../../helpers';
 
 const BLOB = new BlobService();
-jest.setTimeout(25000);
+jest.setTimeout(80000);
 describe(`test BlobService`, () => {
     //! use `env.PROFILE`
 

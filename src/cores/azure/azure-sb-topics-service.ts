@@ -14,6 +14,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
 import { CoreSnsService } from '../core-services';
+import { KeyVaultService } from '../azure'
 import 'dotenv/config'
 
 const NS = $U.NS('AZTP', 'blue');
@@ -41,9 +42,10 @@ export class TopicsService implements CoreSnsService {
      * - for self messaging.
      */
     public static ENV_SB_TOPICS_ENDPOINT = 'MY_SNS_ENDPOINT';
-    public static DEF_SB_TOPICS_ENDPOINT = 'topic-lemon';
-
+    public static DEF_SB_TOPICS_ENDPOINT = process.env.AZ_TOPIC_NAME ?? 'topic-lemon';
+    protected $kv: KeyVaultService;
     private _arn: string;
+
     public constructor(arn?: string) {
         this._arn = arn;
     }
@@ -53,10 +55,10 @@ export class TopicsService implements CoreSnsService {
      */
     public name = () => `service-bus-topics`;
 
-
-    public instance = () => {
+    public static $kv: KeyVaultService = new KeyVaultService();
+    public instance = async () => {
         const { ServiceBusClient } = require("@azure/service-bus");
-        const connectionString = process.env.AZ_SB_CONNECTION_STRING
+        const connectionString = await TopicsService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
         const serviceBusClient = new ServiceBusClient(connectionString);
         return { serviceBusClient }
     };
@@ -73,7 +75,7 @@ export class TopicsService implements CoreSnsService {
      */
     public publish = async (target: string, subject: string, payload: any): Promise<any> => {
         const endpoint = target ? target : TopicsService.DEF_SB_TOPICS_ENDPOINT;
-        const { serviceBusClient } = this.instance();
+        const { serviceBusClient } = await this.instance();
         try {
             const sender = serviceBusClient.createSender(endpoint);
             const params = [{

@@ -54,6 +54,7 @@ describe('KeyVaultService', () => {
         //! run encrypt/decrypt
         expect2(await service.sample(), 'keyId,message,decrypted').toEqual({ keyId, message, decrypted: message });
 
+        console.log(await service.encrypt("967b4ff3-2cc0-4824-a6e2-bd8251a82537"))
         /* eslint-enable prettier/prettier */
         done();
     });

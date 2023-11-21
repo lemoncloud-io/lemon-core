@@ -13,6 +13,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine';
 import { CoreServices } from '../core-services';
+import { KeyVaultService } from '../azure'
 import 'dotenv/config'
 
 const NS = $U.NS('AZQU', 'blue'); // NAMESPACE TO BE PRINTED.
@@ -69,12 +70,14 @@ export class QueuesService implements SQSService {
 
     protected _region: string;
     protected _endpoint: string;
+    protected $kv: KeyVaultService;
 
     /**
      * default constructor.
      */
     public constructor(endpoint?: string, region?: string) {
         endpoint = endpoint || ($engine.environ(QueuesService.SB_QUEUES_ENDPOINT, '') as string) || '';
+        endpoint = process.env.AZ_QUEUE_NAME ?? endpoint
         // const stage = $engine.environ('STAGE', '') as string;
         // if (!endpoint && stage != 'local')
         //     throw new Error(`env.${QueuesService.SB_QUEUES_ENDPOINT} is required w/ stage:${stage}`);
@@ -97,10 +100,10 @@ export class QueuesService implements SQSService {
             throw new Error('Invalid ISO 8601 duration format');
         }
     }
-
-    public instance = () => {
+    public static $kv: KeyVaultService = new KeyVaultService();
+    public instance = async () => {
         const { ServiceBusClient, ServiceBusAdministrationClient } = require("@azure/service-bus");
-        const connectionString = process.env.AZ_SB_CONNECTION_STRING
+        const connectionString = await QueuesService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
         const serviceBusClient = new ServiceBusClient(connectionString);
         const serviceBusAdministrationClient = new ServiceBusAdministrationClient(connectionString);
         return { serviceBusClient, serviceBusAdministrationClient }
@@ -118,8 +121,8 @@ export class QueuesService implements SQSService {
      */
     public async sendMessage(data: any): Promise<any> {
         if (!data) throw new Error('@data(object) is required!');
-        const { serviceBusClient } = this.instance();
-        const sender = serviceBusClient.createSender(QueuesService.SB_QUEUES_ENDPOINT);
+        const { serviceBusClient } = await this.instance();
+        const sender = serviceBusClient.createSender(this._endpoint);
         const messages = [{
             contentType: "application/json",
             body: data,
@@ -154,8 +157,8 @@ export class QueuesService implements SQSService {
         size = $U.N(size, 0);
 
         if (!size) throw new Error('@size(number) is required!');
-        const { serviceBusClient } = this.instance();
-        const receiver = await serviceBusClient.createReceiver(QueuesService.SB_QUEUES_ENDPOINT);
+        const { serviceBusClient } = await this.instance();
+        const receiver = await serviceBusClient.createReceiver(this._endpoint);
         const messages = await receiver.receiveMessages(size); //  it defaults to the "peekLock" mode
 
         const list = [];
@@ -176,8 +179,8 @@ export class QueuesService implements SQSService {
      */
     public async deleteMessage(message: any): Promise<void> {
         if (!message) throw new Error('@handle(string) is required!');
-        const { serviceBusClient } = this.instance();
-        const receiver = await serviceBusClient.createReceiver(QueuesService.SB_QUEUES_ENDPOINT);
+        const { serviceBusClient } = await this.instance();
+        const receiver = await serviceBusClient.createReceiver(this._endpoint);
         await receiver.completeMessage(message);     // Process the message and delete it
         return
     }
@@ -188,9 +191,9 @@ export class QueuesService implements SQSService {
      * @param {*} TYPE
      */
     public async statistics(): Promise<SqsStatistics> {
-        const { serviceBusAdministrationClient } = this.instance();
-        const queueProperties = await serviceBusAdministrationClient.getQueue(QueuesService.SB_QUEUES_ENDPOINT)
-        const queueRuntimeProperties = await serviceBusAdministrationClient.getQueueRuntimeProperties(QueuesService.SB_QUEUES_ENDPOINT)
+        const { serviceBusAdministrationClient } = await this.instance();
+        const queueProperties = await serviceBusAdministrationClient.getQueue(this._endpoint)
+        const queueRuntimeProperties = await serviceBusAdministrationClient.getQueueRuntimeProperties(this._endpoint)
 
         // The number of active messages in the entity.
         // If a message is successfully delivered to a subscription, 

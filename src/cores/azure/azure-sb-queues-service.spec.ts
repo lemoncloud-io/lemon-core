@@ -35,7 +35,7 @@ describe('QueuesService', () => {
 
         /* eslint-disable prettier/prettier */
         const service = new QueuesService();
-        expect2(() => service.hello()).toEqual(`az-sb-queues-service:`);
+        expect2(() => service.hello()).toEqual(`az-sb-queues-service:queue-lemon`);
 
         //! sende message..
         const message: any = service.hello();

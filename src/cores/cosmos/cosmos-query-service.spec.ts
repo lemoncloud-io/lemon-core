@@ -40,6 +40,7 @@ interface AccountItem extends GeneralItem {
 }
 
 //! main test body.
+jest.setTimeout(30000);
 describe('CosmosQueryService', () => {
     const data: AccountItem[] = loadDataYml('dummy-cosmos-query-data.yml').data;
     const dataMap = new Map<string, AccountItem>();

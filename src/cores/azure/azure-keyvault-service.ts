@@ -20,7 +20,7 @@ import { $engine, _log, _inf, _err, $U } from '../../engine';
 // import AWS, { KMS } from 'aws-sdk';
 // import { SigningAlgorithmSpec } from 'aws-sdk/clients/kms';
 import { CoreKmsService } from '../core-services';
-
+import 'dotenv/config'
 const NS = $U.NS('AZKV', 'blue'); // NAMESPACE TO BE PRINTED.
 
 // type MySigningAlgorithm = SigningAlgorithmSpec;
@@ -69,7 +69,9 @@ export class KeyVaultService implements CoreKmsService {
     private _keyId: string;
     private _options: AWSKMSSignOption;
     public constructor(keyId?: string, options?: AWSKMSSignOption) {
+        
         keyId = keyId ?? `${$engine.environ(KeyVaultService.ENV_KMS_KEY_ID, KeyVaultService.DEF_KMS_TARGET)}`;
+        keyId = process.env.AZ_KEY ?? keyId
         this._keyId = keyId;
         this._options = options;
     }
@@ -96,7 +98,8 @@ export class KeyVaultService implements CoreKmsService {
     public instance = () => {
         const { KeyClient, CryptographyClient, EncryptResult, DecryptResult } = require("@azure/keyvault-keys");
         const { DefaultAzureCredential } = require("@azure/identity");
-        const vaultUrl = `https://keyvalut-lemon.vault.azure.net/`;
+        const keyVault = process.env.AZ_KEY_VAULT
+        const vaultUrl = `https://${keyVault}.vault.azure.net/`;
         const credentials = new DefaultAzureCredential();
         const keyClient = new KeyClient(vaultUrl, credentials);
         return { keyClient, credentials, CryptographyClient, EncryptResult, DecryptResult }
@@ -117,14 +120,14 @@ export class KeyVaultService implements CoreKmsService {
      */
     public encrypt = async (message: string): Promise<any> => {
         const keyId = this.keyId();
-        _inf(NS, `encrypt(${keyId}, ${message.substring(0, 10)}...)..`);
+        // _inf(NS, `encrypt(${keyId}, ${message.substring(0, 10)}...)..`);
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
 
         const EncryptResult: ReturnType<typeof this.instance>['EncryptResult'] = await cryptographyClient.encrypt({
             algorithm: "RSA1_5",
-            plaintext: Buffer.from(message)
+            plaintext: (message)
         });
         return (Buffer.from(EncryptResult.result, 'hex').toString('base64'))
     };

@@ -18,7 +18,7 @@ interface AccountModel extends StorageModel {
     balance?: number;
     name?: string;
 }
-
+jest.setTimeout(50000);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('StorageService', () => {

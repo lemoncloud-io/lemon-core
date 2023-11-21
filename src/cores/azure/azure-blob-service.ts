@@ -16,6 +16,7 @@ import { $engine, $U, _log, _inf, _err } from '../../engine';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { GETERR } from '../../common/test-helper';
+import { KeyVaultService } from './azure-keyvault-service';
 import 'dotenv/config'
 
 const NS = $U.NS('BLOB', 'blue');
@@ -148,6 +149,11 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
  * main service implement.
  */
 export class BlobService implements CoreBlobService {
+    protected $kv: KeyVaultService;
+
+    constructor() {
+        this.$kv = new KeyVaultService();
+    }
     /**
      * environ name to use `bucket`
      */
@@ -175,13 +181,14 @@ export class BlobService implements CoreBlobService {
     /**
      * get azure sdk for blob
      */
-    public instance = () => {
+    public static $kv: KeyVaultService = new KeyVaultService();
+    public instance = async () => {
         const { BlobServiceClient, StorageSharedKeyCredential, BlobItem, Metadata } = require('@azure/storage-blob')
         const { StorageManagementClient } = require("@azure/arm-storage");
         const { DefaultAzureCredential } = require("@azure/identity");
 
-        const account = process.env.AZ_BLOB_ACCOUNT;
-        const accountKey = process.env.AZ_BLOB_ACCOUNTKEY;
+        const account = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNT);
+        const accountKey = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNTKEY);
         const subscriptionId = process.env.AZ_SUBSCRIPTION_ID;
         const resourceGroupName = process.env.AZ_RESOURCE_GROUP;
 
@@ -204,7 +211,7 @@ export class BlobService implements CoreBlobService {
     public headObject = async (key: string): Promise<HeadObjectResult> => {
         if (!key) throw new Error(`@key (string) is required - headObject(${key ?? ''})`);
 
-        const { blobServiceClient } = this.instance();
+        const { blobServiceClient } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
         const parts = key.split("/");
@@ -239,7 +246,7 @@ export class BlobService implements CoreBlobService {
     public getObject = async (key: string): Promise<any> => {
         if (!key) throw new Error(`@key (string) is required - getObject(${key ?? ''})`);
 
-        const { blobServiceClient, Metadata } = this.instance();
+        const { blobServiceClient, Metadata } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
         const parts = key.split("/");
@@ -326,7 +333,7 @@ export class BlobService implements CoreBlobService {
     public getObjectTagging = async (key: string): Promise<any> => {
         if (!key) throw new Error(`@key (string) is required - getObjectTagging(${key ?? ''})`);
 
-        const { blobServiceClient } = this.instance();
+        const { blobServiceClient } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
         const parts = key.split("/");
@@ -352,7 +359,7 @@ export class BlobService implements CoreBlobService {
     public deleteObject = async (key: string): Promise<void> => {
         if (!key) throw new Error(`@key (string) is required - deleteObject(${key ?? ''})`);
 
-        const { blobServiceClient } = this.instance();
+        const { blobServiceClient } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
         const parts = key.split("/");
@@ -396,7 +403,7 @@ export class BlobService implements CoreBlobService {
 
         //* build the req-params.
         const Bucket = this.bucket()
-        const { blobServiceClient } = this.instance();
+        const { blobServiceClient } = await this.instance();
         const containerClient = blobServiceClient.getContainerClient(Bucket);
         const result: any = {
             Contents: [],
@@ -479,7 +486,7 @@ export class BlobService implements CoreBlobService {
         }
         if (!key) key = generateBlobName();
 
-        const { blobServiceClient, storageClient, resourceGroupName } = this.instance();
+        const { blobServiceClient, storageClient, resourceGroupName } = await this.instance();
         const Bucket = this.bucket();
         const parts = key.split("/");
         const fileName = parts[parts.length - 1];
