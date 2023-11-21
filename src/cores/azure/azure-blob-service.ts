@@ -161,7 +161,7 @@ export class BlobService implements CoreBlobService {
     /**
      * default `bucket` name
      */
-    public static DEF_BLOB_BUCKET = 'blob-container';
+    public static DEF_BLOB_BUCKET = process.env.AZ_BLOB_NAME ?? 'blob-container';
 
     /**
      * get name of this
