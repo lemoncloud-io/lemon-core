@@ -33,6 +33,11 @@ const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as stri
 //     return new AWS.KMS(config);
 // };
 
+const instance = () => {
+    return (KeyVaultService as any).instance();
+};
+export type EncryptResult = ReturnType<typeof instance>['EncryptResult'];
+export type DecryptResult = ReturnType<typeof instance>['DecryptResult'];
 /**
  * check if base64 string.
  */
@@ -124,11 +129,21 @@ export class KeyVaultService implements CoreKmsService {
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
-        const EncryptResult: ReturnType<typeof this.instance>['EncryptResult'] = await cryptographyClient.encrypt({
-            algorithm: "RSA1_5",
-            plaintext: (message)
-        });
-        return (Buffer.from(EncryptResult.result, 'hex').toString('base64'))
+
+        try{
+            const EncryptResult: EncryptResult = await cryptographyClient.encrypt({
+                algorithm: "RSA1_5",
+                plaintext: Buffer.from(message)
+            });
+            if(!Buffer.from(EncryptResult.result, 'hex').toString('base64')){
+                throw new Error(`buffered ${EncryptResult} (string) is required!`);
+            }
+            return (Buffer.from(EncryptResult.result, 'hex').toString('base64'))
+        }
+       
+        catch(err){
+            console.log(err)
+        }
     };
 
     /**
@@ -138,16 +153,26 @@ export class KeyVaultService implements CoreKmsService {
      */
     public decrypt = async (encryptedSecret: any): Promise<any> => {
         _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
+
         const bufferedEncryptedSecret = Buffer.from(encryptedSecret, 'base64');
+        if(!bufferedEncryptedSecret){
+            throw new Error(`${bufferedEncryptedSecret} (string) is required!`);
+        }
         const keyId = this.keyId();
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
-        const decryptedSecret: ReturnType<typeof this.instance>['DecryptResult'] = await cryptographyClient.decrypt({
-            algorithm: "RSA1_5",
-            ciphertext: bufferedEncryptedSecret
-        });
-        return decryptedSecret.result.toString();
+
+        try{
+            const decryptedSecret: DecryptResult= await cryptographyClient.decrypt({
+                algorithm: "RSA1_5",
+                ciphertext: bufferedEncryptedSecret
+            });
+            return decryptedSecret.result.toString();
+        }
+        catch(err){
+            console.log(err)
+        }
     };
 
     /**
