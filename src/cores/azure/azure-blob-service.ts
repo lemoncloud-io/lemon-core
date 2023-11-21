@@ -514,7 +514,10 @@ export class BlobService implements CoreBlobService {
         const contentType = properties.contentType;
         const contentLength = properties.contentLength;
         const eTag = properties.etag;
-
+        _log(NS, `> params.ContentType =`, contentType);
+        _log(NS, `> params.ContentLength =`, contentLength);
+        _log(NS, `> params.Metadata =`, metadata);
+        _log(NS, `> params.Tagging =`, eTag);
         try {
             const blockBlobClient = containerClient.getBlockBlobClient(fileName);
             await blockBlobClient.upload(content, content.length, {
