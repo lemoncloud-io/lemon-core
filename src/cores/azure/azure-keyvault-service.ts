@@ -122,11 +122,11 @@ export class KeyVaultService implements CoreKmsService {
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
 
-        const result: ReturnType<typeof this.instance>['EncryptResult'] = await cryptographyClient.encrypt({
+        const EncryptResult: ReturnType<typeof this.instance>['EncryptResult'] = await cryptographyClient.encrypt({
             algorithm: "RSA1_5",
             plaintext: Buffer.from(message)
         });
-        return result;
+        return (Buffer.from(EncryptResult.result, 'hex').toString('base64'))
     };
 
     /**
@@ -136,16 +136,17 @@ export class KeyVaultService implements CoreKmsService {
      */
     public decrypt = async (encryptedSecret: any): Promise<any> => {
         // _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
+        const bufferedEncryptedSecret = Buffer.from(encryptedSecret, 'base64');
         const keyId = this.keyId();
         const { keyClient, credentials, CryptographyClient } = this.instance();
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
         // const ciphertextBuffer = Buffer.from(encryptedSecret, 'base64');
-        const data: ReturnType<typeof this.instance>['DecryptResult'] = await cryptographyClient.decrypt({
+        const decryptedSecret: ReturnType<typeof this.instance>['DecryptResult'] = await cryptographyClient.decrypt({
             algorithm: "RSA1_5",
-            ciphertext: encryptedSecret.result
+            ciphertext: bufferedEncryptedSecret
         });
-        return data.result.toString();
+        return decryptedSecret.result.toString();
     };
 
     /**
