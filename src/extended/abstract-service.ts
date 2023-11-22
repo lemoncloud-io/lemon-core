@@ -128,8 +128,8 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
      */
     protected constructor(databaseName?: string, tableName?: string, ns?: string, idName?: string) {
         super(ns || $U.env('NS', 'TT'));
-        this.databaseName = databaseName || $U.env('AZ_COSMOS_DATABASE', 'TestDatabase');
-        this.tableName = tableName || $U.env('MY_TABLE_CONTAINER', 'TestContainer');
+        this.databaseName = databaseName || $U.env('COSMOS_DATABASE', 'TestDatabase');
+        this.tableName = tableName || $U.env('DYNAMO_TABLE_COSMOS_CONTAINER', 'TestContainer');
         this.idName = idName || '_id';
     }
 

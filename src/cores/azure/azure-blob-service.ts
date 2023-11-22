@@ -161,7 +161,7 @@ export class BlobService implements CoreBlobService {
     /**
      * default `bucket` name
      */
-    public static DEF_BLOB_BUCKET = process.env.AZ_BLOB_NAME ?? 'blob-container';
+    public static DEF_BLOB_BUCKET = process.env.BLOB_CONTAINER ?? 'blob-container';
 
     /**
      * get name of this
@@ -187,12 +187,12 @@ export class BlobService implements CoreBlobService {
         const { StorageManagementClient } = require("@azure/arm-storage");
         const { DefaultAzureCredential } = require("@azure/identity");
 
-        const account = process.env.AZ_BLOB_ACCOUNT
-        const accountKey = process.env.AZ_BLOB_ACCOUNTKEY
-        // const account = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNT);
-        // const accountKey = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNTKEY);
-        const subscriptionId = process.env.AZ_SUBSCRIPTION_ID;
-        const resourceGroupName = process.env.AZ_RESOURCE_GROUP;
+        const account = process.env.STORAGE_ACCOUNT_RESOURCE
+        const accountKey = process.env.STORAGE_ACCOUNT_ACCESS_KEY
+        // const account = await BlobService.$kv.decrypt(process.env.STORAGE_ACCOUNT_RESOURCE);
+        // const accountKey = await BlobService.$kv.decrypt(process.env.STORAGE_ACCOUNT_ACCESS_KEY);
+        const subscriptionId = process.env.SUBSCRIPTION_ID;
+        const resourceGroupName = process.env.RESOURCE_GROUP;
 
         const sharedKeyCredential = new StorageSharedKeyCredential(account, accountKey);
         const blobServiceClient = new BlobServiceClient(

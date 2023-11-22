@@ -69,7 +69,7 @@ export class KeyVaultService implements CoreKmsService {
      * environ name of KMS KEY
      */
     public static ENV_KMS_KEY_ID = 'KMS_KEY_ID';
-    public static DEF_KMS_TARGET = process.env.AZ_KEY ?? `key-lemon`;
+    public static DEF_KMS_TARGET = process.env.KEY_VAULT_KEYS ?? `key-lemon`;
 
     private _keyId: string;
     private _options: AWSKMSSignOption;
@@ -102,7 +102,7 @@ export class KeyVaultService implements CoreKmsService {
     public instance = () => {
         const { KeyClient, CryptographyClient, EncryptResult, DecryptResult } = require("@azure/keyvault-keys");
         const { DefaultAzureCredential } = require("@azure/identity");
-        const keyVault = process.env.AZ_KEY_VAULT
+        const keyVault = process.env.KEY_VAULT_RESOURCE
         const vaultUrl = `https://${keyVault}.vault.azure.net/`;
         const credentials = new DefaultAzureCredential();
         const keyClient = new KeyClient(vaultUrl, credentials);

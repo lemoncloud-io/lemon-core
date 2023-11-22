@@ -23,7 +23,7 @@ describe(`test BlobService`, () => {
     //! use `env.PROFILE`
     console.info(`! service.container()=`, service.bucket());
     test('check name() function', async () => {
-        expect(service.name()).toEqual('service');
+        expect(service.name()).toEqual('BLOB');
     });
 
     test('check hello() function', async () => {

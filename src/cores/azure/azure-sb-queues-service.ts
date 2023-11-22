@@ -66,7 +66,7 @@ export interface SqsRecord {
  * - support of AWS `SQS` Service
  */
 export class QueuesService implements SQSService {
-    public static SB_QUEUES_ENDPOINT = process.env.AZ_QUEUE_NAME ?? 'queue-lemon';
+    public static SB_QUEUES_ENDPOINT = process.env.SERVICEBUS_QUEUE_RESOURCE ?? 'queue-lemon';
     
     protected _region: string;
     protected _endpoint: string;
@@ -102,8 +102,8 @@ export class QueuesService implements SQSService {
     // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
         const { ServiceBusClient, ServiceBusAdministrationClient } = require("@azure/service-bus");
-        // const connectionString = await QueuesService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
-        const connectionString = process.env.AZ_SB_CONNECTION_STRING
+        // const connectionString = await QueuesService.$kv.decrypt(process.env.SERVICEBUS_CONNECTION_STRING)
+        const connectionString = process.env.SERVICEBUS_CONNECTION_STRING
 
         const serviceBusClient = new ServiceBusClient(connectionString);
         const serviceBusAdministrationClient = new ServiceBusAdministrationClient(connectionString);

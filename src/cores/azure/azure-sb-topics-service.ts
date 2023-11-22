@@ -42,7 +42,7 @@ export class TopicsService implements CoreSnsService {
      * - for self messaging.
      */
     public static ENV_SB_TOPICS_ENDPOINT = 'MY_SNS_ENDPOINT';
-    public static DEF_SB_TOPICS_ENDPOINT = process.env.AZ_TOPIC_NAME ?? 'topic-lemon';
+    public static DEF_SB_TOPICS_ENDPOINT = process.env.SERVICEBUS_TOPIC_RESOURCE ?? 'topic-lemon';
     // protected $kv: KeyVaultService;
     private _arn: string;
 
@@ -58,8 +58,8 @@ export class TopicsService implements CoreSnsService {
     // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
         const { ServiceBusClient } = require("@azure/service-bus");
-        // const connectionString = await TopicsService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
-        const connectionString = process.env.AZ_SB_CONNECTION_STRING
+        // const connectionString = await TopicsService.$kv.decrypt(process.env.SERVICEBUS_CONNECTION_STRING)
+        const connectionString = process.env.SERVICEBUS_CONNECTION_STRING
         const serviceBusClient = new ServiceBusClient(connectionString);
         return { serviceBusClient }
     };

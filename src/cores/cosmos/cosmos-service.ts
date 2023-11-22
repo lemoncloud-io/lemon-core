@@ -62,8 +62,8 @@ export class CosmosService<T extends GeneralItem>  {
     // public static $kv: KeyVaultService = new KeyVaultService();
     public static async instance() {
         const { CosmosClient } = await require('@azure/cosmos');
-        const endpoint = process.env.AZ_COSMOS_ENDPOINT
-        const key = process.env.AZ_COSMOS_KEY
+        const endpoint = process.env.COSMOS_ENDPOINT
+        const key = process.env.COSMOS_KEY
         // const endpoint = await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_ENDPOINT);
         // const key =  await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_KEY);
         const client = new CosmosClient({ endpoint: endpoint, key: key });
