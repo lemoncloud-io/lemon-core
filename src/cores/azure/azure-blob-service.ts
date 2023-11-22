@@ -16,7 +16,7 @@ import { $engine, $U, _log, _inf, _err } from '../../engine';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { GETERR } from '../../common/test-helper';
-import { KeyVaultService } from './azure-keyvault-service';
+// import { KeyVaultService } from './azure-keyvault-service';
 import 'dotenv/config'
 
 const NS = $U.NS('BLOB', 'blue');
@@ -149,11 +149,11 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
  * main service implement.
  */
 export class BlobService implements CoreBlobService {
-    protected $kv: KeyVaultService;
+    // protected $kv: KeyVaultService;
+    // constructor() {
+    //     this.$kv = new KeyVaultService();
+    // }
 
-    constructor() {
-        this.$kv = new KeyVaultService();
-    }
     /**
      * environ name to use `bucket`
      */
@@ -181,14 +181,16 @@ export class BlobService implements CoreBlobService {
     /**
      * get azure sdk for blob
      */
-    public static $kv: KeyVaultService = new KeyVaultService();
+    // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
         const { BlobServiceClient, StorageSharedKeyCredential, BlobItem, Metadata } = require('@azure/storage-blob')
         const { StorageManagementClient } = require("@azure/arm-storage");
         const { DefaultAzureCredential } = require("@azure/identity");
 
-        const account = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNT);
-        const accountKey = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNTKEY);
+        const account = process.env.AZ_BLOB_ACCOUNT
+        const accountKey = process.env.AZ_BLOB_ACCOUNTKEY
+        // const account = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNT);
+        // const accountKey = await BlobService.$kv.decrypt(process.env.AZ_BLOB_ACCOUNTKEY);
         const subscriptionId = process.env.AZ_SUBSCRIPTION_ID;
         const resourceGroupName = process.env.AZ_RESOURCE_GROUP;
 

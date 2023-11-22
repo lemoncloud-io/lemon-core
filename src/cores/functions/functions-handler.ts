@@ -229,12 +229,14 @@ export class FunctionHandler {
                         status: _.statusCode,
                         body: _.body
                     }
+                    ctx.log(_.body)
                 }
                 catch (error) {
                     ctx.res = {
                         status: 500,
                         body: error
                     };
+                    ctx.log(error)
                 }
                 return _;
             })

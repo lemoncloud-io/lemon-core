@@ -14,7 +14,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
 import { CoreSnsService } from '../core-services';
-import { KeyVaultService } from '../azure'
+// import { KeyVaultService } from '../azure'
 import 'dotenv/config'
 
 const NS = $U.NS('AZTP', 'blue');
@@ -43,7 +43,7 @@ export class TopicsService implements CoreSnsService {
      */
     public static ENV_SB_TOPICS_ENDPOINT = 'MY_SNS_ENDPOINT';
     public static DEF_SB_TOPICS_ENDPOINT = process.env.AZ_TOPIC_NAME ?? 'topic-lemon';
-    protected $kv: KeyVaultService;
+    // protected $kv: KeyVaultService;
     private _arn: string;
 
     public constructor(arn?: string) {
@@ -55,17 +55,18 @@ export class TopicsService implements CoreSnsService {
      */
     public name = () => `service-bus-topics`;
 
-    public static $kv: KeyVaultService = new KeyVaultService();
+    // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
         const { ServiceBusClient } = require("@azure/service-bus");
-        const connectionString = await TopicsService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
+        // const connectionString = await TopicsService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
+        const connectionString = process.env.AZ_SB_CONNECTION_STRING
         const serviceBusClient = new ServiceBusClient(connectionString);
         return { serviceBusClient }
     };
     /**
      * hello
      */
-    public hello = () => `az-sb-topics-service:${this._arn || ''}`;
+    public hello = () => `az-sb-topics-service:${TopicsService.DEF_SB_TOPICS_ENDPOINT}`;
 
 
     /**

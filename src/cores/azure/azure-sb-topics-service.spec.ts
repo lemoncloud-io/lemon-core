@@ -23,13 +23,12 @@ const service = new TopicsService();
 jest.setTimeout(10000);
 describe(`test TopicsService.js`, () => {
     //! use `env.PROFILE`
-
     test('check name() function', async () => {
         expect(service.name()).toEqual('service-bus-topics');
     });
 
     test('check hello() function', async () => {
-        expect(service.hello()).toEqual('az-sb-topics-service:');
+        expect(service.hello()).toEqual('az-sb-topics-service:topic-lemon');
     });
 
 

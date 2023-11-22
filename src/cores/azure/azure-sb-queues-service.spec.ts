@@ -35,6 +35,7 @@ describe('QueuesService', () => {
 
         /* eslint-disable prettier/prettier */
         const service = new QueuesService();
+        console.info(`! service.endpoint()=`, service.endpoint());
         expect2(() => service.hello()).toEqual(`az-sb-queues-service:queue-lemon`);
 
         //! sende message..

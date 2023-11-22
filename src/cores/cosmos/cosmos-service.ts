@@ -11,7 +11,7 @@
 import { _log, _inf, _err, $U } from '../../engine';
 import { GeneralItem, Incrementable } from 'lemon-model';
 import 'dotenv/config'
-import { KeyVaultService } from '../azure'
+// import { KeyVaultService } from '../azure'
 
 const NS = $U.NS('CSMS', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -47,7 +47,7 @@ const instance = () => {
  */
 export class CosmosService<T extends GeneralItem>  {
     protected options: CosmosOption;
-    protected $kv: KeyVaultService;
+    // protected $kv: KeyVaultService;
 
     public constructor(options: CosmosOption) {
         _inf(NS, `CosmosService(${options.databaseName}/${options.tableName}/${options.idName}${options.sortName ? '/' : ''}${options.sortName || ''})...`);
@@ -59,11 +59,13 @@ export class CosmosService<T extends GeneralItem>  {
 
     public hello = () => `cosmos-service:${this.options.tableName}`;
 
-    public static $kv: KeyVaultService = new KeyVaultService();
+    // public static $kv: KeyVaultService = new KeyVaultService();
     public static async instance() {
         const { CosmosClient } = await require('@azure/cosmos');
-        const endpoint = await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_ENDPOINT);
-        const key =  await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_KEY);
+        const endpoint = process.env.AZ_COSMOS_ENDPOINT
+        const key = process.env.AZ_COSMOS_KEY
+        // const endpoint = await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_ENDPOINT);
+        // const key =  await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_KEY);
         const client = new CosmosClient({ endpoint: endpoint, key: key });
         return { client };
     }

@@ -69,14 +69,13 @@ export class KeyVaultService implements CoreKmsService {
      * environ name of KMS KEY
      */
     public static ENV_KMS_KEY_ID = 'KMS_KEY_ID';
-    public static DEF_KMS_TARGET = `key-lemon`;
+    public static DEF_KMS_TARGET = process.env.AZ_KEY ?? `key-lemon`;
 
     private _keyId: string;
     private _options: AWSKMSSignOption;
     public constructor(keyId?: string, options?: AWSKMSSignOption) {
         
         keyId = keyId ?? `${$engine.environ(KeyVaultService.ENV_KMS_KEY_ID, KeyVaultService.DEF_KMS_TARGET)}`;
-        keyId = process.env.AZ_KEY ?? keyId
         this._keyId = keyId;
         this._options = options;
     }

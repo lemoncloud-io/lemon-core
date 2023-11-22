@@ -17,32 +17,32 @@ import { BlobService, PutObjectResult } from './azure-blob-service';
 import { Metadata } from '@azure/storage-blob';
 import { $rand, my_parrallel } from '../../helpers';
 
-const BLOB = new BlobService();
+const service = new BlobService();
 jest.setTimeout(80000);
 describe(`test BlobService`, () => {
     //! use `env.PROFILE`
-
+    console.info(`! service.container()=`, service.bucket());
     test('check name() function', async () => {
-        expect(BLOB.name()).toEqual('BLOB');
+        expect(service.name()).toEqual('service');
     });
 
     test('check hello() function', async () => {
-        expect(BLOB.hello()).toEqual(`azure-blob-service:${BLOB.bucket()}`);
+        expect(service.hello()).toEqual(`azure-blob-service:${service.bucket()}`);
     });
 
     test('check bucket() function', async () => {
-        expect(BLOB.bucket()).toEqual(DEF_BUCKET);
+        expect(service.bucket()).toEqual(DEF_BUCKET);
     });
 
     //! test headObject()
     test('check headObject() function', async () => {
         // if the objects not exists
-        expect(await BLOB.headObject('invalid-file')).toBeNull();
+        expect(await service.headObject('invalid-file')).toBeNull();
         // if the objects exists
         const json = JSON.stringify({ hello: 'world', lemon: true });
-        await BLOB.putObject(json, 'test.json');
-        expect(await BLOB.headObject('invalid-file').catch(GETERR)).toEqual(null);
-        await BLOB.deleteObject("test.json");
+        await service.putObject(json, 'test.json');
+        expect(await service.headObject('invalid-file').catch(GETERR)).toEqual(null);
+        await service.deleteObject("test.json");
     });
 
     //! test putObject(), and getObject()
@@ -54,7 +54,7 @@ describe(`test BlobService`, () => {
         let res: PutObjectResult;
 
         //* manual key
-        res = await BLOB.putObject(body, key00);
+        res = await service.putObject(body, key00);
         expect2(() => res.Bucket).toEqual(DEF_BUCKET);
         expect2(() => res.Key).toEqual(key00);
 
@@ -62,14 +62,14 @@ describe(`test BlobService`, () => {
         expect2(() => res.Location).toEqual("koreacentral");
         expect2(() => res.ContentType).toEqual('application/json; charset=utf-8');
         expect2(() => res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
-        expect2(await BLOB.getObject(res.Key)).toMatchObject({
+        expect2(await service.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: body,
         });
-        expect2(await BLOB.deleteObject(res.Key)).toEqual();
+        expect2(await service.deleteObject(res.Key)).toEqual();
 
         //* automatic key
-        res = await BLOB.putObject(body);
+        res = await service.putObject(body);
         expect2(() => res.Bucket).toEqual(DEF_BUCKET);
         expect2(() => res.Key).toMatch(
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/,
@@ -78,16 +78,16 @@ describe(`test BlobService`, () => {
         expect2(() => res.Location).toEqual("koreacentral");
         expect2(() => res.ContentType).toEqual('application/json; charset=utf-8');
         expect2(() => res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
-        expect2(await BLOB.getObject(res.Key)).toMatchObject({
+        expect2(await service.getObject(res.Key)).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             Body: body,
         });
-        expect2(await BLOB.deleteObject(res.Key)).toEqual();
+        expect2(await service.deleteObject(res.Key)).toEqual();
 
         //* check tags, and meta
         const meta: Metadata = { ContentType: 'application/json; charset=utf-8' };
         const tags = { Company: 'LemonCloud', Service: 'lemon-core', author: 'steve' };
-        res = await BLOB.putObject(body, key00, meta, tags);
+        res = await service.putObject(body, key00, meta, tags);
 
         expect2(() => ({ ...res })).toMatchObject({
             Bucket: DEF_BUCKET,
@@ -100,7 +100,7 @@ describe(`test BlobService`, () => {
                 ContentType: 'application/json; charset=utf-8'
             },
         });
-        expect2(await BLOB.getObject(res.Key), '!Body').toMatchObject({
+        expect2(await service.getObject(res.Key), '!Body').toMatchObject({
             ContentLength: 47,
             ContentType: 'application/json; charset=utf-8',
             ETag: /^"[\da-fA-F]+"/,
@@ -110,8 +110,8 @@ describe(`test BlobService`, () => {
             TagCount: Object.keys(tags).length,
         });
 
-        expect2(await BLOB.getObjectTagging(res.Key)).toEqual({ ...tags });
-        expect2(await BLOB.headObject(res.Key), `!LastModified`).toMatchObject({
+        expect2(await service.getObjectTagging(res.Key)).toEqual({ ...tags });
+        expect2(await service.headObject(res.Key), `!LastModified`).toMatchObject({
             ContentType: 'application/json; charset=utf-8',
             ContentLength: 47,
             ETag: /^"[\da-fA-F]+"/,
@@ -121,7 +121,7 @@ describe(`test BlobService`, () => {
         });
 
         //* check list-objects
-        const $list = await BLOB.listObjects({ prefix: 'tests/' });
+        const $list = await service.listObjects({ prefix: 'tests/' });
         // console.log("$list: ", $list)
         expect2(() => ({ ...$list }), 'MaxKeys').toEqual({
             MaxKeys: 10, // default is `10`
@@ -133,12 +133,12 @@ describe(`test BlobService`, () => {
         const keys = $rand.range(MAX_COUNT).map(i => _key(i + 1));
         const objs = await my_parrallel(
             keys.map(id => ({ id })),
-            N => BLOB.putObject(body, N.id).then(R => ({ ...N, Key: R.Key })),
+            N => service.putObject(body, N.id).then(R => ({ ...N, Key: R.Key })),
         );
         expect2(() => objs?.length).toEqual(MAX_COUNT);
         if (objs) {
             // use only `limit`
-            const list1 = await BLOB.listObjects({ prefix: 'tests/', limit: 1 });
+            const list1 = await service.listObjects({ prefix: 'tests/', limit: 1 });
             expect2(() => list1?.Contents.length).toEqual(1);
             expect2(() => list1, 'IsTruncated,KeyCount,MaxKeys').toEqual({
                 IsTruncated: true,
@@ -146,7 +146,7 @@ describe(`test BlobService`, () => {
                 MaxKeys: 1,
             });
             // use `unlimited`
-            const list2 = await BLOB.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
+            const list2 = await service.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
             expect2(() => list2?.Contents.length).toEqual(11);
             expect2(() => list2, 'IsTruncated,KeyCount,MaxKeys,NextContinuationToken').toEqual({
                 IsTruncated: false,
@@ -169,16 +169,16 @@ describe(`test BlobService`, () => {
             ]);
 
             //* delete all objects.
-            const dels = await my_parrallel(objs, N => BLOB.deleteObject(N.Key).then(() => ({ ...N })));
+            const dels = await my_parrallel(objs, N => service.deleteObject(N.Key).then(() => ({ ...N })));
             expect2(() => dels?.length).toEqual(MAX_COUNT);
 
-            const list3 = await BLOB.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
+            const list3 = await service.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
             expect2(() => list3?.Contents.length).toEqual(1);
             expect2(() => list3.Contents.map((N: any) => N.Key)).toEqual(['sample.json']);
         }
 
         //* cleanup object
-        expect2(await BLOB.deleteObject(res.Key)).toEqual();
+        expect2(await service.deleteObject(res.Key)).toEqual();
     });
 
     test('check continuation token', async () => {
@@ -190,11 +190,11 @@ describe(`test BlobService`, () => {
         const keys = $rand.range(MAX_COUNT).map(i => _key(i + 1));
         const objs = await my_parrallel(
             keys.map(id => ({ id })),
-            N => BLOB.putObject(body, N.id).then(R => ({ ...N, Key: R.Key })),
+            N => service.putObject(body, N.id).then(R => ({ ...N, Key: R.Key })),
         );
         expect2(() => objs?.length).toEqual(MAX_COUNT);
 
-        const list = await BLOB.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
+        const list = await service.listObjects({ prefix: 'tests/', limit: 1, unlimited: true });
         expect2(() => list, 'IsTruncated,KeyCount,MaxKeys,NextContinuationToken').toEqual({
             IsTruncated: false,
             KeyCount: 20,
@@ -223,7 +223,7 @@ describe(`test BlobService`, () => {
             'sample8.json',
             "sample9.json",
         ]);
-        const list2 = await BLOB.listObjects({ prefix: 'tests/', limit: 2, unlimited: true });
+        const list2 = await service.listObjects({ prefix: 'tests/', limit: 2, unlimited: true });
         expect2(() => list2, 'IsTruncated,KeyCount,MaxKeys,NextContinuationToken').toEqual({
             IsTruncated: false,
             KeyCount: 10,
@@ -232,7 +232,7 @@ describe(`test BlobService`, () => {
         });
         let nextToken = undefined;
         for (let i = 0; i < 20; i++) {
-            const list: any = await BLOB.listObjects({ prefix: 'tests/', limit: 1, nextToken });
+            const list: any = await service.listObjects({ prefix: 'tests/', limit: 1, nextToken });
             nextToken = list.NextContinuationToken;
             expect2(() => list, 'IsTruncated,KeyCount,MaxKeys').toEqual({
                 IsTruncated: true,
@@ -243,7 +243,7 @@ describe(`test BlobService`, () => {
         }
         nextToken = undefined;
         for (let i = 0; i < 10; i++) {
-            const list: any = await BLOB.listObjects({ prefix: 'tests/', limit: 2, nextToken });
+            const list: any = await service.listObjects({ prefix: 'tests/', limit: 2, nextToken });
             nextToken = list.NextContinuationToken;
             expect2(() => list, 'IsTruncated,KeyCount,MaxKeys').toEqual({
                 IsTruncated: true,
@@ -254,7 +254,7 @@ describe(`test BlobService`, () => {
         }
 
         //* delete all objects.
-        const dels = await my_parrallel(objs, N => BLOB.deleteObject(N.Key).then(() => ({ ...N })));
+        const dels = await my_parrallel(objs, N => service.deleteObject(N.Key).then(() => ({ ...N })));
         expect2(() => dels?.length).toEqual(MAX_COUNT);
     });
 
@@ -264,9 +264,9 @@ describe(`test BlobService`, () => {
         const fileName = 'sample.json';
         const data = { hello: 'world', lemon: true };
 
-        await BLOB.putObject(JSON.stringify(data), fileName);
-        expect(await BLOB.getDecodedObject(fileName)).toEqual(data);
-        await BLOB.deleteObject(fileName);
+        await service.putObject(JSON.stringify(data), fileName);
+        expect(await service.getDecodedObject(fileName)).toEqual(data);
+        await service.deleteObject(fileName);
     });
 
 });

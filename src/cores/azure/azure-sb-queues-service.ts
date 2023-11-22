@@ -13,7 +13,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine';
 import { CoreServices } from '../core-services';
-import { KeyVaultService } from '../azure'
+// import { KeyVaultService } from '../azure'
 import 'dotenv/config'
 
 const NS = $U.NS('AZQU', 'blue'); // NAMESPACE TO BE PRINTED.
@@ -66,18 +66,17 @@ export interface SqsRecord {
  * - support of AWS `SQS` Service
  */
 export class QueuesService implements SQSService {
-    public static SB_QUEUES_ENDPOINT = 'queue-lemon';
-
+    public static SB_QUEUES_ENDPOINT = process.env.AZ_QUEUE_NAME ?? 'queue-lemon';
+    
     protected _region: string;
     protected _endpoint: string;
-    protected $kv: KeyVaultService;
+    // protected $kv: KeyVaultService;
 
     /**
      * default constructor.
      */
     public constructor(endpoint?: string, region?: string) {
-        endpoint = endpoint || ($engine.environ(QueuesService.SB_QUEUES_ENDPOINT, '') as string) || '';
-        endpoint = process.env.AZ_QUEUE_NAME ?? endpoint
+        endpoint = endpoint ?? QueuesService.SB_QUEUES_ENDPOINT;
         // const stage = $engine.environ('STAGE', '') as string;
         // if (!endpoint && stage != 'local')
         //     throw new Error(`env.${QueuesService.SB_QUEUES_ENDPOINT} is required w/ stage:${stage}`);
@@ -100,10 +99,12 @@ export class QueuesService implements SQSService {
             throw new Error('Invalid ISO 8601 duration format');
         }
     }
-    public static $kv: KeyVaultService = new KeyVaultService();
+    // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
         const { ServiceBusClient, ServiceBusAdministrationClient } = require("@azure/service-bus");
-        const connectionString = await QueuesService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
+        // const connectionString = await QueuesService.$kv.decrypt(process.env.AZ_SB_CONNECTION_STRING)
+        const connectionString = process.env.AZ_SB_CONNECTION_STRING
+
         const serviceBusClient = new ServiceBusClient(connectionString);
         const serviceBusAdministrationClient = new ServiceBusAdministrationClient(connectionString);
         return { serviceBusClient, serviceBusAdministrationClient }
