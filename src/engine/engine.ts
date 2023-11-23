@@ -106,20 +106,26 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
             context: { ...context, stage, apiId, resourcePath, identity, domainPrefix, event },
             data,
         };
-
-        //! find target arn.
-        const arn = getHelloArn(context, NS);
-        _log(NS, `> report-error.arn =`, arn);
-        return $sns(arn)
-            .reportError(e, payload, arn)
-            .then((mid: string) => {
-                _inf(NS, '> err.message-id =', mid);
-                return `${mid}`;
-            })
-            .catch((e: Error) => {
-                _err(NS, '! err.report =', e);
-                return '';
-            });
+        const $service = $U.env('SERVICE', 'aws');
+        if ($service === 'azure') {
+            _log(NS, `> service bus topics needed`);
+            _err(NS, '> service bus topics needed = e: ', e);
+        }
+        if ($service === 'aws') {
+            //! find target arn.
+            const arn = getHelloArn(context, NS);
+            _log(NS, `> report-error.arn =`, arn);
+            return $sns(arn)
+                .reportError(e, payload, arn)
+                .then((mid: string) => {
+                    _inf(NS, '> err.message-id =', mid);
+                    return `${mid}`;
+                })
+                .catch((e: Error) => {
+                    _err(NS, '! err.report =', e);
+                    return '';
+                });
+        }
     } catch (e2) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
