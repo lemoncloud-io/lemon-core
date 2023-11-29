@@ -62,8 +62,9 @@ export class CosmosService<T extends GeneralItem>  {
     // public static $kv: KeyVaultService = new KeyVaultService();
     public static async instance() {
         const { CosmosClient } = await require('@azure/cosmos');
-        const endpoint = process.env.COSMOS_ENDPOINT
-        const key = process.env.COSMOS_KEY
+        const account = process.env.COSMOS_DB_ACCOUNT
+        const endpoint =  `https://${account}.documents.azure.com:443/`
+        const key = process.env.COSMOS_ACCOUNT_KEY
         // const endpoint = await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_ENDPOINT);
         // const key =  await CosmosService.$kv.decrypt(process.env.AZ_COSMOS_KEY);
         const client = new CosmosClient({ endpoint: endpoint, key: key });
