@@ -116,7 +116,7 @@ describe('FunctionWEBHandler', () => {
         context.req.params['id'] = id
         context.req.method = 'GET'
 
-        expect2(await service.handle(context, context.req), 'body').toEqual({ body: $U.json({ mode: 'MY GET', id: '123', cmd: '', param: {}, body: {} }) });
+        expect2(await service.handle(context, context.req), 'body').toEqual({ body: $U.json({ mode: 'do-list', type: 'lemon', hello: 'my-lemon-web-controller:lemon' }) });
 
         //! PUT `/lemon` controller
         context.req.url = `https://localhost:7071/api/${type}`;
