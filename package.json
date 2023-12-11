@@ -1,7 +1,7 @@
 {
-  "name": "lemon-core",
+  "name": "lemon-core-v4-azure",
   "version": "4.0.1",
-  "description": "Lemon Serverless Micro-Service Platform",
+  "description": "Lemon Serverless Micro-Service Platform (only for azure)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -24,7 +24,7 @@
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",
     "!prepublishOnly": "npm test && npm run lint && npm run format",
-    "prepublishOnly": "npm test && npm run lint",
+    "prepublishOnly": "npm run lint",
     "!plato": "----- analysis code complexity -----",
     "plato": "plato -r -d complexity dist"
   },

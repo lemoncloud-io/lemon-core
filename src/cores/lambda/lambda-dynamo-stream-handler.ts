@@ -6,14 +6,20 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-13 modified lambda to dynamic loading 
- * 
+ * @date        2023-11-13 modified lambda to dynamic loading
+ *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
 import { NextHandler } from 'lemon-model';
-import { DynamoDBRecord, LambdaHandler, DynamoStreamHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
+import {
+    DynamoDBRecord,
+    LambdaHandler,
+    DynamoStreamHandler,
+    LambdaSubHandler,
+    buildReportError,
+} from './lambda-handler';
 import { toJavascript } from '../../lib/dynamodb-value';
 import { Elastic6Service, Elastic6Item } from '../elastic/';
 import { DynamoOption } from '../dynamo/';

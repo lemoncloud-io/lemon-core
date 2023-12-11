@@ -11,7 +11,6 @@
 import { expect2, GETERR$ } from '../../common/test-helper';
 import { LambdaHandler } from './lambda-handler';
 
-
 class LambdaHandlerLocal extends LambdaHandler {
     public constructor() {
         super();

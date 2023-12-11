@@ -17,7 +17,6 @@ import _ from 'lodash';
 import $async from 'async';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 
-
 export const omitNulls = (data: any) => {
     return _.omitBy(data, function (value) {
         return (
@@ -135,6 +134,7 @@ export const strToBin = function (value: any) {
         const StrConversionError = 'Need to pass in string primitive to be converted to binary.';
         throw new Error(StrConversionError);
     }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AWSUtil = require('aws-sdk/lib/util');
     if (AWSUtil.isBrowser()) {
         const len = value.length;

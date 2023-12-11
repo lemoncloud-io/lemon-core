@@ -20,8 +20,8 @@
  * @date        2019-08-09 initial typescript version.
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-14 modify aws to dynamic loading 
- * 
+ * @date        2023-11-14 modify aws to dynamic loading
+ *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import fs from 'fs';
@@ -54,7 +54,7 @@ export const loadEnviron = (process: any, options?: Options) => {
     const QUIET = 0 ? 0 : $env['LS'] === '1'; // LOG SILENT - PRINT NO LOG MESSAGE
     const PROFILE = ENV || $env['PROFILE'] || $env['ENV'] || 'none'; // Environment Profile Name.
     STAGE = STAGE || $env['STAGE'] || $env['NODE_ENV'] || 'local'; // Global STAGE/NODE_ENV For selecting.
-    const _log = QUIET ? (...a: any) => { } : console.log;
+    const _log = QUIET ? (...a: any) => {} : console.log;
     const isLocal = STAGE === 'local';
     if (!isLocal) _log(`! PROFILE=${PROFILE} STAGE=${STAGE}`);
 
@@ -96,6 +96,7 @@ export const loadEnviron = (process: any, options?: Options) => {
  */
 const credentials = (profile: string): string => {
     if (!profile) return '';
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AWS = require('aws-sdk');
     const credentials = new AWS.SharedIniFileCredentials({ profile });
     AWS.config.credentials = credentials;

@@ -8,7 +8,7 @@
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2023-02-08 support of `listObject()`
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-13 modified aws to dynamic loading 
+ * @date        2023-11-13 modified aws to dynamic loading
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 /** ****************************************************************************************************************
@@ -24,7 +24,6 @@ import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { Body, GetObjectOutput } from 'aws-sdk/clients/s3';
 import { GETERR } from '../../common/test-helper';
-
 
 /** ****************************************************************************************************************
  *  Core Types.
@@ -161,6 +160,7 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
 const instance = () => {
     const _region = region();
     const config = { region: _region };
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AWS = require('aws-sdk');
     return new AWS.S3(config);
 };
@@ -366,7 +366,6 @@ export class AWSS3Service implements CoreS3Service {
                 tagSet[Key] = Value;
                 return tagSet;
             }, {} as TagSet);
-
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;

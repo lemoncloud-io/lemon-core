@@ -10,11 +10,10 @@
  */
 import { $engine, EngineModule, LemonEngine } from '../../engine';
 import { BlobService } from './azure-blob-service';
-import { KeyVaultService } from './azure-keyvault-service'
+import { KeyVaultService } from './azure-keyvault-service';
 
 export { BlobService } from './azure-blob-service';
-export { KeyVaultService } from './azure-keyvault-service'
-
+export { KeyVaultService } from './azure-keyvault-service';
 
 export class AZUREModule implements EngineModule {
     private engine: LemonEngine;

@@ -17,7 +17,6 @@ export * from './functions-handler';
 //! export core classes
 export { FunctionWEBHandler } from './functions-web-handler';
 
-
 //! export by group
 
 import * as _$web from './functions-web-handler';
@@ -27,7 +26,6 @@ export { _$web };
 //! import default with named.
 import { FunctionHandler } from './functions-handler';
 import { FunctionWEBHandler } from './functions-web-handler';
-
 
 /**
  * class: `LambdaModule`

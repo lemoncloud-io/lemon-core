@@ -67,7 +67,7 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
 };
 
 class MyLemonWebController implements CoreWEBController {
-    public constructor() { }
+    public constructor() {}
     public hello = () => `my-lemon-web-controller:${this.type()}`;
     public type = () => 'lemon';
     public decode: NextDecoder = (mode, id, cmd) => {
@@ -91,8 +91,8 @@ describe('FunctionWEBHandler', () => {
 
         // ! LIST `/helo` controller
         let id = '';
-        context.req.url = `https://localhost:7071/api/hello/${id}`
-        context.req.params = {}
+        context.req.url = `https://localhost:7071/api/hello/${id}`;
+        context.req.params = {};
         const res = await service.handle(context, context.req);
 
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
@@ -100,23 +100,27 @@ describe('FunctionWEBHandler', () => {
 
         //! service handlers
         expect2(Object.keys(service.getHandlerDecoders())).toEqual(['hello', 'lemon']); // must be maps
-        expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function'); // must be decoder 
+        expect2(typeof service.getHandlerDecoders()['lemon']).toEqual('function'); // must be decoder
 
         //! LIST `/lemon` controller
-        let type = 'lemon'
-        context.req.url = `https://localhost:7071/api/${type}/${id}`
-        context.req.params = {}
+        let type = 'lemon';
+        context.req.url = `https://localhost:7071/api/${type}/${id}`;
+        context.req.params = {};
 
-        expect2(await service.handle(context, context.req), 'body').toEqual({ body: $U.json({ mode: 'do-list', type: 'lemon', hello: 'my-lemon-web-controller:lemon' }) });
+        expect2(await service.handle(context, context.req), 'body').toEqual({
+            body: $U.json({ mode: 'do-list', type: 'lemon', hello: 'my-lemon-web-controller:lemon' }),
+        });
 
         //! GET `/lemon/123` controller
-        type = 'lemon'
-        id = '123'
-        context.req.url = `https://localhost:7071/api/${type}/${id}`
-        context.req.params['id'] = id
-        context.req.method = 'GET'
+        type = 'lemon';
+        id = '123';
+        context.req.url = `https://localhost:7071/api/${type}/${id}`;
+        context.req.params['id'] = id;
+        context.req.method = 'GET';
 
-        expect2(await service.handle(context, context.req), 'body').toEqual({ body: $U.json({ mode: 'do-list', type: 'lemon', hello: 'my-lemon-web-controller:lemon' }) });
+        expect2(await service.handle(context, context.req), 'body').toEqual({
+            body: $U.json({ mode: 'do-list', type: 'lemon', hello: 'my-lemon-web-controller:lemon' }),
+        });
 
         //! PUT `/lemon` controller
         context.req.url = `https://localhost:7071/api/${type}`;
@@ -136,8 +140,8 @@ describe('FunctionWEBHandler', () => {
 
         // ! LIST `/helo` controller
         const id = '';
-        context.req.url = `https://localhost:7071/api/hello/${id}`
-        context.req.params = {}
+        context.req.url = `https://localhost:7071/api/hello/${id}`;
+        context.req.params = {};
         const response = await functions.handle(context, context.req).catch(GETERR$);
 
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
@@ -153,8 +157,8 @@ describe('FunctionWEBHandler', () => {
         const context: any = loadJsonSync('data/samples/functions-handler/context-web.json');
 
         const id = 'abc';
-        context.req.url = `https://localhost:7071/api/hello/${id}`
-        context.req.params['id'] = id
+        context.req.url = `https://localhost:7071/api/hello/${id}`;
+        context.req.params['id'] = id;
 
         const res = await functions.handle(context, context.req);
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
@@ -171,9 +175,9 @@ describe('FunctionWEBHandler', () => {
         const id = 'abc';
         const cmd = 'hi';
 
-        context.req.url = `https://localhost:7071/api/hello/${id}/${cmd}`
-        context.req.params['id'] = id
-        context.req.params['cmd'] = cmd
+        context.req.url = `https://localhost:7071/api/hello/${id}/${cmd}`;
+        context.req.params['id'] = id;
+        context.req.params['cmd'] = cmd;
         const res = await functions.handle(context, context.req);
 
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
@@ -198,10 +202,10 @@ describe('FunctionWEBHandler', () => {
         const id = 'abc';
         const cmd = 'hi';
 
-        context.req.method = 'POST'
-        context.req.url = `https://localhost:7071/api/hello/${id}/${cmd}`
-        context.req.params['id'] = id
-        context.req.params['cmd'] = cmd
+        context.req.method = 'POST';
+        context.req.url = `https://localhost:7071/api/hello/${id}/${cmd}`;
+        context.req.params['id'] = id;
+        context.req.params['cmd'] = cmd;
         const res = await functions.handle(context, context.req);
 
         expect2(res, 'statusCode').toEqual({ statusCode: 200 });
@@ -223,10 +227,10 @@ describe('FunctionWEBHandler', () => {
         /* eslint-enable prettier/prettier */
         const { functions } = instance();
         const context: any = loadJsonSync('data/samples/functions-handler/context-web.json');
-        context.req.method = 'POST'
-        const id = ''
+        context.req.method = 'POST';
+        const id = '';
         context.req.params['id'] = id;
-        context.req.url = `https://localhost:7071/api/hello/${id}`
+        context.req.url = `https://localhost:7071/api/hello/${id}`;
         const res = await functions.handle(context, context.req);
 
         expect2(() => res, 'statusCode').toEqual({ statusCode: 400 });
@@ -241,9 +245,9 @@ describe('FunctionWEBHandler', () => {
         /* eslint-enable prettier/prettier */
         const { functions } = instance();
         const context: any = loadJsonSync('data/samples/functions-handler/context-web.json');
-        const id = '0'
+        const id = '0';
         context.req.params['id'] = id;
-        context.req.url = `https://localhost:7071/api/hello/${id}`
+        context.req.url = `https://localhost:7071/api/hello/${id}`;
         const res = await functions.handle(context, context.req);
 
         expect2(() => res, 'statusCode').toEqual({ statusCode: 404 });

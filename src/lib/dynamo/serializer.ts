@@ -9,7 +9,7 @@
  * @date        2019-11-20 refactoring to ts via origin
  * @author      Ian Kim <ian@lemoncloud.io>
  * @date        2023-09-16 modifyed docClient instance
- * 
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 

@@ -21,8 +21,8 @@
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2022-02-21 remove `$_` the lodash libs.
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-17 modified aws to dynamic loading 
- * 
+ * @date        2023-11-17 modified aws to dynamic loading
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, $U, _log, _inf, _err } from './index';
@@ -32,7 +32,7 @@ import { NextContext } from 'lemon-model';
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
 import { loadJsonSync } from '../tools/shared';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
-import { Context, APIGatewayEventRequestContext } from '../cores/lambda/lambda-handler'
+import { Context, APIGatewayEventRequestContext } from '../cores/lambda/lambda-handler';
 
 //! create SNS Service
 const $sns = (arn: string): AWSSNSService => new AWSSNSService(arn);

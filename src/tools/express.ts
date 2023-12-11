@@ -21,8 +21,8 @@
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2020-01-23 improve context information via headers.
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-14 modify aws to dynamic loading 
- * 
+ * @date        2023-11-14 modify aws to dynamic loading
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { LemonEngine } from '../engine/';
@@ -44,16 +44,16 @@ import * as requestIp from 'request-ip';
 //! helper to catch header value w/o case-sensitive
 export const buildHeaderGetter =
     (headers: any) =>
-        (name: string): string => {
-            name = `${name || ''}`.toLowerCase();
-            headers = headers || {};
-            return Object.keys(headers).reduce((found: string, key: string) => {
-                const val = headers[key];
-                key = `${key || ''}`.toLowerCase();
-                if (key == name) return val;
-                return found;
-            }, '');
-        };
+    (name: string): string => {
+        name = `${name || ''}`.toLowerCase();
+        headers = headers || {};
+        return Object.keys(headers).reduce((found: string, key: string) => {
+            const val = headers[key];
+            key = `${key || ''}`.toLowerCase();
+            if (key == name) return val;
+            return found;
+        }, '');
+    };
 
 //! create Server Instance.
 //NOTE - avoid external reference of type.
@@ -96,6 +96,7 @@ export const buildExpress = (
         //NOTE! - OR, TRY TO LOAD CREDENTIALS BY PROFILE NAME.
         const NAME = $engine.environ('NAME', '') as string;
         const profile = $engine.environ('PROFILE', NAME) as string;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const AWS = require('aws-sdk');
         const credentials = new AWS.SharedIniFileCredentials({ profile });
         if (profile) AWS.config.credentials = credentials;
@@ -167,7 +168,7 @@ export const buildExpress = (
                     const parseCookies = (str: string) => {
                         const rx = /([^;=\s]*)=([^;]*)/g;
                         const obj: { [key: string]: string } = {};
-                        for (let m; (m = rx.exec(str));) obj[m[1]] = decodeURIComponent(m[2]);
+                        for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
                         return obj;
                     };
                     context.cookie = parseCookies(`${Array.isArray(val) ? val.join('; ') : val || ''}`.trim());
@@ -266,18 +267,18 @@ export const buildExpress = (
         //! handle request to handler.
         const next_middle =
             (type: string) =>
-                (req: any): Promise<void> => {
-                    const callback = req.$callback;
-                    req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
-                    return $web
-                        .packContext(req.$event, req.$context)
-                        .then(context => $web.handle(req.$event, context))
-                        .then(_ => callback && callback(null, _))
-                        .catch(e => {
-                            _err(NS, '! exp.err =', e);
-                            callback && callback(e);
-                        });
-                };
+            (req: any): Promise<void> => {
+                const callback = req.$callback;
+                req.$event.pathParameters = { type, ...req.$event.pathParameters }; // make sure `type`
+                return $web
+                    .packContext(req.$event, req.$context)
+                    .then(context => $web.handle(req.$event, context))
+                    .then(_ => callback && callback(null, _))
+                    .catch(e => {
+                        _err(NS, '! exp.err =', e);
+                        callback && callback(e);
+                    });
+            };
 
         //! register automatically endpont.
         const RESERVES = 'id,log,inf,err,extend,ts,dt,environ'.split(',');

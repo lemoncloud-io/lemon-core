@@ -312,12 +312,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         fields: string[],
         filters?: CoreModelFilterable<T>,
         idName?: string,
-        database?: string
+        database?: string,
     ) {
         this.idName = idName === undefined ? '_id' : `${idName || ''}`;
         this.service = service;
         this.storage =
-            typeof storage == 'string' ? ProxyStorageService.makeStorageService(storage, fields, idName, database) : storage;
+            typeof storage == 'string'
+                ? ProxyStorageService.makeStorageService(storage, fields, idName, database)
+                : storage;
         this.filters = filters || new GeneralModelFilter<T, ModelType>(fields);
     }
 
@@ -664,7 +666,12 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param fields    required for dynamo table.
      * @param idName    internal partition-key name (default '_id')
      */
-    public static makeStorageService<T>(table: string, fields?: string[], idName?: string, database?: string): StorageService<T> {
+    public static makeStorageService<T>(
+        table: string,
+        fields?: string[],
+        idName?: string,
+        database?: string,
+    ): StorageService<T> {
         if (!table) throw new Error(`@table (table-name) is required!`);
         idName = idName === undefined ? '_id' : `${idName || ''}`;
         //! clear the duplicated string
@@ -682,7 +689,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             fields = clearDuplicated(CORE_FIELDS.concat(fields));
             const service = $U.env('SERVICE', 'aws');
             if (service === 'azure') {
-                return new CosmosStorageService<T>(database, table, fields, idName)
+                return new CosmosStorageService<T>(database, table, fields, idName);
             }
             if (service === 'aws') {
                 return new DynamoStorageService<T>(table, fields, idName);

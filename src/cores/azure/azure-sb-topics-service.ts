@@ -5,7 +5,7 @@
  *
  * @author      Ian Kim <ian@lemoncloud.io>
  * @date        2023-09-25 initial azure service bus topics service
- * 
+ *
  * @copyright (C) lemoncloud.io 2023 - All Rights Reserved.
  */
 /** ****************************************************************************************************************
@@ -15,7 +15,7 @@
 import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
 import { CoreSnsService } from '../core-services';
 // import { KeyVaultService } from '../azure'
-import 'dotenv/config'
+import 'dotenv/config';
 
 const NS = $U.NS('AZTP', 'blue');
 
@@ -57,17 +57,17 @@ export class TopicsService implements CoreSnsService {
 
     // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
-        const { ServiceBusClient } = require("@azure/service-bus");
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { ServiceBusClient } = require('@azure/service-bus');
         // const connectionString = await TopicsService.$kv.decrypt(process.env.SERVICEBUS_CONNECTION_STRING)
-        const connectionString = process.env.SERVICEBUS_CONNECTION_STRING
+        const connectionString = process.env.SERVICEBUS_CONNECTION_STRING;
         const serviceBusClient = new ServiceBusClient(connectionString);
-        return { serviceBusClient }
+        return { serviceBusClient };
     };
     /**
      * hello
      */
     public hello = () => `az-sb-topics-service:${TopicsService.DEF_SB_TOPICS_ENDPOINT}`;
-
 
     /**
      * publish message
@@ -79,11 +79,13 @@ export class TopicsService implements CoreSnsService {
         const { serviceBusClient } = await this.instance();
         try {
             const sender = serviceBusClient.createSender(endpoint);
-            const params = [{
-                contentType: "application/json",
-                subject: subject,
-                body: payload,
-            }];
+            const params = [
+                {
+                    contentType: 'application/json',
+                    subject: subject,
+                    body: payload,
+                },
+            ];
 
             let batch = await sender.createMessageBatch();
             for (const param of params) {
@@ -93,21 +95,20 @@ export class TopicsService implements CoreSnsService {
                     batch = await sender.createMessageBatch();
 
                     if (!batch.tryAddMessage(param)) {
-                        throw new Error("Message too big to fit in a batch");
+                        throw new Error('Message too big to fit in a batch');
                     }
                 }
             }
 
-            await sender.sendMessages(batch)
+            await sender.sendMessages(batch);
             await sender.close();
             await serviceBusClient.close();
-            return
-        }
-        catch (e) {
+            return;
+        } catch (e) {
             _err(NS, '! err=', e);
             throw e;
         }
-    }
+    };
 
     /**
      * report error via SNS with subject 'error'
@@ -124,7 +125,7 @@ export class TopicsService implements CoreSnsService {
 
         //! find out endpoint.
         // target = environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
-        target = TopicsService.DEF_SB_TOPICS_ENDPOINT
+        target = TopicsService.DEF_SB_TOPICS_ENDPOINT;
         const payload = this.asPayload(e, data);
 
         // _log(NS, '> payload =', $U.json(payload));

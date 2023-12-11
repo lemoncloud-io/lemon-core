@@ -8,7 +8,7 @@
  * @date        2019-11-19 optimize 404 error case, and normalize key.
  * @date        2019-12-10 support `DummyDynamoService.listItems()` for mocks
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-13 modified dynamo to dynamic loading 
+ * @date        2023-11-13 modified dynamo to dynamic loading
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -323,7 +323,8 @@ export class DynamoService<T extends GeneralItem> {
         _log(NS, `createTable(${ReadCapacityUnits}, ${WriteCapacityUnits})...`);
         const payload = this.prepareCreateTable(ReadCapacityUnits, WriteCapacityUnits);
         const { dynamo } = await instance();
-        return dynamo.createTable(payload)
+        return dynamo
+            .createTable(payload)
             .promise()
             .then((res: any) => {
                 _log(NS, '> createTable.res =', res);
@@ -339,7 +340,8 @@ export class DynamoService<T extends GeneralItem> {
         _log(NS, `deleteTable()...`);
         const payload = this.prepareDeleteTable();
         const { dynamo } = await instance();
-        return dynamo.deleteTable(payload)
+        return dynamo
+            .deleteTable(payload)
             .promise()
             .then((res: any) => {
                 _log(NS, '> deleteTable.res =', res);
@@ -360,7 +362,8 @@ export class DynamoService<T extends GeneralItem> {
         const itemKey = this.prepareItemKey(id, sort);
         // _log(NS, `> pkey[${id}${sort ? '/' : ''}${sort || ''}] =`, $U.json(itemKey));
         const { dynamodoc } = await instance();
-        return dynamodoc.get(itemKey)
+        return dynamodoc
+            .get(itemKey)
             .promise()
             .then((res: any) => {
                 // _log(NS, '> readItem.res =', $U.json(res));
@@ -389,7 +392,8 @@ export class DynamoService<T extends GeneralItem> {
         const payload = this.prepareSaveItem(id, item);
         // _log(NS, '> payload :=', payload);
         const { dynamodoc } = await instance();
-        return dynamodoc.put(payload)
+        return dynamodoc
+            .put(payload)
             .promise()
             .then((res: any) => {
                 _log(NS, '> saveItem.res =', $U.json(res));
@@ -413,7 +417,8 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `deleteItem(${id})...`);
         const payload = this.prepareItemKey(id, sort);
         const { dynamodoc } = await instance();
-        return dynamodoc.delete(payload)
+        return dynamodoc
+            .delete(payload)
             .promise()
             .then((res: any) => {
                 _log(NS, '> deleteItem.res =', $U.json(res));
@@ -445,7 +450,8 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `updateItem(${id})...`);
         const payload = this.prepareUpdateItem(id, sort, updates, increments);
         const { dynamodoc } = await instance();
-        return dynamodoc.update(payload)
+        return dynamodoc
+            .update(payload)
             .promise()
             .then((res: any) => {
                 _log(NS, `> updateItem[${id}].res =`, $U.json(res));

@@ -13,8 +13,8 @@
  * @date        2018-05-23 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-14 modify aws to dynamic loading 
- * 
+ * @date        2023-11-14 modify aws to dynamic loading
+ *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import fs from 'fs';
@@ -44,6 +44,7 @@ export const asyncCredentials = async (profile: string) =>
         };
         try {
             //WARN! - could not catch AWS.Error `Profile null not found` via callback.
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const AWS = require('aws-sdk');
             credentials = new AWS.SharedIniFileCredentials({ profile, callback });
             AWS.config.credentials = credentials;
@@ -52,12 +53,12 @@ export const asyncCredentials = async (profile: string) =>
         }
     });
 
-
 //! dynamic loading credentials by profile. (search PROFILE -> NAME)
 export const credentials = (profile: string): string => {
     if (!profile) return '';
     // console.info('! credentials.profile =', profile);
     // WARN! - could not catch AWS.Error `Profile null not found` via callback.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AWS = require('aws-sdk');
     const credentials = new AWS.SharedIniFileCredentials({ profile });
     AWS.config.credentials = credentials;
@@ -66,6 +67,7 @@ export const credentials = (profile: string): string => {
 
 //! return whether AWS credentials set
 export const hasCredentials = (): boolean => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AWS = require('aws-sdk');
     return !!AWS.config.credentials;
 };

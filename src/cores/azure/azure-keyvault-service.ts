@@ -20,7 +20,7 @@ import { $engine, _log, _inf, _err, $U } from '../../engine';
 // import AWS, { KMS } from 'aws-sdk';
 // import { SigningAlgorithmSpec } from 'aws-sdk/clients/kms';
 import { CoreKmsService } from '../core-services';
-import 'dotenv/config'
+import 'dotenv/config';
 const NS = $U.NS('AZKV', 'blue'); // NAMESPACE TO BE PRINTED.
 
 // type MySigningAlgorithm = SigningAlgorithmSpec;
@@ -59,7 +59,7 @@ export interface AWSKMSSignOption {
      */
     algorithm?: EncryptionAlgorithm;
 }
-type EncryptionAlgorithm = string
+type EncryptionAlgorithm = string;
 /**
  * class: `KeyVaultService`
  * - shared Key Management Service to encrypt/decrypt message.
@@ -74,7 +74,6 @@ export class KeyVaultService implements CoreKmsService {
     private _keyId: string;
     private _options: AWSKMSSignOption;
     public constructor(keyId?: string, options?: AWSKMSSignOption) {
-        
         keyId = keyId ?? `${$engine.environ(KeyVaultService.ENV_KMS_KEY_ID, KeyVaultService.DEF_KMS_TARGET)}`;
         this._keyId = keyId;
         this._options = options;
@@ -100,13 +99,15 @@ export class KeyVaultService implements CoreKmsService {
     };
 
     public instance = () => {
-        const { KeyClient, CryptographyClient, EncryptResult, DecryptResult } = require("@azure/keyvault-keys");
-        const { DefaultAzureCredential } = require("@azure/identity");
-        const keyVault = process.env.KEY_VAULT_RESOURCE
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { KeyClient, CryptographyClient, EncryptResult, DecryptResult } = require('@azure/keyvault-keys');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { DefaultAzureCredential } = require('@azure/identity');
+        const keyVault = process.env.KEY_VAULT_RESOURCE;
         const vaultUrl = `https://${keyVault}.vault.azure.net/`;
         const credentials = new DefaultAzureCredential();
         const keyClient = new KeyClient(vaultUrl, credentials);
-        return { keyClient, credentials, CryptographyClient, EncryptResult, DecryptResult }
+        return { keyClient, credentials, CryptographyClient, EncryptResult, DecryptResult };
     };
 
     /**
@@ -129,19 +130,17 @@ export class KeyVaultService implements CoreKmsService {
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
 
-        try{
+        try {
             const EncryptResult: EncryptResult = await cryptographyClient.encrypt({
-                algorithm: "RSA1_5",
-                plaintext: Buffer.from(message)
+                algorithm: 'RSA1_5',
+                plaintext: Buffer.from(message),
             });
-            if(!Buffer.from(EncryptResult.result, 'hex').toString('base64')){
+            if (!Buffer.from(EncryptResult.result, 'hex').toString('base64')) {
                 throw new Error(`buffered ${EncryptResult} (string) is required!`);
             }
-            return (Buffer.from(EncryptResult.result, 'hex').toString('base64'))
-        }
-       
-        catch(err){
-            console.log(err)
+            return Buffer.from(EncryptResult.result, 'hex').toString('base64');
+        } catch (err) {
+            console.log(err);
         }
     };
 
@@ -154,7 +153,7 @@ export class KeyVaultService implements CoreKmsService {
         _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
 
         const bufferedEncryptedSecret = Buffer.from(encryptedSecret, 'base64');
-        if(!bufferedEncryptedSecret){
+        if (!bufferedEncryptedSecret) {
             throw new Error(`${bufferedEncryptedSecret} (string) is required!`);
         }
         const keyId = this.keyId();
@@ -162,15 +161,14 @@ export class KeyVaultService implements CoreKmsService {
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey, credentials);
 
-        try{
-            const decryptedSecret: DecryptResult= await cryptographyClient.decrypt({
-                algorithm: "RSA1_5",
-                ciphertext: bufferedEncryptedSecret
+        try {
+            const decryptedSecret: DecryptResult = await cryptographyClient.decrypt({
+                algorithm: 'RSA1_5',
+                ciphertext: bufferedEncryptedSecret,
             });
             return decryptedSecret.result.toString();
-        }
-        catch(err){
-            console.log(err)
+        } catch (err) {
+            console.log(err);
         }
     };
 
@@ -187,7 +185,7 @@ export class KeyVaultService implements CoreKmsService {
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey.id, credentials);
         _inf(NS, `sign(${keyId}, ${message.substring(0, 10)}...)..`);
-        const result = await cryptographyClient.signData("RS256", Buffer.from(message));
+        const result = await cryptographyClient.signData('RS256', Buffer.from(message));
         const signature = result.result;
         return signature;
     };
@@ -207,7 +205,7 @@ export class KeyVaultService implements CoreKmsService {
         const keyVaultKey = await keyClient.getKey(keyId);
         const cryptographyClient = new CryptographyClient(keyVaultKey.id, credentials);
         _inf(NS, `verify(${keyId}, ${message.substring(0, 10)}...)..`);
-        const result = await cryptographyClient.verifyData("RS256", Buffer.from(message), Buffer.from(signature));
+        const result = await cryptographyClient.verifyData('RS256', Buffer.from(message), Buffer.from(signature));
         return result.result;
     };
 

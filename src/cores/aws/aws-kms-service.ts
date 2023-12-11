@@ -13,7 +13,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-10-30 initial version.
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-13 modified aws to dynamic loading 
+ * @date        2023-11-13 modified aws to dynamic loading
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -29,6 +29,7 @@ const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as stri
 const instance = () => {
     const _region = region();
     const config = { region: _region };
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AWS = require('aws-sdk');
     return new AWS.KMS(config);
 };

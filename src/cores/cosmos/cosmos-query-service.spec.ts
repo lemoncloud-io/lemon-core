@@ -21,7 +21,7 @@ interface MyModel extends GeneralItem {
 }
 
 export const instance = () => {
-    const databaseName = "TestDatabase"
+    const databaseName = 'TestDatabase';
     const tableName = 'TestContainer';
     const idName = 'ID';
     const options: CosmosOption = { databaseName, tableName, idName };
@@ -57,7 +57,6 @@ describe('CosmosQueryService', () => {
         );
     });
 
-
     it('should pass basic query operations', async () => {
         const { cosmosQuery, options } = instance();
         expect2(cosmosQuery.hello()).toEqual(`cosmos-query-service:${options.tableName}`);
@@ -81,16 +80,14 @@ describe('CosmosQueryService', () => {
                 expect2(result.last).toBeDefined();
             }
         } while (remain > 0);
-
     });
-
 
     //! cosmos query service.
     it('should pass scan w/ simple filter', async () => {
         const { cosmosQuery, options } = instance();
 
-        let conditions: CosmosQueryFilter[]
-        let expectedCount: number
+        let conditions: CosmosQueryFilter[];
+        let expectedCount: number;
 
         // 은행이 KB국민(bank = KB국민)인 개수
         conditions = [
@@ -99,7 +96,6 @@ describe('CosmosQueryService', () => {
         ];
         expectedCount = data.filter(item => item.bank === 'KB국민').length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
-
 
         // 연락처가 없는(contact = null) 개수
         conditions = [
@@ -117,7 +113,6 @@ describe('CosmosQueryService', () => {
         expectedCount = data.filter(item => item.contact !== null).length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
 
-
         // 위의 필터와 동일한 표현식
         conditions = [
             { key: 'type', comparator: '=', value: 'bank_account' },
@@ -125,15 +120,13 @@ describe('CosmosQueryService', () => {
         ];
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
 
-
         // 잔액이 100~300만원(balance BETWEEN 1000000 AND 3000000)인 개수
         conditions = [
             { key: 'type', comparator: '=', value: 'bank_account' },
             { key: 'balance', from: 1000000, to: 3000000 },
         ];
-        expectedCount = data.filter(item => item.balance >= 1000000 && item.balance <= 3000000).length
+        expectedCount = data.filter(item => item.balance >= 1000000 && item.balance <= 3000000).length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
-
 
         // note 필드가 존재하는(attribute_exists(note)) 개수
         conditions = [
@@ -143,7 +136,6 @@ describe('CosmosQueryService', () => {
         expectedCount = data.filter(item => 'note' in item).length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
 
-
         // 성이 이씨인(begins_with(name, '이') 개수
         conditions = [
             { key: 'type', comparator: '=', value: 'bank_account' },
@@ -151,15 +143,13 @@ describe('CosmosQueryService', () => {
         ];
         expectedCount = data.filter(item => item.name.startsWith('이')).length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
-
     });
-
 
     it('should pass scan w/ complex filter', async () => {
         const { cosmosQuery, options } = instance();
 
-        let conditions: CosmosQueryFilter[]
-        let expectedCount: number
+        let conditions: CosmosQueryFilter[];
+        let expectedCount: number;
 
         // 성이 신씨이거나 정씨인 개수
         conditions = [
@@ -174,7 +164,6 @@ describe('CosmosQueryService', () => {
         expectedCount = data.filter(item => item.name.startsWith('신') || item.name.startsWith('정')).length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
 
-
         // 성이 김씨가 아니고 잔액이 100~300만원인(NOT begins_with(name, '김') AND balance BETWEEN 1000000 AND 3000000) 개수
         conditions = [
             { key: 'type', comparator: '=', value: 'bank_account' },
@@ -185,7 +174,6 @@ describe('CosmosQueryService', () => {
             item => !item.name.startsWith('김') && item.balance >= 1000000 && item.balance <= 3000000,
         ).length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
-
 
         // 은행이 NH농협인 사람 중 연락처가 없거나 잔액이 50만원 이하인 개수
         conditions = [
@@ -202,9 +190,7 @@ describe('CosmosQueryService', () => {
             item => item.bank === 'NH농협' && (item.contact != null || item.balance <= 500000),
         ).length;
         expect2(await cosmosQuery.scan(-1, null, conditions), 'total').toEqual({ total: expectedCount });
-
     });
-
 
     // Cleanup table
     afterAll(async () => {

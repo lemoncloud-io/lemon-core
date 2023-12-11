@@ -6,7 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-6 initial version with `dynamodb` package.
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-13 modified dynamo to dynamic loading 
+ * @date        2023-11-13 modified dynamo to dynamic loading
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

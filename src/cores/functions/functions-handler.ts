@@ -18,7 +18,6 @@ const NS = $U.NS('FUNC', 'green'); // NAMESPACE TO BE PRINTED.
 
 // export type ConfigService = CoreConfigService;
 
-
 /**
  * cron event
  *
@@ -53,7 +52,6 @@ type SQSHandler = MyHandler<SQSEvent, void>;
 type CronHandler = MyHandler<CronEvent, void>;
 
 type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
-
 
 type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'dds' | 'cron' | 'cognito' | 'notification' | 'dynamo-stream';
 
@@ -109,11 +107,11 @@ export abstract class FunctionSubHandler<T extends MyHandler> implements LambdaH
  */
 const buildReportError =
     (isReport?: boolean) =>
-        (e: Error, ctx?: any, req?: any, data?: any): Promise<string> => {
-            return (isReport ? doReportError(e, ctx, req, data) : Promise.resolve(data))
-                .then(() => GETERR(e))
-                .catch(GETERR);
-        };
+    (e: Error, ctx?: any, req?: any, data?: any): Promise<string> => {
+        return (isReport ? doReportError(e, ctx, req, data) : Promise.resolve(data))
+            .then(() => GETERR(e))
+            .catch(GETERR);
+    };
 
 /**
  * class: `LambdaHandler`
@@ -153,23 +151,21 @@ export class FunctionHandler {
             for (const binding of ctx.bindingDefinitions) {
                 if (binding.type === 'httpTrigger') {
                     return 'web';
-                }
-                else {
-                    if (binding.type === 'serviceBusTrigger' && binding.name === "queue") {
+                } else {
+                    if (binding.type === 'serviceBusTrigger' && binding.name === 'queue') {
                         return 'sqs';
                     }
-                    if (binding.type === 'serviceBusTrigger' && binding.name === "topic") {
+                    if (binding.type === 'serviceBusTrigger' && binding.name === 'topic') {
                         return 'sns';
                     }
                 }
             }
-        }
-        else {
+        } else {
             if (ctx.requestContext && ctx.pathParameters !== undefined) {
                 return 'web';
             }
-        };
-    }
+        }
+    };
     /**
      * decode event to proper handler.
      * - NOTE! - returns promised results with `async`
@@ -227,13 +223,12 @@ export class FunctionHandler {
                 try {
                     ctx.res = {
                         status: _.statusCode,
-                        body: _.body
-                    }
-                }
-                catch (error) {
+                        body: _.body,
+                    };
+                } catch (error) {
                     ctx.res = {
                         status: 500,
-                        body: error
+                        body: error,
                     };
                 }
                 return _;

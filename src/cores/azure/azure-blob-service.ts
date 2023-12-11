@@ -5,7 +5,7 @@
  *
  * @author      Ian Kim <ian@lemoncloud.io>
  * @date        2023-09-18 initial azure blob service
- * 
+ *
  * @copyright (C) lemoncloud.io 2023 - All Rights Reserved.
  */
 /** ****************************************************************************************************************
@@ -17,7 +17,7 @@ import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { GETERR } from '../../common/test-helper';
 // import { KeyVaultService } from './azure-keyvault-service';
-import 'dotenv/config'
+import 'dotenv/config';
 
 const NS = $U.NS('BLOB', 'blue');
 
@@ -119,7 +119,12 @@ export interface ListObjectResult {
 
 export interface CoreBlobService extends CoreServices {
     bucket: (target?: string) => string;
-    putObject: (body: string, key?: string, metadata?: ReturnType<typeof instance>['Metadata'], tags?: TagSet) => Promise<PutObjectResult>;
+    putObject: (
+        body: string,
+        key?: string,
+        metadata?: ReturnType<typeof instance>['Metadata'],
+        tags?: TagSet,
+    ) => Promise<PutObjectResult>;
     getObject: (key: string) => Promise<any>;
     getDecodedObject: (key: string) => Promise<any>;
     getObjectTagging: (key: string) => Promise<TagSet>;
@@ -143,7 +148,6 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
     target = isUpperStr ? '' : target;
     return `${target || val}`;
 };
-
 
 /**
  * main service implement.
@@ -176,19 +180,23 @@ export class BlobService implements CoreBlobService {
     /**
      * get target endpoint by name.
      */
-    public bucket = (target?: string): string => environ(target, BlobService.ENV_BLOB_NAME, BlobService.DEF_BLOB_BUCKET);
+    public bucket = (target?: string): string =>
+        environ(target, BlobService.ENV_BLOB_NAME, BlobService.DEF_BLOB_BUCKET);
 
     /**
      * get azure sdk for blob
      */
     // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
-        const { BlobServiceClient, StorageSharedKeyCredential, BlobItem, Metadata } = require('@azure/storage-blob')
-        const { StorageManagementClient } = require("@azure/arm-storage");
-        const { DefaultAzureCredential } = require("@azure/identity");
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { BlobServiceClient, StorageSharedKeyCredential, BlobItem, Metadata } = require('@azure/storage-blob');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { StorageManagementClient } = require('@azure/arm-storage');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { DefaultAzureCredential } = require('@azure/identity');
 
-        const account = process.env.STORAGE_ACCOUNT_RESOURCE
-        const accountKey = process.env.STORAGE_ACCOUNT_ACCESS_KEY
+        const account = process.env.STORAGE_ACCOUNT_RESOURCE;
+        const accountKey = process.env.STORAGE_ACCOUNT_ACCESS_KEY;
         // const account = await BlobService.$kv.decrypt(process.env.STORAGE_ACCOUNT_RESOURCE);
         // const accountKey = await BlobService.$kv.decrypt(process.env.STORAGE_ACCOUNT_ACCESS_KEY);
         const subscriptionId = process.env.SUBSCRIPTION_ID;
@@ -197,11 +205,11 @@ export class BlobService implements CoreBlobService {
         const sharedKeyCredential = new StorageSharedKeyCredential(account, accountKey);
         const blobServiceClient = new BlobServiceClient(
             `https://${account}.blob.core.windows.net`,
-            sharedKeyCredential
+            sharedKeyCredential,
         );
 
         const storageClient = new StorageManagementClient(new DefaultAzureCredential(), subscriptionId);
-        return { storageClient, blobServiceClient, resourceGroupName, Metadata, BlobItem }
+        return { storageClient, blobServiceClient, resourceGroupName, Metadata, BlobItem };
     };
 
     /**
@@ -216,7 +224,7 @@ export class BlobService implements CoreBlobService {
         const { blobServiceClient } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
-        const parts = key.split("/");
+        const parts = key.split('/');
         const fileName = parts[parts.length - 1];
         const containerClient = blobServiceClient.getContainerClient(Bucket);
         const blobClient = containerClient.getBlobClient(fileName);
@@ -232,7 +240,7 @@ export class BlobService implements CoreBlobService {
                 ETag: data.etag,
                 LastModified: $U.ts(data.lastModified),
             };
-            return result
+            return result;
         } catch (e) {
             if (e.statusCode == 404) return null;
             _err(NS, '! err=', e);
@@ -240,7 +248,7 @@ export class BlobService implements CoreBlobService {
         }
     };
 
-    /** 
+    /**
      * get a file from Blob Container
      *
      * @param {string} key
@@ -251,7 +259,7 @@ export class BlobService implements CoreBlobService {
         const { blobServiceClient, Metadata } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
-        const parts = key.split("/");
+        const parts = key.split('/');
         const fileName = parts[parts.length - 1];
         const containerClient = blobServiceClient.getContainerClient(Bucket);
         const blobClient = containerClient.getBlobClient(fileName);
@@ -261,20 +269,20 @@ export class BlobService implements CoreBlobService {
             return new Promise<any>((resolve, reject) => {
                 const chunks: Uint8Array[] = [];
 
-                blobResponse.blobDownloadStream.on("data", (chunk: Uint8Array) => {
+                blobResponse.blobDownloadStream.on('data', (chunk: Uint8Array) => {
                     chunks.push(chunk);
                 });
 
-                blobResponse.blobDownloadStream.on("end", () => {
+                blobResponse.blobDownloadStream.on('end', () => {
                     try {
-                        const jsonData = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+                        const jsonData = JSON.parse(Buffer.concat(chunks).toString('utf8'));
                         resolve(jsonData);
                     } catch (error) {
                         reject(error);
                     }
                 });
 
-                blobResponse.blobDownloadStream.on("error", (error: any) => {
+                blobResponse.blobDownloadStream.on('error', (error: any) => {
                     reject(error);
                 });
             });
@@ -311,7 +319,7 @@ export class BlobService implements CoreBlobService {
         const params = { Bucket, Key: key };
 
         try {
-            const data = await this.getObject(key).catch((e) => {
+            const data = await this.getObject(key).catch(e => {
                 _log(NS, '> data.type =', typeof data);
                 _err(NS, '! err=', e);
                 throw e;
@@ -338,7 +346,7 @@ export class BlobService implements CoreBlobService {
         const { blobServiceClient } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
-        const parts = key.split("/");
+        const parts = key.split('/');
         const fileName = parts[parts.length - 1];
         const containerClient = blobServiceClient.getContainerClient(Bucket);
         const blobClient = containerClient.getBlobClient(fileName);
@@ -346,7 +354,7 @@ export class BlobService implements CoreBlobService {
         try {
             const data = await blobClient.getTags();
             _log(NS, `> data =`, $U.json(data));
-            return data?.tags
+            return data?.tags;
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
@@ -364,7 +372,7 @@ export class BlobService implements CoreBlobService {
         const { blobServiceClient } = await this.instance();
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
-        const parts = key.split("/");
+        const parts = key.split('/');
         const fileName = parts[parts.length - 1];
         const containerClient = blobServiceClient.getContainerClient(Bucket);
         const blobClient = containerClient.getBlobClient(fileName);
@@ -404,7 +412,7 @@ export class BlobService implements CoreBlobService {
         const throwable = options?.throwable ?? true;
 
         //* build the req-params.
-        const Bucket = this.bucket()
+        const Bucket = this.bucket();
         const { blobServiceClient } = await this.instance();
         const containerClient = blobServiceClient.getContainerClient(Bucket);
         const result: any = {
@@ -415,38 +423,51 @@ export class BlobService implements CoreBlobService {
         };
         try {
             let count = 0;
-            result.MaxKeys = MaxKeys
+            result.MaxKeys = MaxKeys;
             let iterator = containerClient.listBlobsFlat().byPage({
                 maxPageSize: MaxKeys,
                 ...(nextToken ? { continuationToken: nextToken } : {}),
             });
 
             let response = (await iterator.next()).value;
-            if (response !== undefined && response?.segment !== undefined && response?.segment?.blobItems !== undefined) {
+            if (
+                response !== undefined &&
+                response?.segment !== undefined &&
+                response?.segment?.blobItems !== undefined
+            ) {
                 for (const blob of response?.segment?.blobItems) {
                     result.Contents.push({
                         Key: blob.name,
                         Size: blob.properties.contentLength,
                     });
                 }
-                count++
-                result.NextContinuationToken = response?.continuationToken
+                count++;
+                result.NextContinuationToken = response?.continuationToken;
                 if (!unlimited) {
-                    result.KeyCount = count
+                    result.KeyCount = count;
                     result.IsTruncated = true;
-                    return result
+                    return result;
                 }
             }
 
-            while (response !== undefined && response?.segment !== undefined && response?.segment?.blobItems !== undefined) {
+            while (
+                response !== undefined &&
+                response?.segment !== undefined &&
+                response?.segment?.blobItems !== undefined
+            ) {
                 iterator = containerClient.listBlobsFlat().byPage({
                     maxPageSize: MaxKeys,
                     continuationToken: result.NextContinuationToken,
                 });
                 response = (await iterator.next()).value;
-                result.NextContinuationToken = response?.continuationToken
+                result.NextContinuationToken = response?.continuationToken;
 
-                if (response?.segment?.blobItems.length > 0 && response !== undefined && response?.segment !== undefined && response?.segment?.blobItems !== undefined) {
+                if (
+                    response?.segment?.blobItems.length > 0 &&
+                    response !== undefined &&
+                    response?.segment !== undefined &&
+                    response?.segment?.blobItems !== undefined
+                ) {
                     for (const blob of response.segment.blobItems) {
                         result.Contents.push({
                             Key: blob.name,
@@ -490,7 +511,7 @@ export class BlobService implements CoreBlobService {
 
         const { blobServiceClient, storageClient, resourceGroupName } = await this.instance();
         const Bucket = this.bucket();
-        const parts = key.split("/");
+        const parts = key.split('/');
         const fileName = parts[parts.length - 1];
         const containerClient = blobServiceClient.getContainerClient(Bucket);
         const blobClient = containerClient.getBlobClient(fileName);
@@ -502,8 +523,8 @@ export class BlobService implements CoreBlobService {
             const blockBlobClient = containerClient.getBlockBlobClient(fileName);
             await blockBlobClient.upload(content, content.length, {
                 blobHTTPHeaders: {
-                    blobContentType: "application/json; charset=utf-8"
-                }
+                    blobContentType: 'application/json; charset=utf-8',
+                },
             });
         }
         //* metadata has ContentType
@@ -524,10 +545,13 @@ export class BlobService implements CoreBlobService {
             const blockBlobClient = containerClient.getBlockBlobClient(fileName);
             await blockBlobClient.upload(content, content.length, {
                 blobHTTPHeaders: {
-                    blobContentType: "application/json; charset=utf-8"
-                }
+                    blobContentType: 'application/json; charset=utf-8',
+                },
             });
-            const storageAccount = await storageClient.storageAccounts.getProperties(resourceGroupName, blobClient.accountName);
+            const storageAccount = await storageClient.storageAccounts.getProperties(
+                resourceGroupName,
+                blobClient.accountName,
+            );
 
             if (metadata) await blobClient.setMetadata(metadata);
             if (tags) await blobClient.setTags(tags);

@@ -4,7 +4,7 @@
  *
  * @author      Ian Kim <ian@lemoncloud.io>
  * @date        2023-09-18 support azure blob service
- * 
+ *
  * @copyright (C) lemoncloud.io 2023 - All Rights Reserved.
  */
 const ENV_NAME = 'my-blob-container';
@@ -42,7 +42,7 @@ describe(`test BlobService`, () => {
         const json = JSON.stringify({ hello: 'world', lemon: true });
         await service.putObject(json, 'test.json');
         expect(await service.headObject('invalid-file').catch(GETERR)).toEqual(null);
-        await service.deleteObject("test.json");
+        await service.deleteObject('test.json');
     });
 
     //! test putObject(), and getObject()
@@ -50,7 +50,7 @@ describe(`test BlobService`, () => {
         const json = { hello: 'world', lemon: true, name: '한글!' };
         const body = JSON.stringify(json);
         const _key = (n?: number) => `tests/sample${n ? n : ''}.json`;
-        const key00 = _key();   //tests/sample.json
+        const key00 = _key(); //tests/sample.json
         let res: PutObjectResult;
 
         //* manual key
@@ -59,7 +59,7 @@ describe(`test BlobService`, () => {
         expect2(() => res.Key).toEqual(key00);
 
         //Azure Blob Storage does not include region information in its URLs.
-        expect2(() => res.Location).toEqual("koreacentral");
+        expect2(() => res.Location).toEqual('koreacentral');
         expect2(() => res.ContentType).toEqual('application/json; charset=utf-8');
         expect2(() => res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
         expect2(await service.getObject(res.Key)).toMatchObject({
@@ -75,7 +75,7 @@ describe(`test BlobService`, () => {
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/,
         );
         //Azure Blob Storage does not include region information in its URLs.
-        expect2(() => res.Location).toEqual("koreacentral");
+        expect2(() => res.Location).toEqual('koreacentral');
         expect2(() => res.ContentType).toEqual('application/json; charset=utf-8');
         expect2(() => res.ContentLength).toEqual(body.length + 4); // +2 due to unicode for hangul
         expect2(await service.getObject(res.Key)).toMatchObject({
@@ -97,7 +97,7 @@ describe(`test BlobService`, () => {
             ETag: /^"[\da-fA-F]+"/,
             Location: `koreacentral`,
             Metadata: {
-                ContentType: 'application/json; charset=utf-8'
+                ContentType: 'application/json; charset=utf-8',
             },
         });
         expect2(await service.getObject(res.Key), '!Body').toMatchObject({
@@ -221,7 +221,7 @@ describe(`test BlobService`, () => {
             'sample6.json',
             'sample7.json',
             'sample8.json',
-            "sample9.json",
+            'sample9.json',
         ]);
         const list2 = await service.listObjects({ prefix: 'tests/', limit: 2, unlimited: true });
         expect2(() => list2, 'IsTruncated,KeyCount,MaxKeys,NextContinuationToken').toEqual({
@@ -258,7 +258,6 @@ describe(`test BlobService`, () => {
         expect2(() => dels?.length).toEqual(MAX_COUNT);
     });
 
-
     //! test getDecodedObject()
     test('check getDecodedObject() function', async () => {
         const fileName = 'sample.json';
@@ -268,5 +267,4 @@ describe(`test BlobService`, () => {
         expect(await service.getDecodedObject(fileName)).toEqual(data);
         await service.deleteObject(fileName);
     });
-
 });

@@ -85,19 +85,20 @@ export interface CosmosScannable<T extends GeneralItem> {
     scan(limit?: number, last?: any, conditions?: CosmosQueryFilter): Promise<CosmosQueryResult<T>>;
 }
 
-
 export class QueryBuilder {
     public async buildConditionExpression(condition: Condition): Promise<string> {
         if (isComparisonCondition(condition)) {
             const valueExpression =
-                condition.value === null ? 'null' : typeof condition.value === 'number' ? condition.value : `'${condition.value}'`;
+                condition.value === null
+                    ? 'null'
+                    : typeof condition.value === 'number'
+                    ? condition.value
+                    : `'${condition.value}'`;
             return `c['${condition.key}'] ${condition.comparator} ${valueExpression}`;
         }
         if (isStringCondition(condition)) {
-            if (condition.operator === 'begins_with')
-                return `STARTSWITH(c['${condition.key}'], '${condition.value}')`;
-            if (condition.operator === 'contains')
-                return `CONTAINS(c['${condition.key}'], '${condition.value}')`;
+            if (condition.operator === 'begins_with') return `STARTSWITH(c['${condition.key}'], '${condition.value}')`;
+            if (condition.operator === 'contains') return `CONTAINS(c['${condition.key}'], '${condition.value}')`;
         }
         if (isBetweenCondition(condition)) {
             return `c['${condition.key}'] >= ${condition.from} AND c['${condition.key}'] <= ${condition.to}`;
@@ -109,7 +110,7 @@ export class QueryBuilder {
 
     public async buildQueryByConditions(conditions: CosmosQueryFilter): Promise<string> {
         if (conditions) {
-            const queryParts = Object.values(conditions).map(async (condition) => {
+            const queryParts = Object.values(conditions).map(async condition => {
                 if (condition.hasOwnProperty('or')) {
                     const orConditions = condition.or.map(async (orCondition: Condition) => {
                         return await this.buildConditionExpression(orCondition);
@@ -138,7 +139,11 @@ export class QueryService {
         this.options = options;
     }
 
-    public async queryItems(query: string, limit?: number, last?: any): Promise<{ queryResult: any[]; continuationToken?: any }> {
+    public async queryItems(
+        query: string,
+        limit?: number,
+        last?: any,
+    ): Promise<{ queryResult: any[]; continuationToken?: any }> {
         const { databaseName, tableName } = this.options;
         const { client } = await CosmosService.instance();
         const querySpec = {
@@ -152,12 +157,12 @@ export class QueryService {
             .fetchNext();
         return {
             queryResult,
-            continuationToken: continuationToken || undefined
+            continuationToken: continuationToken || undefined,
         };
     }
 }
 
-export class CosmosQueryService<T extends GeneralItem> implements CosmosScannable<T>{
+export class CosmosQueryService<T extends GeneralItem> implements CosmosScannable<T> {
     protected options: CosmosOption;
     private queryService: QueryService;
     private queryBuilder: QueryBuilder;
@@ -188,7 +193,7 @@ export class CosmosQueryService<T extends GeneralItem> implements CosmosScannabl
             return {
                 list: queryResult as T[],
                 total: queryResult.length,
-                last: continuationToken
+                last: continuationToken,
             };
         } else {
             throw new Error('error');

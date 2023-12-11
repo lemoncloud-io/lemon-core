@@ -124,7 +124,7 @@ export const promised = async (ctx: any, req: any): Promise<any> => {
     //     return () => success(FAVICON_ICO, 'image/x-icon');
     // }
 
-    const param = req.params
+    const param = req.params;
     // const param: any = $protocol.service.asTransformer('web').transformToParam(ctx);
     // _log(NS, '! protocol-param =', $U.json({ ...param, body: undefined })); // hide `.body` in log.
     //! returns object..
@@ -136,45 +136,45 @@ export const promised = async (ctx: any, req: any): Promise<any> => {
  */
 export const mxNextHandler =
     (thiz: FunctionWEBHandler) =>
-        async (params: any): Promise<any> => {
-            //! determine if param or func.
-            const fx: ProxyResponser = typeof params == 'function' ? params : null;
-            const $param: ProxyParams = params && typeof params == 'object' ? params : null;
-            //! Serverless
-            if ($param.ctx.invocationId) {
-                const param = $param.param
-                const ctx = $param.ctx
-                //! call the main handler()
-                const R = $param ? await thiz.handleProtocol(param, ctx) : fx;
-                //! - if like to override the full response, then return function.
-                if (R && typeof R == 'function') return R();
-                //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
-                const { method, headers } = $param.ctx.req || {};
-                if (method && method != 'GET') {
-                    const origin = `${(headers && headers['origin']) || ''}`;
-                    return success(R, null, origin);
-                }
-                //! returns response..
-                return success(R);
+    async (params: any): Promise<any> => {
+        //! determine if param or func.
+        const fx: ProxyResponser = typeof params == 'function' ? params : null;
+        const $param: ProxyParams = params && typeof params == 'object' ? params : null;
+        //! Serverless
+        if ($param.ctx.invocationId) {
+            const param = $param.param;
+            const ctx = $param.ctx;
+            //! call the main handler()
+            const R = $param ? await thiz.handleProtocol(param, ctx) : fx;
+            //! - if like to override the full response, then return function.
+            if (R && typeof R == 'function') return R();
+            //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+            const { method, headers } = $param.ctx.req || {};
+            if (method && method != 'GET') {
+                const origin = `${(headers && headers['origin']) || ''}`;
+                return success(R, null, origin);
             }
-            //! Local
-            else {
-                const param = $param.ctx.pathParameters
-                const ctx = $param.ctx
-                //! call the main handler()
-                const R = $param ? await thiz.handleProtocol(param, ctx) : fx;
-                //! - if like to override the full response, then return function.
-                if (R && typeof R == 'function') return R();
-                //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
-                const { httpMethod: method, headers } = ctx || {};
-                if (method && method != 'GET') {
-                    const origin = `${(headers && headers['origin']) || ''}`;
-                    return success(R, null, origin);
-                }
-                //! returns response..
-                return success(R);
-            }
+            //! returns response..
+            return success(R);
         }
+        //! Local
+        else {
+            const param = $param.ctx.pathParameters;
+            const ctx = $param.ctx;
+            //! call the main handler()
+            const R = $param ? await thiz.handleProtocol(param, ctx) : fx;
+            //! - if like to override the full response, then return function.
+            if (R && typeof R == 'function') return R();
+            //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+            const { httpMethod: method, headers } = ctx || {};
+            if (method && method != 'GET') {
+                const origin = `${(headers && headers['origin']) || ''}`;
+                return success(R, null, origin);
+            }
+            //! returns response..
+            return success(R);
+        }
+    };
 
 /**
  * builder for failure promised.
@@ -301,8 +301,8 @@ export class FunctionWEBHandler extends FunctionSubHandler<any> {
 
         const parsedUrl = isInvocationId ? new URL(url) : null;
         const path = isInvocationId ? parsedUrl.pathname : ctx.path;
-        const $path = isInvocationId ? (req.params || {}) : (ctx.pathParameters || {});
-        const $param = isInvocationId ? (req.query || {}) : (ctx.queryStringParameters || {});
+        const $path = isInvocationId ? req.params || {} : ctx.pathParameters || {};
+        const $param = isInvocationId ? req.query || {} : ctx.queryStringParameters || {};
 
         if (!$path?.id) {
             ctx.httpMethod = 'LIST';
@@ -315,7 +315,6 @@ export class FunctionWEBHandler extends FunctionSubHandler<any> {
         return promised(ctx, req).then(mxNextHandler(this)).catch(mxNextFailure(ctx, req));
     };
 
-
     /**
      * handle param via protocol-service.
      *
@@ -325,13 +324,17 @@ export class FunctionWEBHandler extends FunctionSubHandler<any> {
     public async handleProtocol<TResult = any>(param: ProtocolParam, ctx: any): Promise<TResult> {
         if (!param) throw new Error(`@param (protocol-param) is required!`);
         if (!ctx) throw new Error(`@ctx (protocol-ctx) is required!`);
-        const TYPE = ctx?.invocationId ? (new URL(ctx.req.url).pathname.split('/')[2] || '') : (param?.type || '');
-        const MODE = ctx?.invocationId ? (ctx.httpMethod === 'LIST' && ctx.req.method === 'GET' ? 'LIST' : ctx.req.method) : ctx.httpMethod;
-        const ID = ctx?.invocationId ? (ctx.req.params?.id || '') : (param?.id || '');
-        const CMD = ctx?.invocationId ? (ctx.req.params?.cmd || '') : (param?.cmd || '');
-        const PATH = ctx?.invocationId ? (new URL(ctx.req.url).pathname || '') : (ctx.path || '');
-        const $param = ctx?.invocationId ? (ctx.req.query || {}) : (ctx.queryStringParameters || {});
-        const $body = ctx?.invocationId ? (ctx.req.body || {}) : (ctx.body || {});
+        const TYPE = ctx?.invocationId ? new URL(ctx.req.url).pathname.split('/')[2] || '' : param?.type || '';
+        const MODE = ctx?.invocationId
+            ? ctx.httpMethod === 'LIST' && ctx.req.method === 'GET'
+                ? 'LIST'
+                : ctx.req.method
+            : ctx.httpMethod;
+        const ID = ctx?.invocationId ? ctx.req.params?.id || '' : param?.id || '';
+        const CMD = ctx?.invocationId ? ctx.req.params?.cmd || '' : param?.cmd || '';
+        const PATH = ctx?.invocationId ? new URL(ctx.req.url).pathname || '' : ctx.path || '';
+        const $param = ctx?.invocationId ? ctx.req.query || {} : ctx.queryStringParameters || {};
+        const $body = ctx?.invocationId ? ctx.req.body || {} : ctx.body || {};
 
         //! debug print body.
         if (!$body) {
@@ -714,7 +717,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         const parseCookies = (str: string) => {
             const rx = /([^;=\s]*)=([^;]*)/g;
             const obj: { [key: string]: string } = {};
-            for (let m; (m = rx.exec(str));) obj[m[1]] = decodeURIComponent(m[2]);
+            for (let m; (m = rx.exec(str)); ) obj[m[1]] = decodeURIComponent(m[2]);
             return obj;
         };
         return parseCookies(cookie);
@@ -723,10 +726,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
     /**
      * override with AWS request-context
      */
-    public prepareContext = async (
-        $org: NextContext,
-        reqContext: any,
-    ): Promise<NextContext> => {
+    public prepareContext = async ($org: NextContext, reqContext: any): Promise<NextContext> => {
         // STEP.4 override w/ cognito authentication to NextIdentity.
         if (reqContext?.identity?.cognitoIdentityPoolId !== undefined) {
             const identity = $org.identity as NextIdentityCognito;

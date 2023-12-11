@@ -7,7 +7,7 @@
  * @date        2022-02-21 optimized error handler, and search.
  * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-13 modified elastic6 to dynamic loading 
+ * @date        2023-11-13 modified elastic6 to dynamic loading
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -17,7 +17,6 @@ import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';
 import { GETERR } from '../../common/test-helper';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
-
 
 const instance = (endpoint?: any) => {
     return (Elastic6Service as any).instance();
@@ -93,7 +92,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public static readonly QWERTY_FIELD = '_qwerty';
 
     protected _options: Elastic6Option;
-    public readonly _client: elasticsearchClient
+    public readonly _client: elasticsearchClient;
     /**
      * simple instance maker.
      *
@@ -104,7 +103,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param endpoint  service-url
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
      */
-
 
     public static async instance(endpoint: string) {
         const elasticsearch = await require('@elastic/elasticsearch');
@@ -861,7 +859,7 @@ export const $ERROR = {
     throwAsJson: (e: any) => {
         throw $ERROR.asJson(e);
     },
-    parseMeta: <T extends { type?: string; value?: any; error?: string; list?: any[];[key: string]: any }>(
+    parseMeta: <T extends { type?: string; value?: any; error?: string; list?: any[]; [key: string]: any }>(
         meta: any,
     ): T => {
         if (typeof meta === 'string' && meta) {
@@ -927,17 +925,17 @@ export const $ERROR = {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     handler:
         (name: string, cb?: (e: Error, E?: ErrorReason) => any) =>
-            (e: any): any => {
-                const E = $ERROR.asError(e);
-                //! unknown error found..
-                if (!E?.status) {
-                    _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
-                    throw e;
-                }
-                const $e = new Error(`${E.status} ${E.reason.type} - ${E.message}`);
-                if (cb) return cb($e, E);
-                throw $e;
-            },
+        (e: any): any => {
+            const E = $ERROR.asError(e);
+            //! unknown error found..
+            if (!E?.status) {
+                _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
+                throw e;
+            }
+            const $e = new Error(`${E.status} ${E.reason.type} - ${E.message}`);
+            if (cb) return cb($e, E);
+            throw $e;
+        },
 };
 
 /** ****************************************************************************************************************
@@ -999,4 +997,3 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
         return item;
     }
 }
-

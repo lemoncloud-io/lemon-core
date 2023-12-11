@@ -7,14 +7,14 @@
  *
  * @author      Ian Kim <ian@lemoncloud.io>
  * @date        2023-09-25 initial azure service bus queues service
- * 
+ *
  * @copyright   (C) lemoncloud.io 2023 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine';
 import { CoreServices } from '../core-services';
 // import { KeyVaultService } from '../azure'
-import 'dotenv/config'
+import 'dotenv/config';
 
 const NS = $U.NS('AZQU', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -67,7 +67,7 @@ export interface SqsRecord {
  */
 export class QueuesService implements SQSService {
     public static SB_QUEUES_ENDPOINT = process.env.SERVICEBUS_QUEUE_RESOURCE ?? 'queue-lemon';
-    
+
     protected _region: string;
     protected _endpoint: string;
     // protected $kv: KeyVaultService;
@@ -101,13 +101,14 @@ export class QueuesService implements SQSService {
     }
     // public static $kv: KeyVaultService = new KeyVaultService();
     public instance = async () => {
-        const { ServiceBusClient, ServiceBusAdministrationClient } = require("@azure/service-bus");
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { ServiceBusClient, ServiceBusAdministrationClient } = require('@azure/service-bus');
         // const connectionString = await QueuesService.$kv.decrypt(process.env.SERVICEBUS_CONNECTION_STRING)
-        const connectionString = process.env.SERVICEBUS_CONNECTION_STRING
+        const connectionString = process.env.SERVICEBUS_CONNECTION_STRING;
 
         const serviceBusClient = new ServiceBusClient(connectionString);
         const serviceBusAdministrationClient = new ServiceBusAdministrationClient(connectionString);
-        return { serviceBusClient, serviceBusAdministrationClient }
+        return { serviceBusClient, serviceBusAdministrationClient };
     };
     /**
      * hello
@@ -124,10 +125,12 @@ export class QueuesService implements SQSService {
         if (!data) throw new Error('@data(object) is required!');
         const { serviceBusClient } = await this.instance();
         const sender = serviceBusClient.createSender(this._endpoint);
-        const messages = [{
-            contentType: "application/json",
-            body: data,
-        }]
+        const messages = [
+            {
+                contentType: 'application/json',
+                body: data,
+            },
+        ];
 
         let batch = await sender.createMessageBatch();
         for (const message of messages) {
@@ -137,12 +140,12 @@ export class QueuesService implements SQSService {
                 batch = await sender.createMessageBatch();
 
                 if (!batch.tryAddMessage(message)) {
-                    throw new Error("Message too big to fit in a batch");
+                    throw new Error('Message too big to fit in a batch');
                 }
             }
         }
 
-        await sender.sendMessages(batch)
+        await sender.sendMessages(batch);
         await sender.close();
 
         return;
@@ -168,10 +171,10 @@ export class QueuesService implements SQSService {
             try {
                 list.push(message);
             } catch (error) {
-                console.error("Error occurred:", error);
+                console.error('Error occurred:', error);
                 await receiver.abandonMessage(message); // If an error occurs, return the message back to the queue
             }
-            return { list }
+            return { list };
         }
     }
     /**
@@ -182,8 +185,8 @@ export class QueuesService implements SQSService {
         if (!message) throw new Error('@handle(string) is required!');
         const { serviceBusClient } = await this.instance();
         const receiver = await serviceBusClient.createReceiver(this._endpoint);
-        await receiver.completeMessage(message);     // Process the message and delete it
-        return
+        await receiver.completeMessage(message); // Process the message and delete it
+        return;
     }
 
     /**
@@ -193,21 +196,21 @@ export class QueuesService implements SQSService {
      */
     public async statistics(): Promise<SqsStatistics> {
         const { serviceBusAdministrationClient } = await this.instance();
-        const queueProperties = await serviceBusAdministrationClient.getQueue(this._endpoint)
-        const queueRuntimeProperties = await serviceBusAdministrationClient.getQueueRuntimeProperties(this._endpoint)
+        const queueProperties = await serviceBusAdministrationClient.getQueue(this._endpoint);
+        const queueRuntimeProperties = await serviceBusAdministrationClient.getQueueRuntimeProperties(this._endpoint);
 
         // The number of active messages in the entity.
-        // If a message is successfully delivered to a subscription, 
+        // If a message is successfully delivered to a subscription,
         // the number of active messages in the topic itself is 0.
-        const available = queueRuntimeProperties.activeMessageCount
+        const available = queueRuntimeProperties.activeMessageCount;
 
-        const inflight = queueRuntimeProperties.totalMessageCount - queueRuntimeProperties.activeMessageCount
+        const inflight = queueRuntimeProperties.totalMessageCount - queueRuntimeProperties.activeMessageCount;
 
         //The number of messages which are yet to be transferred/forwarded to destination entity.
-        const delayed = queueRuntimeProperties.transferMessageCount // Delayed
+        const delayed = queueRuntimeProperties.transferMessageCount; // Delayed
 
         //The number of messages transfer-messages which are dead-lettered into transfer-dead-letter subqueue.
-        const timeout = this.iso8601DurationToSeconds(queueProperties.lockDuration)// Timeout
+        const timeout = this.iso8601DurationToSeconds(queueProperties.lockDuration); // Timeout
 
         return { available, inflight, delayed, timeout };
     }

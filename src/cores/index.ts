@@ -8,7 +8,7 @@
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @author      Ian Kim <ian@lemoncloud.io>
  * @date        2023-11-16 added azure, functions service
- * 
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 //! export cores.
@@ -29,7 +29,6 @@ export * from './lambda/';
 export * from './protocol/';
 export * from './storage/';
 
-
 //! import `default` with named.
 import aws from './aws/';
 import azure from './azure/';
@@ -39,7 +38,6 @@ import functions from './functions/';
 
 import config from './config/';
 import protocol from './protocol/';
-
 
 //! export default.
 export default { aws, azure, lambda, functions, config, protocol };

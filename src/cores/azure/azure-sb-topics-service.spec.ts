@@ -31,7 +31,6 @@ describe(`test TopicsService.js`, () => {
         expect(service.hello()).toEqual('az-sb-topics-service:topic-lemon');
     });
 
-
     test('check asPayload() function', async () => {
         const e = new Error('test-error');
         const e2 = { statusMessage: 'test-status' };

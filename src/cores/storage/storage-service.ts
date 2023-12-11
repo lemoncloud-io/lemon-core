@@ -89,7 +89,7 @@ import { CosmosService } from '../cosmos/';
 import { DynamoService, KEY_TYPE } from '../dynamo/';
 import { loadDataYml } from '../../tools/shared';
 
-interface MyGeneral extends GeneralItem, StorageModel { }
+interface MyGeneral extends GeneralItem, StorageModel {}
 
 const clearDuplicated = (arr: string[]) =>
     arr.sort().reduce((L, val) => {
@@ -101,7 +101,7 @@ const clearDuplicated = (arr: string[]) =>
  * - service via CosmosDB with id + json data.
  */
 
-export class CosmosStorageService<T extends StorageModel>  {
+export class CosmosStorageService<T extends StorageModel> {
     private _databaseName: string; // target database-name
     private _table: string; // target table-name
     private _idName: string; // target table-name
@@ -110,13 +110,19 @@ export class CosmosStorageService<T extends StorageModel>  {
 
     public constructor(databaseName: string, table: string, fields: string[], idName: string) {
         if (!table) throw new Error(`@table (table-name) is required!`);
-        this._databaseName = databaseName
+        this._databaseName = databaseName;
         this._table = table;
         this._idName = idName;
         this._fields = clearDuplicated(['id', 'type', 'stereo', 'meta', idName].concat(fields));
-        this.$cosmos = new CosmosService({ databaseName: this._databaseName, tableName: this._table, idName: this._idName });
-        this.$cosmos.createTable()
-            .then(() => { }).catch(error => { });
+        this.$cosmos = new CosmosService({
+            databaseName: this._databaseName,
+            tableName: this._table,
+            idName: this._idName,
+        });
+        this.$cosmos
+            .createTable()
+            .then(() => {})
+            .catch(error => {});
     }
 
     /**

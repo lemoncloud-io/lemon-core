@@ -11,7 +11,6 @@
 import { expect2, GETERR$ } from '../../common/test-helper';
 import { FunctionHandler } from './functions-handler';
 
-
 class FunctionHandlerLocal extends FunctionHandler {
     public constructor() {
         super();

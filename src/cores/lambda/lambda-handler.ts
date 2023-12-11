@@ -6,8 +6,8 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-13 modified lambda to dynamic loading 
- * 
+ * @date        2023-11-13 modified lambda to dynamic loading
+ *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -60,7 +60,6 @@ export type SNSEvent = ReturnType<typeof instance>['AWSSNSEvent'];
 export type SQSEvent = ReturnType<typeof instance>['AWSSQSEvent'];
 export type WSSResult = any;
 export type CognitoUserPoolTriggerEvent = ReturnType<typeof instance>['CognitoUserPoolTriggerEvent'];
-
 
 //! define and export all types.
 export type MyHandler<TEvent = any, TResult = any> = (event: TEvent, context: NextContext) => Promise<TResult>;
@@ -128,11 +127,11 @@ export abstract class LambdaSubHandler<T extends MyHandler> implements LambdaHan
  */
 export const buildReportError =
     (isReport?: boolean) =>
-        (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
-            return (isReport ? doReportError(e, context, event, data) : Promise.resolve(data))
-                .then(() => GETERR(e))
-                .catch(GETERR);
-        };
+    (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
+        return (isReport ? doReportError(e, context, event, data) : Promise.resolve(data))
+            .then(() => GETERR(e))
+            .catch(GETERR);
+    };
 
 /**
  * class: `LambdaHandler`

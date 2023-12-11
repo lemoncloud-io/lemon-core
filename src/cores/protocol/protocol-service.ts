@@ -6,8 +6,8 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-27 initial version.
  * @author      Ian Kim <ian@lemoncloud.io>
- * @date        2023-11-17 modified aws to dynamic loading 
- * 
+ * @date        2023-11-17 modified aws to dynamic loading
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -22,8 +22,8 @@ import {
     CallbackParam,
 } from './../core-services';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
-import { SendMessageRequest, SendMessageResult } from '../aws/aws-sqs-service'
-import { PublishInput, PublishResponse } from '../aws/aws-sns-service'
+import { SendMessageRequest, SendMessageResult } from '../aws/aws-sqs-service';
+import { PublishInput, PublishResponse } from '../aws/aws-sns-service';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
 import URL from 'url';
@@ -262,7 +262,7 @@ export class MyProtocolService implements ProtocolService {
         if (!MyProtocolService.REPORT_ERROR) throw e;
         _err(NS, `! err@report =`, e);
         return doReportError(e, context, event, data)
-            .catch(() => { })
+            .catch(() => {})
             .then(() => {
                 throw e instanceof Error ? e : new Error(typeof e == 'string' ? e : $U.json(e));
             });

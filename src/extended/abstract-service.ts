@@ -14,7 +14,7 @@
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
  * @author      Ian Kim <Ian@lemoncloud.io>
  * @date        2023-10-30 added database for azure
- * 
+ *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -38,7 +38,7 @@ import $cores, {
     ProxyStorageService,
     StorageMakeable,
     elasticsearchClient,
-    CosmosOption
+    CosmosOption,
 } from '../cores/';
 import { $U, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
@@ -165,7 +165,14 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
      */
     public makeStorageService<T extends Model>(type: ModelType, fields: string[], filter: CoreModelFilterable<T>) {
         //! use proxy-storage-service for both dynamo-table and dummy-data.
-        const storage = new ProxyStorageService<T, ModelType>(this, this.tableName, fields, filter, this.idName, this.databaseName);
+        const storage = new ProxyStorageService<T, ModelType>(
+            this,
+            this.tableName,
+            fields,
+            filter,
+            this.idName,
+            this.databaseName,
+        );
         storage.setTimer(() => (this.current ? this.current : new Date().getTime()));
         return storage.makeTypedStorageService(type);
     }

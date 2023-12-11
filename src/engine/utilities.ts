@@ -7,7 +7,7 @@
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @author      Ian Kim <ian@lemoncloud.io>
  * @date        2023-11-16 deleted 'latin1 of md5/hmac'
- * 
+ *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { EngineCore, GeneralFuntion } from './types';
@@ -831,7 +831,7 @@ export class Utilities {
          * main class.
          */
         return new (class JWTHelper {
-            public constructor() { }
+            public constructor() {}
             /**
              * use `jsonwebtoken` directly.
              */
