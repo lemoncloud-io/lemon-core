@@ -109,7 +109,6 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const $service = $U.env('SERVICE', 'aws');
         if ($service === 'azure') {
             _log(NS, `> service bus topics needed`);
-            _err(NS, '> service bus topics needed = e: ', e);
         }
         if ($service === 'aws') {
             //! find target arn.
@@ -147,17 +146,23 @@ export const doReportCallback = async (data: CallbackData, service?: string, con
         const name = `${$U.env('NAME', '')}`.toLowerCase();
         service = service || `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}/${name}-${stage}`;
         const payload = { service, data };
-        const arn = getHelloArn(context, NS);
-        return $sns(arn)
-            .publish('', 'callback', payload) // subject should be 'callback'
-            .then((mid: string) => {
-                _inf(NS, '> callback.res =', mid);
-                return `${mid}`;
-            })
-            .catch((e: Error) => {
-                _err(NS, '! callback.err =', e);
-                return '';
-            });
+        const $service = $U.env('SERVICE', 'aws');
+        if ($service === 'azure') {
+            _log(NS, `> service bus topics needed`);
+        }
+        if ($service === 'aws') {
+            const arn = getHelloArn(context, NS);
+            return $sns(arn)
+                .publish('', 'callback', payload) // subject should be 'callback'
+                .then((mid: string) => {
+                    _inf(NS, '> callback.res =', mid);
+                    return `${mid}`;
+                })
+                .catch((e: Error) => {
+                    _err(NS, '! callback.err =', e);
+                    return '';
+                });
+        }
     } catch (e) {
         _err(NS, '> reportCallback.err =', e);
         return doReportError(e, context, null, data);
@@ -193,20 +198,25 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
             body,
             context: { stage, apiId, resourcePath, identity, domainPrefix },
         };
-
-        //! find target arn.
-        const arn = getHelloArn(context, NS);
-        _log(NS, `> report-slack.arn =`, arn);
-        return $sns(arn)
-            .publish(arn, 'slack', payload)
-            .then((mid: string) => {
-                _inf(NS, '> sns.message-id =', mid);
-                return `${mid}`;
-            })
-            .catch((e: Error) => {
-                _err(NS, '! err.slack =', e);
-                return '';
-            });
+        const $service = $U.env('SERVICE', 'aws');
+        if ($service === 'azure') {
+            _log(NS, `> service bus topics needed`);
+        }
+        if ($service === 'aws') {
+            //! find target arn.
+            const arn = getHelloArn(context, NS);
+            _log(NS, `> report-slack.arn =`, arn);
+            return $sns(arn)
+                .publish(arn, 'slack', payload)
+                .then((mid: string) => {
+                    _inf(NS, '> sns.message-id =', mid);
+                    return `${mid}`;
+                })
+                .catch((e: Error) => {
+                    _err(NS, '! err.slack =', e);
+                    return '';
+                });
+        }
     } catch (e2) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
@@ -252,23 +262,28 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
             body,
             context: { stage, apiId, resourcePath, identity, domainPrefix },
         };
-
-        //! find metric-arn via error-arn.
-        const target = 'lemon-metrics-sns';
-        const arn0 = getHelloArn(context, NS);
-        // eslint-disable-next-line prettier/prettier
-        const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v, i) => i == 5 ? target : v).join(':') : arn0;
-        _log(NS, `> report-metric.arn =`, arn);
-        return $sns(arn)
-            .publish(arn || target, 'metric', payload)
-            .then((mid: string) => {
-                _inf(NS, '> sns.message-id =', mid);
-                return `${mid}`;
-            })
-            .catch((e: Error) => {
-                _err(NS, '! err.metric =', e);
-                return '';
-            });
+        const $service = $U.env('SERVICE', 'aws');
+        if ($service === 'azure') {
+            _log(NS, `> service bus topics needed`);
+        }
+        if ($service === 'aws') {
+            //! find metric-arn via error-arn.
+            const target = 'lemon-metrics-sns';
+            const arn0 = getHelloArn(context, NS);
+            // eslint-disable-next-line prettier/prettier
+            const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v, i) => i == 5 ? target : v).join(':') : arn0;
+            _log(NS, `> report-metric.arn =`, arn);
+            return $sns(arn)
+                .publish(arn || target, 'metric', payload)
+                .then((mid: string) => {
+                    _inf(NS, '> sns.message-id =', mid);
+                    return `${mid}`;
+                })
+                .catch((e: Error) => {
+                    _err(NS, '! err.metric =', e);
+                    return '';
+                });
+        }
     } catch (e2) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
