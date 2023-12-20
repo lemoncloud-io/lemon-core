@@ -224,11 +224,19 @@ export class FunctionHandler {
                     ctx.res = {
                         status: _.statusCode,
                         body: _.body,
+                        headers: {
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Credentials': true,
+                        },
                     };
                 } catch (error) {
                     ctx.res = {
                         status: 500,
                         body: error,
+                        headers: {
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Credentials': true,
+                        },
                     };
                 }
                 return _;
