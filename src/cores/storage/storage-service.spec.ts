@@ -80,7 +80,6 @@ describe('StorageService', () => {
         expect2(await $cosmos.read('A00000')).toEqual(
             expect.objectContaining({ no: 'A00000', type: 'test', slot: 1, balance: 1000 }),
         );
-
         //! update with increments
         expect2(await $cosmos.update('A00000', {}, { balance: 100 })).toEqual(
             expect.objectContaining({ no: 'A00000', balance: 1100 }),
@@ -94,7 +93,6 @@ describe('StorageService', () => {
         expect2(await $cosmos.read('A00000')).toEqual(
             expect.objectContaining({ no: 'A00000', type: 'test', slot: 2, balance: 600 }),
         );
-
         //! check delete()
         expect2(await $cosmos.delete('A00000'), 'no').toEqual(expect.objectContaining({ no: 'A00000' }));
         expect2(await $cosmos.read('A00000').catch(GETERR)).toEqual('404 NOT FOUND - no:A00000');

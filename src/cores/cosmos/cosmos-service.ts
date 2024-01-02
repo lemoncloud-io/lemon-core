@@ -346,11 +346,47 @@ export class CosmosService<T extends GeneralItem> {
                 .database(databaseName)
                 .container(tableName)
                 .item(readDoc[0].id)
-                .replace(update_payload, { accessCondition: { type: 'IfMatch', condition: readDoc[0]._etag } });
+                .replace(update_payload, { accessCondition: { type: 'IfMatch', condition: _etag } });
         } catch (error) {
-            // Handle concurrency conflict
-            const message = 'Increments do not satisfy atomicity';
-            return message;
+            if (error.code === 412) {
+                const { resources: readDoc } = await client
+                    .database(databaseName)
+                    .container(tableName)
+                    .items.query(querySpec)
+                    .fetchAll();
+
+                const payload: any = { [idName]: _id };
+                if (updates !== null && updates !== undefined) {
+                    for (const [key, value] of Object.entries(updates)) {
+                        payload[key] = value;
+                    }
+                }
+                if (increments !== null && increments !== undefined) {
+                    for (const [key, value] of Object.entries(increments)) {
+                        const existValue = readDoc[0][key] || 0;
+                        payload[key] = value + existValue;
+                    }
+                }
+                const { _etag, _ts, ..._rest } = readDoc[0];
+                if (!payload.hasOwnProperty('id')) {
+                    payload['id'] = readDoc[0].id;
+                }
+                const update_payload = {
+                    ..._rest,
+                    ...payload,
+                };
+                try {
+                    const { resource: updatedDoc } = await client
+                        .database(databaseName)
+                        .container(tableName)
+                        .item(readDoc[0].id)
+                        .replace(update_payload, { accessCondition: { type: 'IfMatch', condition: _etag } });
+                } catch (updateError) {
+                    // Handle update error
+                    return 'Failed to update after resolving concurrency conflict';
+                }
+            }
+            throw new Error(error);
         }
 
         const result: any = {};
