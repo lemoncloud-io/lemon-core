@@ -1,6 +1,6 @@
 {
   "name": "lemon-core-v4-azure",
-  "version": "4.0.1b",
+  "version": "4.0.1c",
   "description": "Lemon Serverless Micro-Service Platform (only for azure)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
