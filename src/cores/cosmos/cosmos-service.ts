@@ -11,7 +11,6 @@
 import { _log, _inf, _err, $U } from '../../engine';
 import { GeneralItem, Incrementable } from 'lemon-model';
 import 'dotenv/config';
-// import { KeyVaultService } from '../azure'
 
 const NS = $U.NS('CSMS', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -47,7 +46,6 @@ const instance = () => {
  */
 export class CosmosService<T extends GeneralItem> {
     protected options: CosmosOption;
-    // protected $kv: KeyVaultService;
 
     public constructor(options: CosmosOption) {
         _inf(
@@ -64,7 +62,6 @@ export class CosmosService<T extends GeneralItem> {
 
     public hello = () => `cosmos-service:${this.options.tableName}`;
 
-    // public static $kv: KeyVaultService = new KeyVaultService();
     public static async instance() {
         const { CosmosClient } = await require('@azure/cosmos');
         const account = process.env.COSMOS_DB_ACCOUNT;
@@ -118,14 +115,12 @@ export class CosmosService<T extends GeneralItem> {
             .items.query(querySpec)
             .fetchAll();
 
-        const payload: any = { [idName]: _id };
+        const payload: any = { [idName]: _id, id: readDoc[0].id };
         for (const [key, value] of Object.entries(item)) {
             payload[key] = value;
         }
-        if (!payload.hasOwnProperty('id')) {
-            payload['id'] = _id;
-        }
 
+        //! create doc
         if (readDoc.length === 0) {
             const { resources: saveDoc } = await client
                 .database(databaseName)
@@ -134,27 +129,27 @@ export class CosmosService<T extends GeneralItem> {
             return saveDoc;
         }
 
-        const { id, _rid, _self, _etag, _attachments, _ts, ..._rest } = readDoc[0];
-        const update_payload = {
-            ...payload,
-            id,
-            _rid,
-            _self,
-            _attachments,
-        };
-        const { resource: updateDoc } = await client
-            .database(databaseName)
-            .container(tableName)
-            .item(readDoc[0].id)
-            .replace(update_payload);
+        //! upsert doc
+        // const { id, _rid, _self, _etag, _attachments, _ts, ..._rest } = readDoc[0];
+        // const update_payload = {
+        //     ...payload,
+        //     _rid,
+        //     _self,
+        //     _attachments,
+        // }
+        // const { resource: updateDoc } = await client
+        //     .database(databaseName)
+        //     .container(tableName)
+        //     .item(readDoc[0].id)
+        //     .replace(update_payload)
 
-        const result: any = {};
-        for (const key in payload) {
-            if (payload.hasOwnProperty(key)) {
-                result[key] = payload[key];
-            }
-        }
-        return result;
+        // const result: any = {};
+        // for (const key in payload) {
+        //     if (payload.hasOwnProperty(key)) {
+        //         result[key] = payload[key];
+        //     }
+        // }
+        // return result;
     }
 
     /**
@@ -282,8 +277,7 @@ export class CosmosService<T extends GeneralItem> {
          *
          */
         if (readDoc.length === 0) {
-            const payload: any = { [idName]: _id };
-
+            const payload: any = { [idName]: _id, id: readDoc[0].id };
             if (updates !== null && updates !== undefined) {
                 for (const [key, value] of Object.entries(updates)) {
                     payload[key] = value;
@@ -293,9 +287,6 @@ export class CosmosService<T extends GeneralItem> {
                 for (const [key, value] of Object.entries(increments)) {
                     payload[key] = value;
                 }
-            }
-            if (!payload.hasOwnProperty('id')) {
-                payload['id'] = _id;
             }
             const update_payload = {
                 ...payload,
@@ -319,7 +310,7 @@ export class CosmosService<T extends GeneralItem> {
          * update
          *
          */
-        const payload: any = { [idName]: _id };
+        const payload: any = { [idName]: _id, id: readDoc[0].id };
 
         if (updates !== null && updates !== undefined) {
             for (const [key, value] of Object.entries(updates)) {
@@ -332,9 +323,6 @@ export class CosmosService<T extends GeneralItem> {
                 payload[key] = value + existValue;
             }
         }
-        if (!payload.hasOwnProperty('id')) {
-            payload['id'] = _id;
-        }
         const { _etag, _ts, ..._rest } = readDoc[0];
         const update_payload = {
             ..._rest,
@@ -345,7 +333,7 @@ export class CosmosService<T extends GeneralItem> {
             const { resource: updateDoc } = await client
                 .database(databaseName)
                 .container(tableName)
-                .item(readDoc[0].id)
+                .item(readDoc[0].id, readDoc[0][idName])
                 .replace(update_payload, { accessCondition: { type: 'IfMatch', condition: readDoc[0]._etag } });
         } catch (error) {
             // Handle concurrency conflict
