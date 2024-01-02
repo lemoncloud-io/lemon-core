@@ -12,7 +12,7 @@
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 import { NextHandler } from 'lemon-model';
 import { LambdaHandler, CronHandler, LambdaSubHandler } from './lambda-handler';
-const NS = $U.NS('HCRN', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LCRN', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 export interface CronParam {
     name?: string;

@@ -7,6 +7,8 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 refactoring to ts via origin
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-09-16 modifyed AWSUtil to dynmaic loading
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -14,7 +16,6 @@
 import _ from 'lodash';
 import $async from 'async';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const AWSUtil = require('aws-sdk/lib/util');
 
 export const omitNulls = (data: any) => {
     return _.omitBy(data, function (value) {
@@ -133,7 +134,8 @@ export const strToBin = function (value: any) {
         const StrConversionError = 'Need to pass in string primitive to be converted to binary.';
         throw new Error(StrConversionError);
     }
-
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const AWSUtil = require('aws-sdk/lib/util');
     if (AWSUtil.isBrowser()) {
         const len = value.length;
         const bin = new Uint8Array(new ArrayBuffer(len));

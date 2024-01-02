@@ -11,7 +11,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 import { LambdaHandler, CognitoHandler, LambdaSubHandler } from './lambda-handler';
-const NS = $U.NS('HCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: LambdaCognitoHandler

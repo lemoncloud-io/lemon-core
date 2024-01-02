@@ -12,8 +12,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 //NOTE! - if loading this index.ts, it will trigger `bootloader` in `/engine`.
-export * from './common/types';
-export * from './common/test-helper';
+export * from './common/';
 export * from './engine/';
 export * from './cores/';
 export * from './tools/';

@@ -5,17 +5,25 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
-import { SNSEventRecord, SNSMessage } from 'aws-lambda';
 import { NextContext, NextHandler } from 'lemon-model';
-import { LambdaHandler, SNSHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
+import {
+    SNSEventRecord,
+    SNSMessage,
+    LambdaHandler,
+    SNSHandler,
+    LambdaSubHandler,
+    buildReportError,
+} from './lambda-handler';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
-const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: LambdaSNSHandler

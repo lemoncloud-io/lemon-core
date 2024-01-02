@@ -12,6 +12,8 @@
  * @date        2022-03-17 optimized w/ `lemon-core#3.0.2` and use `env.ES6_DOCTYPE`
  * @date        2022-03-31 optimized w/ unit test spec.
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
+ * @author      Ian Kim <Ian@lemoncloud.io>
+ * @date        2023-10-30 added database for azure
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
@@ -35,11 +37,12 @@ import $cores, {
     NextIdentityCognito,
     ProxyStorageService,
     StorageMakeable,
+    elasticsearchClient,
+    CosmosOption,
 } from '../cores/';
 import { $U, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $protocol, $slack, $T, my_parrallel } from '../helpers';
-import elasticsearch from '@elastic/elasticsearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -107,7 +110,9 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
     extends GeneralKeyMaker<ModelType>
     implements StorageMakeable<Model, ModelType>
 {
-    /** dynamo table name */
+    /** cosmos database name */
+    public readonly databaseName: string;
+    /** cosmos/dynamo container/table name */
     public readonly tableName: string;
     /** global index name of elasticsearch */
     public readonly idName: string;
@@ -116,13 +121,15 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
 
     /**
      * constructor
+     * @param databaseName  target cosmos database-name
      * @param tableName     target table-name (or .yml dummy file-name)
      * @param ns            namespace of dataset
      * @param idName        must be `_id` unless otherwise
      */
-    protected constructor(tableName?: string, ns?: string, idName?: string) {
+    protected constructor(databaseName?: string, tableName?: string, ns?: string, idName?: string) {
         super(ns || $U.env('NS', 'TT'));
-        this.tableName = tableName || $U.env('MY_DYNAMO_TABLE', 'Test');
+        this.databaseName = databaseName || $U.env('COSMOS_DATABASE', 'TestDatabase');
+        this.tableName = tableName || $U.env('DYNAMO_TABLE_COSMOS_CONTAINER', 'TestContainer');
         this.idName = idName || '_id';
     }
 
@@ -132,8 +139,20 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
     public setCurrent = (current: number) => (this.current = current);
 
     /**
+     * get the current cosmos-options.
+     */
+
+    public get cosmosOptions(): CosmosOption {
+        return {
+            databaseName: this.databaseName,
+            tableName: this.tableName,
+            idName: this.idName,
+        };
+    }
+    /**
      * get the current dynamo-options.
      */
+
     public get dynamoOptions(): DynamoOption {
         return {
             tableName: this.tableName,
@@ -146,7 +165,14 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
      */
     public makeStorageService<T extends Model>(type: ModelType, fields: string[], filter: CoreModelFilterable<T>) {
         //! use proxy-storage-service for both dynamo-table and dummy-data.
-        const storage = new ProxyStorageService<T, ModelType>(this, this.tableName, fields, filter, this.idName);
+        const storage = new ProxyStorageService<T, ModelType>(
+            this,
+            this.tableName,
+            fields,
+            filter,
+            this.idName,
+            this.databaseName,
+        );
         storage.setTimer(() => (this.current ? this.current : new Date().getTime()));
         return storage.makeTypedStorageService(type);
     }
@@ -824,7 +850,7 @@ export class Elastic6Instance {
     /**
      * Elasticsearch client
      */
-    public readonly client?: elasticsearch.Client;
+    public readonly client?: elasticsearchClient;
     /**
      * Elastic6Service instance
      */

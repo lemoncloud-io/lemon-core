@@ -20,15 +20,17 @@
  * @date        2019-08-07 ignore `engine.dt` function.
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2020-01-23 improve context information via headers.
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-14 modify aws to dynamic loading
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { LemonEngine } from '../engine/';
 import { loadJsonSync, getRunParam } from './shared';
 import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
+import { FunctionWEBHandler } from '../cores/functions/functions-web-handler';
 import { NextContext } from '../cores';
 
-import AWS from 'aws-sdk';
 import express, { RequestHandler } from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -57,7 +59,7 @@ export const buildHeaderGetter =
 //NOTE - avoid external reference of type.
 export const buildExpress = (
     $engine: LemonEngine,
-    $web: LambdaWEBHandler,
+    $web: LambdaWEBHandler | FunctionWEBHandler,
     options?: { argv?: string[]; prefix?: string; genRequestId?: () => string },
 ): { express: () => any; app: any; createServer: () => any } => {
     if (!$engine) throw new Error('$engine is required!');
@@ -94,6 +96,8 @@ export const buildExpress = (
         //NOTE! - OR, TRY TO LOAD CREDENTIALS BY PROFILE NAME.
         const NAME = $engine.environ('NAME', '') as string;
         const profile = $engine.environ('PROFILE', NAME) as string;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const AWS = require('aws-sdk');
         const credentials = new AWS.SharedIniFileCredentials({ profile });
         if (profile) AWS.config.credentials = credentials;
     })();

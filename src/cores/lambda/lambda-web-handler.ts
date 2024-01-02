@@ -11,6 +11,8 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @date        2022-04-07 use env, and opt header-parser
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -26,15 +28,23 @@ import {
     NextIdentityJwt,
 } from 'lemon-model';
 import { ProtocolParam } from './../core-services';
-import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
+import {
+    APIGatewayProxyResult,
+    APIGatewayEventRequestContext,
+    APIGatewayProxyEvent,
+    LambdaHandler,
+    WEBHandler,
+    Context,
+    LambdaSubHandler,
+    WEBEvent,
+} from './lambda-handler';
 import { loadJsonSync } from '../../tools/shared';
 import { GETERR } from '../../common/test-helper';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
-import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 
 import $protocol from '../protocol/';
-const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 //! header definitions by environment.
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');

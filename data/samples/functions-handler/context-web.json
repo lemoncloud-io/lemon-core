@@ -1,0 +1,50 @@
+{
+    "invocationId": "e18a67ba-41e9-45c3-a29f-f2abc3570d15",
+    "bindingDefinitions": [
+        {
+            "name": "req",
+            "type": "httpTrigger",
+            "direction": "in"
+        },
+        {
+            "name": "res",
+            "type": "http",
+            "direction": "out"
+        }
+    ],
+    "req": {
+        "method": "GET",
+        "url": "https://localhost:7071/api/hello/a_123_test",
+        "originalUrl": "https://localhost:7071/api/hello/a_123_test",
+        "headers": {
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, br",
+            "cache-control": "no-cache",
+            "content-length": "0",
+            "host": "localhost:7071",
+            "max-forwards": "10",
+            "user-agent": "PostmanRuntime/7.32.3",
+            "postman-token": "05ed956c-8490-4f78-828a-c6db18701cf6",
+            "x-arr-log-id": "97f7de4d-77c2-4c20-87ef-96f61ff64ebb",
+            "client-ip": "54.86.50.139:61536",
+            "disguised-host": "localhost:7071",
+            "x-site-deployment-id": "sls-korc-dev-azure-categories",
+            "was-default-hostname": "localhost:7071",
+            "x-forwarded-proto": "https",
+            "x-appservice-proto": "https",
+            "x-arr-ssl": "2048|256|CN=Microsoft Azure TLS Issuing CA 01, O=Microsoft Corporation, C=US|CN=*.azurewebsites.net, O=Microsoft Corporation, L=Redmond, S=WA, C=US",
+            "x-forwarded-tlsversion": "1.2",
+            "x-forwarded-for": "54.86.50.139:61536",
+            "x-original-url": "/api/hello/a_123_test",
+            "x-waws-unencoded-url": "/api/hello/a_123_test"
+        },
+        "query": {},
+        "params": {
+            "id": "a_123_test"
+        }
+    },
+    "res": {
+        "headers": {},
+        "cookies": []
+    }
+}

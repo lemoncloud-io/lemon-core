@@ -19,12 +19,13 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-08-09 initial typescript version.
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-14 modify aws to dynamic loading
  *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import fs from 'fs';
 import * as yaml from 'js-yaml';
-import AWS from 'aws-sdk';
 
 interface Options {
     ENV?: string;
@@ -95,6 +96,8 @@ export const loadEnviron = (process: any, options?: Options) => {
  */
 const credentials = (profile: string): string => {
     if (!profile) return '';
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const AWS = require('aws-sdk');
     const credentials = new AWS.SharedIniFileCredentials({ profile });
     AWS.config.credentials = credentials;
     return `${profile}`;

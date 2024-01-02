@@ -6,21 +6,27 @@
  * @date        2019-11-20 initial version via backbone
  * @date        2022-02-21 optimized error handler, and search.
  * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified elastic6 to dynamic loading
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
-import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';
 import { GETERR } from '../../common/test-helper';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
+const instance = (endpoint?: any) => {
+    return (Elastic6Service as any).instance();
+};
+
 // export shared one
-export { elasticsearch, $hangul };
+export { $hangul };
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
+export type elasticsearchClient = ReturnType<typeof instance>['Client'];
+export type ApiResponse = ReturnType<typeof instance>['ApiResponse'];
 
 // export type SearchResponse = elasticsearch.SearchResponse<any>;
 export type SearchResponse = any;
@@ -86,8 +92,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public static readonly QWERTY_FIELD = '_qwerty';
 
     protected _options: Elastic6Option;
-    public readonly _client: elasticsearch.Client;
-
+    public readonly _client: elasticsearchClient;
     /**
      * simple instance maker.
      *
@@ -98,7 +103,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param endpoint  service-url
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
      */
-    public static instance(endpoint: string) {
+
+    public static async instance(endpoint: string) {
+        const elasticsearch = await require('@elastic/elasticsearch');
         const client = new elasticsearch.Client({
             node: endpoint,
             ssl: {
@@ -106,9 +113,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 rejectUnauthorized: false,
             },
         });
-        return { client };
+        return client;
     }
-
     /**
      * default constuctor w/ options.
      * @param options { endpoint, indexName } is required.
@@ -119,7 +125,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!options.indexName) throw new Error('.indexName (string) is required');
 
         // default option values: docType='_doc', idName='$id'
-        const { client } = Elastic6Service.instance(options.endpoint);
+        const client = Elastic6Service.instance(options.endpoint);
         this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
         this._client = client;
     }
@@ -132,7 +138,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * get the client instance.
      */
-    public get client(): elasticsearch.Client {
+    public get client(): elasticsearchClient {
         return this._client;
     }
     /**
@@ -155,7 +161,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! call create index..
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.cat.indices({ format: 'json' });
         _log(NS, `> indices =`, $U.json(res));
         // eslint-disable-next-line prettier/prettier
@@ -214,7 +220,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! call create index..
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.indices.create({ index: indexName, body: payload }).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('create', e => {
@@ -244,7 +250,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! call create index..
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.indices.delete({ index: indexName }).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('destroy', e => {
@@ -273,7 +279,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! call refresh index..
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.indices.refresh({ index: indexName }).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('refresh', e => {
@@ -297,7 +303,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! call flush index..
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.indices.flush({ index: indexName }).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('flush', e => {
@@ -321,7 +327,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! read settings.
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.indices.getSettings({ index: indexName }).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('describe', e => {
@@ -356,7 +362,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const { indexName, docType, idName } = this.options;
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
@@ -409,7 +415,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.index(params).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('index', e => {
@@ -448,7 +454,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.get(params).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('read', e => {
@@ -483,7 +489,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const params = { index: indexName, type, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res = await client.delete(params).catch(
             $ERROR.handler('read', e => {
                 const msg = GETERR(e);
@@ -535,7 +541,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const res: ApiResponse = await client.update(params, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
@@ -575,7 +581,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const params = { index: indexName, type, body, searchType };
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
-        const client = this.client;
+        const client = await this.client;
         const $res = await client.search(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);

@@ -6,7 +6,8 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-07-19 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified aws to dynamic loading
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 /** ****************************************************************************************************************
@@ -16,7 +17,13 @@
 import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
 const NS = $U.NS('SNS', 'blue');
 
-import AWS from 'aws-sdk';
+const instance = () => {
+    return (AWSSNSService as any).instance();
+};
+export type MySNSEventParam = ReturnType<typeof instance>['SNS']['Types']['PublishInput'];
+export type PublishInput = ReturnType<typeof instance>['SNS']['Types']['PublishInput'];
+export type PublishResponse = ReturnType<typeof instance>['SNS']['Types']['PublishResponse'];
+
 import { CoreSnsService } from '../core-services';
 
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
@@ -62,6 +69,14 @@ export class AWSSNSService implements CoreSnsService {
     public hello = () => `aws-sns-service:${this._arn || ''}`;
 
     /**
+     * dynamic loading
+     */
+    public static async instance(region?: string) {
+        region = `${region || 'ap-northeast-2'}`;
+        const AWS = await require('aws-sdk');
+        return { AWS };
+    }
+    /**
      * get target endpoint by name.
      */
     public endpoint = async (target?: string) => {
@@ -98,9 +113,10 @@ export class AWSSNSService implements CoreSnsService {
      * refer: `https://stackoverflow.com/questions/35563270/finding-my-aws-account-id-using-javascript`
      */
     public accountID = async (): Promise<string> => {
+        const { AWS } = await instance();
         return new Promise((resolve, reject) => {
             const iam = new AWS.IAM();
-            iam.getUser({}, (err, data) => {
+            iam.getUser({}, (err: any, data: any) => {
                 if (!err) {
                     resolve(data.User.Arn.split(':')[4]);
                 } else if (err) {
@@ -108,7 +124,7 @@ export class AWSSNSService implements CoreSnsService {
                     //! if non-User case. call STS().
                     if (msg == 'Must specify userName when calling with non-User credentials') {
                         const sts = new AWS.STS();
-                        sts.getCallerIdentity({}, (err, data) => {
+                        sts.getCallerIdentity({}, (err: any, data: any) => {
                             if (err) {
                                 reject(err);
                             } else {
@@ -121,7 +137,7 @@ export class AWSSNSService implements CoreSnsService {
                     _err(NS, '! err@1 =', err);
                     //NOTE! - below will be fail in lambda.
                     const metadata = new AWS.MetadataService();
-                    metadata.request('/latest/meta-data/iam/info/', (err, data) => {
+                    metadata.request('/latest/meta-data/iam/info/', (err: any, data: any) => {
                         if (err) reject(err);
                         else resolve(JSON.parse(data).InstanceProfileArn.split(':')[4]);
                     });
@@ -152,15 +168,16 @@ export class AWSSNSService implements CoreSnsService {
         //! call sns.publish()
         const region = arn.split(':')[3];
         if (!region) throw new Error(`@region is required. arn:${arn}`);
+        const { AWS } = await instance();
         const sns = new AWS.SNS({ region });
         return sns
             .publish(params)
             .promise()
-            .then(res => {
+            .then((res: any) => {
                 _log(NS, `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
                 return (res && res.MessageId) || '';
             })
-            .catch(e => {
+            .catch((e: any) => {
                 _err(NS, '! err=', e);
                 throw e;
             });

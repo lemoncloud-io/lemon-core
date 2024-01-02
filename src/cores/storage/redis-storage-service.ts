@@ -9,8 +9,8 @@
  */
 import IORedis, { Redis } from 'ioredis';
 import { $U, _log, _inf, _err } from '../../engine';
-import { StorageService, StorageModel } from './storage-service';
-
+import { StorageService } from './storage-service';
+import { StorageModel } from 'lemon-model';
 // Log namespace
 const NS = $U.NS('RSTR', 'blue');
 

@@ -1,0 +1,87 @@
+# dummy data for ticketing internal test!
+data:
+    - ID: C01
+      type: bank_account
+      name: 신우열
+      contact: 01010102020
+      bank: KB국민
+      balance: 9327200
+
+    - ID: C02
+      type: bank_account
+      name: 신수빈
+      contact: 01022446868
+      bank: NH농협
+      balance: 875000
+      note: 미성년자
+
+    - ID: C03
+      type: bank_account
+      name: 권리다
+      contact:
+      bank: 씨티
+      balance: 2307800
+
+    - ID: C04
+      type: bank_account
+      name: 채원조
+      contact: 01024002400
+      bank: SC제일
+      balance: 300000
+
+    - ID: C05
+      type: bank_account
+      name: 오서찬
+      contact: 0112468000
+      bank: KEB하나
+      balance: 279500
+
+    - ID: C06
+      type: bank_account
+      name: 정한새
+      contact: 01098765432
+      bank: 우리
+      balance: 1288600
+
+    - ID: C07
+      type: bank_account
+      name: 정가희
+      contact:
+      bank: NH농협
+      balance: 5501000
+
+    - ID: C08
+      type: bank_account
+      name: 김승진
+      contact: 01012345678
+      bank: IBK기업
+      balance: 22720300
+      note: 기업 계좌
+
+    - ID: C09
+      type: bank_account
+      name: 주나라
+      contact: 01010001000
+      bank: 우리
+      balance: 8653800
+
+    - ID: C10
+      type: bank_account
+      name: 이은비
+      contact: 01090009999
+      bank: KB국민
+      balance: 927700
+
+    - ID: C11
+      type: bank_account
+      name: 봉기석
+      contact: 01082828282
+      bank: IBK기업
+      balance: 42800000
+
+    - ID: C12
+      type: bank_account
+      name: 홍진희
+      contact:
+      bank: KEB하나
+      balance: 1746200

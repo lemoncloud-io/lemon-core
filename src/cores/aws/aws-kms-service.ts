@@ -12,12 +12,12 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-10-30 initial version.
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified aws to dynamic loading
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
-import AWS, { KMS } from 'aws-sdk';
 import { SigningAlgorithmSpec } from 'aws-sdk/clients/kms';
 import { CoreKmsService } from '../core-services';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
@@ -29,8 +29,14 @@ const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as stri
 const instance = () => {
     const _region = region();
     const config = { region: _region };
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const AWS = require('aws-sdk');
     return new AWS.KMS(config);
 };
+
+export type VerifyRequest = ReturnType<typeof instance>['Types']['VerifyRequest'];
+export type SignRequest = ReturnType<typeof instance>['Types']['SignRequest'];
+export type GetPublicKeyRequest = ReturnType<typeof instance>['Types']['GetPublicKeyRequest'];
 
 /**
  * check if base64 string.
@@ -91,15 +97,13 @@ export class AWSKMSService implements CoreKmsService {
             throw new Error(`.keyId<${typeof this._keyId}> (string) is required!`);
         return this._keyId;
     };
-
-    protected _instance: AWS.KMS;
     /**
      * get KMS instance in stock
      */
-    public instance() {
-        if (!this._instance) this._instance = instance();
-        return this._instance;
-    }
+    // public instance() {
+    //     if (!this._instance) this._instance = instance();
+    //     return this._instance;
+    // }
 
     /**
      * Encrypt message
@@ -114,7 +118,7 @@ export class AWSKMSService implements CoreKmsService {
             KeyId,
             Plaintext: message,
         };
-        const result = await this.instance().encrypt(params).promise();
+        const result = await instance().encrypt(params).promise();
         _log(NS, '> result =', result);
         const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
         _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
@@ -136,7 +140,7 @@ export class AWSKMSService implements CoreKmsService {
                 : encryptedSecret;
         //! api param.
         const params = { CiphertextBlob };
-        const data: any = await this.instance().decrypt(params).promise();
+        const data: any = await instance().decrypt(params).promise();
         // _log(NS, '> data.type =', typeof data);
         return data && data.Plaintext ? data.Plaintext.toString() : '';
     };
@@ -151,13 +155,13 @@ export class AWSKMSService implements CoreKmsService {
         if (!message || typeof message !== 'string') throw new Error(`@message[${message}] is invalid - kms.sign()`);
         const KeyId = this.keyId();
         _inf(NS, `sign(${KeyId}, ${message.substring(0, 10)}...)..`);
-        const params: KMS.Types.SignRequest = {
+        const params: SignRequest = {
             KeyId,
             Message: Buffer.from(message),
             SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
             MessageType: 'RAW',
         };
-        const result = await this.instance().sign(params).promise();
+        const result = await instance().sign(params).promise();
         const signature = result.Signature.toString('base64');
         if (forJwtSignature) return fromBase64(signature);
         return signature;
@@ -175,19 +179,19 @@ export class AWSKMSService implements CoreKmsService {
         if (!signature) throw new Error(`@signature (string|Buffer) is required - kms.verify()`);
         const KeyId = this.keyId();
         _inf(NS, `verify(${KeyId}, ${message.substring(0, 10)}...)..`);
-        const params: KMS.Types.VerifyRequest = {
+        const params: VerifyRequest = {
             KeyId,
             Message: Buffer.from(message),
             SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
             MessageType: 'RAW',
             Signature: typeof signature === 'string' ? Buffer.from(signature, 'base64') : signature,
         };
-        const result = await this.instance()
+        const result = await instance()
             .verify(params)
             .promise()
-            .catch(e => {
+            .catch((e: any) => {
                 _err(NS, `! err=`, e);
-                return null;
+                return;
             });
         return result?.SignatureValid;
     };
@@ -202,10 +206,10 @@ export class AWSKMSService implements CoreKmsService {
     public getPublicKey = async (encoding: BufferEncoding = 'base64') => {
         const KeyId = this.keyId();
         _inf(NS, `getPublicKey(${KeyId})..`);
-        const params: KMS.Types.GetPublicKeyRequest = {
+        const params: GetPublicKeyRequest = {
             KeyId,
         };
-        const result = await this.instance().getPublicKey(params).promise();
+        const result = await instance().getPublicKey(params).promise();
         return result?.PublicKey.toString(encoding);
     };
 

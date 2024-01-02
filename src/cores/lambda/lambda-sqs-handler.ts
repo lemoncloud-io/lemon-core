@@ -5,6 +5,8 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -15,7 +17,7 @@ import { SQSHandler, LambdaHandler, LambdaSubHandler, buildReportError } from '.
 import { NextHandler, NextContext } from 'lemon-model';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
-const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * class: LambdaSQSHandler

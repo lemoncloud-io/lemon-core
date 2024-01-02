@@ -5,18 +5,25 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified lambda to dynamic loading
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
-import { DynamoDBRecord } from 'aws-lambda';
 import { NextHandler } from 'lemon-model';
-import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
+import {
+    DynamoDBRecord,
+    LambdaHandler,
+    DynamoStreamHandler,
+    LambdaSubHandler,
+    buildReportError,
+} from './lambda-handler';
 import { toJavascript } from '../../lib/dynamodb-value';
 import { Elastic6Service, Elastic6Item } from '../elastic/';
 import { DynamoOption } from '../dynamo/';
-const NS = $U.NS('HDBS', 'green'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('LDBS', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type DynamoStreamEvent = DynamoDBRecord['eventName'];
 export interface DynamoStreamParam {

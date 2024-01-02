@@ -5,7 +5,8 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-6 initial version with `dynamodb` package.
- *
+ * @author      Ian Kim <ian@lemoncloud.io>
+ * @date        2023-11-13 modified dynamo to dynamic loading
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -108,7 +109,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         const payload = this.buildQuery(pkey, from, to, limit, last, isDesc);
 
         //! get instance of dynamodoc, and execute query().
-        const { dynamodoc } = DynamoService.instance();
+        const { dynamodoc } = await DynamoService.instance();
         const res = await dynamodoc.query(payload).promise();
         if (res) {
             // _log(NS, `> query[${pkey}].res =`, $U.json(res)); // `startKey`
