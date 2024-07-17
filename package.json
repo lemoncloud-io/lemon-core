@@ -42,7 +42,7 @@
     "dist/**/*"
   ],
   "engines": {
-    "node": ">=16.17.0"
+    "node": ">=18.19.0"
   },
   "author": "Steve Jung <steve@lemoncloud.io>",
   "license": "MIT",
