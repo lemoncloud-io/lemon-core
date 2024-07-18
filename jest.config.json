@@ -1,5 +1,4 @@
-{ 
-    "setupFiles" : ["./jest.setup.ts"],
+{
     "clearMocks": true,
     "coverageDirectory": "coverage",
     "collectCoverage": true,

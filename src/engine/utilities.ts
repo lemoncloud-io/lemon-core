@@ -680,8 +680,8 @@ export class Utilities {
      * get md5 hash
      */
     public md5(data: any, digest: 'latin1' | 'hex' | 'base64') {
-        const encoding: crypto.BinaryToTextEncoding = digest as crypto.BinaryToTextEncoding;
-        return crypto.createHash('md5').update(data).digest(encoding);
+        digest = digest === undefined ? 'hex' : digest;
+        return crypto.createHash('md5').update(data).digest(digest);
     }
 
     /**
@@ -689,9 +689,9 @@ export class Utilities {
      */
     public hmac(data: any, KEY?: string, algorithm?: string, encoding?: 'latin1' | 'hex' | 'base64') {
         KEY = KEY || 'XENI';
-        const hashEncoding: crypto.BinaryToTextEncoding = (encoding || 'base64') as crypto.BinaryToTextEncoding;
+        encoding = encoding || 'base64';
         algorithm = algorithm || 'sha256';
-        return crypto.createHmac(algorithm, KEY).update(data).digest(hashEncoding);
+        return crypto.createHmac(algorithm, KEY).update(data).digest(encoding);
     }
 
     /**

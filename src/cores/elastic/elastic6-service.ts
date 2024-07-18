@@ -12,7 +12,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
-import elasticsearch, { estypes } from '@elastic/elasticsearch';
+import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';
 import { GETERR } from '../../common/test-helper';
@@ -79,6 +79,7 @@ const _S = (v: any, def: string = '') =>
 /**
  * class: `Elastic6Service`
  * - basic CRUD service for Elastic Search 6
+ * instance n개 켜서 한번에 테스트
  */
 export class Elastic6Service<T extends Elastic6Item = any> {
     // internal field name to store analyzed strings for autocomplete search
@@ -97,12 +98,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      *
      * @param endpoint  service-url
      * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
-     * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
      */
     public static instance(endpoint: string) {
         const client = new elasticsearch.Client({
             node: endpoint,
-            tls: {
+            ssl: {
+                ca: process.env.elasticsearch_certificate,
                 rejectUnauthorized: false,
             },
         });
@@ -120,7 +121,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         // default option values: docType='_doc', idName='$id'
         const { client } = Elastic6Service.instance(options.endpoint);
-        this._options = { idName: '$id', version: '6.8', ...options };
+        this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
         this._client = client;
     }
 
@@ -159,7 +160,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const res = await client.cat.indices({ format: 'json' });
         _log(NS, `> indices =`, $U.json(res));
         // eslint-disable-next-line prettier/prettier
-        const list0: any[] = Array.isArray(res) ? (res as any[]) : null;
+        const list0: any[] = Array.isArray(res) ? (res as any[]) : res?.body && Array.isArray(res?.body) ? (res?.body as any[]) : null;
         if (!list0) throw new Error(`@result<${typeof res}> is invalid - ${$U.json(res)}!`);
 
         // {"docs.count": "84", "docs.deleted": "7", "health": "green", "index": "dev-eureka-alarms-v1", "pri": "5", "pri.store.size": "234.3kb", "rep": "1", "status": "open", "store.size": "468.6kb", "uuid": "xPp-Sx86SgmhAWxT3cGAFw"}
@@ -197,8 +198,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param settings      creating settings
      */
     public async createIndex(settings?: any) {
-        const { indexName, idName, timeSeries, version } = this.options;
-        settings = settings || Elastic6Service.prepareSettings({ idName, timeSeries, version });
+        const { indexName, docType, idName, timeSeries, version } = this.options;
+        settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
 
@@ -337,10 +338,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> number_of_replicas =`, settings.index && settings.index.number_of_replicas); // 1
 
         //! read mappings.
-        const res2: any = await client.indices.getMapping({ index: indexName });
+        const res2 = await client.indices.getMapping({ index: indexName });
         _log(NS, `> mappings[${indexName}] =`, $U.json(res2));
-        const mappings: estypes.IndicesGetMappingResponse =
-            (res2.body[indexName] && res2.body[indexName].mappings) || {};
+        const mappings: any = (res2.body && res2.body[indexName] && res2.body[indexName].mappings) || {};
 
         //! returns
         return { settings, mappings };
@@ -353,8 +353,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param item  item to save
      * @param type  document type (default: doc-type given at construction time)
      */
-    public async saveItem(id: string, item: T): Promise<T> {
-        const { indexName, idName } = this.options;
+    public async saveItem(id: string, item: T, type?: string): Promise<T> {
+        const { indexName, docType, idName } = this.options;
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -363,12 +363,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const body: any = { ...item, [idName]: id };
         const body2 = this.popullateAutocompleteFields(body);
 
-        const params = { index: indexName, id, body: body2 };
+        type = `${type || docType}`;
+        const params = { index: indexName, type, id, body: body2 };
         if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
-        const res = await client.create(params).catch(
+        const res: ApiResponse = await client.create(params).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('save', e => {
                 const msg = GETERR(e);
@@ -376,7 +377,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
                     delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
-                    const param2 = { index: indexName, id, body: { doc: body2 } };
+                    const param2 = { index: indexName, type, id, body: { doc: body2 } };
                     return client.update(param2);
                 }
                 throw e;
@@ -395,15 +396,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      *
      * @param item  item to push
      */
-    public async pushItem(item: T): Promise<T> {
-        const { indexName } = this.options;
+    public async pushItem(item: T, type?: string): Promise<T> {
+        const { indexName, docType } = this.options;
         const id = '';
 
+        type = `${type || docType}`;
         const body: any = { ...item };
         const body2 = this.popullateAutocompleteFields(body);
 
         _log(NS, `- pushItem(${id})`);
-        const params = { index: indexName, body: body2 };
+        const params = { index: indexName, type, body: body2 };
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
@@ -432,11 +434,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param views     projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
-        const { indexName } = this.options;
-
+        const { indexName, docType } = this.options;
+        const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
-        const params: any = { index: indexName, id };
+        const params: any = { index: indexName, type, id };
         if (views) {
             const fields: string[] = [];
             const keys: string[] = Array.isArray(views) ? views : Object.keys(views);
@@ -475,11 +477,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param id        item-id
      */
     public async deleteItem(id: string): Promise<T> {
-        const { indexName } = this.options;
-
+        const { indexName, docType } = this.options;
+        const type = `${docType}`;
         _log(NS, `- readItem(${id})`);
 
-        const params = { index: indexName, id };
+        const params = { index: indexName, type, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -514,13 +516,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         increments?: Incrementable,
         options?: { maxRetries?: number },
     ): Promise<T> {
-        const { indexName, idName } = this.options;
-
+        const { indexName, docType, idName } = this.options;
+        const type = `${docType}`;
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
         //! prepare params.
-        const params: any = { index: indexName, id, body: { doc: item } };
+        const params: any = { index: indexName, type, id, body: { doc: item } };
         const version = this.version;
         if (increments) {
             //! it will create if not exists.
@@ -535,7 +537,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
-        const res = await client.update(params, options).catch(
+        const res: ApiResponse = await client.update(params, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
                 //! id 아이템이 없을 경우 발생함.
@@ -565,12 +567,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     public async searchRaw(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
         if (!body) throw new Error('@body (SearchBody) is required');
-        const { indexName } = this.options;
+        const { indexName, docType } = this.options;
         _log(NS, `- search(${indexName}, ${searchType || ''})....`);
         _log(NS, `> body =`, $U.json(body));
 
-        const params = { index: indexName, body, searchType };
-        _log(NS, `> params =`, $U.json({ ...params, body: undefined }));
+        const tmp = docType ? docType : '';
+        const type: string = docType ? `${docType}` : undefined;
+        const params = { index: indexName, type, body, searchType };
+        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
         const client = this.client;
         const $res = await client.search(params).catch(
@@ -623,7 +627,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param timeSeries    flag of TIMESERIES (default false)
      */
     public static prepareSettings(params: {
-        docType?: string;
+        docType: string;
         idName: string;
         version?: string;
         timeSeries?: boolean;
