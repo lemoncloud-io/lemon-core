@@ -22,7 +22,9 @@ import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from '.
 const ENDPOINTS = {
     '6.2': 'https://localhost:8443', // run alias `lmes62`
     '6.8': 'https://localhost:8683', // run alias `lmes68`
-    '7.1': 'https://localhost:9683', // run alias `cres68`
+    '7.2': 'https://localhost:9072', //run alias 'lmts072'
+    '7.1': 'https://localhost:9710', //run alias 'lmts072'
+    '0': 'https://localhost:9213', //run alias 'lmts072'
 };
 export type VERSIONS = keyof typeof ENDPOINTS;
 
@@ -213,12 +215,12 @@ describe('Elastic6Service', () => {
 
     //! test with real server
     it('should pass basic CRUD w/ real server (ES6.2~7.x)', async () => {
-        if (!PROFILE) return; // ignore w/o profile
+        // if (!PROFILE) return; // ignore w/o profile
         jest.setTimeout(12000);
         const PASS = (e: any) => e;
 
         //! load dummy storage service.
-        const ver = ['6.2', '6.8', '7.1'][2] as VERSIONS;
+        const ver = ['6.2', '6.8', '7.1', '7.2', '0'][3] as VERSIONS;
         const { service, options } = instance(ver);
         const { indexName, idName } = options;
 
@@ -280,6 +282,7 @@ describe('Elastic6Service', () => {
         expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual(
             `400 ACTION REQUEST VALIDATION - action_request_validation_exception`,
         );
+
         expect2(await service.updateItem('A0', { type: 'test' }).catch(GETERR)).toEqual({
             _id: 'A0',
             _version: 3,
@@ -287,6 +290,7 @@ describe('Elastic6Service', () => {
         });
 
         //! try to increment fields
+        //claire[6.2]: 버전이 7이하임에도 '400 ILLEGAL ARGUMENT - illegal_argument_exception'
         expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
             service.version < 7 ? '400 INVALID FIELD - id:A0' : '400 ILLEGAL ARGUMENT - illegal_argument_exception',
         );
@@ -397,7 +401,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(6.2)', async () => {
-        if (!PROFILE) return; // ignore w/o profile
+        // if (!PROFILE) return; // ignore w/o profile
         //! load dummy storage service.
         const { service, version } = instance('6.2');
 
@@ -468,7 +472,7 @@ describe('Elastic6Service', () => {
 
         //! try to overwrite, and update
         expect2(
-            await service.saveItem('A0', { count: 10, nick: undefined, name: 'dumm' }).catch(GETERR),
+            await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR),
             '!_version',
         ).toEqual({ _id: 'A0', count: 10, name: 'dumm', nick: null });
         expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
@@ -480,7 +484,7 @@ describe('Elastic6Service', () => {
             type: '',
         }); // support number, string, null type.
 
-        expect2(await service.updateItem('A0', { nick: 'dumm', name: undefined }).catch(GETERR), '!_version').toEqual({
+        expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
             _id: 'A0',
             nick: 'dumm',
             name: null,
@@ -581,7 +585,7 @@ describe('Elastic6Service', () => {
 
         //! try to overwrite, and update
         expect2(
-            await service.saveItem('A0', { count: 10, nick: undefined, name: 'dumm' }).catch(GETERR),
+            await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR),
             '!_version',
         ).toEqual({ _id: 'A0', count: 10, name: 'dumm', nick: null });
         expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
@@ -593,7 +597,7 @@ describe('Elastic6Service', () => {
             type: '',
         }); // support number, string, null type.
 
-        expect2(await service.updateItem('A0', { nick: 'dumm', name: undefined }).catch(GETERR), '!_version').toEqual({
+        expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
             _id: 'A0',
             nick: 'dumm',
             name: null,

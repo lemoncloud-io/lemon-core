@@ -79,7 +79,6 @@ const _S = (v: any, def: string = '') =>
 /**
  * class: `Elastic6Service`
  * - basic CRUD service for Elastic Search 6
- * instance n개 켜서 한번에 테스트
  */
 export class Elastic6Service<T extends Elastic6Item = any> {
     // internal field name to store analyzed strings for autocomplete search
@@ -512,7 +511,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     public async updateItem(
         id: string,
-        item: T,
+        item: T | null,
         increments?: Incrementable,
         options?: { maxRetries?: number },
     ): Promise<T> {

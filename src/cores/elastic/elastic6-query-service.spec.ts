@@ -15,7 +15,7 @@ import { canPerformTest, VERSIONS } from './elastic6-service.spec';
 import * as $elastic from './elastic6-service.spec';
 
 const instance = (indexName = 'test-v4') => {
-    const version = ['6.2', '6.8', '7.1'][0] as VERSIONS;
+    const version = ['6.2', '6.8', '7.1', '7.2', '0'][3] as VERSIONS;
     const { service: elastic, options } = $elastic.instance(version, true, indexName);
     const search: Elastic6QueryService<any> = new Elastic6QueryService(elastic);
     return { elastic, search, options, indexName };
