@@ -944,13 +944,12 @@ export class Elastic6Instance {
     public async mget<T>(_ids: string[]): Promise<(T | null)[]> {
         const $res = await this.client.mget({
             index: this.options.indexName,
-            type: this.options.docType,
             body: {
                 docs: _ids.map(_id => ({ _id })),
             },
         });
         // _log(NS, `> res =`, $U.json({ ...$res, meta: undefined }));
-        const { docs } = $res.body;
+        const { docs } = $res;
 
         const idName = this.options.idName;
         return docs.map((doc: any) => (doc.found ? sourceToItem<T>(doc._source, idName) : null));

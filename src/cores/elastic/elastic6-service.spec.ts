@@ -38,7 +38,7 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
     const idName = '$id'; //! global unique id-name in same index.
     const docType = '_doc'; //! must be `_doc`.
     const autocompleteFields = useAutoComplete ? ['title', 'name'] : null;
-    const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
+    const options: Elastic6Option = { endpoint, indexName, idName, autocompleteFields, version };
     const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
     const dummy: Elastic6Service<MyModel> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
     return { version, service, dummy, options };
@@ -287,7 +287,7 @@ describe('Elastic6Service', () => {
         });
 
         //! try to increment fields
-        expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
+        expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual(
             service.version < 7 ? '400 INVALID FIELD - id:A0' : '400 ILLEGAL ARGUMENT - illegal_argument_exception',
         );
         expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
@@ -295,7 +295,7 @@ describe('Elastic6Service', () => {
             _version: 4,
             count: 0,
         });
-        expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({
+        expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
             _id: 'A0',
             _version: 5,
         });
@@ -454,7 +454,7 @@ describe('Elastic6Service', () => {
             nick: 'bb',
         }); // `._version` is incremented.
 
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual(
+        expect2(await service.updateItem('A0', { count: 2 }).catch(GETERR), '!_version').toEqual(
             // '400 INVALID FIELD - id:A0',
             '400 ILLEGAL ARGUMENT - illegal_argument_exception',
         ); // no `.count` property.
@@ -462,13 +462,13 @@ describe('Elastic6Service', () => {
             _id: 'A0',
             count: 10,
         });
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
+        expect2(await service.updateItem('A0', { count: 2 }).catch(GETERR), '!_version').toEqual({
             _id: 'A0',
         });
 
         //! try to overwrite, and update
         expect2(
-            await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR),
+            await service.saveItem('A0', { count: 10, nick: undefined, name: 'dumm' }).catch(GETERR),
             '!_version',
         ).toEqual({ _id: 'A0', count: 10, name: 'dumm', nick: null });
         expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
@@ -480,7 +480,7 @@ describe('Elastic6Service', () => {
             type: '',
         }); // support number, string, null type.
 
-        expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
+        expect2(await service.updateItem('A0', { nick: 'dumm', name: undefined }).catch(GETERR), '!_version').toEqual({
             _id: 'A0',
             nick: 'dumm',
             name: null,
@@ -567,7 +567,7 @@ describe('Elastic6Service', () => {
             nick: 'bb',
         }); // `._version` is incremented.
 
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual(
+        expect2(await service.updateItem('A0', { count: 2 }).catch(GETERR), '!_version').toEqual(
             // '400 INVALID FIELD - id:A0',
             '400 ILLEGAL ARGUMENT - illegal_argument_exception',
         ); // no `.count` property.
@@ -575,13 +575,13 @@ describe('Elastic6Service', () => {
             _id: 'A0',
             count: 10,
         });
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
+        expect2(await service.updateItem('A0', { count: 2 }).catch(GETERR), '!_version').toEqual({
             _id: 'A0',
         });
 
         //! try to overwrite, and update
         expect2(
-            await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR),
+            await service.saveItem('A0', { count: 10, nick: undefined, name: 'dumm' }).catch(GETERR),
             '!_version',
         ).toEqual({ _id: 'A0', count: 10, name: 'dumm', nick: null });
         expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
@@ -593,7 +593,7 @@ describe('Elastic6Service', () => {
             type: '',
         }); // support number, string, null type.
 
-        expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
+        expect2(await service.updateItem('A0', { nick: 'dumm', name: undefined }).catch(GETERR), '!_version').toEqual({
             _id: 'A0',
             nick: 'dumm',
             name: null,

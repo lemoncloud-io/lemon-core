@@ -29,7 +29,7 @@ describe('Elastic6QueryService', () => {
     jest.setTimeout(120000);
 
     // service identity
-    it('should pass basic CRUD w/ dummy', async done => {
+    it('should pass basic CRUD w/ dummy', async () => {
         const { elastic, search, options } = instance();
         /* eslint-disable prettier/prettier */
         const { version } = options;
@@ -37,11 +37,10 @@ describe('Elastic6QueryService', () => {
         expect2(() => search.hello()).toEqual(`elastic6-query-service:test-v4`);
         expect2(() => options, 'idName,autocompleteFields').toEqual({ idName: '$id', autocompleteFields: ['title', 'name'] });
         /* eslint-enable prettier/prettier */
-        done();
     });
 
     // test buildQueryBody()
-    it('should pass buildQueryBody()', async done => {
+    it('should pass buildQueryBody()', async () => {
         const { search } = instance();
 
         expect2(() => search.buildQueryBody({ _x: 0, a: 1 })).toEqual({
@@ -50,17 +49,15 @@ describe('Elastic6QueryService', () => {
         expect2(() => search.buildQueryBody({ '!a': 2, b: '3,4', c: '' })).toEqual({
             query: { query_string: { query: 'a:(NOT 2) AND b:(3 OR 4) AND c:""' } },
         });
-
-        done();
     });
 
     // autocomplete search
-    it('should pass autocomplete search', async done => {
-        if (!PROFILE) return done(); // ignore w/o profile
+    it('should pass autocomplete search', async () => {
+        if (!PROFILE) return; // ignore w/o profile
         const { elastic, search, indexName } = instance('test-autocomplete-v4');
 
         //! break if no live connection
-        if (!(await canPerformTest(elastic))) return done();
+        if (!(await canPerformTest(elastic))) return;
 
         //! make sure if index is ready.
         const $old = await elastic.findIndex(indexName);
@@ -90,16 +87,15 @@ describe('Elastic6QueryService', () => {
         expect2(await search.searchAutocomplete({ $query: { title: 'de' }, $filter: { type: 'department' } }), 'total').toEqual({ total: 1 }); // Design Lab
 
         /* eslint-enable prettier/prettier */
-        done();
     });
 
     // search quality
-    it('should pass check search quality', async done => {
-        if (!PROFILE) return done(); // ignore w/o profile
+    it('should pass check search quality', async () => {
+        if (!PROFILE) return; // ignore w/o profile
         const { elastic, search, indexName } = instance('test-quality-v4');
 
         //! break if no live connection
-        if (!(await canPerformTest(elastic))) return done();
+        if (!(await canPerformTest(elastic))) return;
 
         //! make sure if index is ready.
         const $old = await elastic.findIndex(indexName);
@@ -221,6 +217,5 @@ describe('Elastic6QueryService', () => {
         expect2(await autocompleteSearch2('Ehadi')).toEqual(['똠얌꿍 끓이는 법']);
 
         /* eslint-enable prettier/prettier */
-        done();
     });
 });
