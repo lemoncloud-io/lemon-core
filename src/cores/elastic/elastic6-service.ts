@@ -149,10 +149,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     /**
      * TODO - implement this w/ types @claire
-     * 
+     *
      * read the version text from root
      */
-    public async getVersion() {
+    public async getVersion(): Promise<string> {
+        const response = await this.client.transport.request({
+            method: 'GET',
+            path: '/',
+        });
+        const versionInfo: string = response.body.version.number;
+        return versionInfo;
     }
 
     /**
