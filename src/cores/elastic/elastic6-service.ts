@@ -148,6 +148,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
+     * TODO - implement this w/ types @claire
+     * 
+     * read the version text from root
+     */
+    public async getVersion() {
+    }
+
+    /**
      * list of index
      */
     public async listIndices() {

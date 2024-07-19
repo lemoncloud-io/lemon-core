@@ -20,11 +20,14 @@ import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from '.
  * - use ssh tunneling to make connection to real server instance.
  */
 const ENDPOINTS = {
+    /** elastic-search */
     '6.2': 'https://localhost:8443', // run alias `lmes62`
     '6.8': 'https://localhost:8683', // run alias `lmes68`
-    '7.2': 'https://localhost:9072', //run alias 'lmts072'
-    '7.1': 'https://localhost:9710', //run alias 'lmts072'
-    '0': 'https://localhost:9213', //run alias 'lmts072'
+    '7.1': 'https://localhost:9683', // run alias `cres68`
+    '7.2': 'https://localhost:9072', //run alias 'lmts072' -> 702
+    '7.10': 'https://localhost:9710', //run alias 'lmts710' -> 710 ~ 799, then 7.120? (error)
+    /** open-search -> under 6 assume as OS */
+    '2.13': 'https://localhost:9213', //run alias 'lmts213' -> 213
 };
 export type VERSIONS = keyof typeof ENDPOINTS;
 
@@ -510,6 +513,8 @@ describe('Elastic6Service', () => {
         expect2(await service.updateItem('A1', { name: 'b0' }).catch(GETERR), '!_version').toEqual(
             '404 NOT FOUND - id:A1',
         );
+
+        //TODO - destroy index......
     });
 
     //! elastic storage service.
