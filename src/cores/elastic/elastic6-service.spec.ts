@@ -49,6 +49,37 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
     return { version, service, dummy, options };
 };
 
+export const initService = async (
+    ver: VERSIONS,
+): Promise<{ service: Elastic6Service<MyModel>; options: Elastic6Option }> => {
+    const { service, options } = instance(ver);
+    const { indexName, idName } = options;
+    try {
+        /* check hello */
+        const helloResult = service.hello();
+        if (helloResult !== `elastic6-service:${indexName}:${ver}`) {
+            throw new Error(
+                `hello check failed: expected "elastic6-service:${indexName}:${ver}", received "${helloResult}"`,
+            );
+        }
+        /* check idName */
+        if (idName !== '$id') {
+            throw new Error(`idName check failed: expected "$id", received "${idName}"`);
+        }
+        /* check indexName */
+        if (indexName !== `test-v${ver}`) {
+            throw new Error(`indexName check failed: expected "test-v${ver}", received "${indexName}"`);
+        }
+        // check service version
+        if (service.version !== parseFloat(ver)) {
+            throw new Error(`version check failed: expected "${parseFloat(ver)}", received "${service.version}"`);
+        }
+        return { service, options };
+    } catch (e) {
+        throw e;
+    }
+};
+
 export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise<boolean> => {
     // const { service } = instance();
     // cond 1. localhost is able to access elastic6 endpoint (by tunneling)
@@ -223,14 +254,8 @@ describe('Elastic6Service', () => {
         const PASS = (e: any) => e;
 
         //! load dummy storage service.
-        const ver = ['6.2', '6.8', '7.1', '7.2', '0'][3] as VERSIONS;
-        const { service, options } = instance(ver);
-        const { indexName, idName } = options;
-
-        expect2(() => service.hello()).toEqual(`elastic6-service:${indexName}:${ver}`);
-        expect2(() => idName).toEqual('$id');
-        expect2(() => indexName).toEqual(`test-v${ver}`);
-        expect2(() => service.version).toEqual(parseFloat(ver));
+        const { service, options } = await initService('6.2');
+        const indexName = options.indexName;
 
         //! break if no live connection
         if (!(await canPerformTest(service))) return;
