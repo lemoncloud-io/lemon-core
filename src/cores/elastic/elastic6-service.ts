@@ -127,7 +127,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * say hello of identity.
      */
-    public hello = () => `elastic6-service:${this.options.indexName}:${this.version}`;
+    public hello = () => `elastic6-service:${this.options.indexName}:${this.versionString}`;
 
     /**
      * get the client instance.
@@ -145,6 +145,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public get version(): number {
         const ver = $U.F(this.options.version, 6.8);
         return ver;
+    }
+
+    public get versionString(): string {
+        return this.options.version;
     }
 
     /**
@@ -468,6 +472,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             $ERROR.handler('read', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 INDEX NOT FOUND - index:${indexName}`);
                 throw e;
             }),
         );
@@ -544,7 +549,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 L.push(`ctx._source.${key} += ${val}`);
                 return L;
             }, []);
-            if (version < 7.0) params.body.lang = 'painless';
+            if (version < 6.8) params.body.lang = 'painless';
             params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -771,19 +776,19 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: version < 7.0 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
+                            filter: version < 6.8 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
                         },
                     },
                 },
             },
             //! since 7.x. no mapping for types.
-            mappings: version < 7.0 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
+            mappings: version < 6.8 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
         };
 
         //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            if (version < 7.0) {
+            if (version < 6.8) {
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
