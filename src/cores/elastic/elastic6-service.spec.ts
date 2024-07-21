@@ -54,30 +54,48 @@ export const initService = async (
 ): Promise<{ service: Elastic6Service<MyModel>; options: Elastic6Option }> => {
     const { service, options } = instance(ver);
     const { indexName, idName } = options;
-    try {
-        /* check hello */
-        const helloResult = service.hello();
-        if (helloResult !== `elastic6-service:${indexName}:${ver}`) {
-            throw new Error(
-                `hello check failed: expected "elastic6-service:${indexName}:${ver}", received "${helloResult}"`,
-            );
-        }
-        /* check idName */
-        if (idName !== '$id') {
-            throw new Error(`idName check failed: expected "$id", received "${idName}"`);
-        }
-        /* check indexName */
-        if (indexName !== `test-v${ver}`) {
-            throw new Error(`indexName check failed: expected "test-v${ver}", received "${indexName}"`);
-        }
-        // check service version
-        if (service.version !== parseFloat(ver)) {
-            throw new Error(`version check failed: expected "${parseFloat(ver)}", received "${service.version}"`);
-        }
-        return { service, options };
-    } catch (e) {
-        throw e;
+
+    //check hello
+    const helloResult = service.hello();
+    expect2(() => helloResult).toEqual(`elastic6-service:${indexName}:${ver}`);
+
+    //check idName
+    expect2(() => idName).toEqual('$id');
+
+    //check indexName
+    expect2(() => indexName).toEqual(`test-v${ver}`);
+
+    //check version
+    expect2(() => service.versionString).toEqual(ver);
+
+    return { service, options };
+};
+
+export const setupIndex = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
+    const PASS = (e: any) => e;
+
+    //destroy index
+    const oldIndex = await service.findIndex(indexName);
+    if (oldIndex) {
+        expect2(() => oldIndex, 'index').toEqual({ index: indexName });
+        expect2(await service.destroyIndex().catch(PASS)).toEqual({
+            status: 200,
+            acknowledged: true,
+            index: indexName,
+        });
+        await waited(50);
     }
+
+    // create index
+    expect2(await service.createIndex().catch(PASS)).toEqual({
+        status: 200,
+        acknowledged: true,
+        index: indexName,
+    });
+    await waited(200);
+
+    // fail to create index if already in use
+    expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
 };
 
 export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise<boolean> => {
@@ -254,26 +272,16 @@ describe('Elastic6Service', () => {
         const PASS = (e: any) => e;
 
         //! load dummy storage service.
-        const { service, options } = await initService('6.2');
+        const { service, options } = await initService('7.10');
         const indexName = options.indexName;
 
         //! break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        await setupIndex(service, indexName);
+
         // const expectedDesc = loadJsonSync('data/samples/es7.1/describe-ok.json');
         // expect2(await service.describe().catch(PASS)).toEqual(expectedDesc);
-
-        //! make sure the index destroyed.
-        const $old = await service.findIndex(indexName);
-        if ($old) {
-            expect2(() => $old, 'index').toEqual({ index: indexName });
-            expect2(await service.destroyIndex().catch(PASS)).toEqual({
-                status: 200,
-                acknowledged: true,
-                index: indexName,
-            });
-            await waited(50);
-        }
 
         // expect2(await service.destroyIndex().catch(PASS)).toEqual();
         // expect2(await service.refreshIndex().catch(PASS)).toEqual();
@@ -284,12 +292,6 @@ describe('Elastic6Service', () => {
         // expect2(await service.refreshIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
         // expect2(await service.flushIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
         // expect2(await service.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-
-        //! make sure the index created
-        expect2(await service.createIndex().catch(PASS)).toEqual({ status: 200, acknowledged: true, index: indexName });
-        await waited(200);
-        // expect2(await service.createIndex().catch(PASS)).toEqual(`400 IN USE - index:${indexName}`);
-        expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
 
         //! for debugging.
         // expect2(await service.readItem('A0').catch(PASS)).toEqual();
@@ -320,7 +322,7 @@ describe('Elastic6Service', () => {
         //! try to increment fields
         //claire[6.2]: 버전이 7이하임에도 '400 ILLEGAL ARGUMENT - illegal_argument_exception'
         expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
-            service.version < 7 ? '400 INVALID FIELD - id:A0' : '400 ILLEGAL ARGUMENT - illegal_argument_exception',
+            '400 ILLEGAL ARGUMENT - illegal_argument_exception',
         );
         expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
             _id: 'A0',
@@ -430,11 +432,7 @@ describe('Elastic6Service', () => {
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        //! load dummy storage service.
-        const { service, version } = instance('6.2');
-
-        //! check service identity
-        expect2(() => service.hello()).toEqual(`elastic6-service:test-v${version}:${version}`);
+        const { service } = await initService('6.2');
 
         // skip test if some prerequisites are not satisfied
         // 1. localhost is able to access elastic6 endpoint (by tunneling)
@@ -546,10 +544,10 @@ describe('Elastic6Service', () => {
     it('should pass basic CRUD w/ real server(7.1)', async () => {
         if (!PROFILE) return; // ignore w/o profile
         //! load dummy storage service.
-        const { service, version } = instance('7.1');
+        const { service } = await initService('7.10');
 
-        //! check service identity
-        expect2(() => service.hello()).toEqual(`elastic6-service:test-v${version}:${version}`);
+        //! break if no live connection
+        if (!(await canPerformTest(service))) return;
 
         // skip test if some prerequisites are not satisfied
         // 1. localhost is able to access elastic6 endpoint (by tunneling)
