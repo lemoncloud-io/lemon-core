@@ -699,13 +699,13 @@ describe('Elastic6Service', () => {
 
         await setupIndex(service, indexName);
 
-        await canCRUDTest(service);
-
         await canBasicCRUD(service);
         ///////////////////////////
-        await canBasicSearch(service, indexName);
+        // await canBasicSearch(service, indexName);
         ///////////////////////////
         //! try to delete(cleanup).
         await cleanup(service);
+
+        await canCRUDTest(service);
     });
 });

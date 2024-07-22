@@ -400,7 +400,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const body2 = this.popullateAutocompleteFields(body);
 
         type = `${type || docType}`;
-        const params = { index: indexName, type, id, body: body2 };
+        const params: any = { index: indexName, id, body: body2 };
+
+        // check version to include 'type' in params
+        if (this.version !== 2.13) {
+            params.type = type;
+        }
+
         if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
 
@@ -413,7 +419,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
                     delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
-                    const param2 = { index: indexName, type, id, body: { doc: body2 } };
+                    const param2: any = { index: indexName, id, body: { doc: body2 } };
+                    if (this.version !== 2.13) param2.type = type;
                     return client.update(param2);
                 }
                 throw e;
@@ -559,7 +566,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         item = !item && increments ? undefined : item;
 
         //! prepare params.
-        const params: any = { index: indexName, type, id, body: { doc: item } };
+        const params: any = { index: indexName, id, body: { doc: item } };
+
+        // check version to include 'type' in params
+        if (this.version !== 2.13) {
+            params.type = type;
+        }
+
         const version = await this.getVersion();
         if (increments) {
             //! it will create if not exists.
