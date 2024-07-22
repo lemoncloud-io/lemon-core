@@ -70,6 +70,14 @@ export interface Elastic6Item extends GeneralItem {
     _score?: number;
 }
 
+export interface ParsedVersion {
+    major: number;
+    minor: number;
+    patch: number;
+    pre: string;
+    build: string;
+}
+
 /**
  * convert to string.
  */
@@ -156,13 +164,22 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      *
      * read the version text from root
      */
-    public async getVersion(): Promise<string> {
-        const response = await this.client.transport.request({
-            method: 'GET',
-            path: '/',
-        });
-        const versionInfo: string = $U.S(response.body.version.number);
-        return versionInfo;
+    parseVersion = require('parse-node-version');
+
+    public async getVersion(): Promise<ParsedVersion> {
+        try {
+            const response = await this.client.transport.request({
+                method: 'GET',
+                path: '/',
+            });
+            const versionInfo: string = 'v' + $U.S(response?.body?.version?.number);
+
+            const parsedVersion: ParsedVersion = this.parseVersion(versionInfo);
+
+            return parsedVersion;
+        } catch (e) {
+            throw e;
+        }
     }
 
     /**
@@ -215,7 +232,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param settings      creating settings
      */
     public async createIndex(settings?: any) {
-        const { indexName, docType, idName, timeSeries, version } = this.options;
+        const { indexName, docType, idName, timeSeries } = this.options;
+        const parsedVersion = await this.getVersion();
+        const version = parsedVersion.major;
         settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
@@ -541,7 +560,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         //! prepare params.
         const params: any = { index: indexName, type, id, body: { doc: item } };
-        const version = this.version;
+        const version = await this.getVersion();
         if (increments) {
             //! it will create if not exists.
             params.body.upsert = { ...increments, [idName]: id };
@@ -549,7 +568,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 L.push(`ctx._source.${key} += ${val}`);
                 return L;
             }, []);
-            if (version < 6.8) params.body.lang = 'painless';
+            if (version.major < 7) params.body.lang = 'painless';
             params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -566,6 +585,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
                 if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
+                if (msg.startsWith('400 UNKNOWN')) throw new Error(`404 NOT FOUND - id:${id}`); // at OS2.13
                 throw E;
             }),
             // $ERROR.throwAsJson,
@@ -647,7 +667,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public static prepareSettings(params: {
         docType: string;
         idName: string;
-        version?: string;
+        version?: number;
         timeSeries?: boolean;
         shards?: number;
         replicas?: number;
@@ -776,19 +796,19 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: version < 6.8 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
+                            filter: version < 7 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
                         },
                     },
                 },
             },
             //! since 7.x. no mapping for types.
-            mappings: version < 6.8 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
+            mappings: version < 7 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
         };
 
         //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            if (version < 6.8) {
+            if (version < 7) {
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
