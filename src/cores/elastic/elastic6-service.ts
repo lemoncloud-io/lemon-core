@@ -161,7 +161,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             method: 'GET',
             path: '/',
         });
-        const versionInfo: string = response.body.version.number;
+        const versionInfo: string = $U.S(response.body.version.number);
         return versionInfo;
     }
 
@@ -472,7 +472,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             $ERROR.handler('read', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
-                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 INDEX NOT FOUND - index:${indexName}`);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
         );
