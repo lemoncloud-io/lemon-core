@@ -21,14 +21,17 @@ import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from '.
  */
 const ENDPOINTS = {
     /** elastic-search */
-    '6.2': 'https://localhost:8443', // run alias `lmes62`
-    '6.8': 'https://localhost:8683', // run alias `lmes68`
-    '7.1': 'https://localhost:9683', // run alias `cres68`
-    '7.2': 'https://localhost:9072', //run alias 'lmts072' -> 702
-    '7.10': 'https://localhost:9710', //run alias 'lmts710' -> 710 ~ 799, then 7.120? (error)
-    /** open-search -> under 6 assume as OS */
-    '2.13': 'https://localhost:9213', //run alias 'lmts213' -> 213
+    '6.2': 'https://localhost:8443', // run alias lmes62
+    '6.8': 'https://localhost:8683', // run alias lmes68
+    '7.1': 'https://localhost:9071', // run alias lmts071
+    '7.2': 'https://localhost:9072', // run alias lmts072
+    '7.10': 'https://localhost:9710', // run alias lmts710
+    /** open-search */
+    '1.1': 'https://localhost:8683', // run alias lmes68
+    '1.2': 'https://localhost:9683', // run alias lmes72
+    '2.13': 'https://localhost:9213', // run alias lmts213
 };
+
 export type VERSIONS = keyof typeof ENDPOINTS;
 
 interface MyModel extends GeneralItem {
@@ -116,6 +119,241 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
         // rethrow
         throw e;
     }
+};
+
+export const canBasicCRUD = async (service: Elastic6Service<any>): Promise<void> => {
+    expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
+    expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
+    expect2(await service.updateItem('A0', {}).catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
+
+    //! create new item
+    const A0 = { type: '', name: 'a0' };
+    expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });
+    // expect2(await service.saveItem('A0', A0).catch(PASS)).toEqual();
+    expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, _id: 'A0', _version: 2 });
+
+    //! try to update fields.
+    expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual(
+        `400 ACTION REQUEST VALIDATION - action_request_validation_exception`,
+    );
+
+    expect2(await service.updateItem('A0', { type: 'test' }).catch(GETERR)).toEqual({
+        _id: 'A0',
+        _version: 3,
+        type: 'test',
+    });
+
+    //! try to increment fields
+    //claire[6.2]: 버전이 7이하임에도 '400 ILLEGAL ARGUMENT - illegal_argument_exception'
+    expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
+        '400 ILLEGAL ARGUMENT - illegal_argument_exception',
+    );
+    expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
+        _id: 'A0',
+        _version: 4,
+        count: 0,
+    });
+    expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({
+        _id: 'A0',
+        _version: 5,
+    });
+
+    //! save A1
+    expect2(await service.saveItem('A1', { type: 'test', count: 1 }).catch(GETERR)).toEqual({
+        $id: 'A1',
+        _id: 'A1',
+        _version: 1,
+        count: 1,
+        type: 'test',
+    });
+};
+
+export const canBasicSearch = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
+    const parsedVersion = service.getVersion();
+    const version = (await parsedVersion).major;
+    //! try to search...
+    await waited(2000);
+    const $search: SearchBody = {
+        size: 1,
+        query: {
+            bool: {
+                filter: {
+                    term: {
+                        type: 'test',
+                    },
+                },
+            },
+        },
+        aggs: {
+            test: {
+                terms: {
+                    field: 'count',
+                },
+            },
+        },
+        sort: [
+            {
+                count: {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+    expect2(await service.searchRaw($search).catch(GETERR), '!took').toEqual({
+        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
+        hits: {
+            hits: [
+                {
+                    _id: 'A0',
+                    _index: indexName,
+                    _score: null,
+                    _source: { $id: 'A0', name: 'a0', type: 'test', count: 0 },
+                    _type: '_doc',
+                    sort: [0],
+                },
+            ],
+            max_score: null,
+            total: version < 7 ? 2 : { relation: 'eq', value: 2 },
+        },
+        aggregations: {
+            test: {
+                buckets: [
+                    {
+                        doc_count: 1,
+                        key: 0,
+                    },
+                    {
+                        doc_count: 1,
+                        key: 1,
+                    },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        timed_out: false,
+    });
+    expect2(await service.search($search).catch(GETERR)).toEqual({
+        total: 2,
+        list: [{ _id: 'A0', _score: null, $id: 'A0', count: 0, name: 'a0', type: 'test' }],
+        aggregations: {
+            test: {
+                buckets: [
+                    { doc_count: 1, key: 0 },
+                    { doc_count: 1, key: 1 },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        last: [0],
+    });
+};
+
+export const cleanup = async (service: Elastic6Service<any>): Promise<void> => {
+    expect2(await service.deleteItem('A0').catch(GETERR)).toEqual({ _id: 'A0', _version: 6 });
+    expect2(await service.deleteItem('A1').catch(GETERR)).toEqual({ _id: 'A1', _version: 2 });
+};
+
+export const canCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+    //! make sure deleted.
+    await service.deleteItem('A0').catch(GETERR);
+    await service.deleteItem('A1').catch(GETERR);
+
+    //! make sure empty index.
+    expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
+    expect2(await service.readItem('A1').catch(GETERR)).toEqual('404 NOT FOUND - id:A1');
+
+    //! save to A0
+    expect2(await service.saveItem('A0', { type: '', name: 'a0' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        $id: 'A0',
+        type: '',
+        name: 'a0',
+    });
+    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        $id: 'A0',
+        type: '',
+        name: 'a0',
+    }); // `._version` is incremented.
+    // expect2(await service.pushItem({ name:'push-01' }).catch(GETERR), '').toEqual({ _id:'EHYvom4Bk-QqXBefOceC', _version:1, name:'push-01' }); // `._id` is auto-gen.
+    expect2(await service.pushItem({ name: 'push-01' }).catch(GETERR), '!_id').toEqual({
+        _version: 1,
+        name: 'push-01',
+    }); // `._id` is auto-gen.
+
+    const data0 = await service.readItem('A0');
+    expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        name: 'b0',
+    });
+    expect2(await service.updateItem('A0', { nick: 'bb' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        nick: 'bb',
+    });
+    expect2(await service.readItem('A0').catch(GETERR), '').toEqual({
+        _id: 'A0',
+        $id: 'A0',
+        _version: Number(data0._version) + 2,
+        type: '',
+        name: 'b0',
+        nick: 'bb',
+    }); // `._version` is incremented.
+
+    expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual(
+        // '400 INVALID FIELD - id:A0',
+        '400 ILLEGAL ARGUMENT - illegal_argument_exception',
+    ); // no `.count` property.
+    expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        count: 10,
+    });
+    expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+    });
+
+    //! try to overwrite, and update
+    expect2(await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        count: 10,
+        name: 'dumm',
+        nick: null,
+    });
+    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        $id: 'A0',
+        count: 10,
+        name: 'dumm',
+        nick: null,
+        type: '',
+    }); // support number, string, null type.
+
+    expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        nick: 'dumm',
+        name: null,
+    });
+    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        $id: 'A0',
+        count: 10,
+        nick: 'dumm',
+        name: null,
+        type: '',
+    }); //! count should be remained
+
+    //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS.
+    // expect2(await service.saveItem('A0', { nick:'name', name:null }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'name', name: null });
+    // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', nick:'name', name:null, type:'' });               //! `count` should be cleared
+
+    //! delete
+    expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
+    expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
+
+    //! try to update A1 (which does not exist)
+    expect2(await service.updateItem('A1', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A1');
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -266,19 +504,28 @@ describe('Elastic6Service', () => {
     });
 
     //! test with real server
-    it('should pass basic CRUD w/ real server (ES6.2~7.x)', async () => {
+    it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
         jest.setTimeout(12000);
-        const PASS = (e: any) => e;
 
         //! load dummy storage service.
-        const { service, options } = await initService('7.10');
+        const { service, options } = await initService('6.2');
         const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 6, minor: 2, patch: 3, pre: '' });
 
         //! break if no live connection
-        if (!(await canPerformTest(service))) return;
+        await canPerformTest(service);
 
         await setupIndex(service, indexName);
+
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
+
+        await canCRUDTest(service);
 
         // const expectedDesc = loadJsonSync('data/samples/es7.1/describe-ok.json');
         // expect2(await service.describe().catch(PASS)).toEqual(expectedDesc);
@@ -297,377 +544,168 @@ describe('Elastic6Service', () => {
         // expect2(await service.readItem('A0').catch(PASS)).toEqual();
         // expect2(await service.deleteItem('A0').catch(PASS)).toEqual();
         // expect2(await service.updateItem('A0', {}).catch(PASS)).toEqual();
-
-        expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-        expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-        expect2(await service.updateItem('A0', {}).catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-
-        //! create new item
-        const A0 = { type: '', name: 'a0' };
-        expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });
-        // expect2(await service.saveItem('A0', A0).catch(PASS)).toEqual();
-        expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, _id: 'A0', _version: 2 });
-
-        //! try to update fields.
-        expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual(
-            `400 ACTION REQUEST VALIDATION - action_request_validation_exception`,
-        );
-
-        expect2(await service.updateItem('A0', { type: 'test' }).catch(GETERR)).toEqual({
-            _id: 'A0',
-            _version: 3,
-            type: 'test',
-        });
-
-        //! try to increment fields
-        //claire[6.2]: 버전이 7이하임에도 '400 ILLEGAL ARGUMENT - illegal_argument_exception'
-        expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
-            '400 ILLEGAL ARGUMENT - illegal_argument_exception',
-        );
-        expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
-            _id: 'A0',
-            _version: 4,
-            count: 0,
-        });
-        expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({
-            _id: 'A0',
-            _version: 5,
-        });
-
-        //! save A1
-        expect2(await service.saveItem('A1', { type: 'test', count: 1 }).catch(GETERR)).toEqual({
-            $id: 'A1',
-            _id: 'A1',
-            _version: 1,
-            count: 1,
-            type: 'test',
-        });
-
-        ///////////////////////////
-        //! try to search...
-        await waited(2000);
-        const $search: SearchBody = {
-            size: 1,
-            query: {
-                bool: {
-                    filter: {
-                        term: {
-                            type: 'test',
-                        },
-                    },
-                },
-            },
-            aggs: {
-                test: {
-                    terms: {
-                        field: 'count',
-                    },
-                },
-            },
-            sort: [
-                {
-                    count: {
-                        order: 'asc',
-                        missing: '_last',
-                    },
-                },
-            ],
-        };
-        expect2(await service.searchRaw($search).catch(GETERR), '!took').toEqual({
-            _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-            hits: {
-                hits: [
-                    {
-                        _id: 'A0',
-                        _index: indexName,
-                        _score: null,
-                        _source: { $id: 'A0', name: 'a0', type: 'test', count: 0 },
-                        _type: '_doc',
-                        sort: [0],
-                    },
-                ],
-                max_score: null,
-                total: service.version < 7 ? 2 : { relation: 'eq', value: 2 },
-            },
-            aggregations: {
-                test: {
-                    buckets: [
-                        {
-                            doc_count: 1,
-                            key: 0,
-                        },
-                        {
-                            doc_count: 1,
-                            key: 1,
-                        },
-                    ],
-                    doc_count_error_upper_bound: 0,
-                    sum_other_doc_count: 0,
-                },
-            },
-            timed_out: false,
-        });
-        expect2(await service.search($search).catch(GETERR)).toEqual({
-            total: 2,
-            list: [{ _id: 'A0', _score: null, $id: 'A0', count: 0, name: 'a0', type: 'test' }],
-            aggregations: {
-                test: {
-                    buckets: [
-                        { doc_count: 1, key: 0 },
-                        { doc_count: 1, key: 1 },
-                    ],
-                    doc_count_error_upper_bound: 0,
-                    sum_other_doc_count: 0,
-                },
-            },
-            last: [0],
-        });
-
-        ///////////////////////////
-        //! try to delete(cleanup).
-        expect2(await service.deleteItem('A0').catch(GETERR)).toEqual({ _id: 'A0', _version: 6 });
-        expect2(await service.deleteItem('A1').catch(GETERR)).toEqual({ _id: 'A1', _version: 2 });
     });
 
     //! elastic storage service.
-    it('should pass basic CRUD w/ real server(6.2)', async () => {
+    it('should pass basic CRUD w/ real server(6.8)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        const { service } = await initService('6.2');
+        //! load dummy storage service.
+        const { service, options } = await initService('6.8');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
 
-        // skip test if some prerequisites are not satisfied
-        // 1. localhost is able to access elastic6 endpoint (by tunneling)
-        // 2. index must be exist
-        if (!(await canPerformTest(service))) return;
+        //! break if no live connection
+        await canPerformTest(service);
 
-        //! make sure deleted.
-        await service.deleteItem('A0').catch(GETERR);
-        await service.deleteItem('A1').catch(GETERR);
+        await setupIndex(service, indexName);
 
-        //! make sure empty index.
-        expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-        expect2(await service.readItem('A1').catch(GETERR)).toEqual('404 NOT FOUND - id:A1');
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
 
-        //! save to A0
-        expect2(await service.saveItem('A0', { type: '', name: 'a0' }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            type: '',
-            name: 'a0',
-        });
-        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            type: '',
-            name: 'a0',
-        }); // `._version` is incremented.
-        // expect2(await service.pushItem({ name:'push-01' }).catch(GETERR), '').toEqual({ _id:'EHYvom4Bk-QqXBefOceC', _version:1, name:'push-01' }); // `._id` is auto-gen.
-        expect2(await service.pushItem({ name: 'push-01' }).catch(GETERR), '!_id').toEqual({
-            _version: 1,
-            name: 'push-01',
-        }); // `._id` is auto-gen.
-
-        const data0 = await service.readItem('A0');
-        expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            name: 'b0',
-        });
-        expect2(await service.updateItem('A0', { nick: 'bb' }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            nick: 'bb',
-        });
-        expect2(await service.readItem('A0').catch(GETERR), '').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            _version: Number(data0._version) + 2,
-            type: '',
-            name: 'b0',
-            nick: 'bb',
-        }); // `._version` is incremented.
-
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual(
-            // '400 INVALID FIELD - id:A0',
-            '400 ILLEGAL ARGUMENT - illegal_argument_exception',
-        ); // no `.count` property.
-        expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            count: 10,
-        });
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-        });
-
-        //! try to overwrite, and update
-        expect2(
-            await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR),
-            '!_version',
-        ).toEqual({ _id: 'A0', count: 10, name: 'dumm', nick: null });
-        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            count: 10,
-            name: 'dumm',
-            nick: null,
-            type: '',
-        }); // support number, string, null type.
-
-        expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            nick: 'dumm',
-            name: null,
-        });
-        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            count: 10,
-            nick: 'dumm',
-            name: null,
-            type: '',
-        }); //! count should be remained
-
-        //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS.
-        // expect2(await service.saveItem('A0', { nick:'name', name:null }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'name', name: null });
-        // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', nick:'name', name:null, type:'' });               //! `count` should be cleared
-
-        //! delete
-        expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
-        expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
-
-        //! try to update A1 (which does not exist)
-        expect2(await service.updateItem('A1', { name: 'b0' }).catch(GETERR), '!_version').toEqual(
-            '404 NOT FOUND - id:A1',
-        );
-
-        //TODO - destroy index......
+        await canCRUDTest(service);
     });
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
-        if (!PROFILE) return; // ignore w/o profile
+        // if (!PROFILE) return; // ignore w/o profile
         //! load dummy storage service.
-        const { service } = await initService('7.1');
+        const { service, options } = await initService('7.1');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 1, patch: 1, pre: '' });
+
+        //! break if no live connection
+        await canPerformTest(service);
+
+        await setupIndex(service, indexName);
+
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
+
+        await canCRUDTest(service);
+    });
+
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(7.2)', async () => {
+        // if (!PROFILE) return; // ignore w/o profile
+        //! load dummy storage service.
+        const { service, options } = await initService('7.2');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 4, patch: 2, pre: '' });
 
         //! break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        // skip test if some prerequisites are not satisfied
-        // 1. localhost is able to access elastic6 endpoint (by tunneling)
-        // 2. index must be exist
-        if (!(await canPerformTest(service))) return;
+        await setupIndex(service, indexName);
 
-        //! make sure deleted.
-        await service.deleteItem('A0').catch(GETERR);
-        await service.deleteItem('A1').catch(GETERR);
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
 
-        //! make sure empty index.
-        expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-        expect2(await service.readItem('A1').catch(GETERR)).toEqual('404 NOT FOUND - id:A1');
-
-        //! save to A0
-        expect2(await service.saveItem('A0', { type: '', name: 'a0' }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            type: '',
-            name: 'a0',
-        });
-        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            type: '',
-            name: 'a0',
-        }); // `._version` is incremented.
-        // expect2(await service.pushItem({ name:'push-01' }).catch(GETERR), '').toEqual({ _id:'EHYvom4Bk-QqXBefOceC', _version:1, name:'push-01' }); // `._id` is auto-gen.
-        expect2(await service.pushItem({ name: 'push-01' }).catch(GETERR), '!_id').toEqual({
-            _version: 1,
-            name: 'push-01',
-        }); // `._id` is auto-gen.
-
-        const data0 = await service.readItem('A0');
-        expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            name: 'b0',
-        });
-        expect2(await service.updateItem('A0', { nick: 'bb' }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            nick: 'bb',
-        });
-        expect2(await service.readItem('A0').catch(GETERR), '').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            _version: Number(data0._version) + 2,
-            type: '',
-            name: 'b0',
-            nick: 'bb',
-        }); // `._version` is incremented.
-
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual(
-            // '400 INVALID FIELD - id:A0',
-            '400 ILLEGAL ARGUMENT - illegal_argument_exception',
-        ); // no `.count` property.
-        expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            count: 10,
-        });
-        expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-        });
-
-        //! try to overwrite, and update
-        expect2(
-            await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR),
-            '!_version',
-        ).toEqual({ _id: 'A0', count: 10, name: 'dumm', nick: null });
-        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            count: 10,
-            name: 'dumm',
-            nick: null,
-            type: '',
-        }); // support number, string, null type.
-
-        expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            nick: 'dumm',
-            name: null,
-        });
-        expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            $id: 'A0',
-            count: 10,
-            nick: 'dumm',
-            name: null,
-            type: '',
-        }); //! count should be remained
-
-        //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS.
-        // expect2(await service.saveItem('A0', { nick:'name', name:null }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'name', name: null });
-        // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', nick:'name', name:null, type:'' });               //! `count` should be cleared
-
-        //! delete
-        expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
-        expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
-
-        //! try to update A1 (which does not exist)
-        expect2(await service.updateItem('A1', { name: 'b0' }).catch(GETERR), '!_version').toEqual(
-            '404 NOT FOUND - id:A1',
-        );
+        await canCRUDTest(service);
     });
 
     //TODO - fill up belows.
 
     //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.2)', async () => {
-        if (!PROFILE) return; // ignore w/o profile
+    it('should pass basic CRUD w/ real server(7.10)', async () => {
+        // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
-        const { service } = await makeService('7.2');
-        service.runTest();
+        const { service, options } = await initService('7.10');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+
+        //! break if no live connection
+        await canPerformTest(service);
+
+        await setupIndex(service, indexName);
+
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
+
+        await canCRUDTest(service);
     });
 
     //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.10)', async () => {
-        if (!PROFILE) return; // ignore w/o profile
+    it('should pass basic CRUD w/ real server(1.1)', async () => {
+        // if (!PROFILE) return; // ignore w/o profile
         //!* load dummy storage service.
-        const { service } = await makeService('7.10');
-        service.runTest();
+        const { service, options } = await initService('1.1');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+
+        //! break if no live connection
+        await canPerformTest(service);
+
+        await setupIndex(service, indexName);
+
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
+
+        await canCRUDTest(service);
+    });
+
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(1.2)', async () => {
+        // if (!PROFILE) return; // ignore w/o profile
+        //!* load dummy storage service.
+        const { service, options } = await initService('1.2');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+
+        //! break if no live connection
+        await canPerformTest(service);
+
+        await setupIndex(service, indexName);
+
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
+
+        await canCRUDTest(service);
+    });
+
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(2.13)', async () => {
+        // if (!PROFILE) return; // ignore w/o profile
+        //!* load dummy storage service.
+        const { service, options } = await initService('2.13');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+
+        //! break if no live connection
+        await canPerformTest(service);
+
+        await setupIndex(service, indexName);
+
+        await canCRUDTest(service);
+
+        await canBasicCRUD(service);
+        ///////////////////////////
+        await canBasicSearch(service, indexName);
+        ///////////////////////////
+        //! try to delete(cleanup).
+        await cleanup(service);
     });
 });
