@@ -544,7 +544,7 @@ describe('Elastic6Service', () => {
     it('should pass basic CRUD w/ real server(7.1)', async () => {
         if (!PROFILE) return; // ignore w/o profile
         //! load dummy storage service.
-        const { service } = await initService('7.10');
+        const { service } = await initService('7.1');
 
         //! break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -651,5 +651,23 @@ describe('Elastic6Service', () => {
         expect2(await service.updateItem('A1', { name: 'b0' }).catch(GETERR), '!_version').toEqual(
             '404 NOT FOUND - id:A1',
         );
+    });
+
+    //TODO - fill up belows.
+
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(7.2)', async () => {
+        if (!PROFILE) return; // ignore w/o profile
+        //* load dummy storage service.
+        const { service } = await makeService('7.2');
+        service.runTest();
+    });
+
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(7.10)', async () => {
+        if (!PROFILE) return; // ignore w/o profile
+        //!* load dummy storage service.
+        const { service } = await makeService('7.10');
+        service.runTest();
     });
 });
