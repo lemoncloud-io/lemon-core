@@ -548,6 +548,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             $ERROR.handler('read', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
             // $ERROR.throwAsJson,
