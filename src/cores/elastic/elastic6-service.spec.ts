@@ -20,13 +20,13 @@ import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from '.
  * - use ssh tunneling to make connection to real server instance.
  */
 const ENDPOINTS = {
-    /** elastic-search */
+    //* elastic-search */
     '6.2': 'https://localhost:8443', // run alias lmes62
     '6.8': 'https://localhost:8683', // run alias lmes68
     '7.1': 'https://localhost:9071', // run alias lmts071
     '7.2': 'https://localhost:9072', // run alias lmts072
     '7.10': 'https://localhost:9710', // run alias lmts710
-    /** open-search */
+    //* open-search */
     '1.1': 'https://localhost:8683', // run alias lmes68
     '1.2': 'https://localhost:9683', // run alias lmes72
     '2.13': 'https://localhost:9213', // run alias lmts213
@@ -58,18 +58,18 @@ export const initService = async (
     const { service, options } = instance(ver);
     const { indexName, idName } = options;
 
-    //check hello
+    //* check hello
     const helloResult = service.hello();
     expect2(() => helloResult).toEqual(`elastic6-service:${indexName}:${ver}`);
 
-    //check idName
+    //* check idName
     expect2(() => idName).toEqual('$id');
 
-    //check indexName
+    //* check indexName
     expect2(() => indexName).toEqual(`test-v${ver}`);
 
-    //check version
-    expect2(() => service.versionString).toEqual(ver);
+    //* check version
+    expect2(() => service.options.version).toEqual(ver);
 
     return { service, options };
 };
@@ -77,7 +77,7 @@ export const initService = async (
 export const setupIndex = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
     const PASS = (e: any) => e;
 
-    //destroy index
+    //* destroy index
     const oldIndex = await service.findIndex(indexName);
     if (oldIndex) {
         expect2(() => oldIndex, 'index').toEqual({ index: indexName });
@@ -89,7 +89,7 @@ export const setupIndex = async (service: Elastic6Service<any>, indexName: strin
         await waited(50);
     }
 
-    // create index
+    //* create index
     expect2(await service.createIndex().catch(PASS)).toEqual({
         status: 200,
         acknowledged: true,
@@ -97,7 +97,7 @@ export const setupIndex = async (service: Elastic6Service<any>, indexName: strin
     });
     await waited(200);
 
-    // fail to create index if already in use
+    //* fail to create index if already in use
     expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
 };
 
@@ -110,29 +110,29 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
         return true;
     } catch (e) {
         if (GETERR(e).includes('ECONNREFUSED')) return false; // no connection.
-        // unable to access to elastic6 endpoint
+        //* unable to access to elastic6 endpoint
         if (GETERR(e).endsWith('unknown error')) return false;
-        // index does not exist
+        //* index does not exist
         if (GETERR(e).startsWith('404 NOT FOUND')) return false;
         console.error('! err =', GETERR(e));
 
-        // rethrow
+        //* rethrow
         throw e;
     }
 };
 
-export const canBasicCRUD = async (service: Elastic6Service<any>): Promise<void> => {
+export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.updateItem('A0', {}).catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
 
-    //! create new item
+    //* create new item
     const A0 = { type: '', name: 'a0' };
     expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });
     // expect2(await service.saveItem('A0', A0).catch(PASS)).toEqual();
     expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, _id: 'A0', _version: 2 });
 
-    //! try to update fields.
+    //* try to update fields.
     expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual(
         `400 ACTION REQUEST VALIDATION - action_request_validation_exception`,
     );
@@ -143,8 +143,7 @@ export const canBasicCRUD = async (service: Elastic6Service<any>): Promise<void>
         type: 'test',
     });
 
-    //! try to increment fields
-    //claire[6.2]: 버전이 7이하임에도 '400 ILLEGAL ARGUMENT - illegal_argument_exception'
+    //* try to increment fields
     expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
         '400 ILLEGAL ARGUMENT - illegal_argument_exception',
     );
@@ -158,7 +157,7 @@ export const canBasicCRUD = async (service: Elastic6Service<any>): Promise<void>
         _version: 5,
     });
 
-    //! save A1
+    //* save A1
     expect2(await service.saveItem('A1', { type: 'test', count: 1 }).catch(GETERR)).toEqual({
         $id: 'A1',
         _id: 'A1',
@@ -168,10 +167,10 @@ export const canBasicCRUD = async (service: Elastic6Service<any>): Promise<void>
     });
 };
 
-export const canBasicSearch = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
+export const basicSearchTest = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
     const parsedVersion = service.getVersion();
     const version = (await parsedVersion).major;
-    //! try to search...
+    //* try to search...
     await waited(2000);
     const $search: SearchBody = {
         size: 1,
@@ -256,16 +255,16 @@ export const cleanup = async (service: Elastic6Service<any>): Promise<void> => {
     expect2(await service.deleteItem('A1').catch(GETERR)).toEqual({ _id: 'A1', _version: 2 });
 };
 
-export const canCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
-    //! make sure deleted.
+export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+    //* make sure deleted.
     await service.deleteItem('A0').catch(GETERR);
     await service.deleteItem('A1').catch(GETERR);
 
-    //! make sure empty index.
+    //* make sure empty index.
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.readItem('A1').catch(GETERR)).toEqual('404 NOT FOUND - id:A1');
 
-    //! save to A0
+    //* save to A0
     expect2(await service.saveItem('A0', { type: '', name: 'a0' }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
         $id: 'A0',
@@ -314,7 +313,7 @@ export const canCRUDTest = async (service: Elastic6Service<any>): Promise<void> 
         _id: 'A0',
     });
 
-    //! try to overwrite, and update
+    //* try to overwrite, and update
     expect2(await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
         count: 10,
@@ -342,17 +341,17 @@ export const canCRUDTest = async (service: Elastic6Service<any>): Promise<void> 
         nick: 'dumm',
         name: null,
         type: '',
-    }); //! count should be remained
+    }); //* count should be remained
 
     //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS.
     // expect2(await service.saveItem('A0', { nick:'name', name:null }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'name', name: null });
-    // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', nick:'name', name:null, type:'' });               //! `count` should be cleared
+    // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', nick:'name', name:null, type:'' });               //* `count` should be cleared
 
-    //! delete
+    //* delete
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
 
-    //! try to update A1 (which does not exist)
+    //* try to update A1 (which does not exist)
     expect2(await service.updateItem('A1', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A1');
 };
 
@@ -365,16 +364,16 @@ describe('Elastic6Service', () => {
     //! dummy storage service.
     it('should pass basic CRUD w/ dummy', async () => {
         /* eslint-disable prettier/prettier */
-        //! load dummy storage service.
+        //* load dummy storage service.
         const { dummy } = instance();
 
-        //! check dummy data.
+        //* check dummy data.
         expect2(() => dummy.hello()).toEqual('dummy-elastic6-service:test-v6.2');
         expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ $id: 'A0', type: 'account', name: 'lemon' });
         expect2(await dummy.readItem('A1'), '$id,type,name').toEqual({ $id: 'A1', type: 'account', name: 'Hong' });
 
-        // //! basic simple CRUD test.
+        //* basic simple CRUD test.
         expect2(await dummy.readItem('A0').catch(GETERR), '$id').toEqual({ $id: 'A0' });
         expect2(await dummy.deleteItem('A0').catch(GETERR), '$id').toEqual({ $id: 'A0' });
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
@@ -392,7 +391,7 @@ describe('Elastic6Service', () => {
         // expect2(() => JSON.stringify(err, Object.getOwnPropertyNames(err))).toEqual();
         expect2(() => $ERROR.asJson(err), 'message').toEqual({ message });
 
-        //! parse the origin error.
+        //* parse the origin error.
         const E1 = loadJsonSync('data/samples/es6.5/create-index.err-400.json');
         expect2(() => $ERROR.asError(E1)).toEqual({
             status: 400,
@@ -454,7 +453,6 @@ describe('Elastic6Service', () => {
             reason: { cause: undefined, reason: 'NOT FOUND', status: undefined, type: 'NOT FOUND' },
         });
 
-        //! parse the
         expect2(() => $ERROR.handler('test', GETERR)(E1)).toEqual(
             '400 RESOURCE ALREADY EXISTS - index [test-v4/menh7_JkTJeXGX6b6EzTnA] already exists',
         );
@@ -471,7 +469,7 @@ describe('Elastic6Service', () => {
         // expect2(() => JSON.stringify(err, Object.getOwnPropertyNames(err))).toEqual();
         expect2(() => $ERROR.asJson(err), 'message').toEqual({ message });
 
-        //! resource exists
+        //* resource exists
         const E1 = loadJsonSync('data/samples/es7.1/create-index.err.json');
         expect2(() => $ERROR.asError(E1)).toEqual({
             message: 'resource_already_exists_exception',
@@ -482,7 +480,7 @@ describe('Elastic6Service', () => {
             '400 RESOURCE ALREADY EXISTS - resource_already_exists_exception',
         );
 
-        //! 404 not found
+        //* 404 not found
         const E2 = loadJsonSync('data/samples/es7.1/read-item.err404.json');
         expect2(() => $ERROR.asError(E2)).toEqual({
             status: 404,
@@ -491,7 +489,7 @@ describe('Elastic6Service', () => {
         });
         expect2(() => $ERROR.handler('test', GETERR)(E2)).toEqual('404 NOT FOUND - Response Error');
 
-        //! conflict
+        //* conflict
         const E3 = loadJsonSync('data/samples/es7.1/version-conflict.err.json');
         expect2(() => $ERROR.asError(E3)).toEqual({
             message: 'version_conflict_engine_exception',
@@ -508,111 +506,89 @@ describe('Elastic6Service', () => {
         // if (!PROFILE) return; // ignore w/o profile
         jest.setTimeout(12000);
 
-        //! load dummy storage service.
+        //* load dummy storage service.
         const { service, options } = await initService('6.2');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 6, minor: 2, patch: 3, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 6, minor: 2 });
 
-        //! break if no live connection
+        //* break if no live connection
         await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
-
-        // const expectedDesc = loadJsonSync('data/samples/es7.1/describe-ok.json');
-        // expect2(await service.describe().catch(PASS)).toEqual(expectedDesc);
-
-        // expect2(await service.destroyIndex().catch(PASS)).toEqual();
-        // expect2(await service.refreshIndex().catch(PASS)).toEqual();
-        // expect2(await service.flushIndex().catch(PASS)).toEqual();
-        // expect2(await service.describe().catch(PASS)).toEqual();
-
-        // expect2(await service.destroyIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-        // expect2(await service.refreshIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-        // expect2(await service.flushIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-        // expect2(await service.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
-
-        //! for debugging.
-        // expect2(await service.readItem('A0').catch(PASS)).toEqual();
-        // expect2(await service.deleteItem('A0').catch(PASS)).toEqual();
-        // expect2(await service.updateItem('A0', {}).catch(PASS)).toEqual();
+        await detailedCRUDTest(service);
     });
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(6.8)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        //! load dummy storage service.
+        //* load dummy storage service.
         const { service, options } = await initService('6.8');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //! break if no live connection
+        //* break if no live connection
         await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
+        await detailedCRUDTest(service);
     });
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        //! load dummy storage service.
+        //* load dummy storage service.
         const { service, options } = await initService('7.1');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 1, patch: 1, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
 
-        //! break if no live connection
+        //* break if no live connection
         await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
+        await detailedCRUDTest(service);
     });
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        //! load dummy storage service.
+        //* load dummy storage service.
         const { service, options } = await initService('7.2');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 4, patch: 2, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
 
-        //! break if no live connection
+        //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
+        await detailedCRUDTest(service);
     });
 
     //TODO - fill up belows.
@@ -623,89 +599,86 @@ describe('Elastic6Service', () => {
         //* load dummy storage service.
         const { service, options } = await initService('7.10');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //! break if no live connection
+        //* break if no live connection
         await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
+        await detailedCRUDTest(service);
     });
 
     //! elastic storage service.
-    it('should pass basic CRUD w/ real server(1.1)', async () => {
+    it('should pass basic CRUD w/ open-search server(1.1)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        //!* load dummy storage service.
+        //* load dummy storage service.
+        jest.setTimeout(12000);
         const { service, options } = await initService('1.1');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //! break if no live connection
+        //* break if no live connection
         await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
+        await detailedCRUDTest(service);
     });
 
     //! elastic storage service.
-    it('should pass basic CRUD w/ real server(1.2)', async () => {
+    it('should pass basic CRUD w/ open-search server(1.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        //!* load dummy storage service.
+        //* load dummy storage service.
         const { service, options } = await initService('1.2');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //! break if no live connection
+        //* break if no live connection
         await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
+        await detailedCRUDTest(service);
     });
 
     //! elastic storage service.
-    it('should pass basic CRUD w/ real server(2.13)', async () => {
+    it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        //!* load dummy storage service.
+        //* load dummy storage service.
         const { service, options } = await initService('2.13');
         const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ build: '', major: 7, minor: 10, patch: 2, pre: '' });
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //! break if no live connection
+        //* break if no live connection
         await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
-        await canBasicCRUD(service);
-        ///////////////////////////
-        // await canBasicSearch(service, indexName);
-        ///////////////////////////
-        //! try to delete(cleanup).
+        await basicCRUDTest(service);
+
+        // await basicSearchTest(service, indexName);
+
         await cleanup(service);
 
-        await canCRUDTest(service);
+        await detailedCRUDTest(service);
     });
 });
