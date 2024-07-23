@@ -69,12 +69,23 @@ export interface Elastic6Item extends GeneralItem {
     _version?: number;
     _score?: number;
 }
-
-export interface ParsedVersion {
+interface ParsedVersion {
     major: number;
     minor: number;
 }
 
+interface ElasticParams {
+    index: string;
+    id: string;
+    body: any;
+    type?: string;
+}
+interface ElasticSearchParams {
+    index: string;
+    body: any;
+    type?: string;
+    searchType: SearchType;
+}
 /**
  * convert to string.
  */
@@ -160,13 +171,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     public async getVersion(): Promise<ParsedVersion> {
         try {
-            const response = await this.client.transport.request({
-                method: 'GET',
-                path: '/',
-            });
-            const versionInfo: string = $U.S(response?.body?.version?.number);
+            const info = await this.client.info();
+            const version: string = $U.S(info.body.version.number);
 
-            const parsedVersion = this.parseVersion(versionInfo);
+            const parsedVersion: ParsedVersion = await this.parseVersion(version);
 
             return parsedVersion;
         } catch (e) {
@@ -400,16 +408,17 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
         const client = this.client;
+        const version = await this.getVersion();
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
         const body2 = this.popullateAutocompleteFields(body);
 
         type = `${type || docType}`;
-        const params: any = { index: indexName, id, body: body2 };
+        const params: ElasticParams = { index: indexName, id, body: body2 };
 
         // check version to include 'type' in params
-        if (this.version !== 2.13) {
+        if (version.major < 7) {
             params.type = type;
         }
 
@@ -425,8 +434,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
                     delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
-                    const param2: any = { index: indexName, id, body: { doc: body2 } };
-                    if (this.version !== 2.13) param2.type = type;
+                    const param2: ElasticParams = { index: indexName, id, body: { doc: body2 } };
+                    if (version.major < 7) param2.type = type;
                     return client.update(param2);
                 }
                 throw e;
@@ -571,15 +580,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
+        const version = await this.getVersion();
+
         //! prepare params.
-        const params: any = { index: indexName, id, body: { doc: item } };
+        const params: ElasticParams = { index: indexName, id, body: { doc: item } };
 
         // check version to include 'type' in params
-        if (this.version !== 2.13) {
+        if (version.major < 7) {
             params.type = type;
         }
 
-        const version = await this.getVersion();
         if (increments) {
             //! it will create if not exists.
             params.body.upsert = { ...increments, [idName]: id };
@@ -604,7 +614,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
                 if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
-                if (msg.startsWith('400 UNKNOWN')) throw new Error(`404 NOT FOUND - id:${id}`); // at OS2.13
                 throw E;
             }),
             // $ERROR.throwAsJson,
@@ -630,7 +639,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
-        const params = { index: indexName, type, body, searchType };
+        const version = await this.getVersion();
+
+        const params: ElasticSearchParams = { index: indexName, body, searchType };
+
+        // check version to include 'type' in params
+        if (version.major < 7) {
+            params.type = type;
+        }
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
         const client = this.client;

@@ -168,8 +168,8 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
 };
 
 export const basicSearchTest = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
-    const parsedVersion = service.getVersion();
-    const version = (await parsedVersion).major;
+    const parsedVersion = await service.getVersion();
+    const version = parsedVersion.major;
     //* try to search...
     await waited(2000);
     const $search: SearchBody = {
@@ -209,6 +209,7 @@ export const basicSearchTest = async (service: Elastic6Service<any>, indexName: 
                     _score: null,
                     _source: { $id: 'A0', name: 'a0', type: 'test', count: 0 },
                     _type: '_doc',
+                    //...(service.version !== 2.13 ? { _type: '_doc' } : {}),
                     sort: [0],
                 },
             ],
@@ -675,7 +676,7 @@ describe('Elastic6Service', () => {
 
         await basicCRUDTest(service);
 
-        // await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
         await cleanup(service);
 
