@@ -73,9 +73,6 @@ export interface Elastic6Item extends GeneralItem {
 export interface ParsedVersion {
     major: number;
     minor: number;
-    patch: number;
-    pre: string;
-    build: string;
 }
 
 /**
@@ -135,7 +132,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * say hello of identity.
      */
-    public hello = () => `elastic6-service:${this.options.indexName}:${this.versionString}`;
+    public hello = () => `elastic6-service:${this.options.indexName}:${this.options.version}`;
 
     /**
      * get the client instance.
@@ -155,16 +152,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         return ver;
     }
 
-    public get versionString(): string {
-        return this.options.version;
-    }
-
     /**
      * TODO - implement this w/ types @claire
      *
      * read the version text from root
      */
-    parseVersion = require('parse-node-version');
 
     public async getVersion(): Promise<ParsedVersion> {
         try {
@@ -172,14 +164,28 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 method: 'GET',
                 path: '/',
             });
-            const versionInfo: string = 'v' + $U.S(response?.body?.version?.number);
+            const versionInfo: string = $U.S(response?.body?.version?.number);
 
-            const parsedVersion: ParsedVersion = this.parseVersion(versionInfo);
+            const parsedVersion = this.parseVersion(versionInfo);
 
             return parsedVersion;
         } catch (e) {
             throw e;
         }
+    }
+
+    public async parseVersion(version: string): Promise<ParsedVersion> {
+        const match = version.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
+        if (!match) {
+            throw new Error('Fail to parse: ' + version);
+        }
+
+        const res: ParsedVersion = {
+            major: parseInt(match[1], 10),
+            minor: parseInt(match[2], 10),
+        };
+
+        return res;
     }
 
     /**
