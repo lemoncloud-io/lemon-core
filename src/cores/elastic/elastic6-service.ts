@@ -220,6 +220,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         }
     }
     /**
+     * if the service is using OpenSearch
+     */
+    public get isOpenSearch(): boolean {
+        return this.version < 5;
+    }
+    /**
      * parse the version with major and minor version
      */
     public async parseVersion(version: string): Promise<ParsedVersion> {
