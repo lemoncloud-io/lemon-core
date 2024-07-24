@@ -69,21 +69,61 @@ export interface Elastic6Item extends GeneralItem {
     _version?: number;
     _score?: number;
 }
+
+/**
+ * parsed version with major and minor version numbers.
+ */
 interface ParsedVersion {
     major: number;
     minor: number;
 }
 
-interface ElasticParams {
+/**
+ * parameters for Elasticsearch operations.
+ *
+ * @template T type of the body content.
+ */
+interface ElasticParams<T extends object = any> {
+    /**
+     * index name.
+     */
     index: string;
+    /**
+     * document ID.
+     */
     id: string;
-    body: any;
+    /**
+     * body content.
+     */
+    body: T;
+    /**
+     * document type (optional).
+     */
     type?: string;
 }
-interface ElasticSearchParams {
+
+/**
+ * parameters for Elasticsearch search operations.
+ *
+ * @template T type of the body content.
+ */
+interface ElasticSearchParams<T extends object = any> {
+    /**
+     * index name.
+     */
     index: string;
-    body: any;
+    /**
+     * search body content.
+     */
+    body: T;
+    /**
+     * document type (optional).
+     */
     type?: string;
+    /**
+     * search type
+     * (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
+     */
     searchType: SearchType;
 }
 /**
@@ -157,18 +197,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public get options(): Elastic6Option {
         return this._options;
     }
-
+    /**
+     * get the version from options
+     */
     public get version(): number {
         const ver = $U.F(this.options.version, 6.8);
         return ver;
     }
-
     /**
-     * TODO - implement this w/ types @claire
-     *
-     * read the version text from root
+     * get the root version from client
      */
-
     public async getVersion(): Promise<ParsedVersion> {
         try {
             const info = await this.client.info();
@@ -181,11 +219,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             throw e;
         }
     }
-
+    /**
+     * parse the version with major and minor version
+     */
     public async parseVersion(version: string): Promise<ParsedVersion> {
         const match = version.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
         if (!match) {
-            throw new Error('Fail to parse: ' + version);
+            throw new Error(`@version[${version}] is invalid - fail to parse`);
         }
 
         const res: ParsedVersion = {
