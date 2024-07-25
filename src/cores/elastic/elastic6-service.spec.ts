@@ -74,7 +74,7 @@ export const initService = async (
     return { service, options };
 };
 
-export const setupIndex = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
+export const setupIndex = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
     const PASS = (e: any) => e;
 
     //* destroy index
@@ -86,7 +86,7 @@ export const setupIndex = async (service: Elastic6Service<any>, indexName: strin
             acknowledged: true,
             index: indexName,
         });
-        await waited(50);
+        await waited(100);
     }
 
     //* create index
@@ -121,7 +121,7 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
     }
 };
 
-export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+export const basicCRUDTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.updateItem('A0', {}).catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
@@ -167,7 +167,7 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     });
 };
 
-export const basicSearchTest = async (service: Elastic6Service<any>, indexName: string): Promise<void> => {
+export const basicSearchTest = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
     const parsedVersion = await service.getVersion();
     const version = parsedVersion.major;
     //* try to search...
@@ -250,12 +250,12 @@ export const basicSearchTest = async (service: Elastic6Service<any>, indexName: 
     });
 };
 
-export const cleanup = async (service: Elastic6Service<any>): Promise<void> => {
+export const cleanup = async (service: Elastic6Service<MyModel>): Promise<void> => {
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual({ _id: 'A0', _version: 6 });
     expect2(await service.deleteItem('A1').catch(GETERR)).toEqual({ _id: 'A1', _version: 2 });
 };
 
-export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+export const detailedCRUDTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
     //* make sure deleted.
     await service.deleteItem('A0').catch(GETERR);
     await service.deleteItem('A1').catch(GETERR);
@@ -663,6 +663,7 @@ describe('Elastic6Service', () => {
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
+        jest.setTimeout(15000);
         //* load dummy storage service.
         const { service, options } = await initService('2.13');
         const indexName = options.indexName;
