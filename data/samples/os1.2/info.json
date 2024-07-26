@@ -1,0 +1,63 @@
+{
+    "body": {
+      "cluster_name": "085403634746:eureka-es72",
+      "cluster_uuid": "8iITR5MNQCiD0I-bWhWANQ",
+      "name": "3b2f26d062714fe96b61f734c5b02e91",
+      "tagline": "The OpenSearch Project: https://opensearch.org/",
+      "version": {
+        "build_date": "2023-08-21T12:10:02.910673Z",
+        "build_hash": "unknown",
+        "build_snapshot": false,
+        "build_type": "tar",
+        "lucene_version": "8.10.1",
+        "minimum_index_compatibility_version": "6.0.0-beta1",
+        "minimum_wire_compatibility_version": "6.8.0",
+        "number": "7.10.2"
+      }
+    },
+    "headers": {
+      "access-control-allow-origin": "*",
+      "connection": "keep-alive",
+      "content-length": "532",
+      "content-type": "application/json; charset=UTF-8",
+      "date": "Fri, 26 Jul 2024 01:14:59 GMT"
+    },
+    "meta": {
+      "aborted": false,
+      "attempts": 0,
+      "connection": {
+        "_openRequests": 0,
+        "deadCount": 0,
+        "headers": {},
+        "id": "https://localhost:9683/",
+        "resurrectTimeout": 0,
+        "roles": {
+          "data": true,
+          "ingest": true,
+          "master": true,
+          "ml": false
+        },
+        "status": "alive",
+        "url": "https://localhost:9683/"
+      },
+      "context": null,
+      "name": "elasticsearch-js",
+      "request": {
+        "id": 1,
+        "options": {},
+        "params": {
+          "body": null,
+          "headers": {
+            "user-agent": "elasticsearch-js/7.12.0 (darwin 23.5.0-arm64; Node.js v18.19.1)",
+            "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1"
+          },
+          "method": "GET",
+          "path": "/",
+          "querystring": "",
+          "timeout": 30000
+        }
+      }
+    },
+    "statusCode": 200
+  }
+  
