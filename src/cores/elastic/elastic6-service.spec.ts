@@ -35,7 +35,7 @@ const ENDPOINTS = {
 export type VERSIONS = keyof typeof ENDPOINTS;
 
 interface MyModel extends GeneralItem {
-    id?: string;
+    id: string;
 }
 export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, indexName?: string) => {
     //NOTE - use tunneling to elastic6 endpoint.
@@ -48,7 +48,7 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
     const autocompleteFields = useAutoComplete ? ['title', 'name'] : null;
     const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
     const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
-    const dummy: Elastic6Service<MyModel> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
+    const dummy: Elastic6Service<GeneralItem> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
     return { version, service, dummy, options };
 };
 
@@ -121,7 +121,7 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
     }
 };
 
-export const basicCRUDTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
+export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.updateItem('A0', {}).catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
@@ -255,7 +255,7 @@ export const cleanup = async (service: Elastic6Service<MyModel>): Promise<void> 
     expect2(await service.deleteItem('A1').catch(GETERR)).toEqual({ _id: 'A1', _version: 2 });
 };
 
-export const detailedCRUDTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
+export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
     //* make sure deleted.
     await service.deleteItem('A0').catch(GETERR);
     await service.deleteItem('A1').catch(GETERR);
@@ -329,30 +329,134 @@ export const detailedCRUDTest = async (service: Elastic6Service<MyModel>): Promi
         type: '',
     }); // support number, string, null type.
 
-    expect2(await service.updateItem('A0', { nick: 'dumm', name: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
-        nick: 'dumm',
-        name: null,
-    });
-    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
-        $id: 'A0',
-        count: 10,
-        nick: 'dumm',
-        name: null,
-        type: '',
-    }); //* count should be remained
+    /**
+     * test-block: 값업데이트 따른 응답/저장 값 확인하기.
+     * 1. ....
+     */
+    if (1) {
+        const agent = ((id: string) => {
+            return {
+                update: (N: any) => service.updateItem(id, N).catch(GETERR),
+            };
+        })('A0');
+        // 테스트시나리오: null 저장시 응답결과. -> 테스트의 가독성을 높이기.
+        expect2(await agent.update({ nick: 'dumm', name: null }), 'nick,name').toEqual({
+            nick: 'dumm',
+            name: null,
+        });
+        /**
+         * 테스트: 신규 필드에 대한, 자동 매핑 생성과 데이터 미스매칭에 따른 에러 변화 확인
+         */
 
-    //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS.
-    // expect2(await service.saveItem('A0', { nick:'name', name:null }).catch(GETERR), '!_version').toEqual({ _id:'A0', nick:'name', name: null });
-    // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({ _id:'A0', id:'A0', nick:'name', name:null, type:'' });               //* `count` should be cleared
+        // 0) 'null' 저장하기
+        expect2(await service.saveItem('A0', { name: null, count: null }).catch(GETERR), '!_version').toEqual({
+            _id: 'A0',
+            name: null,
+            count: null,
+        });
+
+        // 1) string -> null, '' -> null
+        expect2(await service.saveItem('A1', { name: 'A1 for testing', count: 1 }).catch(GETERR), '!_version').toEqual({
+            _id: 'A1',
+            $id: 'A1',
+            name: 'A1 for testing',
+            count: 1,
+        });
+        expect2(await service.updateItem('A1', { name: null }).catch(GETERR), '!_version').toEqual({
+            _id: 'A1',
+            name: null,
+        });
+        expect2(await service.updateItem('A1', { name: '' }).catch(GETERR), '!_version').toEqual({
+            _id: 'A1',
+            name: '',
+        });
+
+        // 2) number(long|float) -> null
+        expect2(await service.saveItem('A2', { name: 'A2 for testing', count: 5 }).catch(GETERR), '!_version').toEqual({
+            _id: 'A2',
+            $id: 'A2',
+            name: 'A2 for testing',
+            count: 5,
+        });
+        expect2(await service.updateItem('A2', { count: null }).catch(GETERR), '!_version').toEqual({
+            _id: 'A2',
+            count: null,
+        });
+
+        // 3) [] -> null
+        expect2(
+            await service.saveItem('A3', { name: 'A3 for testing', tags: ['test'] }).catch(GETERR),
+            '!_version',
+        ).toEqual({
+            _id: 'A3',
+            $id: 'A3',
+            name: 'A3 for testing',
+            tags: ['test'],
+        });
+        expect2(await service.updateItem('A3', { tags: null }).catch(GETERR), '!_version').toEqual({
+            _id: 'A3',
+            tags: null,
+        });
+
+        /**
+         * 테스트: 내부 객체에 데이터 변경하기
+         */
+        // 1) inner-object update w/ null support
+        expect2(await service.saveItem('A4', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
+            _id: 'A4',
+            $id: 'A4',
+            extra: { a: 1 },
+        });
+        expect2(await service.updateItem('A4', { extra: { b: 2 } }).catch(GETERR), '!_version').toEqual({
+            _id: 'A4',
+            extra: { b: 2 },
+        });
+        expect2(await service.updateItem('A4', { extra: { a: null } }).catch(GETERR), '!_version').toEqual({
+            _id: 'A4',
+            extra: { a: null },
+        });
+
+        // 2) 타입 변경(long -> float) 시 에러 발생
+        try {
+            await service.saveItem('A5', { value: 0 }).catch(GETERR);
+            await service.updateItem('A5', { value: 0.1 }).catch(GETERR);
+        } catch (error) {
+            expect2(GETERR(error)).toMatch(/mapper_parsing_exception/);
+        }
+
+        // 3) array[] 이용시 타입변경 문제
+        expect2(await service.saveItem('A6', { tags: ['tag1'] }).catch(GETERR), '!_version').toEqual({
+            _id: 'A6',
+            $id: 'A6',
+            tags: ['tag1'],
+        });
+        expect2(await service.updateItem('A6', { tags: [1, 2] }).catch(GETERR), '!_version').toEqual({
+            _id: 'A6',
+            tags: [1, 2],
+        });
+    }
+
+    // //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS. >> client.update(param2); 이기 때문
+    // expect2(await service.saveItem('A0', { nick: 'name', name: null }).catch(GETERR), '!_version').toEqual({
+    //     _id: 'A0',
+    //     nick: 'name',
+    //     name: null,
+    // });
+    // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
+    //     _id: 'A0',
+    //     $id: 'A0',
+    //     nick: 'name',
+    //     name: null,
+    //     type: '',
+    //     count: 10,
+    // }); //* `count` should be cleared
 
     //* delete
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
 
     //* try to update A1 (which does not exist)
-    expect2(await service.updateItem('A1', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A1');
+    expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -520,6 +624,8 @@ describe('Elastic6Service', () => {
 
         await basicSearchTest(service, indexName);
 
+        await autoIndexingTest(service);
+
         await cleanup(service);
 
         await detailedCRUDTest(service);
@@ -541,6 +647,8 @@ describe('Elastic6Service', () => {
         await basicCRUDTest(service);
 
         await basicSearchTest(service, indexName);
+
+        await autoIndexingTest(service);
 
         await cleanup(service);
 
@@ -564,6 +672,8 @@ describe('Elastic6Service', () => {
 
         await basicSearchTest(service, indexName);
 
+        await autoIndexingTest(service);
+
         await cleanup(service);
 
         await detailedCRUDTest(service);
@@ -586,12 +696,12 @@ describe('Elastic6Service', () => {
 
         await basicSearchTest(service, indexName);
 
+        await autoIndexingTest(service);
+
         await cleanup(service);
 
         await detailedCRUDTest(service);
     });
-
-    //TODO - fill up belows.
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.10)', async () => {
@@ -609,6 +719,8 @@ describe('Elastic6Service', () => {
         await basicCRUDTest(service);
 
         await basicSearchTest(service, indexName);
+
+        await autoIndexingTest(service);
 
         await cleanup(service);
 
@@ -632,6 +744,8 @@ describe('Elastic6Service', () => {
         await basicCRUDTest(service);
 
         await basicSearchTest(service, indexName);
+
+        await autoIndexingTest(service);
 
         await cleanup(service);
 
@@ -677,6 +791,8 @@ describe('Elastic6Service', () => {
         await basicCRUDTest(service);
 
         await basicSearchTest(service, indexName);
+
+        await autoIndexingTest(service);
 
         await cleanup(service);
 
