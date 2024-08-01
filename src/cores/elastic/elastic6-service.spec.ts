@@ -348,14 +348,14 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
          * 테스트: 신규 필드에 대한, 자동 매핑 생성과 데이터 미스매칭에 따른 에러 변화 확인
          */
 
-        // 0) 'null' 저장하기
+        // 0) 'null' 저장하기 테스트
         expect2(await service.saveItem('A0', { name: null, count: null }).catch(GETERR), '!_version').toEqual({
             _id: 'A0',
             name: null,
             count: null,
         });
 
-        // 1) string -> null, '' -> null
+        // 1) string -> null, '' -> null 테스트
         expect2(await service.saveItem('A1', { name: 'A1 for testing', count: 1 }).catch(GETERR), '!_version').toEqual({
             _id: 'A1',
             $id: 'A1',
@@ -371,7 +371,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
             name: '',
         });
 
-        // 2) number(long|float) -> null
+        // 2) number(long|float) -> null 테스트
         expect2(await service.saveItem('A2', { name: 'A2 for testing', count: 5 }).catch(GETERR), '!_version').toEqual({
             _id: 'A2',
             $id: 'A2',
@@ -383,7 +383,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
             count: null,
         });
 
-        // 3) [] -> null
+        // 3) [] -> null 테스트
         expect2(
             await service.saveItem('A3', { name: 'A3 for testing', tags: ['test'] }).catch(GETERR),
             '!_version',
@@ -416,7 +416,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
             extra: { a: null },
         });
 
-        // 2) 타입 변경(long -> float) 시 에러 발생
+        // 2) 타입 변경(long -> float) 시 에러 발생 테스트
         try {
             await service.saveItem('A5', { value: 0 }).catch(GETERR);
             await service.updateItem('A5', { value: 0.1 }).catch(GETERR);
@@ -424,7 +424,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
             expect2(GETERR(error)).toMatch(/mapper_parsing_exception/);
         }
 
-        // 3) array[] 이용시 타입변경 문제
+        // 3) array[] 이용시 타입변경 테스트
         expect2(await service.saveItem('A6', { tags: ['tag1'] }).catch(GETERR), '!_version').toEqual({
             _id: 'A6',
             $id: 'A6',
@@ -457,6 +457,267 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 
     //* try to update A1 (which does not exist)
     expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
+};
+export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
+    const parsedVersion = await service.getVersion();
+    const version = parsedVersion.major;
+    const indexName = service.options.indexName;
+
+    // 4) auto-indexing w/ tokenizer. keyword (basic), hangul
+    expect2(
+        await service.saveItem('A7', { name: 'A7 for auto indexing test', count: 10 }).catch(GETERR),
+        '!_version',
+    ).toEqual({
+        _id: 'A7',
+        $id: 'A7',
+        name: 'A7 for auto indexing test',
+        count: 10,
+    });
+
+    expect2(await service.saveItem('A8', { name: '한글 테스트', count: 20 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A8',
+        $id: 'A8',
+        name: '한글 테스트',
+        count: 20,
+    });
+    expect2(
+        await service.saveItem('A9', { name: 'A9 for auto indexing test', count: 30 }).catch(GETERR),
+        '!_version',
+    ).toEqual({
+        _id: 'A9',
+        $id: 'A9',
+        name: 'A9 for auto indexing test',
+        count: 30,
+    });
+
+    expect2(await service.saveItem('A10', { name: 'A10 한글 테스트', count: 40 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A10',
+        $id: 'A10',
+        name: 'A10 한글 테스트',
+        count: 40,
+    });
+
+    // 인덱스 새로고침
+    await service.refreshIndex();
+
+    // keyword auto indexing 확인을 위한 테스트
+    const $search: SearchBody = {
+        size: 2,
+        query: {
+            bool: {
+                filter: {
+                    term: {
+                        name: 'indexing',
+                    },
+                },
+            },
+        },
+        aggs: {
+            indexing: {
+                terms: {
+                    field: 'count',
+                },
+            },
+        },
+        sort: [
+            {
+                count: {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+
+    expect2(await service.searchRaw($search).catch(GETERR), '!took').toEqual({
+        _shards: {
+            failed: 0,
+            skipped: 0,
+            successful: 4,
+            total: 4,
+        },
+        aggregations: {
+            indexing: {
+                buckets: [
+                    { doc_count: 1, key: 10 },
+                    { doc_count: 1, key: 30 },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        hits: {
+            hits: [
+                {
+                    _id: 'A7',
+                    _index: indexName,
+                    _score: null,
+                    _source: {
+                        $id: 'A7',
+                        count: 10,
+                        name: 'A7 for auto indexing test',
+                    },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [10],
+                },
+                {
+                    _id: 'A9',
+                    _index: indexName,
+                    _score: null,
+                    _source: {
+                        $id: 'A9',
+                        count: 30,
+                        name: 'A9 for auto indexing test',
+                    },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [30],
+                },
+            ],
+            max_score: null,
+            total: version < 7 ? 2 : { relation: 'eq', value: 2 },
+        },
+        timed_out: false,
+    });
+
+    expect2(await service.search($search).catch(GETERR)).toEqual({
+        aggregations: {
+            indexing: {
+                buckets: [
+                    { doc_count: 1, key: 10 },
+                    { doc_count: 1, key: 30 },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        last: [30],
+        list: [
+            {
+                $id: 'A7',
+                _id: 'A7',
+                _score: null,
+                count: 10,
+                name: 'A7 for auto indexing test',
+            },
+            {
+                $id: 'A9',
+                _id: 'A9',
+                _score: null,
+                count: 30,
+                name: 'A9 for auto indexing test',
+            },
+        ],
+        total: 2,
+    });
+    // 한글 auto indexing 확인을 위한 테스트
+    const $search2: SearchBody = {
+        size: 2,
+        query: {
+            bool: {
+                filter: {
+                    term: {
+                        name: '한글',
+                    },
+                },
+            },
+        },
+        aggs: {
+            indexing: {
+                terms: {
+                    field: 'count',
+                },
+            },
+        },
+        sort: [
+            {
+                count: {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+
+    expect2(await service.searchRaw($search2).catch(GETERR), '!took').toEqual({
+        _shards: {
+            failed: 0,
+            skipped: 0,
+            successful: 4,
+            total: 4,
+        },
+        aggregations: {
+            indexing: {
+                buckets: [
+                    { doc_count: 1, key: 20 },
+                    { doc_count: 1, key: 40 },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        hits: {
+            hits: [
+                {
+                    _id: 'A8',
+                    _index: indexName,
+                    _score: null,
+                    _source: {
+                        $id: 'A8',
+                        count: 20,
+                        name: '한글 테스트',
+                    },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [20],
+                },
+                {
+                    _id: 'A10',
+                    _index: indexName,
+                    _score: null,
+                    _source: {
+                        $id: 'A10',
+                        count: 40,
+                        name: 'A10 한글 테스트',
+                    },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [40],
+                },
+            ],
+            max_score: null,
+            total: version < 7 ? 2 : { relation: 'eq', value: 2 },
+        },
+        timed_out: false,
+    });
+
+    expect2(await service.search($search2).catch(GETERR)).toEqual({
+        aggregations: {
+            indexing: {
+                buckets: [
+                    { doc_count: 1, key: 20 },
+                    { doc_count: 1, key: 40 },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        last: [40],
+        list: [
+            {
+                $id: 'A8',
+                _id: 'A8',
+                _score: null,
+                count: 20,
+                name: '한글 테스트',
+            },
+            {
+                $id: 'A10',
+                _id: 'A10',
+                _score: null,
+                count: 40,
+                name: 'A10 한글 테스트',
+            },
+        ],
+        total: 2,
+    });
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
