@@ -52,6 +52,11 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
     return { version, service, dummy, options };
 };
 
+/**
+ * initialize the service with the specified version.
+ * @param ver - version of the Elasticsearch service.
+ * @returns object containing the initialized service and its options.
+ */
 export const initService = async (
     ver: VERSIONS,
 ): Promise<{ service: Elastic6Service<MyModel>; options: Elastic6Option }> => {
@@ -74,6 +79,11 @@ export const initService = async (
     return { service, options };
 };
 
+/**
+ * set up the index.
+ * @param service - Elasticsearch service instance.
+ * @param indexName - the name of the index to be set up.
+ */
 export const setupIndex = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
     const PASS = (e: any) => e;
 
@@ -101,6 +111,11 @@ export const setupIndex = async (service: Elastic6Service<MyModel>, indexName: s
     expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
 };
 
+/**
+ * check if the test can be performed.
+ * @param service - Elasticsearch service instance.
+ * @returns boolean which indicates whether the test can be performed.
+ */
 export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise<boolean> => {
     // const { service } = instance();
     // cond 1. localhost is able to access elastic6 endpoint (by tunneling)
@@ -120,7 +135,10 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
         throw e;
     }
 };
-
+/**
+ * perform basic CRUD tests.
+ * @param service - Elasticsearch service instance.
+ */
 export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
@@ -167,6 +185,11 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     });
 };
 
+/**
+ * perform basic search tests.
+ * @param service - Elasticsearch service instance.
+ * @param indexName - the name of the index to search.
+ */
 export const basicSearchTest = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
     const parsedVersion = await service.getVersion();
     const version = parsedVersion.major;
@@ -249,12 +272,18 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>, indexNa
         last: [0],
     });
 };
-
+/**
+ * clean up the test items
+ * @param service - Elasticsearch service instance.
+ */
 export const cleanup = async (service: Elastic6Service<MyModel>): Promise<void> => {
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual({ _id: 'A0', _version: 6 });
     expect2(await service.deleteItem('A1').catch(GETERR)).toEqual({ _id: 'A1', _version: 2 });
 };
-
+/**
+ * perform detailed CRUD tests.
+ * @param service - Elasticsearch service instance.
+ */
 export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
     //* make sure deleted.
     await service.deleteItem('A0').catch(GETERR);
@@ -330,111 +359,22 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     }); // support number, string, null type.
 
     /**
-     * test-block: 값업데이트 따른 응답/저장 값 확인하기.
-     * 1. ....
+     * 테스트: 내부 객체에 데이터 변경하기
      */
-    if (1) {
-        const agent = ((id: string) => {
-            return {
-                update: (N: any) => service.updateItem(id, N).catch(GETERR),
-            };
-        })('A0');
-        // 테스트시나리오: null 저장시 응답결과. -> 테스트의 가독성을 높이기.
-        expect2(await agent.update({ nick: 'dumm', name: null }), 'nick,name').toEqual({
-            nick: 'dumm',
-            name: null,
-        });
-        /**
-         * 테스트: 신규 필드에 대한, 자동 매핑 생성과 데이터 미스매칭에 따른 에러 변화 확인
-         */
-
-        // 0) 'null' 저장하기 테스트
-        expect2(await service.saveItem('A0', { name: null, count: null }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
-            name: null,
-            count: null,
-        });
-
-        // 1) string -> null, '' -> null 테스트
-        expect2(await service.saveItem('A1', { name: 'A1 for testing', count: 1 }).catch(GETERR), '!_version').toEqual({
-            _id: 'A1',
-            $id: 'A1',
-            name: 'A1 for testing',
-            count: 1,
-        });
-        expect2(await service.updateItem('A1', { name: null }).catch(GETERR), '!_version').toEqual({
-            _id: 'A1',
-            name: null,
-        });
-        expect2(await service.updateItem('A1', { name: '' }).catch(GETERR), '!_version').toEqual({
-            _id: 'A1',
-            name: '',
-        });
-
-        // 2) number(long|float) -> null 테스트
-        expect2(await service.saveItem('A2', { name: 'A2 for testing', count: 5 }).catch(GETERR), '!_version').toEqual({
-            _id: 'A2',
-            $id: 'A2',
-            name: 'A2 for testing',
-            count: 5,
-        });
-        expect2(await service.updateItem('A2', { count: null }).catch(GETERR), '!_version').toEqual({
-            _id: 'A2',
-            count: null,
-        });
-
-        // 3) [] -> null 테스트
-        expect2(
-            await service.saveItem('A3', { name: 'A3 for testing', tags: ['test'] }).catch(GETERR),
-            '!_version',
-        ).toEqual({
-            _id: 'A3',
-            $id: 'A3',
-            name: 'A3 for testing',
-            tags: ['test'],
-        });
-        expect2(await service.updateItem('A3', { tags: null }).catch(GETERR), '!_version').toEqual({
-            _id: 'A3',
-            tags: null,
-        });
-
-        /**
-         * 테스트: 내부 객체에 데이터 변경하기
-         */
-        // 1) inner-object update w/ null support
-        expect2(await service.saveItem('A4', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
-            _id: 'A4',
-            $id: 'A4',
-            extra: { a: 1 },
-        });
-        expect2(await service.updateItem('A4', { extra: { b: 2 } }).catch(GETERR), '!_version').toEqual({
-            _id: 'A4',
-            extra: { b: 2 },
-        });
-        expect2(await service.updateItem('A4', { extra: { a: null } }).catch(GETERR), '!_version').toEqual({
-            _id: 'A4',
-            extra: { a: null },
-        });
-
-        // 2) 타입 변경(long -> float) 시 에러 발생 테스트
-        try {
-            await service.saveItem('A5', { value: 0 }).catch(GETERR);
-            await service.updateItem('A5', { value: 0.1 }).catch(GETERR);
-        } catch (error) {
-            expect2(GETERR(error)).toMatch(/mapper_parsing_exception/);
-        }
-
-        // 3) array[] 이용시 타입변경 테스트
-        expect2(await service.saveItem('A6', { tags: ['tag1'] }).catch(GETERR), '!_version').toEqual({
-            _id: 'A6',
-            $id: 'A6',
-            tags: ['tag1'],
-        });
-        expect2(await service.updateItem('A6', { tags: [1, 2] }).catch(GETERR), '!_version').toEqual({
-            _id: 'A6',
-            tags: [1, 2],
-        });
-    }
+    // 1) inner-object update w/ null support
+    expect2(await service.saveItem('A4', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A4',
+        $id: 'A4',
+        extra: { a: 1 },
+    });
+    expect2(await service.updateItem('A4', { extra: { b: 2 } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A4',
+        extra: { b: 2 },
+    });
+    expect2(await service.updateItem('A4', { extra: { a: null } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A4',
+        extra: { a: null },
+    });
 
     // //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS. >> client.update(param2); 이기 때문
     // expect2(await service.saveItem('A0', { nick: 'name', name: null }).catch(GETERR), '!_version').toEqual({
@@ -458,12 +398,353 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     //* try to update A1 (which does not exist)
     expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
 };
+
+/**
+ * test data mismatch errors
+ * - update fields to null
+ * - update fields with mismatched types
+ * @param service - Elasticsearch service instance.
+ */
+export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise<void> => {
+    const parsedVersion = await service.getVersion();
+    const version = parsedVersion.major;
+    //* 테스트를 위한 agent 생성
+    const agent = () => ({
+        update: (data: any) => service.updateItem('A0', data).catch(GETERR),
+        save: (data: any) => service.saveItem('A0', data).catch(GETERR),
+        read: () => service.readItem('A0').catch(GETERR),
+    });
+
+    //* 초기 데이터 저장
+    expect2(
+        await agent()
+            .save({
+                string_field: 'string',
+                long_field: 1234567890123,
+                float_field: 123.45,
+                date_field: '2021-12-31T23:59:59',
+                boolean_field: true,
+                object_field: { sub_field: 'string' },
+                nested_field: [{ sub_field: 'string1' }, { sub_field: 'string2' }],
+                array_field: ['string1', 'string2', 'string3'],
+            })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual({
+        $id: 'A0',
+        _id: 'A0',
+        string_field: 'string',
+        long_field: 1234567890123,
+        float_field: 123.45,
+        date_field: '2021-12-31T23:59:59',
+        boolean_field: true,
+        object_field: { sub_field: 'string' },
+        nested_field: [{ sub_field: 'string1' }, { sub_field: 'string2' }],
+        array_field: ['string1', 'string2', 'string3'],
+    });
+
+    /**
+     * string_field
+     * string -> {}로 업데이트시 오류 발생
+     * */
+    expect2(await agent().update({ string_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        string_field: null,
+    });
+    expect2(await agent().update({ string_field: 123 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        string_field: 123,
+    });
+    expect2(await agent().update({ string_field: 1.23 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        string_field: 1.23,
+    });
+    expect2(await agent().update({ string_field: {} }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"string_field":{}}',
+    );
+    expect2(await agent().update({ string_field: [] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        string_field: [],
+    });
+    expect2(
+        await agent()
+            .update({ string_field: [1, 2, 3] })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual({
+        _id: 'A0',
+        string_field: [1, 2, 3],
+    });
+    expect2(await agent().update({ string_field: false }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        string_field: false,
+    });
+
+    /**
+     * long_field
+     * long -> object로 업데이트시 오류 발생
+     * long -> boolean으로 업데이트시 오류 발생
+     * */
+    expect2(await agent().update({ long_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        long_field: null,
+    });
+    expect2(await agent().update({ long_field: '1234567890123' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        long_field: '1234567890123',
+    });
+    expect2(await agent().update({ long_field: 1.234567890123 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        long_field: 1.234567890123,
+    });
+    expect2(await agent().update({ long_field: {} }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"long_field":{}}',
+    );
+    expect2(await agent().update({ long_field: [] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        long_field: [],
+    });
+    expect2(
+        await agent()
+            .update({ long_field: [1, 2, 3] })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual({
+        _id: 'A0',
+        long_field: [1, 2, 3],
+    });
+    expect2(await agent().update({ long_field: false }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"long_field":false}',
+    );
+
+    /**
+     * float_field
+     * float -> object로 업데이트시 오류 발생
+     * float -> -> boolean으로 업데이트시 오류 발생
+     * */
+    expect2(await agent().update({ float_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        float_field: null,
+    });
+    expect2(await agent().update({ float_field: '123.45' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        float_field: '123.45',
+    });
+    expect2(await agent().update({ float_field: 123456789 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        float_field: 123456789,
+    });
+    expect2(await agent().update({ float_field: {} }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"float_field":{}}',
+    );
+    expect2(await agent().update({ float_field: [] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        float_field: [],
+    });
+    expect2(
+        await agent()
+            .update({ float_field: [1, 2, 3] })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual({
+        _id: 'A0',
+        float_field: [1, 2, 3],
+    });
+    expect2(await agent().update({ float_field: false }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"float_field":false}',
+    );
+
+    /**
+     * data_field
+     * data -> float로 업데이트시 오류 발생 (버전 7 이상)
+     * data -> {}로 업데이트시 오류 발생
+     * data -> boolean으로 업데이트시 오류 발생
+     * */
+    expect2(await agent().update({ date_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        date_field: null,
+    });
+    expect2(await agent().update({ date_field: 1234567890 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        date_field: 1234567890,
+    });
+    if (version < 7) {
+        expect2(await agent().update({ date_field: 1.23456789 }).catch(GETERR), '!_version').toEqual({
+            _id: 'A0',
+            date_field: 1.23456789,
+        });
+    } else {
+        expect2(await agent().update({ date_field: 1.23456789 }).catch(GETERR), '!_version').toEqual(
+            '400 MAPPER PARSING - item:{"date_field":1.23456789}',
+        );
+    }
+    expect2(await agent().update({ date_field: {} }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"date_field":{}}',
+    );
+    expect2(await agent().update({ date_field: [] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        date_field: [],
+    });
+    expect2(
+        await agent()
+            .update({ date_field: [1, 2, 3] })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual({
+        _id: 'A0',
+        date_field: [1, 2, 3],
+    });
+    expect2(await agent().update({ date_field: false }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"date_field":false}',
+    );
+
+    /**
+     * boolean_field
+     * boolean -> number로 업데이트시 오류 발생
+     * boolean -> {}로 업데이트시 오류 발생
+     * boolean -> [1, 2, 3]으로 업데이트시 오류 발생. []는 오류 발생하지 않음.
+     * */
+    expect2(await agent().update({ boolean_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        boolean_field: null,
+    });
+    expect2(await agent().update({ boolean_field: 'true' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        boolean_field: 'true',
+    });
+
+    expect2(await agent().update({ boolean_field: 123456789 }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"boolean_field":123456789}',
+    );
+    expect2(await agent().update({ boolean_field: 1.23456789 }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"boolean_field":1.23456789}',
+    );
+    expect2(await agent().update({ boolean_field: {} }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"boolean_field":{}}',
+    );
+    expect2(await agent().update({ boolean_field: [] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        boolean_field: [],
+    });
+    expect2(
+        await agent()
+            .update({ boolean_field: [1, 2, 3] })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual('400 MAPPER PARSING - item:{"boolean_field":[1,2,3]}');
+
+    /**
+     * object_field
+     * object -> string으로 업데이트시 오류 발생
+     * object -> number로 업데이트시 오류 발생
+     * object -> []로 업데이트시 오류 발생
+     * object -> [1, 2, 3]으로 업데이트시 오류 발생.
+     * object -> boolean으로 업데이트시 오류 발생.
+     * */
+    expect2(await agent().update({ object_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        object_field: null,
+    });
+    expect2(await agent().update({ object_field: 'string' }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"object_field":"string"}',
+    );
+    expect2(await agent().update({ object_field: 123 }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"object_field":123}',
+    );
+    expect2(await agent().update({ object_field: [] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        object_field: [],
+    });
+    expect2(
+        await agent()
+            .update({ object_field: [1, 2, 3] })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual('400 MAPPER PARSING - item:{"object_field":[1,2,3]}');
+    expect2(await agent().update({ object_field: false }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"object_field":false}',
+    );
+
+    /**
+     * nested_field
+     * nested -> string으로 업데이트시 오류 발생
+     * nested -> number로 업데이트시 오류 발생
+     * nested -> [1, 2, 3]으로 업데이트시 오류 발생. []는 오류 발생하지 않음
+     * nested -> boolean으로 업데이트시 오류 발생.
+     * */
+    expect2(await agent().update({ nested_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        nested_field: null,
+    });
+    expect2(
+        await agent()
+            .update({ nested_field: { sub_field: 'string' } })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual({
+        _id: 'A0',
+        nested_field: { sub_field: 'string' },
+    });
+    expect2(await agent().update({ nested_field: 'string' }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"nested_field":"string"}',
+    );
+    expect2(await agent().update({ nested_field: 123 }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"nested_field":123}',
+    );
+    expect2(await agent().update({ nested_field: [] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        nested_field: [],
+    });
+    expect2(
+        await agent()
+            .update({ nested_field: [1, 2, 3] })
+            .catch(GETERR),
+        '!_version',
+    ).toEqual('400 MAPPER PARSING - item:{"nested_field":[1,2,3]}');
+    expect2(await agent().update({ nested_field: false }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"nested_field":false}',
+    );
+
+    /**
+     * array_field
+     * array -> {}로 업데이트시 오류 발생
+     * */
+    expect2(await agent().update({ array_field: null }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        array_field: null,
+    });
+    expect2(await agent().update({ array_field: 'string' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        array_field: 'string',
+    });
+    expect2(await agent().update({ array_field: 123 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        array_field: 123,
+    });
+    expect2(await agent().update({ array_field: 1.23456789 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        array_field: 1.23456789,
+    });
+    expect2(await agent().update({ array_field: {} }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - item:{"array_field":{}}',
+    );
+    expect2(await agent().update({ array_field: false }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        array_field: false,
+    });
+};
+
+/**
+ * perform auto-indexing tests
+ * @param service - Elasticsearch service instance.
+ */
+
 export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
     const parsedVersion = await service.getVersion();
     const version = parsedVersion.major;
     const indexName = service.options.indexName;
 
-    // 4) auto-indexing w/ tokenizer. keyword (basic), hangul
+    //* auto-indexing w/ tokenizer. keyword (basic), hangul
     expect2(
         await service.saveItem('A7', { name: 'A7 for auto indexing test', count: 10 }).catch(GETERR),
         '!_version',
@@ -719,7 +1000,6 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         total: 2,
     });
 };
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('Elastic6Service', () => {
@@ -890,6 +1170,8 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 
     //! elastic storage service.
@@ -914,6 +1196,8 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 
     //! elastic storage service.
@@ -938,6 +1222,8 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 
     //! elastic storage service.
@@ -962,6 +1248,8 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 
     //! elastic storage service.
@@ -986,6 +1274,8 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 
     //! elastic storage service.
@@ -1011,6 +1301,8 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 
     //! elastic storage service.
@@ -1033,6 +1325,8 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 
     //! elastic storage service.
@@ -1058,5 +1352,7 @@ describe('Elastic6Service', () => {
         await cleanup(service);
 
         await detailedCRUDTest(service);
+
+        await mismatchedTypeTest(service);
     });
 });

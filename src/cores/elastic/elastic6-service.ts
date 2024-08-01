@@ -661,6 +661,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
                 if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
+                if (msg.startsWith('400 MAPPER PARSING'))
+                    throw new Error(`400 MAPPER PARSING - item:${JSON.stringify(item)}`);
                 throw E;
             }),
             // $ERROR.throwAsJson,
