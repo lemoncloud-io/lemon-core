@@ -1,0 +1,70 @@
+{
+  "stack": "ResponseError: mapper_parsing_exception\n    at onBody (/Users/kang-yeeun/lemoncloud/lemon-core/node_modules/@elastic/elasticsearch/lib/Transport.js:337:23)\n    at IncomingMessage.onEnd (/Users/kang-yeeun/lemoncloud/lemon-core/node_modules/@elastic/elasticsearch/lib/Transport.js:264:11)\n    at IncomingMessage.emit (node:events:529:35)\n    at IncomingMessage.emit (node:domain:489:12)\n    at endReadableNT (node:internal/streams/readable:1400:12)\n    at processTicksAndRejections (node:internal/process/task_queues:82:21)",
+  "message": "mapper_parsing_exception",
+  "name": "ResponseError",
+  "meta": {
+    "body": {
+      "error": {
+        "root_cause": [
+          {
+            "type": "mapper_parsing_exception",
+            "reason": "failed to parse field [string_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'"
+          }
+        ],
+        "type": "mapper_parsing_exception",
+        "reason": "failed to parse field [string_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'",
+        "caused_by": {
+          "type": "illegal_state_exception",
+          "reason": "Can't get text on a START_OBJECT at 1:17"
+        }
+      },
+      "status": 400
+    },
+    "statusCode": 400,
+    "headers": {
+      "date": "Mon, 05 Aug 2024 06:03:55 GMT",
+      "content-type": "application/json; charset=UTF-8",
+      "content-length": "448",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*"
+    },
+    "meta": {
+      "context": null,
+      "request": {
+        "params": {
+          "method": "POST",
+          "path": "/test-v1.1/_update/A0",
+          "body": "{\"doc\":{\"string_field\":{}}}",
+          "querystring": "",
+          "headers": {
+            "user-agent": "elasticsearch-js/7.12.0 (darwin 23.5.0-arm64; Node.js v18.19.1)",
+            "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1",
+            "content-type": "application/json",
+            "content-length": "27"
+          },
+          "timeout": 30000
+        },
+        "options": {},
+        "id": 100
+      },
+      "name": "elasticsearch-js",
+      "connection": {
+        "url": "https://localhost:8683/",
+        "id": "https://localhost:8683/",
+        "headers": {},
+        "deadCount": 0,
+        "resurrectTimeout": 0,
+        "_openRequests": 0,
+        "status": "alive",
+        "roles": {
+          "master": true,
+          "data": true,
+          "ingest": true,
+          "ml": false
+        }
+      },
+      "attempts": 0,
+      "aborted": false
+    }
+  }
+}
