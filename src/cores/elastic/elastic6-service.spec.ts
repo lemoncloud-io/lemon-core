@@ -152,7 +152,7 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
 
     //* try to update fields.
     expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual(
-        `400 ACTION REQUEST VALIDATION - action_request_validation_exception`,
+        `400 ACTION REQUEST VALIDATION - Validation Failed: 1: can't provide both script and doc;`,
     );
 
     expect2(await service.updateItem('A0', { type: 'test' }).catch(GETERR)).toEqual({
@@ -163,7 +163,7 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
 
     //* try to increment fields
     expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual(
-        '400 ILLEGAL ARGUMENT - illegal_argument_exception',
+        '400 ILLEGAL ARGUMENT - failed to execute script',
     );
     expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
         _id: 'A0',
@@ -332,7 +332,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 
     expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual(
         // '400 INVALID FIELD - id:A0',
-        '400 ILLEGAL ARGUMENT - illegal_argument_exception',
+        '400 ILLEGAL ARGUMENT - failed to execute script',
     ); // no `.count` property.
     expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
@@ -410,73 +410,89 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     const version = parsedVersion.major;
     //* 테스트를 위한 agent 생성
     const agent = () => ({
-        update: (data: any) => service.updateItem('A0', data).catch(GETERR),
+        update: (data: any) =>
+            service
+                .updateItem('A0', data)
+                .then(R => {
+                    const { _version, _id, ...rest } = R;
+                    return {
+                        ...rest,
+                    };
+                })
+                .catch(GETERR),
         save: (data: any) => service.saveItem('A0', data).catch(GETERR),
         read: () => service.readItem('A0').catch(GETERR),
     });
 
     //* 초기 데이터 저장
-    expect2(
-        await agent()
-            .save({
-                string_field: 'string',
-                long_field: 1234567890123,
-                float_field: 123.45,
-                date_field: '2021-12-31T23:59:59',
-                boolean_field: true,
-                object_field: { sub_field: 'string' },
-                nested_field: [{ sub_field: 'string1' }, { sub_field: 'string2' }],
-                array_field: ['string1', 'string2', 'string3'],
-            })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual({
-        $id: 'A0',
-        _id: 'A0',
+    await agent().save({
         string_field: 'string',
         long_field: 1234567890123,
         float_field: 123.45,
         date_field: '2021-12-31T23:59:59',
         boolean_field: true,
         object_field: { sub_field: 'string' },
-        nested_field: [{ sub_field: 'string1' }, { sub_field: 'string2' }],
+        nested_field: [{ sub1_field: 'string1' }, { sub2_field: 'string2' }],
         array_field: ['string1', 'string2', 'string3'],
     });
+
+    //TODO - verify the mapping condition. (`_mapping`)
+    const mapping = await service.getIndexMapping(service.options.indexName);
+
+    // '@@_field'를 재귀적으로 탐색하는 함수
+    function getFieldTypes(properties: any, parentKey: string = ''): { [key: string]: string } {
+        return Object.keys(properties).reduce((acc, key) => {
+            const fullKey = parentKey ? `${parentKey}.${key}` : key;
+            if (fullKey.includes('_field') && properties[key].type) {
+                acc[fullKey] = properties[key].type;
+            }
+            if (properties[key].properties) {
+                Object.assign(acc, getFieldTypes(properties[key].properties, fullKey));
+            }
+            return acc;
+        }, {} as { [key: string]: string });
+    }
+
+    // 매핑 포매팅
+    const properties = version < 7 ? mapping._doc.properties : mapping.properties;
+    const fieldsWithTypes = getFieldTypes(properties);
+
+    // 필드 타입 검증
+    const expectedMapping = {
+        array_field: 'text',
+        string_field: 'text',
+        boolean_field: 'boolean',
+        date_field: 'date',
+        float_field: 'float',
+        long_field: 'long',
+        'object_field.sub_field': 'text', // 하위 속성을 포함한 object_field
+        'nested_field.sub1_field': 'text', // 하위 속성을 포함한 nested_field
+        'nested_field.sub2_field': 'text', // 하위 속성을 포함한 nested_field
+    };
+
+    expect2(fieldsWithTypes).toEqual(expectedMapping);
 
     /**
      * string_field
      * string -> {}로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ string_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ string_field: null })).toEqual({
         string_field: null,
     });
-    expect2(await agent().update({ string_field: 123 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ string_field: 123 })).toEqual({
         string_field: 123,
     });
-    expect2(await agent().update({ string_field: 1.23 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ string_field: 1.23 })).toEqual({
         string_field: 1.23,
     });
-    expect2(await agent().update({ string_field: {} }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"string_field":{}}',
-    );
-    expect2(await agent().update({ string_field: [] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ string_field: {} })).toEqual();
+    expect2(await agent().update({ string_field: [] })).toEqual({
         string_field: [],
     });
-    expect2(
-        await agent()
-            .update({ string_field: [1, 2, 3] })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ string_field: [1, 2, 3] })).toEqual({
         string_field: [1, 2, 3],
     });
-    expect2(await agent().update({ string_field: false }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ string_field: false })).toEqual({
         string_field: false,
     });
 
@@ -485,36 +501,26 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * long -> object로 업데이트시 오류 발생
      * long -> boolean으로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ long_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ long_field: null })).toEqual({
         long_field: null,
     });
-    expect2(await agent().update({ long_field: '1234567890123' }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ long_field: '1234567890123' })).toEqual({
         long_field: '1234567890123',
     });
-    expect2(await agent().update({ long_field: 1.234567890123 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ long_field: 1.234567890123 })).toEqual({
         long_field: 1.234567890123,
     });
-    expect2(await agent().update({ long_field: {} }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"long_field":{}}',
+    expect2(await agent().update({ long_field: {} })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'. Preview of field's value: '{}'",
     );
-    expect2(await agent().update({ long_field: [] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ long_field: [] })).toEqual({
         long_field: [],
     });
-    expect2(
-        await agent()
-            .update({ long_field: [1, 2, 3] })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ long_field: [1, 2, 3] }), '!_version').toEqual({
         long_field: [1, 2, 3],
     });
-    expect2(await agent().update({ long_field: false }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"long_field":false}',
+    expect2(await agent().update({ long_field: false })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'",
     );
 
     /**
@@ -522,36 +528,26 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * float -> object로 업데이트시 오류 발생
      * float -> -> boolean으로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ float_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ float_field: null })).toEqual({
         float_field: null,
     });
-    expect2(await agent().update({ float_field: '123.45' }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ float_field: '123.45' })).toEqual({
         float_field: '123.45',
     });
-    expect2(await agent().update({ float_field: 123456789 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ float_field: 123456789 })).toEqual({
         float_field: 123456789,
     });
-    expect2(await agent().update({ float_field: {} }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"float_field":{}}',
+    expect2(await agent().update({ float_field: {} })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'",
     );
-    expect2(await agent().update({ float_field: [] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ float_field: [] })).toEqual({
         float_field: [],
     });
-    expect2(
-        await agent()
-            .update({ float_field: [1, 2, 3] })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ float_field: [1, 2, 3] })).toEqual({
         float_field: [1, 2, 3],
     });
-    expect2(await agent().update({ float_field: false }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"float_field":false}',
+    expect2(await agent().update({ float_field: false })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'",
     );
 
     /**
@@ -560,42 +556,32 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * data -> {}로 업데이트시 오류 발생
      * data -> boolean으로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ date_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ date_field: null })).toEqual({
         date_field: null,
     });
-    expect2(await agent().update({ date_field: 1234567890 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ date_field: 1234567890 })).toEqual({
         date_field: 1234567890,
     });
     if (version < 7) {
-        expect2(await agent().update({ date_field: 1.23456789 }).catch(GETERR), '!_version').toEqual({
-            _id: 'A0',
+        expect2(await agent().update({ date_field: 1.23456789 })).toEqual({
             date_field: 1.23456789,
         });
     } else {
-        expect2(await agent().update({ date_field: 1.23456789 }).catch(GETERR), '!_version').toEqual(
-            '400 MAPPER PARSING - item:{"date_field":1.23456789}',
+        expect2(await agent().update({ date_field: 1.23456789 })).toEqual(
+            "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'",
         );
     }
-    expect2(await agent().update({ date_field: {} }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"date_field":{}}',
+    expect2(await agent().update({ date_field: {} })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'",
     );
-    expect2(await agent().update({ date_field: [] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ date_field: [] })).toEqual({
         date_field: [],
     });
-    expect2(
-        await agent()
-            .update({ date_field: [1, 2, 3] })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ date_field: [1, 2, 3] })).toEqual({
         date_field: [1, 2, 3],
     });
-    expect2(await agent().update({ date_field: false }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"date_field":false}',
+    expect2(await agent().update({ date_field: false })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'",
     );
 
     /**
@@ -604,34 +590,28 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * boolean -> {}로 업데이트시 오류 발생
      * boolean -> [1, 2, 3]으로 업데이트시 오류 발생. []는 오류 발생하지 않음.
      * */
-    expect2(await agent().update({ boolean_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ boolean_field: null })).toEqual({
         boolean_field: null,
     });
-    expect2(await agent().update({ boolean_field: 'true' }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ boolean_field: 'true' })).toEqual({
         boolean_field: 'true',
     });
 
-    expect2(await agent().update({ boolean_field: 123456789 }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"boolean_field":123456789}',
+    expect2(await agent().update({ boolean_field: 123456789 })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
     );
-    expect2(await agent().update({ boolean_field: 1.23456789 }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"boolean_field":1.23456789}',
+    expect2(await agent().update({ boolean_field: 1.23456789 })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
     );
-    expect2(await agent().update({ boolean_field: {} }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"boolean_field":{}}',
+    expect2(await agent().update({ boolean_field: {} })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
     );
-    expect2(await agent().update({ boolean_field: [] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ boolean_field: [] })).toEqual({
         boolean_field: [],
     });
-    expect2(
-        await agent()
-            .update({ boolean_field: [1, 2, 3] })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual('400 MAPPER PARSING - item:{"boolean_field":[1,2,3]}');
+    expect2(await agent().update({ boolean_field: [1, 2, 3] })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
+    );
 
     /**
      * object_field
@@ -641,28 +621,23 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * object -> [1, 2, 3]으로 업데이트시 오류 발생.
      * object -> boolean으로 업데이트시 오류 발생.
      * */
-    expect2(await agent().update({ object_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ object_field: null })).toEqual({
         object_field: null,
     });
-    expect2(await agent().update({ object_field: 'string' }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"object_field":"string"}',
+    expect2(await agent().update({ object_field: 'string' })).toEqual(
+        '400 MAPPER PARSING - object mapping for [object_field] tried to parse field [object_field] as object, but found a concrete value',
     );
-    expect2(await agent().update({ object_field: 123 }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"object_field":123}',
+    expect2(await agent().update({ object_field: 123 })).toEqual(
+        '400 MAPPER PARSING - object mapping for [object_field] tried to parse field [object_field] as object, but found a concrete value',
     );
-    expect2(await agent().update({ object_field: [] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ object_field: [] })).toEqual({
         object_field: [],
     });
-    expect2(
-        await agent()
-            .update({ object_field: [1, 2, 3] })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual('400 MAPPER PARSING - item:{"object_field":[1,2,3]}');
-    expect2(await agent().update({ object_field: false }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"object_field":false}',
+    expect2(await agent().update({ object_field: [1, 2, 3] })).toEqual(
+        '400 MAPPER PARSING - object mapping for [object_field] tried to parse field [null] as object, but found a concrete value',
+    );
+    expect2(await agent().update({ object_field: false })).toEqual(
+        '400 MAPPER PARSING - object mapping for [object_field] tried to parse field [object_field] as object, but found a concrete value',
     );
 
     /**
@@ -672,68 +647,127 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * nested -> [1, 2, 3]으로 업데이트시 오류 발생. []는 오류 발생하지 않음
      * nested -> boolean으로 업데이트시 오류 발생.
      * */
-    expect2(await agent().update({ nested_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ nested_field: null })).toEqual({
         nested_field: null,
     });
-    expect2(
-        await agent()
-            .update({ nested_field: { sub_field: 'string' } })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual({
-        _id: 'A0',
-        nested_field: { sub_field: 'string' },
+    expect2(await agent().update({ nested_field: { sub1_field: 'string' } })).toEqual({
+        nested_field: { sub1_field: 'string' },
     });
-    expect2(await agent().update({ nested_field: 'string' }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"nested_field":"string"}',
+    expect2(await agent().update({ nested_field: 'string' })).toEqual(
+        '400 MAPPER PARSING - object mapping for [nested_field] tried to parse field [nested_field] as object, but found a concrete value',
     );
-    expect2(await agent().update({ nested_field: 123 }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"nested_field":123}',
+    expect2(await agent().update({ nested_field: 123 })).toEqual(
+        '400 MAPPER PARSING - object mapping for [nested_field] tried to parse field [nested_field] as object, but found a concrete value',
     );
-    expect2(await agent().update({ nested_field: [] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ nested_field: [] })).toEqual({
         nested_field: [],
     });
-    expect2(
-        await agent()
-            .update({ nested_field: [1, 2, 3] })
-            .catch(GETERR),
-        '!_version',
-    ).toEqual('400 MAPPER PARSING - item:{"nested_field":[1,2,3]}');
-    expect2(await agent().update({ nested_field: false }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"nested_field":false}',
+    expect2(await agent().update({ nested_field: [1, 2, 3] })).toEqual(
+        '400 MAPPER PARSING - object mapping for [nested_field] tried to parse field [null] as object, but found a concrete value',
+    );
+    expect2(await agent().update({ nested_field: false })).toEqual(
+        '400 MAPPER PARSING - object mapping for [nested_field] tried to parse field [nested_field] as object, but found a concrete value',
     );
 
     /**
      * array_field
      * array -> {}로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ array_field: null }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ array_field: null })).toEqual({
         array_field: null,
     });
-    expect2(await agent().update({ array_field: 'string' }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ array_field: 'string' })).toEqual({
         array_field: 'string',
     });
-    expect2(await agent().update({ array_field: 123 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ array_field: 123 })).toEqual({
         array_field: 123,
     });
-    expect2(await agent().update({ array_field: 1.23456789 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ array_field: 1.23456789 })).toEqual({
         array_field: 1.23456789,
     });
-    expect2(await agent().update({ array_field: {} }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - item:{"array_field":{}}',
+    expect2(await agent().update({ array_field: {} })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'",
     );
-    expect2(await agent().update({ array_field: false }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await agent().update({ array_field: false })).toEqual({
         array_field: false,
     });
-};
 
+    // array_field 내부 요소 타입 변경 테스트
+    expect2(await agent().update({ array_field: [] })).toEqual({
+        array_field: [],
+    });
+    expect2(await agent().update({ array_field: ['a'] })).toEqual({
+        array_field: ['a'],
+    });
+    expect2(await agent().update({ array_field: ['a', 1] })).toEqual({
+        array_field: ['a', 1],
+    });
+    expect2(await agent().update({ array_field: [null] })).toEqual({
+        array_field: [null],
+    });
+    expect2(await agent().update({ array_field: [1.1] })).toEqual({
+        array_field: [1.1],
+    });
+    expect2(await agent().update({ array_field: [{ b: 'a' }] })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'",
+    );
+
+    // nested_field 내부 요소 타입 변경 테스트
+    expect2(await agent().update({ nested_field: [{ sub1_field: 'string' }] })).toEqual({
+        nested_field: [{ sub1_field: 'string' }],
+    });
+    expect2(await agent().update({ nested_field: [{ sub1_field: 123 }] })).toEqual({
+        nested_field: [{ sub1_field: 123 }],
+    });
+    expect2(await agent().update({ nested_field: [{ sub1_field: 1.23 }] })).toEqual({
+        nested_field: [{ sub1_field: 1.23 }],
+    });
+    expect2(await agent().update({ nested_field: [{ sub1_field: false }] })).toEqual({
+        nested_field: [{ sub1_field: false }],
+    });
+    expect2(await agent().update({ nested_field: [{ sub1_field: { inner: 'object' } }] })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [nested_field.sub1_field] of type [text] in document with id 'A0'",
+    );
+
+    // object_field 내부 요소 타입 변경 테스트
+    expect2(await agent().update({ object_field: { sub_field: 'string' } })).toEqual({
+        object_field: { sub_field: 'string' },
+    });
+    expect2(await agent().update({ object_field: { sub_field: 123 } })).toEqual({
+        object_field: { sub_field: 123 },
+    });
+    expect2(await agent().update({ object_field: { sub_field: 1.23 } })).toEqual({
+        object_field: { sub_field: 1.23 },
+    });
+    expect2(await agent().update({ object_field: { sub_field: false } })).toEqual({
+        object_field: { sub_field: false },
+    });
+    expect2(await agent().update({ object_field: { sub_field: { inner: 'object' } } })).toEqual(
+        "400 MAPPER PARSING - failed to parse field [object_field.sub_field] of type [text] in document with id 'A0'",
+    );
+
+    //TODO - verify the mapping condition doesn't change. (`_mapping`)
+    const mapping2 = await service.getIndexMapping(service.options.indexName);
+
+    // 매핑 포매팅
+    const properties2 = version < 7 ? mapping2._doc.properties : mapping2.properties;
+    const fieldsWithTypes2 = getFieldTypes(properties2);
+
+    // 필드 타입 검증
+    const expectedMapping2 = {
+        array_field: 'text',
+        string_field: 'text',
+        boolean_field: 'boolean',
+        date_field: 'date',
+        float_field: 'float',
+        long_field: 'long',
+        'object_field.sub_field': 'text', // 하위 속성을 포함한 object_field
+        'nested_field.sub1_field': 'text', // 하위 속성을 포함한 nested_field
+        'nested_field.sub2_field': 'text', // 하위 속성을 포함한 nested_field
+    };
+
+    expect2(fieldsWithTypes2).toEqual(expectedMapping2);
+};
 /**
  * perform auto-indexing tests
  * @param service - Elasticsearch service instance.
@@ -1097,6 +1131,19 @@ describe('Elastic6Service', () => {
             message: 'NOT FOUND',
             reason: { cause: undefined, reason: 'NOT FOUND', status: undefined, type: 'NOT FOUND' },
         });
+        const E6 = loadJsonSync('data/samples/es6.2/update-item.err400.mapping.json');
+        expect2(() => $ERROR.asError(E6)).toEqual({
+            message: 'mapper_parsing_exception',
+            reason: {
+                reason: 'failed to parse [string_field]',
+                status: 400,
+                type: 'MAPPER PARSING',
+            },
+            status: 400,
+        });
+        expect2(() => $ERROR.handler('test', GETERR)(E6)).toEqual(
+            '400 MAPPER PARSING - failed to parse [string_field]',
+        );
 
         expect2(() => $ERROR.handler('test', GETERR)(E1)).toEqual(
             '400 RESOURCE ALREADY EXISTS - index [test-v4/menh7_JkTJeXGX6b6EzTnA] already exists',
@@ -1138,12 +1185,26 @@ describe('Elastic6Service', () => {
         const E3 = loadJsonSync('data/samples/es7.1/version-conflict.err.json');
         expect2(() => $ERROR.asError(E3)).toEqual({
             message: 'version_conflict_engine_exception',
-            reason: { status: 409, type: 'VERSION CONFLICT ENGINE' },
+            reason: {
+                status: 409,
+                type: 'VERSION CONFLICT ENGINE',
+                reason: '[A0]: version conflict, document already exists (current version [2])',
+            },
             status: 409,
         });
         expect2(() => $ERROR.handler('test', GETERR)(E3)).toEqual(
-            '409 VERSION CONFLICT ENGINE - version_conflict_engine_exception',
+            '409 VERSION CONFLICT ENGINE - [A0]: version conflict, document already exists (current version [2])',
         );
+        const E4 = loadJsonSync('data/samples/es7.1/update-item.err400.mapping.json');
+        expect2(() => $ERROR.asError(E4)).toEqual({
+            message: 'mapper_parsing_exception',
+            reason: {
+                reason: "failed to parse field [string_field] of type [text] in document with id 'A0'",
+                status: 400,
+                type: 'MAPPER PARSING',
+            },
+            status: 400,
+        });
     });
 
     //! test with real server
@@ -1225,7 +1286,6 @@ describe('Elastic6Service', () => {
 
         await mismatchedTypeTest(service);
     });
-
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
