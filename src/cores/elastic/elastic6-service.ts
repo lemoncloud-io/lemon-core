@@ -274,6 +274,26 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         //! returns.
         return { list };
     }
+    /**
+     * get mapping of an index
+     * @param indexName - name of the index
+     */
+    public async getIndexMapping(indexName: string) {
+        const client = this.client;
+        const res = await client.indices.getMapping({ index: indexName }).catch(
+            // $ERROR.throwAsJson,
+            $ERROR.handler('getMapping', e => {
+                const msg = GETERR(e);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
+                throw e;
+            }),
+        );
+
+        const mapping = res?.body ? res.body[indexName]?.mappings : null;
+        if (!mapping) throw new Error(`Mapping for index <${indexName}> not found - ${$U.json(res)}!`);
+
+        return mapping;
+    }
 
     /**
      * find the index by name
@@ -661,8 +681,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
                 if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
-                if (msg.startsWith('400 MAPPER PARSING'))
-                    throw new Error(`400 MAPPER PARSING - item:${JSON.stringify(item)}`);
+                if (msg.startsWith('400 MAPPER PARSING')) throw e;
                 throw E;
             }),
             // $ERROR.throwAsJson,
@@ -1014,7 +1033,14 @@ export const $ERROR = {
             if (E.meta && typeof E.meta == 'object') {
                 const type = _S(E?.message).toUpperCase().split('_').slice(0, -1).join(' ');
                 const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
-                return { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
+                const $res = $ERROR.parseMeta<any>(E.meta);
+                //! find the reason.
+                const reason = $res.body?.error?.reason;
+                const result: ErrorReasonDetail = { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
+                if (typeof reason !== 'undefined') {
+                    result.reason = reason;
+                }
+                return result;
             }
 
             //! from ES6.2
@@ -1049,7 +1075,7 @@ export const $ERROR = {
                 _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
                 throw e;
             }
-            const $e = new Error(`${E.status} ${E.reason.type} - ${E.message}`);
+            const $e = new Error(`${E.status} ${E.reason.type} - ${E.reason.reason || E.message}`);
             if (cb) return cb($e, E);
             throw $e;
         },
