@@ -74,7 +74,7 @@ export interface Elastic6Item extends GeneralItem {
 /**
  * parsed version with major and minor version numbers.
  */
-interface ParsedVersion {
+export interface ParsedVersion {
     major: number;
     minor: number;
 }
@@ -144,7 +144,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     protected _options: Elastic6Option;
     public readonly _client: elasticsearch.Client;
-    public parsedVersion: ParsedVersion;
+    public _parsedVersion: ParsedVersion;
 
     /**
      * simple instance maker.
@@ -186,8 +186,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * initialize the parsedVersion property.
      */
-    private async initializeParsedVersion(): Promise<void> {
-        this.parsedVersion = await this.getVersion();
+    private async initializeParsedVersion() {
+        this._parsedVersion = await this.getVersion();
     }
 
     /**
@@ -213,6 +213,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public get version(): number {
         const ver = $U.F(this.options.version, 6.8);
         return ver;
+    }
+    /**
+     * get the parsedVersion
+     */
+    public get parsedVersion(): ParsedVersion {
+        return this._parsedVersion;
     }
     /**
      * get the root version from client
@@ -264,7 +270,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * save info to a JSON file.
      */
-    private saveInfoToFile(info: any, filePath: string): void {
+    private saveInfoToFile(info: any, filePath: string) {
         const directory = !filePath.startsWith('./') ? `./${filePath}` : filePath;
 
         // check whether directory exists
@@ -349,7 +355,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public async createIndex(settings?: any) {
         const { indexName, docType, idName, timeSeries } = this.options;
         const parsedVersion: ParsedVersion = this.parsedVersion;
-        const version = parsedVersion.major;
+        const version = parsedVersion?.major;
         settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
@@ -741,9 +747,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
-        //TODO - version를 다이나믹하게 읽지 않도록!! (성능이슈)
         const version: ParsedVersion = this.parsedVersion;
-
         const params: ElasticSearchParams = { index: indexName, body, searchType };
 
         // check version to include 'type' in params
@@ -754,8 +758,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const $res = await client.search(params).catch(
-            $ERROR.handler('search', e => {
+            $ERROR.handler('search', (e, E) => {
                 _err(NS, `> search[${indexName}].err =`, e);
+                const msg = GETERR(e);
+                //! id 아이템이 없을 경우 발생함.
+                if (msg.startsWith('429 UNKNOWN')) throw E;
                 throw e;
             }),
         );
@@ -791,7 +798,34 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             aggregations: response.aggregations,
         };
     }
+    /**
+     * search all until limit (-1 means no-limit)
+     */
+    public async searchAll<T>(body: SearchBody, searchType?: SearchType, limit: number = -1) {
+        const list: T[] = [];
+        for await (const chunk of this.generateSearchResult(body, searchType, limit)) {
+            chunk.forEach((N: T) => list.push(N));
+        }
+        return list;
+    }
 
+    /**
+     * create async generator that yields items queried until last
+     *
+     * @param body          Elasticsearch Query DSL
+     * @param searchType    see 'search_type' in Elasticsearch documentation
+     * @param number        the maximum limit of loop (-1 means un-limited)
+     */
+    public async *generateSearchResult(body: SearchBody, searchType?: SearchType, limit?: number) {
+        if (!body.sort) body.sort = '_doc';
+
+        do {
+            const { list, last } = await this.search(body, searchType);
+            body.search_after = last;
+
+            yield list;
+        } while (body.search_after && (limit === -1 || --limit > 0));
+    }
     /**
      * prepare default setting
      * - migrated from engine-v2.
@@ -1001,11 +1035,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 }
 
-interface ErrorReasonDetail {
+interface ErrorReasonDetail<T = any> {
     status: number;
     type: string;
     reason?: string;
-    cause?: any;
+    cause?: T;
 }
 interface ErrorReason {
     status: number;
@@ -1111,6 +1145,7 @@ export const $ERROR = {
                 _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
                 throw e;
             }
+            if (E.reason?.type === 'Response Error') console.error(`${JSON.stringify(e)}`);
             const $e = new Error(`${E.status} ${E.reason?.type ?? ''} - ${E.reason?.reason ?? E.message ?? ''}`);
             if (cb) return cb($e, E);
             throw $e;

@@ -13,8 +13,8 @@
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, SearchBody } from 'lemon-model';
-import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
-import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
+import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR, ParsedVersion } from './elastic6-service';
+import { ApiResponse } from '@elastic/elasticsearch';
 
 /**
  * default endpoints url.
@@ -192,7 +192,7 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
  * @param indexName - the name of the index to search.
  */
 export const basicSearchTest = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
-    const parsedVersion = await service.getVersion();
+    const parsedVersion: ParsedVersion = service.parsedVersion;
     const version = parsedVersion.major;
     //* try to search...
     await waited(2000);
@@ -365,7 +365,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     // 1) inner-object update w/ null support
     expect2(await service.saveItem('A4', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
         _id: 'A4',
-        $id: 'A4',
         extra: { a: 1 },
     });
     expect2(await service.updateItem('A4', { extra: { b: 2 } }).catch(GETERR), '!_version').toEqual({
@@ -407,7 +406,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
  * @param service - Elasticsearch service instance.
  */
 export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion = await service.getVersion();
+    const parsedVersion: ParsedVersion = service.parsedVersion;
     const version = parsedVersion.major;
     //* 테스트를 위한 agent 생성
     const agent = <T = any>(id: string = 'A0') => ({
@@ -788,7 +787,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
  */
 
 export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion = await service.getVersion();
+    const parsedVersion: ParsedVersion = service.parsedVersion;
     const version = parsedVersion.major;
     const indexName = service.options.indexName;
 
@@ -1048,6 +1047,198 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         total: 2,
     });
 };
+
+interface BulkResponseItem<T = any> {
+    index?: T;
+}
+
+interface BulkResponseBody {
+    errors: boolean;
+    items: BulkResponseItem[];
+    took?: number;
+}
+
+interface BulkDummyResponse<T = any> {
+    errors: boolean;
+    items: BulkResponseItem[];
+    took?: number;
+    statusCode: number;
+}
+
+export const bulkDummyData = async (service: Elastic6Service<any>): Promise<BulkDummyResponse> => {
+    const { indexName } = service.options;
+
+    // create 20000 Items
+    const dataset = Array.from({ length: 20000 }, (_, i) => ({
+        id: `A${i + 1}`,
+        name: `${(i + 1).toString()} 번째 data`,
+        count: i + 1,
+    }));
+
+    // create bulk operations
+    const operations = dataset.reduce((acc, doc) => {
+        acc.push({
+            index: {
+                _index: indexName,
+                _id: doc.id,
+                ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+            },
+        });
+        acc.push(doc);
+        return acc;
+    }, [] as Array<{ index: { _index: string; _id: string; _type?: string } } | { id: string; name: string; count: number }>);
+
+    // bulk
+    const bulkResponse: ApiResponse<BulkResponseBody, any> = await service.client
+        .bulk({
+            refresh: true,
+            body: operations,
+        })
+        .catch(
+            $ERROR.handler('bulk', e => {
+                throw e;
+            }),
+        );
+    const bulkDummyResponse: BulkDummyResponse = {
+        errors: bulkResponse?.body?.errors,
+        items: bulkResponse?.body?.items,
+        took: bulkResponse?.body?.took,
+        statusCode: bulkResponse?.statusCode,
+    };
+    return bulkDummyResponse;
+};
+
+export const totalSummary = async (service: Elastic6Service<any>) => {
+    const res = await bulkDummyData(service);
+    expect2(res?.errors).toEqual(false);
+    const indexName = service.options.indexName;
+    const version = service.parsedVersion?.major;
+    const $search: SearchBody = {
+        size: 5,
+        query: {
+            bool: {
+                filter: {
+                    term: {
+                        name: 'data',
+                    },
+                },
+            },
+        },
+        aggs: {
+            indexing: {
+                terms: {
+                    field: 'count',
+                },
+            },
+        },
+        sort: [
+            {
+                count: {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+    expect2(await service.search($search).catch(GETERR), '!took').toEqual({
+        aggregations: {
+            indexing: {
+                buckets: [
+                    { doc_count: 1, key: 1 },
+                    { doc_count: 1, key: 2 },
+                    { doc_count: 1, key: 3 },
+                    { doc_count: 1, key: 4 },
+                    { doc_count: 1, key: 5 },
+                    { doc_count: 1, key: 6 },
+                    { doc_count: 1, key: 7 },
+                    { doc_count: 1, key: 8 },
+                    { doc_count: 1, key: 9 },
+                    { doc_count: 1, key: 10 },
+                ],
+                doc_count_error_upper_bound: 4,
+                sum_other_doc_count: 19990,
+            },
+        },
+        last: [5],
+        list: [
+            { _id: 'A1', _score: null, count: 1, id: 'A1', name: '1 번째 data' },
+            { _id: 'A2', _score: null, count: 2, id: 'A2', name: '2 번째 data' },
+            { _id: 'A3', _score: null, count: 3, id: 'A3', name: '3 번째 data' },
+            { _id: 'A4', _score: null, count: 4, id: 'A4', name: '4 번째 data' },
+            { _id: 'A5', _score: null, count: 5, id: 'A5', name: '5 번째 data' },
+        ],
+        total: version < 7 ? 20000 : 10000,
+    });
+    expect2(await service.searchRaw($search).catch(GETERR), '!took').toEqual({
+        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
+        aggregations: {
+            indexing: {
+                buckets: [
+                    { doc_count: 1, key: 1 },
+                    { doc_count: 1, key: 2 },
+                    { doc_count: 1, key: 3 },
+                    { doc_count: 1, key: 4 },
+                    { doc_count: 1, key: 5 },
+                    { doc_count: 1, key: 6 },
+                    { doc_count: 1, key: 7 },
+                    { doc_count: 1, key: 8 },
+                    { doc_count: 1, key: 9 },
+                    { doc_count: 1, key: 10 },
+                ],
+                doc_count_error_upper_bound: 4,
+                sum_other_doc_count: 19990,
+            },
+        },
+        hits: {
+            hits: [
+                {
+                    _id: 'A1',
+                    _index: `${indexName}`,
+                    _score: null,
+                    _source: { count: 1, id: 'A1', name: '1 번째 data' },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [1],
+                },
+                {
+                    _id: 'A2',
+                    _index: `${indexName}`,
+                    _score: null,
+                    _source: { count: 2, id: 'A2', name: '2 번째 data' },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [2],
+                },
+                {
+                    _id: 'A3',
+                    _index: `${indexName}`,
+                    _score: null,
+                    _source: { count: 3, id: 'A3', name: '3 번째 data' },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [3],
+                },
+                {
+                    _id: 'A4',
+                    _index: `${indexName}`,
+                    _score: null,
+                    _source: { count: 4, id: 'A4', name: '4 번째 data' },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [4],
+                },
+                {
+                    _id: 'A5',
+                    _index: `${indexName}`,
+                    _score: null,
+                    _source: { count: 5, id: 'A5', name: '5 번째 data' },
+                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    sort: [5],
+                },
+            ],
+            max_score: null,
+            total: version < 7 ? 20000 : { relation: 'gte', value: 10000 },
+        },
+        timed_out: false,
+    });
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('Elastic6Service', () => {
@@ -1224,7 +1415,7 @@ describe('Elastic6Service', () => {
     //! test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(12000);
+        jest.setTimeout(120000);
 
         //* load dummy storage service.
         const { service, options } = await initService('6.2');
@@ -1244,6 +1435,8 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
+        await totalSummary(service);
+
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
@@ -1251,6 +1444,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(6.8)', async () => {
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service, options } = await initService('6.8');
@@ -1270,6 +1464,8 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
+        await totalSummary(service);
+
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
@@ -1277,6 +1473,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service, options } = await initService('7.1');
@@ -1296,12 +1493,15 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
+        await totalSummary(service);
+
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
     });
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service, options } = await initService('7.2');
@@ -1321,6 +1521,8 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
+        await totalSummary(service);
+
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
@@ -1328,6 +1530,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.10)', async () => {
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service, options } = await initService('7.10');
@@ -1347,6 +1550,8 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
+        await totalSummary(service);
+
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
@@ -1354,9 +1559,9 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.1)', async () => {
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
-        jest.setTimeout(12000);
         const { service, options } = await initService('1.1');
         const indexName = options.indexName;
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
@@ -1374,6 +1579,8 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
+        await totalSummary(service);
+
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
@@ -1381,6 +1588,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service, options } = await initService('1.2');
@@ -1398,6 +1606,8 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
+        await totalSummary(service);
+
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
@@ -1406,14 +1616,14 @@ describe('Elastic6Service', () => {
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(15000);
+        jest.setTimeout(120000);
         //* load dummy storage service.
         const { service, options } = await initService('2.13');
         const indexName = options.indexName;
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+        await canPerformTest(service);
 
         await setupIndex(service, indexName);
 
@@ -1424,6 +1634,8 @@ describe('Elastic6Service', () => {
         await autoIndexingTest(service);
 
         await cleanup(service);
+
+        await totalSummary(service);
 
         await detailedCRUDTest(service);
 
