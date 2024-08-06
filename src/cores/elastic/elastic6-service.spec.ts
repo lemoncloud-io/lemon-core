@@ -410,19 +410,20 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     const parsedVersion = await service.getVersion();
     const version = parsedVersion.major;
     //* 테스트를 위한 agent 생성
-    const agent = () => ({
-        update: (data: any) =>
+    const agent = <T = any>(id: string = 'A0') => ({
+        update: (data: T) =>
             service
-                .updateItem('A0', data)
+                .updateItem(id, data)
                 .then(R => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
                     const { _version, _id, ...rest } = R;
                     return {
                         ...rest,
                     };
                 })
                 .catch(GETERR),
-        save: (data: any) => service.saveItem('A0', data).catch(GETERR),
-        read: () => service.readItem('A0').catch(GETERR),
+        save: (data: T) => service.saveItem(id, data).catch(GETERR),
+        read: () => service.readItem(id).catch(GETERR),
     });
 
     //* 초기 데이터 저장

@@ -212,10 +212,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             const info = await this.client.info();
             const version: string = $U.S(info.body.version.number);
 
-            const parsedVersion: ParsedVersion = await this.parseVersion(version);
+            const parsedVersion: ParsedVersion = this.parseVersion(version);
 
             return parsedVersion;
         } catch (e) {
+            //* bypass error.
             throw e;
         }
     }
@@ -228,8 +229,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * parse the version with major and minor version
      */
-    public async parseVersion(version: string): Promise<ParsedVersion> {
+    public parseVersion(version: string): ParsedVersion {
         const match = version.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
+        //TODO - verify the below error case.
         if (!match) {
             throw new Error(`@version[${version}] is invalid - fail to parse`);
         }
@@ -248,11 +250,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public async listIndices() {
         _log(NS, `- listIndices()`);
 
-        //! call create index..
-        // const { client } = instance(endpoint);
+        //* prepare client..
         const client = this.client;
         const res = await client.cat.indices({ format: 'json' });
         _log(NS, `> indices =`, $U.json(res));
+
         // eslint-disable-next-line prettier/prettier
         const list0: any[] = Array.isArray(res) ? (res as any[]) : res?.body && Array.isArray(res?.body) ? (res?.body as any[]) : null;
         if (!list0) throw new Error(`@result<${typeof res}> is invalid - ${$U.json(res)}!`);
@@ -271,7 +273,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             storeSize: _S(N['store.size']),
         }));
 
-        //! returns.
+        //* returns.
         return { list };
     }
     /**
@@ -290,7 +292,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         );
 
         const mapping = res?.body ? res.body[indexName]?.mappings : null;
-        if (!mapping) throw new Error(`res.property (object) is invalid - sdfjasldjfalj`);
+        // if (!mapping) throw new Error(`Mapping for index <${indexName}> not found - ${$U.json(res)}!`);
+        if (!mapping) throw new Error(`@indexName[${indexName}] is not found - ${$U.json(res)}!`);
 
         return mapping;
     }
@@ -319,7 +322,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
 
-        //! prepare payload
+        //* prepare payload
         const payload = {
             settings: {
                 number_of_shards: 5,
@@ -329,8 +332,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         };
         _log(NS, `> settings[${indexName}] = `, $U.json(payload));
 
-        //! call create index..
-        // const { client } = instance(endpoint);
+        //* call create index..
         const client = this.client;
         const res = await client.indices.create({ index: indexName, body: payload }).catch(
             // $ERROR.throwAsJson,
@@ -343,7 +345,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // if (res) throw res;
         _log(NS, `> create[${indexName}] =`, $U.json({ ...res, meta: undefined }));
 
-        //! build result.
+        //* build result.
         return {
             status: res.statusCode,
             index: indexName,
@@ -1029,12 +1031,12 @@ export const $ERROR = {
         const status = `${E.statusCode || ''}`;
         const message = `${E.message || E.msg || ''}`;
         const reason = ((E: any): ErrorReasonDetail => {
-            //! from ES7.1
+            //* from ES7.1
             if (E.meta && typeof E.meta == 'object') {
                 const type = _S(E?.message).toUpperCase().split('_').slice(0, -1).join(' ');
                 const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
                 const $res = $ERROR.parseMeta<any>(E.meta);
-                //! find the reason.
+                //* find the reason.
                 const reason = $res.body?.error?.reason;
                 const result: ErrorReasonDetail = { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
                 if (typeof reason !== 'undefined') {
@@ -1043,11 +1045,11 @@ export const $ERROR = {
                 return result;
             }
 
-            //! from ES6.2
+            //* from ES6.2
             if (!E.response) return null;
             const $res = $ERROR.parseMeta<any>(E.response);
 
-            //! find the root-cause.
+            //* find the root-cause.
             const pic1 = (N: any[] | any, i = 0) => (N && Array.isArray(N) ? N[i] : N);
             const cause: any = pic1($res?.error?.root_cause);
             const status = $U.N($res.error?.status || $res.status);
@@ -1058,7 +1060,8 @@ export const $ERROR = {
             const type = _S(cause?.type).toUpperCase().split('_').slice(0, -1).join(' ');
             return { status, reason, cause, type: type || reason };
         })(E);
-        //! FINAL. convert to error-object.
+
+        //* FINAL. convert to error-object.
         return {
             status: $U.N(status, reason?.status || 0),
             message: message || reason?.reason,
@@ -1070,12 +1073,12 @@ export const $ERROR = {
         (name: string, cb?: (e: Error, E?: ErrorReason) => any) =>
         (e: any): any => {
             const E = $ERROR.asError(e);
-            //! unknown error found..
+            //* unknown error found..
             if (!E?.status) {
                 _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
                 throw e;
             }
-            const $e = new Error(`${E?.status} ${E?.reason?.type} - ${E?.reason?.reason || E?.message}`);
+            const $e = new Error(`${E.status} ${E.reason?.type ?? ''} - ${E.reason?.reason ?? E.message ?? ''}`);
             if (cb) return cb($e, E);
             throw $e;
         },
