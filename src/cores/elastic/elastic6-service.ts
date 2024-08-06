@@ -290,7 +290,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         );
 
         const mapping = res?.body ? res.body[indexName]?.mappings : null;
-        if (!mapping) throw new Error(`Mapping for index <${indexName}> not found - ${$U.json(res)}!`);
+        if (!mapping) throw new Error(`res.property (object) is invalid - sdfjasldjfalj`);
 
         return mapping;
     }
@@ -1075,7 +1075,7 @@ export const $ERROR = {
                 _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
                 throw e;
             }
-            const $e = new Error(`${E.status} ${E.reason.type} - ${E.reason.reason || E.message}`);
+            const $e = new Error(`${E?.status} ${E?.reason?.type} - ${E?.reason?.reason || E?.message}`);
             if (cb) return cb($e, E);
             throw $e;
         },

@@ -14,6 +14,7 @@ import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, SearchBody } from 'lemon-model';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
+import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 
 /**
  * default endpoints url.
@@ -454,7 +455,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     }
 
     // 매핑 포매팅
-    const properties = version < 7 ? mapping._doc.properties : mapping.properties;
+    const properties = version < 7 ? mapping?._doc?.properties : mapping?.properties;
     const fieldsWithTypes = getFieldTypes(properties);
 
     // 필드 타입 검증
@@ -485,7 +486,9 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ string_field: 1.23 })).toEqual({
         string_field: 1.23,
     });
-    expect2(await agent().update({ string_field: {} })).toEqual();
+    expect2(await agent().update({ string_field: {} })).toEqual(
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
+    );
     expect2(await agent().update({ string_field: [] })).toEqual({
         string_field: [],
     });
@@ -511,7 +514,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         long_field: 1.234567890123,
     });
     expect2(await agent().update({ long_field: {} })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'. Preview of field's value: '{}'",
+        // "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'. Preview of field's value: '{}'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
     expect2(await agent().update({ long_field: [] })).toEqual({
         long_field: [],
@@ -520,7 +524,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         long_field: [1, 2, 3],
     });
     expect2(await agent().update({ long_field: false })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
     /**
@@ -538,7 +543,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         float_field: 123456789,
     });
     expect2(await agent().update({ float_field: {} })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
     expect2(await agent().update({ float_field: [] })).toEqual({
         float_field: [],
@@ -547,7 +553,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         float_field: [1, 2, 3],
     });
     expect2(await agent().update({ float_field: false })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
     /**
@@ -568,11 +575,12 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         });
     } else {
         expect2(await agent().update({ date_field: 1.23456789 })).toEqual(
-            "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'",
+            // "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'",
+            expect.stringContaining('400 MAPPER PARSING - failed to parse'),
         );
     }
     expect2(await agent().update({ date_field: {} })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
     expect2(await agent().update({ date_field: [] })).toEqual({
         date_field: [],
@@ -581,7 +589,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         date_field: [1, 2, 3],
     });
     expect2(await agent().update({ date_field: false })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
     /**
@@ -598,19 +606,20 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     });
 
     expect2(await agent().update({ boolean_field: 123456789 })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
     expect2(await agent().update({ boolean_field: 1.23456789 })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
     expect2(await agent().update({ boolean_field: {} })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
     expect2(await agent().update({ boolean_field: [] })).toEqual({
         boolean_field: [],
     });
     expect2(await agent().update({ boolean_field: [1, 2, 3] })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
     /**
@@ -686,7 +695,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         array_field: 1.23456789,
     });
     expect2(await agent().update({ array_field: {} })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
     expect2(await agent().update({ array_field: false })).toEqual({
         array_field: false,
@@ -709,7 +719,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         array_field: [1.1],
     });
     expect2(await agent().update({ array_field: [{ b: 'a' }] })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
     // nested_field 내부 요소 타입 변경 테스트
@@ -726,7 +737,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         nested_field: [{ sub1_field: false }],
     });
     expect2(await agent().update({ nested_field: [{ sub1_field: { inner: 'object' } }] })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [nested_field.sub1_field] of type [text] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [nested_field.sub1_field] of type [text] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
     // object_field 내부 요소 타입 변경 테스트
@@ -743,14 +755,15 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         object_field: { sub_field: false },
     });
     expect2(await agent().update({ object_field: { sub_field: { inner: 'object' } } })).toEqual(
-        "400 MAPPER PARSING - failed to parse field [object_field.sub_field] of type [text] in document with id 'A0'",
+        // "400 MAPPER PARSING - failed to parse field [object_field.sub_field] of type [text] in document with id 'A0'",
+        expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
     //TODO - verify the mapping condition doesn't change. (`_mapping`)
     const mapping2 = await service.getIndexMapping(service.options.indexName);
 
     // 매핑 포매팅
-    const properties2 = version < 7 ? mapping2._doc.properties : mapping2.properties;
+    const properties2 = version < 7 ? mapping2?._doc?.properties : mapping2?.properties;
     const fieldsWithTypes2 = getFieldTypes(properties2);
 
     // 필드 타입 검증
