@@ -16,6 +16,7 @@ import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';
 import { GETERR } from '../../common/test-helper';
+import fs from 'fs';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
 // export shared one
@@ -143,6 +144,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     protected _options: Elastic6Option;
     public readonly _client: elasticsearch.Client;
+    public parsedVersion: ParsedVersion;
 
     /**
      * simple instance maker.
@@ -178,6 +180,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const { client } = Elastic6Service.instance(options.endpoint);
         this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
         this._client = client;
+        this.initializeParsedVersion();
+    }
+
+    /**
+     * initialize the parsedVersion property.
+     */
+    private async initializeParsedVersion(): Promise<void> {
+        this.parsedVersion = await this.getVersion();
     }
 
     /**
@@ -216,6 +226,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
             if (isDump) {
                 //TODO - save into `info.json`.
+                this.saveInfoToFile(info, 'data/samples/info.json');
             }
 
             const version: string = $U.S(info.body.version.number);
@@ -249,6 +260,20 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         };
 
         return res;
+    }
+    /**
+     * save info to a JSON file.
+     */
+    private saveInfoToFile(info: any, filePath: string): void {
+        const directory = !filePath.startsWith('./') ? `./${filePath}` : filePath;
+
+        // check whether directory exists
+        if (!fs.existsSync(directory)) {
+            fs.mkdirSync(directory, { recursive: true });
+        }
+
+        // write info to file
+        fs.writeFileSync(filePath, JSON.stringify(info, null, 2));
     }
 
     /**
@@ -323,7 +348,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     public async createIndex(settings?: any) {
         const { indexName, docType, idName, timeSeries } = this.options;
-        const parsedVersion = await this.getVersion();
+        const parsedVersion: ParsedVersion = this.parsedVersion;
         const version = parsedVersion.major;
         settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
         if (!indexName) new Error('@index is required!');
@@ -483,7 +508,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
         const client = this.client;
-        const version = await this.getVersion();
+        const version: ParsedVersion = this.parsedVersion;
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
@@ -656,7 +681,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
-        const version = await this.getVersion();
+        const version: ParsedVersion = this.parsedVersion;
 
         //! prepare params.
         const params: ElasticParams = { index: indexName, id, body: { doc: item } };
@@ -717,7 +742,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
         //TODO - version를 다이나믹하게 읽지 않도록!! (성능이슈)
-        const version = await this.getVersion();
+        const version: ParsedVersion = this.parsedVersion;
 
         const params: ElasticSearchParams = { index: indexName, body, searchType };
 
