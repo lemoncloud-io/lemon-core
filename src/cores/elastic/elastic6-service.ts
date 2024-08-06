@@ -207,11 +207,18 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * get the root version from client
      */
-    public async getVersion(): Promise<ParsedVersion> {
-        try {
-            const info = await this.client.info();
-            const version: string = $U.S(info.body.version.number);
+    public async getVersion(options?: { dump?: boolean }): Promise<ParsedVersion> {
+        const isDump = options?.dump ?? false;
 
+        try {
+            //TODO - improve performance. it takes about 20ms.
+            const info = await this.client.info();
+
+            if (isDump) {
+                //TODO - save into `info.json`.
+            }
+
+            const version: string = $U.S(info.body.version.number);
             const parsedVersion: ParsedVersion = this.parseVersion(version);
 
             return parsedVersion;
@@ -709,6 +716,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
+        //TODO - version를 다이나믹하게 읽지 않도록!! (성능이슈)
         const version = await this.getVersion();
 
         const params: ElasticSearchParams = { index: indexName, body, searchType };

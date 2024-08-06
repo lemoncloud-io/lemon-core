@@ -1,4 +1,5 @@
 {
+  "!":"TODO - 주저리주저리 설명달기, 문자에 오브젝트저장할때 에러 발생한 케이스",
   "stack": "ResponseError: mapper_parsing_exception\n    at onBody (/Users/kang-yeeun/lemoncloud/lemon-core/node_modules/@elastic/elasticsearch/lib/Transport.js:337:23)\n    at IncomingMessage.onEnd (/Users/kang-yeeun/lemoncloud/lemon-core/node_modules/@elastic/elasticsearch/lib/Transport.js:264:11)\n    at IncomingMessage.emit (node:events:529:35)\n    at IncomingMessage.emit (node:domain:489:12)\n    at endReadableNT (node:internal/streams/readable:1400:12)\n    at processTicksAndRejections (node:internal/process/task_queues:82:21)",
   "message": "mapper_parsing_exception",
   "name": "ResponseError",
