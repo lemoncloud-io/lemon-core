@@ -1232,7 +1232,7 @@ describe('Elastic6Service', () => {
         expect2(() => service.getVersion()).toEqual({ major: 6, minor: 2 });
 
         //* break if no live connection
-        await canPerformTest(service);
+        if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
@@ -1258,7 +1258,7 @@ describe('Elastic6Service', () => {
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
-        await canPerformTest(service);
+        if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
@@ -1284,7 +1284,7 @@ describe('Elastic6Service', () => {
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
 
         //* break if no live connection
-        await canPerformTest(service);
+        if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
@@ -1335,7 +1335,7 @@ describe('Elastic6Service', () => {
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
-        await canPerformTest(service);
+        if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
@@ -1362,7 +1362,7 @@ describe('Elastic6Service', () => {
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
-        await canPerformTest(service);
+        if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
@@ -1388,7 +1388,7 @@ describe('Elastic6Service', () => {
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
-        await canPerformTest(service);
+        if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
@@ -1413,7 +1413,7 @@ describe('Elastic6Service', () => {
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
-        await canPerformTest(service);
+        if (!(await canPerformTest(service))) return;
 
         await setupIndex(service, indexName);
 
