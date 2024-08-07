@@ -229,7 +229,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * get the root version from client
      */
     public async getVersion(options?: { dump?: boolean }): Promise<ParsedVersion> {
-        const isDump = options?.dump ?? true;
+        const isDump = options?.dump ?? false;
 
         try {
             //TODO - improve performance. it takes about 20ms.
@@ -240,7 +240,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             if (isDump) {
                 //TODO - save into `info.json`.
                 const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
-                this.saveInfoToFile(info, filePath);
+                await this.saveInfoToFile(info, filePath);
             }
 
             return parsedVersion;
@@ -275,16 +275,22 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * save info to a JSON file.
      */
-    private saveInfoToFile(info: any, filePath: string) {
-        const directory = path.dirname(filePath);
+    private async saveInfoToFile(info: any, filePath: string) {
+        try {
+            const directory = path.dirname(filePath);
 
-        // Check whether directory exists
-        if (!fs.existsSync(directory)) {
-            fs.mkdirSync(directory, { recursive: true });
+            // check whether directory exists
+            if (!fs.existsSync(directory)) {
+                fs.mkdirSync(directory, { recursive: true });
+            }
+
+            // write info to file
+            fs.writeFileSync(filePath, JSON.stringify(info, null, 2));
+        } catch {
+            $ERROR.handler('saveIntoFile', e => {
+                throw e;
+            });
         }
-
-        // Write info to file
-        fs.writeFileSync(filePath, JSON.stringify(info, null, 2));
     }
 
     /**

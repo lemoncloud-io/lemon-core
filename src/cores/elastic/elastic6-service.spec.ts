@@ -77,6 +77,13 @@ export const initService = async (
     //* check version
     expect2(() => service.options.version).toEqual(ver);
 
+    //* check version parse error
+    try {
+        service.parseVersion('12354');
+    } catch (e) {
+        expect2(() => e?.message).toEqual('@version[12354] is invalid - fail to parse');
+    }
+
     return { service, options };
 };
 
@@ -364,6 +371,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
      */
     // 1) inner-object update w/ null support
     expect2(await service.saveItem('A4', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
+        $id: 'A4',
         _id: 'A4',
         extra: { a: 1 },
     });
@@ -1058,7 +1066,7 @@ interface BulkResponseBody {
     took?: number;
 }
 
-interface BulkDummyResponse<T = any> {
+interface BulkDummyResponse {
     errors: boolean;
     items: BulkResponseItem[];
     took?: number;
@@ -1237,6 +1245,19 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
         },
         timed_out: false,
     });
+    // scanAll 테스트 추가
+    const allResults = await service.searchAll($search);
+    expect2(allResults.length).toEqual(20000);
+
+    // 추가적인 검증 로직 (첫 5개 항목 확인)
+    const expectedResults: Array<{ _id: string; id: string; _score: null; name: string; count: number }> = [
+        { _id: 'A1', id: 'A1', _score: null, name: '1 번째 data', count: 1 },
+        { _id: 'A2', id: 'A2', _score: null, name: '2 번째 data', count: 2 },
+        { _id: 'A3', id: 'A3', _score: null, name: '3 번째 data', count: 3 },
+        { _id: 'A4', id: 'A4', _score: null, name: '4 번째 data', count: 4 },
+        { _id: 'A5', id: 'A5', _score: null, name: '5 번째 data', count: 5 },
+    ];
+    expect2(allResults.slice(0, 5)).toEqual(expectedResults);
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1435,11 +1456,11 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
 
     //! elastic storage service.
@@ -1464,11 +1485,11 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
 
     //! elastic storage service.
@@ -1493,11 +1514,11 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
@@ -1521,11 +1542,11 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
 
     //! elastic storage service.
@@ -1550,11 +1571,11 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
 
     //! elastic storage service.
@@ -1579,11 +1600,11 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
 
     //! elastic storage service.
@@ -1606,11 +1627,11 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
 
     //! elastic storage service.
@@ -1635,10 +1656,10 @@ describe('Elastic6Service', () => {
 
         await cleanup(service);
 
-        await totalSummary(service);
-
         await detailedCRUDTest(service);
 
         await mismatchedTypeTest(service);
+
+        await totalSummary(service);
     });
 });
