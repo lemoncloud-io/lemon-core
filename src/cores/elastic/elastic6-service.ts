@@ -232,13 +232,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const isDump = options?.dump ?? false;
 
         try {
-            //TODO - improve performance. it takes about 20ms.
             const info = await this.client.info();
 
             const version: string = $U.S(info.body.version.number);
             const parsedVersion: ParsedVersion = this.parseVersion(version);
             if (isDump) {
-                //TODO - save into `info.json`.
+                //* save into `info.json`.
                 const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
                 await this.saveInfoToFile(info, filePath);
             }
@@ -260,7 +259,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     public parseVersion(version: string): ParsedVersion {
         const match = version.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
-        //TODO - verify the below error case.
         if (!match) {
             throw new Error(`@version[${version}] is invalid - fail to parse`);
         }
@@ -341,7 +339,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         );
 
         const mapping = res?.body ? res.body[indexName]?.mappings : null;
-        // if (!mapping) throw new Error(`Mapping for index <${indexName}> not found - ${$U.json(res)}!`);
+
         if (!mapping) throw new Error(`@indexName[${indexName}] is not found - ${$U.json(res)}!`);
 
         return mapping;

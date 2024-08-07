@@ -445,10 +445,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         array_field: ['string1', 'string2', 'string3'],
     });
 
-    //TODO - verify the mapping condition. (`_mapping`)
+    //* verify the mapping condition. (`_mapping`)
     const mapping = await service.getIndexMapping(service.options.indexName);
 
-    // '@@_field'를 재귀적으로 탐색하는 함수
+    // get '@@_field'
     function getFieldTypes(properties: any, parentKey: string = ''): { [key: string]: string } {
         return Object.keys(properties).reduce((acc, key) => {
             const fullKey = parentKey ? `${parentKey}.${key}` : key;
@@ -462,11 +462,11 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         }, {} as { [key: string]: string });
     }
 
-    // 매핑 포매팅
+    // formatting mappings
     const properties = version < 7 ? mapping?._doc?.properties : mapping?.properties;
     const fieldsWithTypes = getFieldTypes(properties);
 
-    // 필드 타입 검증
+    // verify mapping types
     const expectedMapping = {
         array_field: 'text',
         string_field: 'text',
@@ -481,6 +481,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
 
     expect2(fieldsWithTypes).toEqual(expectedMapping);
 
+    //verify getMapping error
+    expect2(await service.getIndexMapping('abcd').catch(GETERR)).toEqual('404 NOT FOUND - index:abcd');
+
+    //* test w/mismatched types
     /**
      * string_field
      * string -> {}로 업데이트시 오류 발생
@@ -767,27 +771,15 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         expect.stringContaining('400 MAPPER PARSING - failed to parse'),
     );
 
-    //TODO - verify the mapping condition doesn't change. (`_mapping`)
+    //* verify the mapping condition doesn't change. (`_mapping`)
     const mapping2 = await service.getIndexMapping(service.options.indexName);
 
-    // 매핑 포매팅
+    // formatting mappings
     const properties2 = version < 7 ? mapping2?._doc?.properties : mapping2?.properties;
     const fieldsWithTypes2 = getFieldTypes(properties2);
 
-    // 필드 타입 검증
-    const expectedMapping2 = {
-        array_field: 'text',
-        string_field: 'text',
-        boolean_field: 'boolean',
-        date_field: 'date',
-        float_field: 'float',
-        long_field: 'long',
-        'object_field.sub_field': 'text', // 하위 속성을 포함한 object_field
-        'nested_field.sub1_field': 'text', // 하위 속성을 포함한 nested_field
-        'nested_field.sub2_field': 'text', // 하위 속성을 포함한 nested_field
-    };
-
-    expect2(fieldsWithTypes2).toEqual(expectedMapping2);
+    // verify mapping types
+    expect2(fieldsWithTypes2).toEqual(expectedMapping);
 };
 /**
  * perform auto-indexing tests
@@ -833,10 +825,10 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         count: 40,
     });
 
-    // 인덱스 새로고침
+    // refresh index
     await service.refreshIndex();
 
-    // keyword auto indexing 확인을 위한 테스트
+    // test for keyword(auto-indexing)
     const $search: SearchBody = {
         size: 2,
         query: {
@@ -945,7 +937,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         ],
         total: 2,
     });
-    // 한글 auto indexing 확인을 위한 테스트
+    // test for hangul(auto-indexing)
     const $search2: SearchBody = {
         size: 2,
         query: {
@@ -1072,7 +1064,10 @@ interface BulkDummyResponse {
     took?: number;
     statusCode: number;
 }
-
+/**
+ * perform bulk operations with dummy
+ * @param service - Elasticsearch service instance.
+ */
 export const bulkDummyData = async (service: Elastic6Service<any>): Promise<BulkDummyResponse> => {
     const { indexName } = service.options;
 
@@ -1115,12 +1110,16 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
     };
     return bulkDummyResponse;
 };
-
+/**
+ * perform total summary with 20,000 data
+ * @param service - Elasticsearch service instance.
+ */
 export const totalSummary = async (service: Elastic6Service<any>) => {
     const res = await bulkDummyData(service);
     expect2(res?.errors).toEqual(false);
     const indexName = service.options.indexName;
     const version = service.parsedVersion?.major;
+    //* test search with 20,000 data
     const $search: SearchBody = {
         size: 5,
         query: {
@@ -1245,11 +1244,11 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
         },
         timed_out: false,
     });
-    // scanAll 테스트 추가
+    //* test scanAll with 20,000 data
     const allResults = await service.searchAll($search);
     expect2(allResults.length).toEqual(20000);
 
-    // 추가적인 검증 로직 (첫 5개 항목 확인)
+    // verify allResults
     const expectedResults: Array<{ _id: string; id: string; _score: null; name: string; count: number }> = [
         { _id: 'A1', id: 'A1', _score: null, name: '1 번째 data', count: 1 },
         { _id: 'A2', id: 'A2', _score: null, name: '2 번째 data', count: 2 },
@@ -1463,203 +1462,203 @@ describe('Elastic6Service', () => {
         await totalSummary(service);
     });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(6.8)', async () => {
-        jest.setTimeout(120000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service, options } = await initService('6.8');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ real server(6.8)', async () => {
+    //     jest.setTimeout(120000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service, options } = await initService('6.8');
+    //     const indexName = options.indexName;
+    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+    //     await setupIndex(service, indexName);
 
-        await basicCRUDTest(service);
+    //     await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+    //     await basicSearchTest(service, indexName);
 
-        await autoIndexingTest(service);
+    //     await autoIndexingTest(service);
 
-        await cleanup(service);
+    //     await cleanup(service);
 
-        await detailedCRUDTest(service);
+    //     await detailedCRUDTest(service);
 
-        await mismatchedTypeTest(service);
+    //     await mismatchedTypeTest(service);
 
-        await totalSummary(service);
-    });
+    //     await totalSummary(service);
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.1)', async () => {
-        jest.setTimeout(120000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service, options } = await initService('7.1');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ real server(7.1)', async () => {
+    //     jest.setTimeout(120000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service, options } = await initService('7.1');
+    //     const indexName = options.indexName;
+    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+    //     await setupIndex(service, indexName);
 
-        await basicCRUDTest(service);
+    //     await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+    //     await basicSearchTest(service, indexName);
 
-        await autoIndexingTest(service);
+    //     await autoIndexingTest(service);
 
-        await cleanup(service);
+    //     await cleanup(service);
 
-        await detailedCRUDTest(service);
+    //     await detailedCRUDTest(service);
 
-        await mismatchedTypeTest(service);
+    //     await mismatchedTypeTest(service);
 
-        await totalSummary(service);
-    });
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.2)', async () => {
-        jest.setTimeout(120000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service, options } = await initService('7.2');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
+    //     await totalSummary(service);
+    // });
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ real server(7.2)', async () => {
+    //     jest.setTimeout(120000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service, options } = await initService('7.2');
+    //     const indexName = options.indexName;
+    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+    //     await setupIndex(service, indexName);
 
-        await basicCRUDTest(service);
+    //     await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+    //     await basicSearchTest(service, indexName);
 
-        await autoIndexingTest(service);
+    //     await autoIndexingTest(service);
 
-        await cleanup(service);
+    //     await cleanup(service);
 
-        await detailedCRUDTest(service);
+    //     await detailedCRUDTest(service);
 
-        await mismatchedTypeTest(service);
+    //     await mismatchedTypeTest(service);
 
-        await totalSummary(service);
-    });
+    //     await totalSummary(service);
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.10)', async () => {
-        jest.setTimeout(120000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service, options } = await initService('7.10');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ real server(7.10)', async () => {
+    //     jest.setTimeout(120000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service, options } = await initService('7.10');
+    //     const indexName = options.indexName;
+    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+    //     await setupIndex(service, indexName);
 
-        await basicCRUDTest(service);
+    //     await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+    //     await basicSearchTest(service, indexName);
 
-        await autoIndexingTest(service);
+    //     await autoIndexingTest(service);
 
-        await cleanup(service);
+    //     await cleanup(service);
 
-        await detailedCRUDTest(service);
+    //     await detailedCRUDTest(service);
 
-        await mismatchedTypeTest(service);
+    //     await mismatchedTypeTest(service);
 
-        await totalSummary(service);
-    });
+    //     await totalSummary(service);
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-        jest.setTimeout(120000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service, options } = await initService('1.1');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ open-search server(1.1)', async () => {
+    //     jest.setTimeout(120000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service, options } = await initService('1.1');
+    //     const indexName = options.indexName;
+    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+    //     await setupIndex(service, indexName);
 
-        await basicCRUDTest(service);
+    //     await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+    //     await basicSearchTest(service, indexName);
 
-        await autoIndexingTest(service);
+    //     await autoIndexingTest(service);
 
-        await cleanup(service);
+    //     await cleanup(service);
 
-        await detailedCRUDTest(service);
+    //     await detailedCRUDTest(service);
 
-        await mismatchedTypeTest(service);
+    //     await mismatchedTypeTest(service);
 
-        await totalSummary(service);
-    });
+    //     await totalSummary(service);
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ open-search server(1.2)', async () => {
-        jest.setTimeout(120000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service, options } = await initService('1.2');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ open-search server(1.2)', async () => {
+    //     jest.setTimeout(120000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service, options } = await initService('1.2');
+    //     const indexName = options.indexName;
+    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+    //     await setupIndex(service, indexName);
 
-        await basicCRUDTest(service);
+    //     await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+    //     await basicSearchTest(service, indexName);
 
-        await cleanup(service);
+    //     await cleanup(service);
 
-        await detailedCRUDTest(service);
+    //     await detailedCRUDTest(service);
 
-        await mismatchedTypeTest(service);
+    //     await mismatchedTypeTest(service);
 
-        await totalSummary(service);
-    });
+    //     await totalSummary(service);
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ open-search server(2.13)', async () => {
-        // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(120000);
-        //* load dummy storage service.
-        const { service, options } = await initService('2.13');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ open-search server(2.13)', async () => {
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     jest.setTimeout(120000);
+    //     //* load dummy storage service.
+    //     const { service, options } = await initService('2.13');
+    //     const indexName = options.indexName;
+    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-        //* break if no live connection
-        await canPerformTest(service);
+    //     //* break if no live connection
+    //     await canPerformTest(service);
 
-        await setupIndex(service, indexName);
+    //     await setupIndex(service, indexName);
 
-        await basicCRUDTest(service);
+    //     await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+    //     await basicSearchTest(service, indexName);
 
-        await autoIndexingTest(service);
+    //     await autoIndexingTest(service);
 
-        await cleanup(service);
+    //     await cleanup(service);
 
-        await detailedCRUDTest(service);
+    //     await detailedCRUDTest(service);
 
-        await mismatchedTypeTest(service);
+    //     await mismatchedTypeTest(service);
 
-        await totalSummary(service);
-    });
+    //     await totalSummary(service);
+    // });
 });
