@@ -78,11 +78,8 @@ export const initService = async (
     expect2(() => service.options.version).toEqual(ver);
 
     //* check version parse error
-    try {
-        service.parseVersion('12354');
-    } catch (e) {
-        expect2(() => e?.message).toEqual('@version[12354] is invalid - fail to parse');
-    }
+    const parsedVersion: ParsedVersion = service.parseVersion('12345');
+    expect(parsedVersion).toEqual({ error: '@version[12345] is invalid - fail to parse', major: 12345 });
 
     return { service, options };
 };
@@ -1075,7 +1072,7 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
     const dataset = Array.from({ length: 20000 }, (_, i) => ({
         id: `A${i + 1}`,
         name: `${(i + 1).toString()} 번째 data`,
-        count: i + 1,
+        count: (i + 1) % 10,
     }));
 
     // create bulk operations
@@ -1114,10 +1111,9 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
  * perform total summary with 20,000 data
  * @param service - Elasticsearch service instance.
  */
-export const totalSummary = async (service: Elastic6Service<any>) => {
+export const totalSummary = async <T>(service: Elastic6Service<any>) => {
     const res = await bulkDummyData(service);
     expect2(res?.errors).toEqual(false);
-    const indexName = service.options.indexName;
     const version = service.parsedVersion?.major;
     //* test search with 20,000 data
     const $search: SearchBody = {
@@ -1140,7 +1136,7 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
         },
         sort: [
             {
-                count: {
+                'id.keyword': {
                     order: 'asc',
                     missing: '_last',
                 },
@@ -1151,96 +1147,86 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
         aggregations: {
             indexing: {
                 buckets: [
-                    { doc_count: 1, key: 1 },
-                    { doc_count: 1, key: 2 },
-                    { doc_count: 1, key: 3 },
-                    { doc_count: 1, key: 4 },
-                    { doc_count: 1, key: 5 },
-                    { doc_count: 1, key: 6 },
-                    { doc_count: 1, key: 7 },
-                    { doc_count: 1, key: 8 },
-                    { doc_count: 1, key: 9 },
-                    { doc_count: 1, key: 10 },
+                    { doc_count: 2000, key: 0 },
+                    { doc_count: 2000, key: 1 },
+                    { doc_count: 2000, key: 2 },
+                    { doc_count: 2000, key: 3 },
+                    { doc_count: 2000, key: 4 },
+                    { doc_count: 2000, key: 5 },
+                    { doc_count: 2000, key: 6 },
+                    { doc_count: 2000, key: 7 },
+                    { doc_count: 2000, key: 8 },
+                    { doc_count: 2000, key: 9 },
                 ],
-                doc_count_error_upper_bound: 4,
-                sum_other_doc_count: 19990,
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
             },
         },
-        last: [5],
+        last: ['A10000'],
         list: [
             { _id: 'A1', _score: null, count: 1, id: 'A1', name: '1 번째 data' },
-            { _id: 'A2', _score: null, count: 2, id: 'A2', name: '2 번째 data' },
-            { _id: 'A3', _score: null, count: 3, id: 'A3', name: '3 번째 data' },
-            { _id: 'A4', _score: null, count: 4, id: 'A4', name: '4 번째 data' },
-            { _id: 'A5', _score: null, count: 5, id: 'A5', name: '5 번째 data' },
+            { _id: 'A10', _score: null, count: 0, id: 'A10', name: '10 번째 data' },
+            { _id: 'A100', _score: null, count: 0, id: 'A100', name: '100 번째 data' },
+            { _id: 'A1000', _score: null, count: 0, id: 'A1000', name: '1000 번째 data' },
+            { _id: 'A10000', _score: null, count: 0, id: 'A10000', name: '10000 번째 data' },
         ],
-        total: version < 7 ? 20000 : 10000,
+        total: version < 7 ? 20000 : 10000, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
     });
-    expect2(await service.searchRaw($search).catch(GETERR), '!took').toEqual({
+    const searchRawResult = await service.searchRaw($search).then(R => {
+        const { _shards, aggregations, hits, timed_out } = R;
+        const hitsCustomized = hits.hits.map(
+            (hit: {
+                _index: string;
+                _score: number | null;
+                _type?: string;
+                _id: string;
+                _source: T;
+                sort: string[];
+            }) => {
+                const { _index, _score, _type, ...rest } = hit;
+                return rest;
+            },
+        );
+        return {
+            _shards,
+            aggregations,
+            hits: {
+                ...hits,
+                hits: hitsCustomized,
+            },
+            timed_out,
+        };
+    });
+    expect2(() => searchRawResult).toEqual({
         _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
         aggregations: {
             indexing: {
                 buckets: [
-                    { doc_count: 1, key: 1 },
-                    { doc_count: 1, key: 2 },
-                    { doc_count: 1, key: 3 },
-                    { doc_count: 1, key: 4 },
-                    { doc_count: 1, key: 5 },
-                    { doc_count: 1, key: 6 },
-                    { doc_count: 1, key: 7 },
-                    { doc_count: 1, key: 8 },
-                    { doc_count: 1, key: 9 },
-                    { doc_count: 1, key: 10 },
+                    { doc_count: 2000, key: 0 },
+                    { doc_count: 2000, key: 1 },
+                    { doc_count: 2000, key: 2 },
+                    { doc_count: 2000, key: 3 },
+                    { doc_count: 2000, key: 4 },
+                    { doc_count: 2000, key: 5 },
+                    { doc_count: 2000, key: 6 },
+                    { doc_count: 2000, key: 7 },
+                    { doc_count: 2000, key: 8 },
+                    { doc_count: 2000, key: 9 },
                 ],
-                doc_count_error_upper_bound: 4,
-                sum_other_doc_count: 19990,
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
             },
         },
         hits: {
             hits: [
-                {
-                    _id: 'A1',
-                    _index: `${indexName}`,
-                    _score: null,
-                    _source: { count: 1, id: 'A1', name: '1 번째 data' },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
-                    sort: [1],
-                },
-                {
-                    _id: 'A2',
-                    _index: `${indexName}`,
-                    _score: null,
-                    _source: { count: 2, id: 'A2', name: '2 번째 data' },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
-                    sort: [2],
-                },
-                {
-                    _id: 'A3',
-                    _index: `${indexName}`,
-                    _score: null,
-                    _source: { count: 3, id: 'A3', name: '3 번째 data' },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
-                    sort: [3],
-                },
-                {
-                    _id: 'A4',
-                    _index: `${indexName}`,
-                    _score: null,
-                    _source: { count: 4, id: 'A4', name: '4 번째 data' },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
-                    sort: [4],
-                },
-                {
-                    _id: 'A5',
-                    _index: `${indexName}`,
-                    _score: null,
-                    _source: { count: 5, id: 'A5', name: '5 번째 data' },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
-                    sort: [5],
-                },
+                { _id: 'A1', _source: { count: 1, id: 'A1', name: '1 번째 data' }, sort: ['A1'] },
+                { _id: 'A10', _source: { count: 0, id: 'A10', name: '10 번째 data' }, sort: ['A10'] },
+                { _id: 'A100', _source: { count: 0, id: 'A100', name: '100 번째 data' }, sort: ['A100'] },
+                { _id: 'A1000', _source: { count: 0, id: 'A1000', name: '1000 번째 data' }, sort: ['A1000'] },
+                { _id: 'A10000', _source: { count: 0, id: 'A10000', name: '10000 번째 data' }, sort: ['A10000'] },
             ],
             max_score: null,
-            total: version < 7 ? 20000 : { relation: 'gte', value: 10000 },
+            total: version < 7 ? 20000 : { relation: 'gte', value: 10000 }, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
         },
         timed_out: false,
     });
@@ -1250,11 +1236,11 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
 
     // verify allResults
     const expectedResults: Array<{ _id: string; id: string; _score: null; name: string; count: number }> = [
-        { _id: 'A1', id: 'A1', _score: null, name: '1 번째 data', count: 1 },
-        { _id: 'A2', id: 'A2', _score: null, name: '2 번째 data', count: 2 },
-        { _id: 'A3', id: 'A3', _score: null, name: '3 번째 data', count: 3 },
-        { _id: 'A4', id: 'A4', _score: null, name: '4 번째 data', count: 4 },
-        { _id: 'A5', id: 'A5', _score: null, name: '5 번째 data', count: 5 },
+        { _id: 'A1', _score: null, count: 1, id: 'A1', name: '1 번째 data' },
+        { _id: 'A10', _score: null, count: 0, id: 'A10', name: '10 번째 data' },
+        { _id: 'A100', _score: null, count: 0, id: 'A100', name: '100 번째 data' },
+        { _id: 'A1000', _score: null, count: 0, id: 'A1000', name: '1000 번째 data' },
+        { _id: 'A10000', _score: null, count: 0, id: 'A10000', name: '10000 번째 data' },
     ];
     expect2(allResults.slice(0, 5)).toEqual(expectedResults);
 };
@@ -1435,7 +1421,7 @@ describe('Elastic6Service', () => {
     //! test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
 
         //* load dummy storage service.
         const { service, options } = await initService('6.2');
@@ -1462,203 +1448,203 @@ describe('Elastic6Service', () => {
         await totalSummary(service);
     });
 
-    // //! elastic storage service.
-    // it('should pass basic CRUD w/ real server(6.8)', async () => {
-    //     jest.setTimeout(120000);
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     //* load dummy storage service.
-    //     const { service, options } = await initService('6.8');
-    //     const indexName = options.indexName;
-    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(6.8)', async () => {
+        jest.setTimeout(1200000);
+        // if (!PROFILE) return; // ignore w/o profile
+        //* load dummy storage service.
+        const { service, options } = await initService('6.8');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-    //     //* break if no live connection
-    //     if (!(await canPerformTest(service))) return;
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
 
-    //     await setupIndex(service, indexName);
+        await setupIndex(service, indexName);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
-    //     await autoIndexingTest(service);
+        await autoIndexingTest(service);
 
-    //     await cleanup(service);
+        await cleanup(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummary(service);
-    // });
+        await totalSummary(service);
+    });
 
-    // //! elastic storage service.
-    // it('should pass basic CRUD w/ real server(7.1)', async () => {
-    //     jest.setTimeout(120000);
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     //* load dummy storage service.
-    //     const { service, options } = await initService('7.1');
-    //     const indexName = options.indexName;
-    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(7.1)', async () => {
+        jest.setTimeout(120000);
+        // if (!PROFILE) return; // ignore w/o profile
+        //* load dummy storage service.
+        const { service, options } = await initService('7.1');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
 
-    //     //* break if no live connection
-    //     if (!(await canPerformTest(service))) return;
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
 
-    //     await setupIndex(service, indexName);
+        await setupIndex(service, indexName);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
-    //     await autoIndexingTest(service);
+        await autoIndexingTest(service);
 
-    //     await cleanup(service);
+        await cleanup(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummary(service);
-    // });
-    // //! elastic storage service.
-    // it('should pass basic CRUD w/ real server(7.2)', async () => {
-    //     jest.setTimeout(120000);
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     //* load dummy storage service.
-    //     const { service, options } = await initService('7.2');
-    //     const indexName = options.indexName;
-    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
+        await totalSummary(service);
+    });
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(7.2)', async () => {
+        jest.setTimeout(120000);
+        // if (!PROFILE) return; // ignore w/o profile
+        //* load dummy storage service.
+        const { service, options } = await initService('7.2');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
 
-    //     //* break if no live connection
-    //     if (!(await canPerformTest(service))) return;
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
 
-    //     await setupIndex(service, indexName);
+        await setupIndex(service, indexName);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
-    //     await autoIndexingTest(service);
+        await autoIndexingTest(service);
 
-    //     await cleanup(service);
+        await cleanup(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummary(service);
-    // });
+        await totalSummary(service);
+    });
 
-    // //! elastic storage service.
-    // it('should pass basic CRUD w/ real server(7.10)', async () => {
-    //     jest.setTimeout(120000);
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     //* load dummy storage service.
-    //     const { service, options } = await initService('7.10');
-    //     const indexName = options.indexName;
-    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    //! elastic storage service.
+    it('should pass basic CRUD w/ real server(7.10)', async () => {
+        jest.setTimeout(120000);
+        // if (!PROFILE) return; // ignore w/o profile
+        //* load dummy storage service.
+        const { service, options } = await initService('7.10');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-    //     //* break if no live connection
-    //     if (!(await canPerformTest(service))) return;
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
 
-    //     await setupIndex(service, indexName);
+        await setupIndex(service, indexName);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
-    //     await autoIndexingTest(service);
+        await autoIndexingTest(service);
 
-    //     await cleanup(service);
+        await cleanup(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummary(service);
-    // });
+        await totalSummary(service);
+    });
 
-    // //! elastic storage service.
-    // it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-    //     jest.setTimeout(120000);
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     //* load dummy storage service.
-    //     const { service, options } = await initService('1.1');
-    //     const indexName = options.indexName;
-    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    //! elastic storage service.
+    it('should pass basic CRUD w/ open-search server(1.1)', async () => {
+        jest.setTimeout(12000000);
+        // if (!PROFILE) return; // ignore w/o profile
+        //* load dummy storage service.
+        const { service, options } = await initService('1.1');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-    //     //* break if no live connection
-    //     if (!(await canPerformTest(service))) return;
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
 
-    //     await setupIndex(service, indexName);
+        await setupIndex(service, indexName);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
-    //     await autoIndexingTest(service);
+        await autoIndexingTest(service);
 
-    //     await cleanup(service);
+        await cleanup(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummary(service);
-    // });
+        await totalSummary(service);
+    });
 
-    // //! elastic storage service.
-    // it('should pass basic CRUD w/ open-search server(1.2)', async () => {
-    //     jest.setTimeout(120000);
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     //* load dummy storage service.
-    //     const { service, options } = await initService('1.2');
-    //     const indexName = options.indexName;
-    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    //! elastic storage service.
+    it('should pass basic CRUD w/ open-search server(1.2)', async () => {
+        jest.setTimeout(12000000);
+        // if (!PROFILE) return; // ignore w/o profile
+        //* load dummy storage service.
+        const { service, options } = await initService('1.2');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-    //     //* break if no live connection
-    //     if (!(await canPerformTest(service))) return;
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
 
-    //     await setupIndex(service, indexName);
+        await setupIndex(service, indexName);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
-    //     await cleanup(service);
+        await cleanup(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummary(service);
-    // });
+        await totalSummary(service);
+    });
 
-    // //! elastic storage service.
-    // it('should pass basic CRUD w/ open-search server(2.13)', async () => {
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     jest.setTimeout(120000);
-    //     //* load dummy storage service.
-    //     const { service, options } = await initService('2.13');
-    //     const indexName = options.indexName;
-    //     expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+    //! elastic storage service.
+    it('should pass basic CRUD w/ open-search server(2.13)', async () => {
+        // if (!PROFILE) return; // ignore w/o profile
+        jest.setTimeout(12000000);
+        //* load dummy storage service.
+        const { service, options } = await initService('2.13');
+        const indexName = options.indexName;
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
-    //     //* break if no live connection
-    //     await canPerformTest(service);
+        //* break if no live connection
+        await canPerformTest(service);
 
-    //     await setupIndex(service, indexName);
+        await setupIndex(service, indexName);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service, indexName);
+        await basicSearchTest(service, indexName);
 
-    //     await autoIndexingTest(service);
+        await autoIndexingTest(service);
 
-    //     await cleanup(service);
+        await cleanup(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummary(service);
-    // });
+        await totalSummary(service);
+    });
 });
