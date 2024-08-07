@@ -193,7 +193,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * initialize the parsedVersion property.
      */
     private async initializeParsedVersion() {
-        this._parsedVersion = await this.getVersion();
+        // this._parsedVersion = await this.getVersion();
+        this._parsedVersion = this.parseVersion(this.options.version || '7.1');
     }
 
     /**
@@ -538,7 +539,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const params: ElasticParams = { index: indexName, id, body: body2 };
 
         // check version to include 'type' in params
-        if (version.major < 7) {
+        if (version.major < 7 && !this.isOpenSearch) {
             params.type = type;
         }
 
@@ -555,7 +556,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                     delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
                     const param2: ElasticParams = { index: indexName, id, body: { doc: body2 } };
-                    if (version.major < 7) param2.type = type;
+                    if (version.major < 7 && !this.isOpenSearch) param2.type = type;
                     return client.update(param2);
                 }
                 throw e;
@@ -707,7 +708,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const params: ElasticParams = { index: indexName, id, body: { doc: item } };
 
         // check version to include 'type' in params
-        if (version.major < 7) {
+        if (version.major < 7 && !this.isOpenSearch) {
             params.type = type;
         }
 
@@ -718,7 +719,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 L.push(`ctx._source.${key} += ${val}`);
                 return L;
             }, []);
-            if (version.major < 7) params.body.lang = 'painless';
+            if (version.major < 7 && !this.isOpenSearch) params.body.lang = 'painless';
             params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -765,7 +766,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const params: ElasticSearchParams = { index: indexName, body, searchType };
 
         // check version to include 'type' in params
-        if (version.major < 7) {
+        if (version.major < 7 && !this.isOpenSearch) {
             params.type = type;
         }
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
@@ -995,19 +996,19 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: version < 7 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
+                            filter: version < 7 && version >= 6 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
                         },
                     },
                 },
             },
             //! since 7.x. no mapping for types.
-            mappings: version < 7 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
+            mappings: version < 7 && version >= 6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
         };
 
         //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            if (version < 7) {
+            if (version < 7 && version >= 6) {
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 

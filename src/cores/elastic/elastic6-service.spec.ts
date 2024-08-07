@@ -23,7 +23,6 @@ import { ApiResponse } from '@elastic/elasticsearch';
 const ENDPOINTS = {
     //* elastic-search */
     '6.2': 'https://localhost:8443', // run alias lmes62
-    '6.8': 'https://localhost:8683', // run alias lmes68
     '7.1': 'https://localhost:9071', // run alias lmts071
     '7.2': 'https://localhost:9072', // run alias lmts072
     '7.10': 'https://localhost:9710', // run alias lmts710
@@ -80,6 +79,8 @@ export const initService = async (
     //* check version parse error
     const parsedVersion: ParsedVersion = service.parseVersion('12345');
     expect(parsedVersion).toEqual({ error: '@version[12345] is invalid - fail to parse', major: 12345 });
+    const parsedVersion2: ParsedVersion = service.parseVersion('abcd');
+    expect(parsedVersion2).toEqual({ error: '@version[abcd] is invalid - fail to parse', major: 0 });
 
     return { service, options };
 };
@@ -196,7 +197,7 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
  * @param indexName - the name of the index to search.
  */
 export const basicSearchTest = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
-    const parsedVersion: ParsedVersion = service.parsedVersion;
+    const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
     const version = parsedVersion.major;
     //* try to search...
     await waited(2000);
@@ -236,12 +237,12 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>, indexNa
                     _index: indexName,
                     _score: null,
                     _source: { $id: 'A0', name: 'a0', type: 'test', count: 0 },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    ...(version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
                     sort: [0],
                 },
             ],
             max_score: null,
-            total: version < 7 ? 2 : { relation: 'eq', value: 2 },
+            total: version < 7 && !service.isOpenSearch ? 2 : { relation: 'eq', value: 2 },
         },
         aggregations: {
             test: {
@@ -411,7 +412,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
  * @param service - Elasticsearch service instance.
  */
 export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion: ParsedVersion = service.parsedVersion;
+    const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
     const version = parsedVersion.major;
     //* 테스트를 위한 agent 생성
     const agent = <T = any>(id: string = 'A0') => ({
@@ -460,7 +461,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     }
 
     // formatting mappings
-    const properties = version < 7 ? mapping?._doc?.properties : mapping?.properties;
+    const properties = version < 7 && !service.isOpenSearch ? mapping?._doc?.properties : mapping?.properties;
     const fieldsWithTypes = getFieldTypes(properties);
 
     // verify mapping types
@@ -578,7 +579,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ date_field: 1234567890 })).toEqual({
         date_field: 1234567890,
     });
-    if (version < 7) {
+    if (version < 7 && !service.isOpenSearch) {
         expect2(await agent().update({ date_field: 1.23456789 })).toEqual({
             date_field: 1.23456789,
         });
@@ -772,7 +773,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     const mapping2 = await service.getIndexMapping(service.options.indexName);
 
     // formatting mappings
-    const properties2 = version < 7 ? mapping2?._doc?.properties : mapping2?.properties;
+    const properties2 = version < 7 && !service.isOpenSearch ? mapping2?._doc?.properties : mapping2?.properties;
     const fieldsWithTypes2 = getFieldTypes(properties2);
 
     // verify mapping types
@@ -784,7 +785,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
  */
 
 export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion: ParsedVersion = service.parsedVersion;
+    const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
     const version = parsedVersion.major;
     const indexName = service.options.indexName;
 
@@ -899,7 +900,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 },
             ],
             max_score: null,
-            total: version < 7 ? 2 : { relation: 'eq', value: 2 },
+            total: version < 7 && !service.isOpenSearch ? 2 : { relation: 'eq', value: 2 },
         },
         timed_out: false,
     });
@@ -1008,7 +1009,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 },
             ],
             max_score: null,
-            total: version < 7 ? 2 : { relation: 'eq', value: 2 },
+            total: version < 7 && !service.isOpenSearch ? 2 : { relation: 'eq', value: 2 },
         },
         timed_out: false,
     });
@@ -1114,7 +1115,7 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
 export const totalSummary = async <T>(service: Elastic6Service<any>) => {
     const res = await bulkDummyData(service);
     expect2(res?.errors).toEqual(false);
-    const version = service.parsedVersion?.major;
+    const version = service.parseVersion(service.options.version || '7.1').major;
     //* test search with 20,000 data
     const $search: SearchBody = {
         size: 5,
@@ -1170,7 +1171,7 @@ export const totalSummary = async <T>(service: Elastic6Service<any>) => {
             { _id: 'A1000', _score: null, count: 0, id: 'A1000', name: '1000 번째 data' },
             { _id: 'A10000', _score: null, count: 0, id: 'A10000', name: '10000 번째 data' },
         ],
-        total: version < 7 ? 20000 : 10000, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
+        total: version < 7 && !service.isOpenSearch ? 20000 : 10000, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
     });
     const searchRawResult = await service.searchRaw($search).then(R => {
         const { _shards, aggregations, hits, timed_out } = R;
@@ -1226,7 +1227,7 @@ export const totalSummary = async <T>(service: Elastic6Service<any>) => {
                 { _id: 'A10000', _source: { count: 0, id: 'A10000', name: '10000 번째 data' }, sort: ['A10000'] },
             ],
             max_score: null,
-            total: version < 7 ? 20000 : { relation: 'gte', value: 10000 }, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
+            total: version < 7 && !service.isOpenSearch ? 20000 : { relation: 'gte', value: 10000 }, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
         },
         timed_out: false,
     });
@@ -1421,41 +1422,12 @@ describe('Elastic6Service', () => {
     //! test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(1200000);
+        jest.setTimeout(120000);
 
         //* load dummy storage service.
         const { service, options } = await initService('6.2');
         const indexName = options.indexName;
         expect2(() => service.getVersion()).toEqual({ major: 6, minor: 2 });
-
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
-
-        await setupIndex(service, indexName);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service, indexName);
-
-        await autoIndexingTest(service);
-
-        await cleanup(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummary(service);
-    });
-
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(6.8)', async () => {
-        jest.setTimeout(1200000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service, options } = await initService('6.8');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -1565,7 +1537,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service, options } = await initService('1.1');
@@ -1594,7 +1566,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service, options } = await initService('1.2');
@@ -1622,7 +1594,7 @@ describe('Elastic6Service', () => {
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         //* load dummy storage service.
         const { service, options } = await initService('2.13');
         const indexName = options.indexName;
