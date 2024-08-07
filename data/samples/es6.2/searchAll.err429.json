@@ -1,4 +1,5 @@
 {
+    "!": "searchAll시 발생하는 429 Too Many Requests 에러 케이스",
     "name": "ResponseError",
     "meta": {
       "body": "429 Too Many Requests /test-v6.2/_doc/_search",
