@@ -17,6 +17,7 @@ import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';
 import { GETERR } from '../../common/test-helper';
 import fs from 'fs';
+import path from 'path';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
 // export shared one
@@ -132,6 +133,10 @@ interface ElasticSearchParams<T extends object = any> {
  */
 const _S = (v: any, def: string = '') =>
     typeof v === 'string' ? v : v === undefined || v === null ? def : typeof v === 'object' ? $U.json(v) : `${v}`;
+/**
+ * make waiting time
+ */
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * class: `Elastic6Service`
@@ -224,19 +229,19 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * get the root version from client
      */
     public async getVersion(options?: { dump?: boolean }): Promise<ParsedVersion> {
-        const isDump = options?.dump ?? false;
+        const isDump = options?.dump ?? true;
 
         try {
             //TODO - improve performance. it takes about 20ms.
             const info = await this.client.info();
 
-            if (isDump) {
-                //TODO - save into `info.json`.
-                this.saveInfoToFile(info, 'data/samples/info.json');
-            }
-
             const version: string = $U.S(info.body.version.number);
             const parsedVersion: ParsedVersion = this.parseVersion(version);
+            if (isDump) {
+                //TODO - save into `info.json`.
+                const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
+                this.saveInfoToFile(info, filePath);
+            }
 
             return parsedVersion;
         } catch (e) {
@@ -271,14 +276,14 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * save info to a JSON file.
      */
     private saveInfoToFile(info: any, filePath: string) {
-        const directory = !filePath.startsWith('./') ? `./${filePath}` : filePath;
+        const directory = path.dirname(filePath);
 
-        // check whether directory exists
+        // Check whether directory exists
         if (!fs.existsSync(directory)) {
             fs.mkdirSync(directory, { recursive: true });
         }
 
-        // write info to file
+        // Write info to file
         fs.writeFileSync(filePath, JSON.stringify(info, null, 2));
     }
 
@@ -758,11 +763,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // const { client } = instance(endpoint);
         const client = this.client;
         const $res = await client.search(params).catch(
-            $ERROR.handler('search', (e, E) => {
+            $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
-                const msg = GETERR(e);
-                //! id 아이템이 없을 경우 발생함.
-                if (msg.startsWith('429 UNKNOWN')) throw E;
                 throw e;
             }),
         );
@@ -820,12 +822,28 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!body.sort) body.sort = '_doc';
 
         do {
-            const { list, last } = await this.search(body, searchType);
+            const { list, last } = await this.search(body, searchType).catch(async e => {
+                const msg = GETERR(e);
+
+                if (msg.startsWith('429 UNKNOWN')) {
+                    _err(NS, `retrying after 15 seconds...`, e);
+                    await delay(15000);
+                    return await this.search(body, searchType).catch(() => ({ list: [], last: null })); // Retry
+                }
+
+                return { list: [], last: null };
+            });
+
             body.search_after = last;
+
+            if (list.length === 0 && !body.search_after) {
+                break;
+            }
 
             yield list;
         } while (body.search_after && (limit === -1 || --limit > 0));
     }
+
     /**
      * prepare default setting
      * - migrated from engine-v2.
@@ -1145,7 +1163,6 @@ export const $ERROR = {
                 _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
                 throw e;
             }
-            if (E.reason?.type === 'Response Error') console.error(`${JSON.stringify(e)}`);
             const $e = new Error(`${E.status} ${E.reason?.type ?? ''} - ${E.reason?.reason ?? E.message ?? ''}`);
             if (cb) return cb($e, E);
             throw $e;
