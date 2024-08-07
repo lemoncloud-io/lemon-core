@@ -77,7 +77,8 @@ export interface Elastic6Item extends GeneralItem {
  */
 export interface ParsedVersion {
     major: number;
-    minor: number;
+    minor?: number;
+    error?: string;
 }
 
 /**
@@ -260,7 +261,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public parseVersion(version: string): ParsedVersion {
         const match = version.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
         if (!match) {
-            throw new Error(`@version[${version}] is invalid - fail to parse`);
+            const res: ParsedVersion = {
+                major: parseInt(version) || 0,
+                error: `@version[${version}] is invalid - fail to parse`,
+            };
+            return res;
         }
 
         const res: ParsedVersion = {
