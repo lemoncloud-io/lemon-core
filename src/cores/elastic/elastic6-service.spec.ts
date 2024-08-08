@@ -78,9 +78,9 @@ export const initService = async (
 
     //* check version parse error
     const parsedVersion: ParsedVersion = service.parseVersion('12345');
-    expect(parsedVersion).toEqual({ error: '@version[12345] is invalid - fail to parse', major: 12345 });
+    expect(parsedVersion).toEqual({ major: 12345, minor: 0 });
     const parsedVersion2: ParsedVersion = service.parseVersion('abcd');
-    expect(parsedVersion2).toEqual({ error: '@version[abcd] is invalid - fail to parse', major: 0 });
+    expect(parsedVersion2).toEqual({ major: 0, minor: 0 });
 
     return { service, options };
 };
@@ -1131,7 +1131,7 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
  * perform total summary with 20,000 data
  * @param service - Elasticsearch service instance.
  */
-export const totalSummary = async <T>(service: Elastic6Service<any>) => {
+export const totalSummary = async (service: Elastic6Service<any>) => {
     const res = await bulkDummyData(service);
     expect2(res?.errors).toEqual(false);
     const version = service.parseVersion(service.options.version || '7.1').major;

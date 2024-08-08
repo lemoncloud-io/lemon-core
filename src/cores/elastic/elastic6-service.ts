@@ -77,8 +77,7 @@ export interface Elastic6Item extends GeneralItem {
  */
 export interface ParsedVersion {
     major: number;
-    minor?: number;
-    error?: string;
+    minor: number;
 }
 
 /**
@@ -237,14 +236,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             const info = await this.client.info();
 
             const version: string = $U.S(info.body.version.number);
-            const parsedVersion: ParsedVersion = this.parseVersion(version);
+            const parsedVersion: ParsedVersion = this.parseVersion(version, { throwable: true });
             if (isDump) {
                 //* save into `info.json`.
                 const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
                 await this.saveInfoToFile(info, filePath);
-            }
-            if (parsedVersion?.error) {
-                throw new Error(parsedVersion?.error);
             }
 
             return parsedVersion;
@@ -262,12 +258,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * parse the version with major and minor version
      */
-    public parseVersion(version: string): ParsedVersion {
+    public parseVersion(version: string, options?: { throwable?: boolean }): ParsedVersion {
         const match = version.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
+        const isThrowable = options?.throwable ?? false;
+
         if (!match) {
+            if (isThrowable) throw new Error(`@version[${version}] is invalid - fail to parse`);
+
             const res: ParsedVersion = {
                 major: parseInt(version) || 0,
-                error: `@version[${version}] is invalid - fail to parse`,
+                minor: 0,
             };
             return res;
         }
