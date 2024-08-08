@@ -243,6 +243,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
                 await this.saveInfoToFile(info, filePath);
             }
+            if (parsedVersion?.error) {
+                throw new Error(parsedVersion?.error);
+            }
 
             return parsedVersion;
         } catch (e) {
