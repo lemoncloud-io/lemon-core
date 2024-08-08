@@ -15,7 +15,7 @@ import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
 import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';
-import { GETERR } from '../../common/test-helper';
+import { GETERR, waited } from '../../common/test-helper';
 import fs from 'fs';
 import path from 'path';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
@@ -133,10 +133,6 @@ interface ElasticSearchParams<T extends object = any> {
  */
 const _S = (v: any, def: string = '') =>
     typeof v === 'string' ? v : v === undefined || v === null ? def : typeof v === 'object' ? $U.json(v) : `${v}`;
-/**
- * make waiting time
- */
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * class: `Elastic6Service`
@@ -336,8 +332,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * get mapping of an index
      * @param indexName - name of the index
      */
-    public async getIndexMapping(indexName: string) {
+    public async getIndexMapping() {
         const client = this.client;
+        const indexName = this.options.indexName;
         const res = await client.indices.getMapping({ index: indexName }).catch(
             // $ERROR.throwAsJson,
             $ERROR.handler('getMapping', e => {
@@ -840,7 +837,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
                 if (msg.startsWith('429 UNKNOWN')) {
                     _err(NS, `retrying after 15 seconds...`, e);
-                    await delay(15000);
+                    await waited(15000);
                     return await this.search(body, searchType).catch(() => ({ list: [], last: null })); // Retry
                 }
 

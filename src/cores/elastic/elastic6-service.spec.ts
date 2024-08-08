@@ -78,9 +78,9 @@ export const initService = async (
 
     //* check version parse error
     const parsedVersion: ParsedVersion = service.parseVersion('12345');
-    expect(parsedVersion).toEqual({ major: 12345, minor: 0 });
+    expect2(parsedVersion).toEqual({ major: 12345, minor: 0 });
     const parsedVersion2: ParsedVersion = service.parseVersion('abcd');
-    expect(parsedVersion2).toEqual({ major: 0, minor: 0 });
+    expect2(parsedVersion2).toEqual({ major: 0, minor: 0 });
 
     return { service, options };
 };
@@ -103,6 +103,15 @@ export const setupIndex = async (service: Elastic6Service<MyModel>, indexName: s
             index: indexName,
         });
         await waited(100);
+
+        // check 404 NOT FOUND - index:
+        expect2(await service.getIndexMapping().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.destroyIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.refreshIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.flushIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.readItem('A0').catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
+        expect2(await service.deleteItem('A0').catch(GETERR)).toEqual(`404 NOT FOUND - index:${indexName}`);
     }
 
     //* create index
@@ -115,6 +124,154 @@ export const setupIndex = async (service: Elastic6Service<MyModel>, indexName: s
 
     //* fail to create index if already in use
     expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
+
+    //* describe index
+    expect2(
+        await service
+            .describe()
+            .then(R => {
+                const { settings, mappings } = R;
+                const commonData = {
+                    index: {
+                        number_of_replicas: settings.index.number_of_replicas,
+                        number_of_shards: settings.index.number_of_shards,
+                        provided_name: settings.index.provided_name,
+                        analysis: settings.index.analysis,
+                    },
+                    properties: mappings._doc ? mappings._doc.properties : mappings.properties,
+                    dynamic_templates: mappings._doc ? mappings._doc.dynamic_templates : mappings.dynamic_templates,
+                };
+
+                // Version-specific handling
+                if (service.version <= 7 && !service.isOpenSearch) {
+                    return {
+                        ...commonData,
+                    };
+                } else {
+                    return commonData;
+                }
+            })
+            .catch(PASS),
+    ).toEqual({
+        index: {
+            number_of_replicas: '1',
+            number_of_shards: '4',
+            provided_name: `${indexName}`,
+            analysis: {
+                analyzer: {
+                    autocomplete_case_insensitive: {
+                        filter: ['lowercase'],
+                        tokenizer: 'edge_30grams',
+                        type: 'custom',
+                    },
+                    autocomplete_case_sensitive: {
+                        filter: service.version <= 7 && !service.isOpenSearch ? ['standard'] : [],
+                        tokenizer: 'edge_30grams',
+                        type: 'custom',
+                    },
+                    hangul: {
+                        filter: ['lowercase'],
+                        tokenizer: 'hangul',
+                        type: 'custom',
+                    },
+                },
+                tokenizer: {
+                    edge_30grams: {
+                        max_gram: '30',
+                        min_gram: '1',
+                        token_chars: ['letter', 'digit', 'punctuation', 'symbol'],
+                        type: 'edge_ngram',
+                    },
+                    hangul: {
+                        decompound: 'true',
+                        deinflect: 'true',
+                        index_eojeol: 'true',
+                        pos_tagging: 'false',
+                        type: 'seunjeon_tokenizer',
+                    },
+                },
+            },
+        },
+        properties: {
+            '@version': {
+                index: false,
+                type: 'keyword',
+            },
+            created_at: {
+                type: 'date',
+                ...(service.version >= 2 && service.isOpenSearch
+                    ? { format: 'strict_date_optional_time||epoch_millis' }
+                    : {}),
+            },
+            deleted_at: {
+                type: 'date',
+                ...(service.version >= 2 && service.isOpenSearch
+                    ? { format: 'strict_date_optional_time||epoch_millis' }
+                    : {}),
+            },
+            updated_at: {
+                type: 'date',
+                ...(service.version >= 2 && service.isOpenSearch
+                    ? { format: 'strict_date_optional_time||epoch_millis' }
+                    : {}),
+            },
+        },
+        dynamic_templates: [
+            {
+                autocomplete: {
+                    mapping: {
+                        analyzer: 'autocomplete_case_insensitive',
+                        search_analyzer: 'standard',
+                        type: 'text',
+                    },
+                    path_match: '_decomposed.*',
+                },
+            },
+            {
+                autocomplete_qwerty: {
+                    mapping: {
+                        analyzer: 'autocomplete_case_sensitive',
+                        search_analyzer: 'whitespace',
+                        type: 'text',
+                    },
+                    path_match: '_qwerty.*',
+                },
+            },
+            {
+                string_id: {
+                    mapping: {
+                        ignore_above: 256,
+                        type: 'keyword',
+                    },
+                    match: '$id',
+                    match_mapping_type: 'string',
+                },
+            },
+            {
+                strings: {
+                    mapping: {
+                        analyzer: 'hangul',
+                        fields: {
+                            keyword: {
+                                ignore_above: 256,
+                                type: 'keyword',
+                            },
+                        },
+                        search_analyzer: 'hangul',
+                        type: 'text',
+                    },
+                    match_mapping_type: 'string',
+                },
+            },
+        ],
+    });
+
+    //* flush index
+    const result = await service.flushIndex().catch(PASS);
+    expect2(result).toHaveProperty('_shards.failed');
+    expect2(result).toHaveProperty('_shards.successful');
+    expect2(result).toHaveProperty('_shards.total');
+    await waited(200);
 };
 
 /**
@@ -444,7 +601,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     });
 
     //* verify the mapping condition. (`_mapping`)
-    const mapping = await service.getIndexMapping(service.options.indexName);
+    const mapping = await service.getIndexMapping();
 
     // get '@@_field'
     function getFieldTypes(properties: any, parentKey: string = ''): { [key: string]: string } {
@@ -478,9 +635,6 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     };
 
     expect2(fieldsWithTypes).toEqual(expectedMapping);
-
-    //verify getMapping error
-    expect2(await service.getIndexMapping('abcd').catch(GETERR)).toEqual('404 NOT FOUND - index:abcd');
 
     //* test w/mismatched types
     /**
@@ -770,7 +924,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     );
 
     //* verify the mapping condition doesn't change. (`_mapping`)
-    const mapping2 = await service.getIndexMapping(service.options.indexName);
+    const mapping2 = await service.getIndexMapping();
 
     // formatting mappings
     const properties2 = version < 7 && !service.isOpenSearch ? mapping2?._doc?.properties : mapping2?.properties;
