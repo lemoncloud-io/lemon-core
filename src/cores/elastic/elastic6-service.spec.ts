@@ -779,6 +779,38 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     // verify mapping types
     expect2(fieldsWithTypes2).toEqual(expectedMapping);
 };
+
+const searchAgent = <T = any>(service: Elastic6Service<MyModel>) => ({
+    searchRaw: (data: SearchBody) =>
+        service
+            .searchRaw(data)
+            .then(R => {
+                const { _shards, aggregations, hits, timed_out } = R;
+                const hitsCustomized = hits.hits.map(
+                    (hit: {
+                        _index: string;
+                        _score: number | null;
+                        _type?: string;
+                        _id: string;
+                        _source: T;
+                        sort: string[];
+                    }) => {
+                        const { _index, _score, _type, ...rest } = hit;
+                        return rest;
+                    },
+                );
+                return {
+                    _shards,
+                    aggregations,
+                    hits: {
+                        ...hits,
+                        hits: hitsCustomized,
+                    },
+                    timed_out,
+                };
+            })
+            .catch(GETERR),
+});
 /**
  * perform auto-indexing tests
  * @param service - Elasticsearch service instance.
@@ -787,7 +819,6 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
 export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
     const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
     const version = parsedVersion.major;
-    const indexName = service.options.indexName;
 
     //* auto-indexing w/ tokenizer. keyword (basic), hangul
     expect2(
@@ -855,7 +886,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         ],
     };
 
-    expect2(await service.searchRaw($search).catch(GETERR), '!took').toEqual({
+    expect2(await searchAgent(service).searchRaw($search)).toEqual({
         _shards: {
             failed: 0,
             skipped: 0,
@@ -876,26 +907,20 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
             hits: [
                 {
                     _id: 'A7',
-                    _index: indexName,
-                    _score: null,
                     _source: {
                         $id: 'A7',
                         count: 10,
                         name: 'A7 for auto indexing test',
                     },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
                     sort: [10],
                 },
                 {
                     _id: 'A9',
-                    _index: indexName,
-                    _score: null,
                     _source: {
                         $id: 'A9',
                         count: 30,
                         name: 'A9 for auto indexing test',
                     },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
                     sort: [30],
                 },
             ],
@@ -964,7 +989,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         ],
     };
 
-    expect2(await service.searchRaw($search2).catch(GETERR), '!took').toEqual({
+    expect2(await searchAgent(service).searchRaw($search2)).toEqual({
         _shards: {
             failed: 0,
             skipped: 0,
@@ -985,26 +1010,20 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
             hits: [
                 {
                     _id: 'A8',
-                    _index: indexName,
-                    _score: null,
                     _source: {
                         $id: 'A8',
                         count: 20,
                         name: '한글 테스트',
                     },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
                     sort: [20],
                 },
                 {
                     _id: 'A10',
-                    _index: indexName,
-                    _score: null,
                     _source: {
                         $id: 'A10',
                         count: 40,
                         name: 'A10 한글 테스트',
                     },
-                    ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
                     sort: [40],
                 },
             ],
@@ -1173,32 +1192,8 @@ export const totalSummary = async <T>(service: Elastic6Service<any>) => {
         ],
         total: version < 7 && !service.isOpenSearch ? 20000 : 10000, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
     });
-    const searchRawResult = await service.searchRaw($search).then(R => {
-        const { _shards, aggregations, hits, timed_out } = R;
-        const hitsCustomized = hits.hits.map(
-            (hit: {
-                _index: string;
-                _score: number | null;
-                _type?: string;
-                _id: string;
-                _source: T;
-                sort: string[];
-            }) => {
-                const { _index, _score, _type, ...rest } = hit;
-                return rest;
-            },
-        );
-        return {
-            _shards,
-            aggregations,
-            hits: {
-                ...hits,
-                hits: hitsCustomized,
-            },
-            timed_out,
-        };
-    });
-    expect2(() => searchRawResult).toEqual({
+
+    expect2(await searchAgent(service).searchRaw($search)).toEqual({
         _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
         aggregations: {
             indexing: {
