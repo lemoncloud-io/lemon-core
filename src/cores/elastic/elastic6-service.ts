@@ -82,15 +82,24 @@ export interface Elastic6SearchAllParams {
 /**
  * typeof search-engine type
  */
-export type EngineType = 'os' | 'es';
+export type EngineType = 'os' | 'es'; // openSearch | elasticSearch
 
 /**
  * parsed version with major and minor version numbers.
  */
 export interface ParsedVersion {
+    /** search-engine type */
     engine?: EngineType;
+    /** major version */
     major: number;
-    minor: number;
+    /** minor version */
+    minor?: number;
+    /** patch version */
+    patch?: number;
+    /** pre-release label (e.g., 'alpha', 'beta') */
+    prerelease?: string;
+    /** build metadata */
+    build?: string;
 }
 
 /**
@@ -259,23 +268,22 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // STEP.3 validate version
         return;
     }
-
     /**
-     * if the service is using OpenSearch
-     */
-    public get isOpenSearch(): boolean {
-        return this.version < 6;
-    }
-    /**
-     * parse the version with major and minor version
+     * parse version according to Semantic Versioning (SemVer) rules.
+     *
+     * @param version The version string to parse (e.g., "1.2.3", "1.2.3-alpha.1", "1.2.3+build.001").
+     * @param options Optional configuration for throwable behavior.
+     * @returns A ParsedVersion object or null if parsing fails and throwable is false.
      */
     public parseVersion(version: string, options?: { throwable?: boolean }): ParsedVersion {
         const isThrowable = options?.throwable ?? true;
 
         if (!version && isThrowable) throw new Error(`@version (string) is required!`);
 
-        // ex: 1.2.3 -> ok, 1.2 -> ??, 1. -> ??, 1.2.3a -> ??
-        const match = version?.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
+        // RegEx to match Semantic Versioning patterns
+        const match = version?.match(
+            /^(\d{1,2})(?:\.(\d{1,2}))?(?:\.(\d{1,2}))?(?:-([a-zA-Z0-9-.]+))?(?:\+([a-zA-Z0-9-.]+))?$/,
+        );
 
         if (!match) {
             if (isThrowable) throw new Error(`@version[${version}] is invalid - fail to parse`);
@@ -283,12 +291,17 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         }
 
         const res: ParsedVersion = {
+            engine: $U.N(match[1], 10) < 6 ? 'os' : 'es',
             major: $U.N(match[1], 10),
-            minor: $U.N(match[2], 10),
+            ...(match[2] !== undefined ? { minor: $U.N(match[2], 10) } : {}),
+            ...(match[3] !== undefined ? { patch: $U.N(match[3], 10) } : {}),
+            ...(match[4] !== undefined ? { prerelease: match[4] } : {}),
+            ...(match[5] !== undefined ? { build: match[5] } : {}),
         };
 
         return res;
     }
+
     /**
      * save info to a JSON file.
      */
@@ -543,7 +556,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
         const client = this.client;
-        const version: ParsedVersion = this.parsedVersion;
+        const parsedVersion: ParsedVersion = this.parsedVersion;
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
@@ -553,7 +566,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const params: ElasticParams = { index: indexName, id, body: body2 };
 
         // check version to include 'type' in params
-        if (version.major < 7 && !this.isOpenSearch) {
+        if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
             params.type = type;
         }
 
@@ -570,7 +583,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                     delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
                     const param2: ElasticParams = { index: indexName, id, body: { doc: body2 } };
-                    if (version.major < 7 && !this.isOpenSearch) param2.type = type;
+                    if (parsedVersion.major < 7 && parsedVersion.engine === 'es') param2.type = type;
                     return client.update(param2);
                 }
                 throw e;
@@ -716,13 +729,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
-        const version: ParsedVersion = this.parsedVersion;
+        const parsedVersion: ParsedVersion = this.parsedVersion;
 
         //! prepare params.
         const params: ElasticParams = { index: indexName, id, body: { doc: item } };
 
         // check version to include 'type' in params
-        if (version.major < 7 && !this.isOpenSearch) {
+        if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
             params.type = type;
         }
 
@@ -733,7 +746,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 L.push(`ctx._source.${key} += ${val}`);
                 return L;
             }, []);
-            if (version.major < 7 && !this.isOpenSearch) params.body.lang = 'painless';
+            if (parsedVersion.major < 7 && parsedVersion.engine === 'es') params.body.lang = 'painless';
             params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -776,11 +789,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
-        const version: ParsedVersion = this.parsedVersion;
+        const parsedVersion: ParsedVersion = this.parsedVersion;
         const params: ElasticSearchParams = { index: indexName, body, searchType };
 
         // check version to include 'type' in params
-        if (version.major < 7 && !this.isOpenSearch) {
+        if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
             params.type = type;
         }
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));

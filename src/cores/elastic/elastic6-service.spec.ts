@@ -83,13 +83,35 @@ export const initService = async (ver: VERSIONS) => {
     expect2(() => service.options.version).toEqual(ver);
 
     //* check version parse error
-    const parsedVersion: ParsedVersion = service.parseVersion('12345');
-    expect2(parsedVersion).toEqual({ major: 12345, minor: 0 });
-    const parsedVersion2: ParsedVersion = service.parseVersion('abcd');
-    expect2(parsedVersion2).toEqual({ major: 0, minor: 0 });
+    expect2(() => service.parseVersion('12345')).toEqual('@version[12345] is invalid - fail to parse');
+    expect2(() => service.parseVersion('abcd')).toEqual('@version[abcd] is invalid - fail to parse');
 
-    expect2(() => service.parseVersion('a')).toEqual({ major: 12345, minor: 0 });
-
+    expect2(() => service.parseVersion('1.2.3')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 3 });
+    expect2(() => service.parseVersion('1.2')).toEqual({ engine: 'os', major: 1, minor: 2 });
+    expect2(() => service.parseVersion('1')).toEqual({ engine: 'os', major: 1 });
+    expect2(() => service.parseVersion('1.2.3-alpha')).toEqual({
+        engine: 'os',
+        major: 1,
+        minor: 2,
+        patch: 3,
+        prerelease: 'alpha',
+    });
+    expect2(() => service.parseVersion('1.2.3+build.001')).toEqual({
+        build: 'build.001',
+        engine: 'os',
+        major: 1,
+        minor: 2,
+        patch: 3,
+    });
+    expect2(() => service.parseVersion('1.2.3-alpha+build.001')).toEqual({
+        build: 'build.001',
+        engine: 'os',
+        major: 1,
+        minor: 2,
+        patch: 3,
+        prerelease: 'alpha',
+    });
+    expect2(() => service.parseVersion('1.2.3a')).toEqual('@version[1.2.3a] is invalid - fail to parse');
     return { service, options };
 };
 
@@ -101,6 +123,7 @@ export const initService = async (ver: VERSIONS) => {
 export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<void> => {
     const PASS = (e: any) => e;
     const indexName = service.options.indexName;
+    const parsedVersion: ParsedVersion = service.parsedVersion;
 
     //* destroy index
     const oldIndex = await service.findIndex(indexName);
@@ -152,7 +175,7 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
                 };
 
                 // Version-specific handling
-                if (service.version <= 7 && !service.isOpenSearch) {
+                if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
                     return {
                         ...commonData,
                     };
@@ -174,7 +197,7 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
                         type: 'custom',
                     },
                     autocomplete_case_sensitive: {
-                        filter: service.version <= 7 && !service.isOpenSearch ? ['standard'] : [],
+                        filter: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? ['standard'] : [],
                         tokenizer: 'edge_30grams',
                         type: 'custom',
                     },
@@ -208,19 +231,19 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
             },
             created_at: {
                 type: 'date',
-                ...(service.version >= 2 && service.isOpenSearch
+                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
                     ? { format: 'strict_date_optional_time||epoch_millis' }
                     : {}),
             },
             deleted_at: {
                 type: 'date',
-                ...(service.version >= 2 && service.isOpenSearch
+                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
                     ? { format: 'strict_date_optional_time||epoch_millis' }
                     : {}),
             },
             updated_at: {
                 type: 'date',
-                ...(service.version >= 2 && service.isOpenSearch
+                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
                     ? { format: 'strict_date_optional_time||epoch_millis' }
                     : {}),
             },
@@ -364,8 +387,7 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
  */
 export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
     const indexName = service.options.indexName;
-    const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
-    const version = parsedVersion.major;
+    const parsedVersion: ParsedVersion = service.parsedVersion;
     //* try to search...
     await waited(2000);
     const $search: SearchBody = {
@@ -404,12 +426,12 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
                     _index: indexName,
                     _score: null,
                     _source: { $id: 'A0', name: 'a0', type: 'test', count: 0 },
-                    ...(version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                    ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os' ? {} : { _type: '_doc' }),
                     sort: [0],
                 },
             ],
             max_score: null,
-            total: version < 7 && !service.isOpenSearch ? 2 : { relation: 'eq', value: 2 },
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 2 : { relation: 'eq', value: 2 },
         },
         aggregations: {
             test: {
@@ -579,8 +601,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
  * @param service - Elasticsearch service instance.
  */
 export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
-    const version = parsedVersion.major;
+    const parsedVersion: ParsedVersion = service.parsedVersion;
     //* 테스트를 위한 agent 생성
     const agent = <T = any>(id: string = 'A0') => ({
         update: (data: T) =>
@@ -626,7 +647,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     }
 
     // formatting mappings
-    const properties = version < 7 && !service.isOpenSearch ? mapping?._doc?.properties : mapping?.properties;
+    const properties =
+        parsedVersion.major < 7 && parsedVersion.engine === 'es' ? mapping?._doc?.properties : mapping?.properties;
     const fieldsWithTypes = getFieldTypes(properties);
 
     // verify mapping types
@@ -741,7 +763,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ date_field: 1234567890 })).toEqual({
         date_field: 1234567890,
     });
-    if (version < 7 && !service.isOpenSearch) {
+    if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
         expect2(await agent().update({ date_field: 1.23456789 })).toEqual({
             date_field: 1.23456789,
         });
@@ -935,7 +957,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     const mapping2 = await service.getIndexMapping();
 
     // formatting mappings
-    const properties2 = version < 7 && !service.isOpenSearch ? mapping2?._doc?.properties : mapping2?.properties;
+    const properties2 =
+        parsedVersion.major < 7 && parsedVersion.engine === 'es' ? mapping2?._doc?.properties : mapping2?.properties;
     const fieldsWithTypes2 = getFieldTypes(properties2);
 
     // verify mapping types
@@ -979,8 +1002,7 @@ const searchAgent = <T = any>(service: Elastic6Service<MyModel>) => ({
  */
 
 export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
-    const version = parsedVersion.major;
+    const parsedVersion: ParsedVersion = service.parsedVersion;
 
     //* auto-indexing w/ tokenizer. keyword (basic), hangul
     expect2(
@@ -1087,7 +1109,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 },
             ],
             max_score: null,
-            total: version < 7 && !service.isOpenSearch ? 2 : { relation: 'eq', value: 2 },
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 2 : { relation: 'eq', value: 2 },
         },
         timed_out: false,
     });
@@ -1190,7 +1212,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 },
             ],
             max_score: null,
-            total: version < 7 && !service.isOpenSearch ? 2 : { relation: 'eq', value: 2 },
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 2 : { relation: 'eq', value: 2 },
         },
         timed_out: false,
     });
@@ -1249,6 +1271,7 @@ interface BulkDummyResponse {
  */
 export const bulkDummyData = async (service: Elastic6Service<any>): Promise<BulkDummyResponse> => {
     const { indexName } = service.options;
+    const parsedVersion: ParsedVersion = service.parsedVersion;
 
     // create 20000 Items
     const dataset = Array.from({ length: 20000 }, (_, i) => ({
@@ -1263,7 +1286,7 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
             index: {
                 _index: indexName,
                 _id: doc.id,
-                ...(service.version >= 2 && service.isOpenSearch ? {} : { _type: '_doc' }),
+                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os' ? {} : { _type: '_doc' }),
             },
         });
         acc.push(doc);
@@ -1296,7 +1319,7 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
 export const totalSummary = async (service: Elastic6Service<any>) => {
     const res = await bulkDummyData(service);
     expect2(res?.errors).toEqual(false);
-    const version = service.parseVersion(service.options.version || '7.1').major;
+    const parsedVersion: ParsedVersion = service.parsedVersion;
     //* test search with 20,000 data
     const $search: SearchBody = {
         size: 5,
@@ -1352,7 +1375,7 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
             { _id: 'A1000', _score: null, count: 0, id: 'A1000', name: '1000 번째 data' },
             { _id: 'A10000', _score: null, count: 0, id: 'A10000', name: '10000 번째 data' },
         ],
-        total: version < 7 && !service.isOpenSearch ? 20000 : 10000, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
+        total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : 10000, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
     });
 
     expect2(await searchAgent(service).searchRaw($search)).toEqual({
@@ -1384,7 +1407,7 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
                 { _id: 'A10000', _source: { count: 0, id: 'A10000', name: '10000 번째 data' }, sort: ['A10000'] },
             ],
             max_score: null,
-            total: version < 7 && !service.isOpenSearch ? 20000 : { relation: 'gte', value: 10000 }, // version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
         },
         timed_out: false,
     });
@@ -1587,7 +1610,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        expect2(() => service.getVersion()).toEqual({ major: 6, minor: 2 });
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -1619,7 +1642,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -1650,7 +1673,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
 
         await setupIndex(service);
 
@@ -1679,7 +1702,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -1711,7 +1734,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         await setupIndex(service);
 
@@ -1740,7 +1763,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         await setupIndex(service);
 
@@ -1763,10 +1786,11 @@ describe('Elastic6Service', () => {
         jest.setTimeout(120000);
         //* load dummy storage service.
         const { service } = await initService('2.13');
-        //* break if no live connection
-        await canPerformTest(service);
 
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
+
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         await setupIndex(service);
 
