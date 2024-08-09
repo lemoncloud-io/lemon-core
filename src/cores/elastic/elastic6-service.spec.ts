@@ -55,6 +55,9 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
         public async getVersion(options?: any) {
             return super.getVersion(options);
         }
+        public async executeSelfTest() {
+            return super.executeSelfTest();
+        }
     })();
     const dummy: Elastic6Service<GeneralItem> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
     return { version, service, dummy, options };
@@ -1406,7 +1409,7 @@ export const totalSummary = async (service: Elastic6Service<any>) => {
         timed_out: false,
     });
     //* test scanAll with 20,000 data
-    const allResults = await service.searchAll($search);
+    const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 15000 } });
     expect2(allResults.length).toEqual(20000);
 
     // verify allResults
@@ -1606,6 +1609,11 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: true,
+            optionVersion: { engine: 'es', major: 6, minor: 2, patch: 0 },
+            rootVersion: { engine: 'es', major: 6, minor: 2, patch: 3 },
+        });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -1639,6 +1647,11 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: true,
+            optionVersion: { engine: 'es', major: 7, minor: 1, patch: 0 },
+            rootVersion: { engine: 'es', major: 7, minor: 1, patch: 1 },
+        });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -1671,6 +1684,11 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: false,
+            optionVersion: { engine: 'es', major: 7, minor: 2, patch: 0 },
+            rootVersion: { engine: 'es', major: 7, minor: 4, patch: 2 },
+        });
 
         await setupIndex(service);
 
@@ -1701,6 +1719,11 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: true,
+            optionVersion: { engine: 'es', major: 7, minor: 10, patch: 0 },
+            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
+        });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
@@ -1734,6 +1757,11 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: false,
+            optionVersion: { engine: 'os', major: 1, minor: 1, patch: 0 },
+            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
+        });
 
         await setupIndex(service);
 
@@ -1764,6 +1792,11 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: false,
+            optionVersion: { engine: 'os', major: 1, minor: 2, patch: 0 },
+            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
+        });
 
         await setupIndex(service);
 
@@ -1792,6 +1825,11 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: false,
+            optionVersion: { engine: 'os', major: 2, minor: 13, patch: 0 },
+            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
+        });
 
         await setupIndex(service);
 

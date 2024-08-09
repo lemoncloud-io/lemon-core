@@ -71,12 +71,21 @@ export interface Elastic6Item extends GeneralItem {
     _version?: number;
     _score?: number;
 }
-
+export interface RetryOptions {
+    /** do retry? (default true) */
+    do?: boolean;
+    /** retry after t msec (default 5000ms) */
+    t?: number;
+    /** maximum ㄱetries (default 3 times) */
+    maxRetries?: number;
+}
 export interface Elastic6SearchAllParams {
     /** search-type */
     searchType?: SearchType;
     /** limit (default -1) */
     limit?: number;
+    /** options for retrying (default true)*/
+    retryOptions?: RetryOptions;
 }
 
 /**
@@ -879,32 +888,36 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param params        optional parameters
      */
     public async *generateSearchResult(body: SearchBody, params?: Elastic6SearchAllParams) {
+        const doRetry = params?.retryOptions?.do ?? false;
+        const t = params?.retryOptions?.t ?? 5000;
+        const maxRetries = params?.retryOptions?.maxRetries ?? 3;
         let limit = params?.limit ?? -1;
+        let retryCount = 0;
+
         if (!body.sort) body.sort = '_doc';
 
         do {
-            const { list, last } = await this.search(body, params?.searchType).catch(async e => {
-                const msg = GETERR(e);
+            try {
+                const { list, last } = await this.search(body, params?.searchType);
 
-                //TODO - need to have retry paramters? (또는 무한루프 조심!!)
-                //TODO - 기본은 retry없이 에러 발생 ..
-                //TODO - catch 조건이 밖에 있는 search()와 아래의 search()가 같도록..
-                if (msg.startsWith('429 UNKNOWN')) {
-                    _err(NS, `retrying after 15 seconds...`, e);
-                    await waited(15000);
-                    return this.search(body, params?.searchType).catch(() => ({ list: [], last: null })); // Retry
+                body.search_after = last;
+
+                if (list.length === 0 && !body.search_after) {
+                    break;
                 }
 
-                return { list: [], last: null };
-            });
+                yield list;
+            } catch (e) {
+                const msg = GETERR(e);
 
-            body.search_after = last;
-
-            if (list.length === 0 && !body.search_after) {
-                break;
+                if (doRetry && msg.startsWith('429 UNKNOWN') && retryCount < maxRetries) {
+                    retryCount++;
+                    await waited(t);
+                    continue;
+                } else {
+                    throw e;
+                }
             }
-
-            yield list;
         } while (body.search_after && (limit === -1 || --limit > 0));
     }
 
