@@ -87,8 +87,10 @@ export const initService = async (ver: VERSIONS) => {
     expect2(() => service.parseVersion('abcd')).toEqual('@version[abcd] is invalid - fail to parse');
 
     expect2(() => service.parseVersion('1.2.3')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 3 });
-    expect2(() => service.parseVersion('1.2')).toEqual({ engine: 'os', major: 1, minor: 2 });
-    expect2(() => service.parseVersion('1')).toEqual({ engine: 'os', major: 1 });
+    expect2(() => service.parseVersion('1.2')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 0 });
+    expect2(() => service.parseVersion('1')).toEqual({ engine: 'os', major: 1, minor: 0, patch: 0 });
+    expect2(() => service.parseVersion('1.2.0')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 0 });
+    expect2(() => service.parseVersion('1.0.0')).toEqual({ engine: 'os', major: 1, minor: 0, patch: 0 });
     expect2(() => service.parseVersion('1.2.3-alpha')).toEqual({
         engine: 'os',
         major: 1,
@@ -173,15 +175,7 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
                     properties: mappings._doc ? mappings._doc.properties : mappings.properties,
                     dynamic_templates: mappings._doc ? mappings._doc.dynamic_templates : mappings.dynamic_templates,
                 };
-
-                // Version-specific handling
-                if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
-                    return {
-                        ...commonData,
-                    };
-                } else {
-                    return commonData;
-                }
+                return commonData;
             })
             .catch(PASS),
     ).toEqual({
@@ -1610,6 +1604,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
 
         //* break if no live connection
@@ -1642,6 +1637,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
 
         //* break if no live connection
@@ -1673,6 +1669,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
 
         await setupIndex(service);
@@ -1702,6 +1699,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         //* break if no live connection
@@ -1734,6 +1732,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         await setupIndex(service);
@@ -1763,6 +1762,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         await setupIndex(service);
@@ -1790,6 +1790,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
+        //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
         await setupIndex(service);

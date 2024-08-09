@@ -1,64 +1,64 @@
 {
-    "body": {
-      "cluster_name": "085403634746:test-es72",
-      "cluster_uuid": "OCWZ2q_4R4S9uKw4Zr-ZYA",
-      "name": "08246603c2cf1a0fe5e331959d78de6c",
-      "tagline": "You Know, for Search",
-      "version": {
-        "build_date": "2024-05-04T23:40:41.241922Z",
-        "build_flavor": "oss",
-        "build_hash": "unknown",
-        "build_snapshot": false,
-        "build_type": "tar",
-        "lucene_version": "8.2.0",
-        "minimum_index_compatibility_version": "6.0.0-beta1",
-        "minimum_wire_compatibility_version": "6.8.0",
-        "number": "7.4.2"
-      }
+  "!": "es7.2 client info",
+  "body": {
+    "name": "08246603c2cf1a0fe5e331959d78de6c",
+    "cluster_name": "085403634746:test-es72",
+    "cluster_uuid": "OCWZ2q_4R4S9uKw4Zr-ZYA",
+    "version": {
+      "number": "7.4.2",
+      "build_flavor": "oss",
+      "build_type": "tar",
+      "build_hash": "unknown",
+      "build_date": "2024-05-04T23:40:41.241922Z",
+      "build_snapshot": false,
+      "lucene_version": "8.2.0",
+      "minimum_wire_compatibility_version": "6.8.0",
+      "minimum_index_compatibility_version": "6.0.0-beta1"
     },
-    "headers": {
-      "access-control-allow-origin": "*",
-      "connection": "keep-alive",
-      "content-length": "529",
-      "content-type": "application/json; charset=UTF-8",
-      "date": "Fri, 26 Jul 2024 01:14:58 GMT"
-    },
-    "meta": {
-      "aborted": false,
-      "attempts": 0,
-      "connection": {
-        "_openRequests": 0,
-        "deadCount": 0,
-        "headers": {},
-        "id": "https://localhost:9072/",
-        "resurrectTimeout": 0,
-        "roles": {
-          "data": true,
-          "ingest": true,
-          "master": true,
-          "ml": false
+    "tagline": "You Know, for Search"
+  },
+  "statusCode": 200,
+  "headers": {
+    "date": "Fri, 09 Aug 2024 05:48:27 GMT",
+    "content-type": "application/json; charset=UTF-8",
+    "content-length": "529",
+    "connection": "keep-alive",
+    "access-control-allow-origin": "*"
+  },
+  "meta": {
+    "context": null,
+    "request": {
+      "params": {
+        "method": "GET",
+        "path": "/",
+        "body": null,
+        "querystring": "",
+        "headers": {
+          "user-agent": "elasticsearch-js/7.12.0 (darwin 23.5.0-arm64; Node.js v18.19.1)",
+          "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1"
         },
-        "status": "alive",
-        "url": "https://localhost:9072/"
+        "timeout": 30000
       },
-      "context": null,
-      "name": "elasticsearch-js",
-      "request": {
-        "id": 1,
-        "options": {},
-        "params": {
-          "body": null,
-          "headers": {
-            "user-agent": "elasticsearch-js/7.12.0 (darwin 23.5.0-arm64; Node.js v18.19.1)",
-            "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1"
-          },
-          "method": "GET",
-          "path": "/",
-          "querystring": "",
-          "timeout": 30000
-        }
+      "options": {},
+      "id": 2
+    },
+    "name": "elasticsearch-js",
+    "connection": {
+      "url": "https://localhost:9072/",
+      "id": "https://localhost:9072/",
+      "headers": {},
+      "deadCount": 0,
+      "resurrectTimeout": 0,
+      "_openRequests": 1,
+      "status": "alive",
+      "roles": {
+        "master": true,
+        "data": true,
+        "ingest": true,
+        "ml": false
       }
     },
-    "statusCode": 200
+    "attempts": 0,
+    "aborted": false
   }
-  
+}

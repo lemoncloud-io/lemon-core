@@ -93,9 +93,9 @@ export interface ParsedVersion {
     /** major version */
     major: number;
     /** minor version */
-    minor?: number;
+    minor: number;
     /** patch version */
-    patch?: number;
+    patch: number;
     /** pre-release label (e.g., 'alpha', 'beta') */
     prerelease?: string;
     /** build metadata */
@@ -246,13 +246,22 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // it consumes about >20ms
         const info = await this.client.info();
 
-        const version: string = $U.S(info.body.version.number);
-        const parsedVersion: ParsedVersion = this.parseVersion(version, { throwable: true });
+        const rootVersion: string = $U.S(info.body.version.number);
+        const parsedVersion: ParsedVersion = this.parseVersion(rootVersion, { throwable: true });
+
         if (isDump) {
             //* save into `info.json`.
-            //TODO - 자동으로 매칭되는 info.json 패스에 데이터 생성하기..
-            const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
-            await this.saveInfoToFile(info, filePath);
+            // TODO - 자동으로 매칭되는 info.json 패스에 데이터 생성하기..
+
+            const description = {
+                '!': `${this.parsedVersion?.engine}${this.options.version} client info`,
+                ...info,
+            };
+            const filePath = path.resolve(
+                __dirname,
+                `../../../data/samples/${this.parsedVersion?.engine}${this.options.version}/info.json`,
+            );
+            await this.saveInfoToFile(description, filePath);
         }
 
         return parsedVersion;
@@ -264,10 +273,25 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     protected async executeSelfTest() {
         // STEP.1 read the parsed-version.
+        const optionVersion: ParsedVersion = this.parsedVersion;
+
         // STEP.2 get the real version via `getVersion()`
+        const rootVersion: ParsedVersion = await this.getVersion();
+
         // STEP.3 validate version
-        return;
+        const isEqual =
+            optionVersion.engine === rootVersion.engine &&
+            optionVersion.major === rootVersion.major &&
+            optionVersion.minor === rootVersion.minor;
+
+        // Return the comparison result
+        return {
+            isEqual: isEqual,
+            optionVersion: optionVersion,
+            rootVersion: rootVersion,
+        };
     }
+
     /**
      * parse version according to Semantic Versioning (SemVer) rules.
      *
@@ -293,8 +317,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const res: ParsedVersion = {
             engine: $U.N(match[1], 10) < 6 ? 'os' : 'es',
             major: $U.N(match[1], 10),
-            ...(match[2] !== undefined ? { minor: $U.N(match[2], 10) } : {}),
-            ...(match[3] !== undefined ? { patch: $U.N(match[3], 10) } : {}),
+            minor: match[2] !== undefined ? $U.N(match[2], 10) : 0,
+            patch: match[3] !== undefined ? $U.N(match[3], 10) : 0,
             ...(match[4] !== undefined ? { prerelease: match[4] } : {}),
             ...(match[5] !== undefined ? { build: match[5] } : {}),
         };
@@ -395,9 +419,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param settings      creating settings
      */
     public async createIndex(settings?: any) {
-        const { indexName, docType, idName, timeSeries } = this.options;
-        const parsedVersion: ParsedVersion = this.parsedVersion;
-        const version = parsedVersion?.major;
+        const { indexName, docType, idName, timeSeries, version } = this.options;
         settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
@@ -899,7 +921,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public static prepareSettings(params: {
         docType: string;
         idName: string;
-        version?: number;
+        version?: string;
         timeSeries?: boolean;
         shards?: number;
         replicas?: number;
