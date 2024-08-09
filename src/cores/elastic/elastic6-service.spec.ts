@@ -98,8 +98,9 @@ export const initService = async (ver: VERSIONS) => {
  * @param service - Elasticsearch service instance.
  * @param indexName - the name of the index to be set up.
  */
-export const setupIndex = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
+export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<void> => {
     const PASS = (e: any) => e;
+    const indexName = service.options.indexName;
 
     //* destroy index
     const oldIndex = await service.findIndex(indexName);
@@ -361,7 +362,8 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
  * @param service - Elasticsearch service instance.
  * @param indexName - the name of the index to search.
  */
-export const basicSearchTest = async (service: Elastic6Service<MyModel>, indexName: string): Promise<void> => {
+export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
+    const indexName = service.options.indexName;
     const parsedVersion: ParsedVersion = service.parseVersion(service.options.version || '7.1');
     const version = parsedVersion.major;
     //* try to search...
@@ -1580,18 +1582,21 @@ describe('Elastic6Service', () => {
         jest.setTimeout(120000);
 
         //* load dummy storage service.
-        const { service, options } = await initService('6.2');
-        const indexName = options.indexName;
+        const { service } = await initService('6.2');
+
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
+
         expect2(() => service.getVersion()).toEqual({ major: 6, minor: 2 });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+        await setupIndex(service);
 
         await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+        await basicSearchTest(service);
 
         await autoIndexingTest(service);
 
@@ -1609,18 +1614,21 @@ describe('Elastic6Service', () => {
         jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
-        const { service, options } = await initService('7.1');
-        const indexName = options.indexName;
+        const { service } = await initService('7.1');
+
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
+
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 1 });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+        await setupIndex(service);
 
         await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+        await basicSearchTest(service);
 
         await autoIndexingTest(service);
 
@@ -1637,18 +1645,18 @@ describe('Elastic6Service', () => {
         jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
-        const { service, options } = await initService('7.2');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
+        const { service } = await initService('7.2');
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 4 });
+
+        await setupIndex(service);
 
         await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+        await basicSearchTest(service);
 
         await autoIndexingTest(service);
 
@@ -1666,18 +1674,21 @@ describe('Elastic6Service', () => {
         jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
-        const { service, options } = await initService('7.10');
-        const indexName = options.indexName;
+        const { service } = await initService('7.10');
+
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
+
         expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+        await setupIndex(service);
 
         await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+        await basicSearchTest(service);
 
         await autoIndexingTest(service);
 
@@ -1695,18 +1706,18 @@ describe('Elastic6Service', () => {
         jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
-        const { service, options } = await initService('1.1');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+        const { service } = await initService('1.1');
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+
+        await setupIndex(service);
 
         await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+        await basicSearchTest(service);
 
         await autoIndexingTest(service);
 
@@ -1724,18 +1735,18 @@ describe('Elastic6Service', () => {
         jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
-        const { service, options } = await initService('1.2');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+        const { service } = await initService('1.2');
 
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        await setupIndex(service, indexName);
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+
+        await setupIndex(service);
 
         await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+        await basicSearchTest(service);
 
         await cleanup(service);
 
@@ -1751,18 +1762,17 @@ describe('Elastic6Service', () => {
         // if (!PROFILE) return; // ignore w/o profile
         jest.setTimeout(120000);
         //* load dummy storage service.
-        const { service, options } = await initService('2.13');
-        const indexName = options.indexName;
-        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
-
+        const { service } = await initService('2.13');
         //* break if no live connection
         await canPerformTest(service);
 
-        await setupIndex(service, indexName);
+        expect2(() => service.getVersion()).toEqual({ major: 7, minor: 10 });
+
+        await setupIndex(service);
 
         await basicCRUDTest(service);
 
-        await basicSearchTest(service, indexName);
+        await basicSearchTest(service);
 
         await autoIndexingTest(service);
 
