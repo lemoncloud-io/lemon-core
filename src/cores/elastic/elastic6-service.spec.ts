@@ -47,7 +47,15 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
     const docType = '_doc'; //! must be `_doc`.
     const autocompleteFields = useAutoComplete ? ['title', 'name'] : null;
     const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
-    const service: Elastic6Service<MyModel> = new Elastic6Service<MyModel>(options);
+    const service = new (class extends Elastic6Service<MyModel> {
+        public constructor() {
+            super(options);
+        }
+        //* open to `public`
+        public async getVersion(options?: any) {
+            return super.getVersion(options);
+        }
+    })();
     const dummy: Elastic6Service<GeneralItem> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
     return { version, service, dummy, options };
 };
@@ -57,9 +65,7 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
  * @param ver - version of the Elasticsearch service.
  * @returns object containing the initialized service and its options.
  */
-export const initService = async (
-    ver: VERSIONS,
-): Promise<{ service: Elastic6Service<MyModel>; options: Elastic6Option }> => {
+export const initService = async (ver: VERSIONS) => {
     const { service, options } = instance(ver);
     const { indexName, idName } = options;
 
@@ -81,6 +87,8 @@ export const initService = async (
     expect2(parsedVersion).toEqual({ major: 12345, minor: 0 });
     const parsedVersion2: ParsedVersion = service.parseVersion('abcd');
     expect2(parsedVersion2).toEqual({ major: 0, minor: 0 });
+
+    expect2(() => service.parseVersion('a')).toEqual({ major: 12345, minor: 0 });
 
     return { service, options };
 };
@@ -579,9 +587,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
                 .then(R => {
                     // eslint-disable-next-line @typescript-eslint/no-unused-vars
                     const { _version, _id, ...rest } = R;
-                    return {
-                        ...rest,
-                    };
+                    return rest;
                 })
                 .catch(GETERR),
         save: (data: T) => service.saveItem(id, data).catch(GETERR),

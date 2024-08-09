@@ -72,10 +72,23 @@ export interface Elastic6Item extends GeneralItem {
     _score?: number;
 }
 
+export interface Elastic6SearchAllParams {
+    /** search-type */
+    searchType?: SearchType;
+    /** limit (default -1) */
+    limit?: number;
+}
+
+/**
+ * typeof search-engine type
+ */
+export type EngineType = 'os' | 'es';
+
 /**
  * parsed version with major and minor version numbers.
  */
 export interface ParsedVersion {
+    engine?: EngineType;
     major: number;
     minor: number;
 }
@@ -145,7 +158,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     protected _options: Elastic6Option;
     public readonly _client: elasticsearch.Client;
-    public _parsedVersion: ParsedVersion;
 
     /**
      * simple instance maker.
@@ -181,15 +193,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const { client } = Elastic6Service.instance(options.endpoint);
         this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
         this._client = client;
-        this.initializeParsedVersion();
-    }
-
-    /**
-     * initialize the parsedVersion property.
-     */
-    private async initializeParsedVersion() {
-        // this._parsedVersion = await this.getVersion();
-        this._parsedVersion = this.parseVersion(this.options.version || '7.1');
     }
 
     /**
@@ -220,31 +223,43 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * get the parsedVersion
      */
     public get parsedVersion(): ParsedVersion {
-        return this._parsedVersion;
+        return this.parseVersion(this.options.version);
     }
+
     /**
      * get the root version from client
+     *
+     * @protected only for internal test.
      */
-    public async getVersion(options?: { dump?: boolean }): Promise<ParsedVersion> {
+    protected async getVersion(options?: { dump?: boolean }): Promise<ParsedVersion> {
         const isDump = options?.dump ?? false;
 
-        try {
-            const info = await this.client.info();
+        // it consumes about >20ms
+        const info = await this.client.info();
 
-            const version: string = $U.S(info.body.version.number);
-            const parsedVersion: ParsedVersion = this.parseVersion(version, { throwable: true });
-            if (isDump) {
-                //* save into `info.json`.
-                const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
-                await this.saveInfoToFile(info, filePath);
-            }
-
-            return parsedVersion;
-        } catch (e) {
-            //* bypass error.
-            throw e;
+        const version: string = $U.S(info.body.version.number);
+        const parsedVersion: ParsedVersion = this.parseVersion(version, { throwable: true });
+        if (isDump) {
+            //* save into `info.json`.
+            //TODO - 자동으로 매칭되는 info.json 패스에 데이터 생성하기..
+            const filePath = path.resolve(__dirname, `../../../data/samples/info-${this._options.indexName}.json`);
+            await this.saveInfoToFile(info, filePath);
         }
+
+        return parsedVersion;
     }
+
+    /**
+     *
+     * @protected only for internal test.
+     */
+    protected async executeSelfTest() {
+        // STEP.1 read the parsed-version.
+        // STEP.2 get the real version via `getVersion()`
+        // STEP.3 validate version
+        return;
+    }
+
     /**
      * if the service is using OpenSearch
      */
@@ -255,22 +270,21 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * parse the version with major and minor version
      */
     public parseVersion(version: string, options?: { throwable?: boolean }): ParsedVersion {
-        const match = version.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
-        const isThrowable = options?.throwable ?? false;
+        const isThrowable = options?.throwable ?? true;
+
+        if (!version && isThrowable) throw new Error(`@version (string) is required!`);
+
+        // ex: 1.2.3 -> ok, 1.2 -> ??, 1. -> ??, 1.2.3a -> ??
+        const match = version?.match(/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$/);
 
         if (!match) {
             if (isThrowable) throw new Error(`@version[${version}] is invalid - fail to parse`);
-
-            const res: ParsedVersion = {
-                major: parseInt(version) || 0,
-                minor: 0,
-            };
-            return res;
+            return null;
         }
 
         const res: ParsedVersion = {
-            major: parseInt(match[1], 10),
-            minor: parseInt(match[2], 10),
+            major: $U.N(match[1], 10),
+            minor: $U.N(match[2], 10),
         };
 
         return res;
@@ -791,6 +805,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     /**
      * run search, and get the formatmted response.
+     *
+     * TODO - define type of response.
      */
     public async search(body: SearchBody, searchType?: SearchType) {
         const size = $U.N(body.size, 0);
@@ -813,9 +829,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * search all until limit (-1 means no-limit)
      */
-    public async searchAll<T>(body: SearchBody, searchType?: SearchType, limit: number = -1) {
+    public async searchAll<T>(body: SearchBody, params?: Elastic6SearchAllParams) {
         const list: T[] = [];
-        for await (const chunk of this.generateSearchResult(body, searchType, limit)) {
+        for await (const chunk of this.generateSearchResult(body, params)) {
             chunk.forEach((N: T) => list.push(N));
         }
         return list;
@@ -825,20 +841,23 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * create async generator that yields items queried until last
      *
      * @param body          Elasticsearch Query DSL
-     * @param searchType    see 'search_type' in Elasticsearch documentation
-     * @param number        the maximum limit of loop (-1 means un-limited)
+     * @param params        optional parameters
      */
-    public async *generateSearchResult(body: SearchBody, searchType?: SearchType, limit?: number) {
+    public async *generateSearchResult(body: SearchBody, params?: Elastic6SearchAllParams) {
+        let limit = params?.limit ?? -1;
         if (!body.sort) body.sort = '_doc';
 
         do {
-            const { list, last } = await this.search(body, searchType).catch(async e => {
+            const { list, last } = await this.search(body, params?.searchType).catch(async e => {
                 const msg = GETERR(e);
 
+                //TODO - need to have retry paramters? (또는 무한루프 조심!!)
+                //TODO - 기본은 retry없이 에러 발생 ..
+                //TODO - catch 조건이 밖에 있는 search()와 아래의 search()가 같도록..
                 if (msg.startsWith('429 UNKNOWN')) {
                     _err(NS, `retrying after 15 seconds...`, e);
                     await waited(15000);
-                    return await this.search(body, searchType).catch(() => ({ list: [], last: null })); // Retry
+                    return this.search(body, params?.searchType).catch(() => ({ list: [], last: null })); // Retry
                 }
 
                 return { list: [], last: null };
