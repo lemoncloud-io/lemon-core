@@ -1263,7 +1263,7 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
     const { indexName } = service.options;
     const parsedVersion: ParsedVersion = service.parsedVersion;
 
-    const departmentName: Array<string> = [
+    const departments: Array<string> = [
         'Admin',
         'HR',
         'Finance',
@@ -1278,12 +1278,17 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
 
     const salaries = [3000, 5000, 7500, 11500, 16000, 20000];
     const companies = ['A', 'B', 'C'];
+    const firstNames = ['Alex', 'Jordan', 'Casey', 'Riley', 'Morgan', 'Quinn', 'Avery', 'Rowan'];
+    const middleNames = ['Lee', 'Parker', 'Sage', 'Reese', 'Blake', 'Hayden'];
+    const lastNames = ['Harper', 'Reed', 'Bailey', 'Cameron', 'Ellis', 'Gray', 'Mason'];
 
-    const dataset = Array.from({ length: 15000 }, (_, i) => {
+    const dataset = Array.from({ length: 20000 }, (_, i) => {
         return {
-            id: `${i + 1}`,
-            name: `employee ${i + 1}`,
-            department: departmentName[(i + 1) % 10],
+            id: `employee ${i + 1}`,
+            name: `${firstNames[(i + 1) % firstNames.length]} ${middleNames[(i + 1) % middleNames.length]} ${
+                lastNames[(i + 1) % lastNames.length]
+            }`,
+            department: departments[(i + 1) % 10],
             salary: salaries[(i + 1) % 6],
             count: (i + 1) % 10,
             company: companies[(i + 1) % 3],
@@ -1322,8 +1327,9 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
     };
     return bulkDummyResponse;
 };
+
 /**
- * perform total summary with 15,000 data
+ * perform total summary with 20,000 data
  * @param service - Elasticsearch service instance.
  */
 export const totalSummaryTest = async (service: Elastic6Service<any>) => {
@@ -1340,20 +1346,17 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     await service.createIndex();
     await waited(200);
 
-    try {
-        const res = await bulkDummyData(service);
-        expect2(res?.errors).toEqual(false);
-    } catch (e) {
-        throw e;
-    }
-    //* test search with 15,000 data
+    const res = await bulkDummyData(service);
+    expect2(res?.errors).toEqual(false);
+
+    //* test search with 20,000 data
     const $search: SearchBody = {
         size: 5,
         query: {
             bool: {
                 filter: {
                     term: {
-                        name: 'employee',
+                        id: 'employee',
                     },
                 },
             },
@@ -1378,91 +1381,91 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
         aggregations: {
             indexing: {
                 buckets: [
-                    { doc_count: 1500, key: 0 },
-                    { doc_count: 1500, key: 1 },
-                    { doc_count: 1500, key: 2 },
-                    { doc_count: 1500, key: 3 },
-                    { doc_count: 1500, key: 4 },
-                    { doc_count: 1500, key: 5 },
-                    { doc_count: 1500, key: 6 },
-                    { doc_count: 1500, key: 7 },
-                    { doc_count: 1500, key: 8 },
-                    { doc_count: 1500, key: 9 },
+                    { doc_count: 2000, key: 0 },
+                    { doc_count: 2000, key: 1 },
+                    { doc_count: 2000, key: 2 },
+                    { doc_count: 2000, key: 3 },
+                    { doc_count: 2000, key: 4 },
+                    { doc_count: 2000, key: 5 },
+                    { doc_count: 2000, key: 6 },
+                    { doc_count: 2000, key: 7 },
+                    { doc_count: 2000, key: 8 },
+                    { doc_count: 2000, key: 9 },
                 ],
                 doc_count_error_upper_bound: 0,
                 sum_other_doc_count: 0,
             },
         },
-        last: ['10000'],
+        last: ['employee 10000'],
         list: [
             {
-                _id: '1',
+                _id: 'employee 1',
                 _score: null,
                 company: 'B',
                 count: 1,
                 department: 'HR',
-                id: '1',
-                name: 'employee 1',
+                id: 'employee 1',
+                name: 'Jordan Parker Reed',
                 salary: 5000,
             },
             {
-                _id: '10',
+                _id: 'employee 10',
                 _score: null,
                 company: 'B',
                 count: 0,
                 department: 'Admin',
-                id: '10',
-                name: 'employee 10',
+                id: 'employee 10',
+                name: 'Casey Blake Cameron',
                 salary: 16000,
             },
             {
-                _id: '100',
+                _id: 'employee 100',
                 _score: null,
                 company: 'B',
                 count: 0,
                 department: 'Admin',
-                id: '100',
-                name: 'employee 100',
+                id: 'employee 100',
+                name: 'Morgan Blake Bailey',
                 salary: 16000,
             },
             {
-                _id: '1000',
+                _id: 'employee 1000',
                 _score: null,
                 company: 'B',
                 count: 0,
                 department: 'Admin',
-                id: '1000',
-                name: 'employee 1000',
+                id: 'employee 1000',
+                name: 'Alex Blake Mason',
                 salary: 16000,
             },
             {
-                _id: '10000',
+                _id: 'employee 10000',
                 _score: null,
                 company: 'B',
                 count: 0,
                 department: 'Admin',
-                id: '10000',
-                name: 'employee 10000',
+                id: 'employee 10000',
+                name: 'Alex Blake Ellis',
                 salary: 16000,
             },
         ],
-        total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 15000 : 10000, // es.version < 7 ? total value is 15,000 : total value is greater than or equal to 10,000
+        total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : 10000, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
     });
-    expect2(await searchAgent(service).searchRaw($search)).toEqual({
+    expect2(await searchAgent(service).searchRaw($search).catch(GETERR)).toEqual({
         _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
         aggregations: {
             indexing: {
                 buckets: [
-                    { doc_count: 1500, key: 0 },
-                    { doc_count: 1500, key: 1 },
-                    { doc_count: 1500, key: 2 },
-                    { doc_count: 1500, key: 3 },
-                    { doc_count: 1500, key: 4 },
-                    { doc_count: 1500, key: 5 },
-                    { doc_count: 1500, key: 6 },
-                    { doc_count: 1500, key: 7 },
-                    { doc_count: 1500, key: 8 },
-                    { doc_count: 1500, key: 9 },
+                    { doc_count: 2000, key: 0 },
+                    { doc_count: 2000, key: 1 },
+                    { doc_count: 2000, key: 2 },
+                    { doc_count: 2000, key: 3 },
+                    { doc_count: 2000, key: 4 },
+                    { doc_count: 2000, key: 5 },
+                    { doc_count: 2000, key: 6 },
+                    { doc_count: 2000, key: 7 },
+                    { doc_count: 2000, key: 8 },
+                    { doc_count: 2000, key: 9 },
                 ],
                 doc_count_error_upper_bound: 0,
                 sum_other_doc_count: 0,
@@ -1471,67 +1474,75 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
         hits: {
             hits: [
                 {
-                    _id: '1',
-                    _source: { company: 'B', count: 1, department: 'HR', id: '1', name: 'employee 1', salary: 5000 },
-                    sort: ['1'],
+                    _id: 'employee 1',
+                    _source: {
+                        company: 'B',
+                        count: 1,
+                        department: 'HR',
+                        id: 'employee 1',
+                        name: 'Jordan Parker Reed',
+                        salary: 5000,
+                    },
+                    sort: ['employee 1'],
                 },
                 {
-                    _id: '10',
+                    _id: 'employee 10',
                     _source: {
                         company: 'B',
                         count: 0,
                         department: 'Admin',
-                        id: '10',
-                        name: 'employee 10',
+                        id: 'employee 10',
+                        name: 'Casey Blake Cameron',
                         salary: 16000,
                     },
-                    sort: ['10'],
+                    sort: ['employee 10'],
                 },
                 {
-                    _id: '100',
+                    _id: 'employee 100',
                     _source: {
                         company: 'B',
                         count: 0,
                         department: 'Admin',
-                        id: '100',
-                        name: 'employee 100',
+                        id: 'employee 100',
+                        name: 'Morgan Blake Bailey',
                         salary: 16000,
                     },
-                    sort: ['100'],
+                    sort: ['employee 100'],
                 },
                 {
-                    _id: '1000',
+                    _id: 'employee 1000',
                     _source: {
                         company: 'B',
                         count: 0,
                         department: 'Admin',
-                        id: '1000',
-                        name: 'employee 1000',
+                        id: 'employee 1000',
+                        name: 'Alex Blake Mason',
                         salary: 16000,
                     },
-                    sort: ['1000'],
+                    sort: ['employee 1000'],
                 },
                 {
-                    _id: '10000',
+                    _id: 'employee 10000',
                     _source: {
                         company: 'B',
                         count: 0,
                         department: 'Admin',
-                        id: '10000',
-                        name: 'employee 10000',
+                        id: 'employee 10000',
+                        name: 'Alex Blake Ellis',
                         salary: 16000,
                     },
-                    sort: ['10000'],
+                    sort: ['employee 10000'],
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 15000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 15,000 : total value is greater than or equal to 10,000
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
         },
         timed_out: false,
     });
-    //* test scanAll with 15,000 data
-    const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 15000 } });
-    expect2(allResults.length).toEqual(15000);
+
+    //* test scanAll with 20,000 data
+    const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 15000 } }).catch(GETERR);
+    expect2(allResults.length).toEqual(20000);
 
     //* verify allResults
     const expectedResults: Array<{
@@ -1544,52 +1555,61 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
         department: string;
         salary: number;
     }> = [
-        { _id: '1', _score: null, company: 'B', count: 1, department: 'HR', id: '1', name: 'employee 1', salary: 5000 },
         {
-            _id: '10',
+            _id: 'employee 1',
+            _score: null,
+            company: 'B',
+            count: 1,
+            department: 'HR',
+            id: 'employee 1',
+            name: 'Jordan Parker Reed',
+            salary: 5000,
+        },
+        {
+            _id: 'employee 10',
             _score: null,
             company: 'B',
             count: 0,
             department: 'Admin',
-            id: '10',
-            name: 'employee 10',
+            id: 'employee 10',
+            name: 'Casey Blake Cameron',
             salary: 16000,
         },
         {
-            _id: '100',
+            _id: 'employee 100',
             _score: null,
             company: 'B',
             count: 0,
             department: 'Admin',
-            id: '100',
-            name: 'employee 100',
+            id: 'employee 100',
+            name: 'Morgan Blake Bailey',
             salary: 16000,
         },
         {
-            _id: '1000',
+            _id: 'employee 1000',
             _score: null,
             company: 'B',
             count: 0,
             department: 'Admin',
-            id: '1000',
-            name: 'employee 1000',
+            id: 'employee 1000',
+            name: 'Alex Blake Mason',
             salary: 16000,
         },
         {
-            _id: '10000',
+            _id: 'employee 10000',
             _score: null,
             company: 'B',
             count: 0,
             department: 'Admin',
-            id: '10000',
-            name: 'employee 10000',
+            id: 'employee 10000',
+            name: 'Alex Blake Ellis',
             salary: 16000,
         },
     ];
     expect2(allResults.slice(0, 5)).toEqual(expectedResults);
 };
 /**
- * perform aggregation with 15,000 data
+ * perform aggregation with 20,000 data
  * @param service - Elasticsearch service instance.
  */
 export const aggregationTest = async (service: Elastic6Service<any>) => {
@@ -1628,14 +1648,14 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
     };
 
-    expect2(await searchAgent(service).searchRaw($companyAggregation)).toEqual({
+    expect2(await searchAgent(service).searchRaw($companyAggregation).catch(GETERR)).toEqual({
         _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
         aggregations: {
             employees_per_company: {
                 buckets: [
-                    { doc_count: 5000, key: 'A' },
-                    { doc_count: 5000, key: 'B' },
-                    { doc_count: 5000, key: 'C' },
+                    { doc_count: 6667, key: 'B' },
+                    { doc_count: 6667, key: 'C' },
+                    { doc_count: 6666, key: 'A' },
                 ],
                 doc_count_error_upper_bound: 0,
                 sum_other_doc_count: 0,
@@ -1644,49 +1664,30 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         hits: {
             hits: [],
             max_score: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 0 : null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 15000 : { relation: 'gte', value: 10000 },
-        }, // es.version < 7 ? total value is 15,000 : total value is greater than or equal to 10,000 },
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000 },
+        },
         timed_out: false,
     });
-    expect2(await searchAgent(service).searchRaw($companyDepartmentAggregation)).toEqual({
+
+    expect2(await searchAgent(service).searchRaw($companyDepartmentAggregation).catch(GETERR)).toEqual({
         _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
         aggregations: {
             employees_per_company: {
                 buckets: [
                     {
-                        doc_count: 5000,
+                        doc_count: 6667,
                         employees_per_department: {
                             buckets: [
-                                { doc_count: 500, key: 'Admin' },
-                                { doc_count: 500, key: 'Finance' },
-                                { doc_count: 500, key: 'HR' },
-                                { doc_count: 500, key: 'IT' },
-                                { doc_count: 500, key: 'Logistics' },
-                                { doc_count: 500, key: 'Marketing' },
-                                { doc_count: 500, key: 'Production' },
-                                { doc_count: 500, key: 'R&D' },
-                                { doc_count: 500, key: 'Sales' },
-                                { doc_count: 500, key: 'Support' },
-                            ],
-                            doc_count_error_upper_bound: 0,
-                            sum_other_doc_count: 0,
-                        },
-                        key: 'A',
-                    },
-                    {
-                        doc_count: 5000,
-                        employees_per_department: {
-                            buckets: [
-                                { doc_count: 500, key: 'Admin' },
-                                { doc_count: 500, key: 'Finance' },
-                                { doc_count: 500, key: 'HR' },
-                                { doc_count: 500, key: 'IT' },
-                                { doc_count: 500, key: 'Logistics' },
-                                { doc_count: 500, key: 'Marketing' },
-                                { doc_count: 500, key: 'Production' },
-                                { doc_count: 500, key: 'R&D' },
-                                { doc_count: 500, key: 'Sales' },
-                                { doc_count: 500, key: 'Support' },
+                                { doc_count: 667, key: 'Admin' },
+                                { doc_count: 667, key: 'HR' },
+                                { doc_count: 667, key: 'Logistics' },
+                                { doc_count: 667, key: 'Marketing' },
+                                { doc_count: 667, key: 'Production' },
+                                { doc_count: 667, key: 'R&D' },
+                                { doc_count: 667, key: 'Sales' },
+                                { doc_count: 666, key: 'Finance' },
+                                { doc_count: 666, key: 'IT' },
+                                { doc_count: 666, key: 'Support' },
                             ],
                             doc_count_error_upper_bound: 0,
                             sum_other_doc_count: 0,
@@ -1694,24 +1695,44 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
                         key: 'B',
                     },
                     {
-                        doc_count: 5000,
+                        doc_count: 6667,
                         employees_per_department: {
                             buckets: [
-                                { doc_count: 500, key: 'Admin' },
-                                { doc_count: 500, key: 'Finance' },
-                                { doc_count: 500, key: 'HR' },
-                                { doc_count: 500, key: 'IT' },
-                                { doc_count: 500, key: 'Logistics' },
-                                { doc_count: 500, key: 'Marketing' },
-                                { doc_count: 500, key: 'Production' },
-                                { doc_count: 500, key: 'R&D' },
-                                { doc_count: 500, key: 'Sales' },
-                                { doc_count: 500, key: 'Support' },
+                                { doc_count: 667, key: 'Admin' },
+                                { doc_count: 667, key: 'Finance' },
+                                { doc_count: 667, key: 'HR' },
+                                { doc_count: 667, key: 'IT' },
+                                { doc_count: 667, key: 'Production' },
+                                { doc_count: 667, key: 'Sales' },
+                                { doc_count: 667, key: 'Support' },
+                                { doc_count: 666, key: 'Logistics' },
+                                { doc_count: 666, key: 'Marketing' },
+                                { doc_count: 666, key: 'R&D' },
                             ],
                             doc_count_error_upper_bound: 0,
                             sum_other_doc_count: 0,
                         },
                         key: 'C',
+                    },
+                    {
+                        doc_count: 6666,
+                        employees_per_department: {
+                            buckets: [
+                                { doc_count: 667, key: 'Finance' },
+                                { doc_count: 667, key: 'IT' },
+                                { doc_count: 667, key: 'Logistics' },
+                                { doc_count: 667, key: 'Marketing' },
+                                { doc_count: 667, key: 'R&D' },
+                                { doc_count: 667, key: 'Support' },
+                                { doc_count: 666, key: 'Admin' },
+                                { doc_count: 666, key: 'HR' },
+                                { doc_count: 666, key: 'Production' },
+                                { doc_count: 666, key: 'Sales' },
+                            ],
+                            doc_count_error_upper_bound: 0,
+                            sum_other_doc_count: 0,
+                        },
+                        key: 'A',
                     },
                 ],
                 doc_count_error_upper_bound: 0,
@@ -1721,12 +1742,475 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         hits: {
             hits: [],
             max_score: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 0 : null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 15000 : { relation: 'gte', value: 10000 },
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000 }]\
         },
         timed_out: false,
     });
 };
+/**
+ * perform search/filter tests with 20,000 data
+ * @param service - Elasticsearch service instance.
+ */
+export const searchFilterTest = async (service: Elastic6Service<any>) => {
+    const parsedVersion: ParsedVersion = service.parsedVersion;
 
+    //* 1. Test by keyword (term query)
+    const $keywordSearch: SearchBody = {
+        size: 3,
+        query: {
+            bool: {
+                filter: {
+                    term: {
+                        name: 'parker',
+                    },
+                },
+            },
+        },
+        aggs: {
+            employees_with_name_Parker_per_company: {
+                terms: {
+                    field: 'company.keyword',
+                },
+            },
+        },
+        sort: [
+            {
+                'department.keyword': {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+            {
+                'id.keyword': {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+    expect2(await searchAgent(service).searchRaw($keywordSearch).catch(GETERR)).toEqual({
+        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
+        aggregations: {
+            employees_with_name_Parker_per_company: {
+                buckets: [{ doc_count: 3334, key: 'B' }],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        hits: {
+            hits: [
+                {
+                    _id: 'employee 1',
+                    _source: {
+                        company: 'B',
+                        count: 1,
+                        department: 'HR',
+                        id: 'employee 1',
+                        name: 'Jordan Parker Reed',
+                        salary: 5000,
+                    },
+                    sort: ['HR', 'employee 1'],
+                },
+                {
+                    _id: 'employee 10021',
+                    _source: {
+                        company: 'B',
+                        count: 1,
+                        department: 'HR',
+                        id: 'employee 10021',
+                        name: 'Quinn Parker Ellis',
+                        salary: 5000,
+                    },
+                    sort: ['HR', 'employee 10021'],
+                },
+                {
+                    _id: 'employee 10051',
+                    _source: {
+                        company: 'B',
+                        count: 1,
+                        department: 'HR',
+                        id: 'employee 10051',
+                        name: 'Riley Parker Mason',
+                        salary: 5000,
+                    },
+                    sort: ['HR', 'employee 10051'],
+                },
+            ],
+            max_score: null,
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 3334 : { relation: 'eq', value: 3334 },
+        },
+        timed_out: false,
+    });
+    expect2(await service.search($keywordSearch).catch(GETERR)).toEqual({
+        aggregations: {
+            employees_with_name_Parker_per_company: {
+                buckets: [{ doc_count: 3334, key: 'B' }],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        last: ['HR', 'employee 10051'],
+        list: [
+            {
+                _id: 'employee 1',
+                _score: null,
+                company: 'B',
+                count: 1,
+                department: 'HR',
+                id: 'employee 1',
+                name: 'Jordan Parker Reed',
+                salary: 5000,
+            },
+            {
+                _id: 'employee 10021',
+                _score: null,
+                company: 'B',
+                count: 1,
+                department: 'HR',
+                id: 'employee 10021',
+                name: 'Quinn Parker Ellis',
+                salary: 5000,
+            },
+            {
+                _id: 'employee 10051',
+                _score: null,
+                company: 'B',
+                count: 1,
+                department: 'HR',
+                id: 'employee 10051',
+                name: 'Riley Parker Mason',
+                salary: 5000,
+            },
+        ],
+        total: 3334,
+    });
+
+    //* 2. Test by range (salary range)
+    const $rangeSearch: SearchBody = {
+        size: 3,
+        query: {
+            bool: {
+                filter: {
+                    range: {
+                        salary: {
+                            gte: 10000, // greater than or equal to 10,000
+                            lte: 20000, // less than or equal to 20,000
+                        },
+                    },
+                },
+            },
+        },
+        aggs: {
+            employees_in_salary_range_per_company: {
+                terms: {
+                    field: 'company.keyword',
+                },
+            },
+        },
+        sort: [
+            {
+                salary: {
+                    order: 'asc',
+                    missing: '_last',
+                },
+                'id.keyword': {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+
+    expect2(await searchAgent(service).searchRaw($rangeSearch).catch(GETERR)).toEqual({
+        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
+        aggregations: {
+            employees_in_salary_range_per_company: {
+                buckets: [
+                    { doc_count: 3333, key: 'A' },
+                    { doc_count: 3333, key: 'B' },
+                    { doc_count: 3333, key: 'C' },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        hits: {
+            hits: [
+                {
+                    _id: 'employee 10005',
+                    _source: {
+                        company: 'A',
+                        count: 5,
+                        department: 'IT',
+                        id: 'employee 10005',
+                        name: 'Quinn Reese Bailey',
+                        salary: 11500,
+                    },
+                    sort: [11500, 'employee 10005'],
+                },
+                {
+                    _id: 'employee 10011',
+                    _source: {
+                        company: 'A',
+                        count: 1,
+                        department: 'HR',
+                        id: 'employee 10011',
+                        name: 'Riley Reese Reed',
+                        salary: 11500,
+                    },
+                    sort: [11500, 'employee 10011'],
+                },
+                {
+                    _id: 'employee 10017',
+                    _source: {
+                        company: 'A',
+                        count: 7,
+                        department: 'Production',
+                        id: 'employee 10017',
+                        name: 'Jordan Reese Harper',
+                        salary: 11500,
+                    },
+                    sort: [11500, 'employee 10017'],
+                },
+            ],
+            max_score: null,
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 9999 : { relation: 'eq', value: 9999 },
+        },
+        timed_out: false,
+    });
+    expect2(await service.search($rangeSearch).catch(GETERR)).toEqual({
+        aggregations: {
+            employees_in_salary_range_per_company: {
+                buckets: [
+                    { doc_count: 3333, key: 'A' },
+                    { doc_count: 3333, key: 'B' },
+                    { doc_count: 3333, key: 'C' },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        last: [11500, 'employee 10017'],
+        list: [
+            {
+                _id: 'employee 10005',
+                _score: null,
+                company: 'A',
+                count: 5,
+                department: 'IT',
+                id: 'employee 10005',
+                name: 'Quinn Reese Bailey',
+                salary: 11500,
+            },
+            {
+                _id: 'employee 10011',
+                _score: null,
+                company: 'A',
+                count: 1,
+                department: 'HR',
+                id: 'employee 10011',
+                name: 'Riley Reese Reed',
+                salary: 11500,
+            },
+            {
+                _id: 'employee 10017',
+                _score: null,
+                company: 'A',
+                count: 7,
+                department: 'Production',
+                id: 'employee 10017',
+                name: 'Jordan Reese Harper',
+                salary: 11500,
+            },
+        ],
+        total: 9999,
+    });
+    //* 3. Test 'exists; field(mapping관련, null, '', [], {}), keyword'
+    await service.saveItem('empty 1', {
+        id: 'empty 1',
+        name: null,
+        company: null,
+        department: null,
+        salary: null,
+    });
+
+    await service.saveItem('empty 2', { id: 'empty 2' });
+
+    await service.saveItem('empty 3', {
+        id: 'empty 3',
+        name: '',
+        company: '',
+        department: '',
+        salary: '',
+    });
+    await service.saveItem('empty 4', {
+        id: 'empty 4',
+        name: [],
+        company: [],
+        department: [],
+        salary: [],
+    });
+
+    await service.refreshIndex();
+
+    const $nullFieldTest: SearchBody = {
+        size: 10,
+        query: {
+            bool: {
+                filter: {
+                    term: {
+                        id: 'empty',
+                    },
+                },
+            },
+        },
+        aggs: {
+            employees_with_empty_field: {
+                terms: {
+                    field: 'id.keyword',
+                },
+            },
+        },
+        sort: [
+            {
+                'id.keyword': {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+
+    expect2(await searchAgent(service).searchRaw($nullFieldTest).catch(GETERR)).toEqual({
+        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
+        aggregations: {
+            employees_with_empty_field: {
+                buckets: [
+                    { doc_count: 1, key: 'empty 1' },
+                    { doc_count: 1, key: 'empty 2' },
+                    { doc_count: 1, key: 'empty 3' },
+                    { doc_count: 1, key: 'empty 4' },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        hits: {
+            hits: [
+                {
+                    _id: 'empty 1',
+                    _source: {
+                        $id: 'empty 1',
+                        company: null,
+                        department: null,
+                        id: 'empty 1',
+                        name: null,
+                        salary: null,
+                    },
+                    sort: ['empty 1'],
+                },
+                { _id: 'empty 2', _source: { $id: 'empty 2', id: 'empty 2' }, sort: ['empty 2'] },
+                {
+                    _id: 'empty 3',
+                    _source: { $id: 'empty 3', company: '', department: '', id: 'empty 3', name: '', salary: '' },
+                    sort: ['empty 3'],
+                },
+                {
+                    _id: 'empty 4',
+                    _source: { $id: 'empty 4', company: [], department: [], id: 'empty 4', name: [], salary: [] },
+                    sort: ['empty 4'],
+                },
+            ],
+            max_score: null,
+            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 4 : { relation: 'eq', value: 4 },
+        },
+        timed_out: false,
+    });
+    expect2(await service.search($nullFieldTest).catch(GETERR)).toEqual({
+        aggregations: {
+            employees_with_empty_field: {
+                buckets: [
+                    { doc_count: 1, key: 'empty 1' },
+                    { doc_count: 1, key: 'empty 2' },
+                    { doc_count: 1, key: 'empty 3' },
+                    { doc_count: 1, key: 'empty 4' },
+                ],
+                doc_count_error_upper_bound: 0,
+                sum_other_doc_count: 0,
+            },
+        },
+        last: undefined,
+        list: [
+            {
+                $id: 'empty 1',
+                _id: 'empty 1',
+                _score: null,
+                company: null,
+                department: null,
+                id: 'empty 1',
+                name: null,
+                salary: null,
+            },
+            { $id: 'empty 2', _id: 'empty 2', _score: null, id: 'empty 2' },
+            {
+                $id: 'empty 3',
+                _id: 'empty 3',
+                _score: null,
+                company: '',
+                department: '',
+                id: 'empty 3',
+                name: '',
+                salary: '',
+            },
+            {
+                $id: 'empty 4',
+                _id: 'empty 4',
+                _score: null,
+                company: [],
+                department: [],
+                id: 'empty 4',
+                name: [],
+                salary: [],
+            },
+        ],
+        total: 4,
+    });
+
+    //* check mapping
+    const mapping = await service.getIndexMapping();
+    expect2(() => (mapping?._doc ? mapping?._doc.properties : mapping?.properties)).toEqual({
+        $id: { type: 'keyword', ignore_above: 256 },
+        '@version': { type: 'keyword', index: false },
+        company: { type: 'text', fields: { keyword: { type: 'keyword', ignore_above: 256 } }, analyzer: 'hangul' },
+        count: { type: 'long' },
+        created_at: {
+            type: 'date',
+            ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
+                ? { format: 'strict_date_optional_time||epoch_millis' }
+                : {}),
+        },
+        deleted_at: {
+            type: 'date',
+            ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
+                ? { format: 'strict_date_optional_time||epoch_millis' }
+                : {}),
+        },
+        department: {
+            type: 'text',
+            fields: { keyword: { type: 'keyword', ignore_above: 256 } },
+            analyzer: 'hangul',
+        },
+        id: { type: 'text', fields: { keyword: { type: 'keyword', ignore_above: 256 } }, analyzer: 'hangul' },
+        name: { type: 'text', fields: { keyword: { type: 'keyword', ignore_above: 256 } }, analyzer: 'hangul' },
+        salary: { type: 'long' },
+        updated_at: {
+            type: 'date',
+            ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
+                ? { format: 'strict_date_optional_time||epoch_millis' }
+                : {}),
+        },
+    });
+};
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('Elastic6Service', () => {
@@ -1934,6 +2418,8 @@ describe('Elastic6Service', () => {
         await totalSummaryTest(service);
 
         await aggregationTest(service);
+
+        await searchFilterTest(service);
     });
 
     //! elastic storage service.
@@ -1969,6 +2455,8 @@ describe('Elastic6Service', () => {
         await totalSummaryTest(service);
 
         await aggregationTest(service);
+
+        await searchFilterTest(service);
     });
 
     //! elastic storage service.
@@ -2004,6 +2492,8 @@ describe('Elastic6Service', () => {
         await totalSummaryTest(service);
 
         await aggregationTest(service);
+
+        await searchFilterTest(service);
     });
 
     //! elastic storage service.
@@ -2039,6 +2529,8 @@ describe('Elastic6Service', () => {
         await totalSummaryTest(service);
 
         await aggregationTest(service);
+
+        await searchFilterTest(service);
     });
 
     //! elastic storage service.
@@ -2074,6 +2566,8 @@ describe('Elastic6Service', () => {
         await totalSummaryTest(service);
 
         await aggregationTest(service);
+
+        await searchFilterTest(service);
     });
 
     //! elastic storage service.
@@ -2109,6 +2603,8 @@ describe('Elastic6Service', () => {
         await totalSummaryTest(service);
 
         await aggregationTest(service);
+
+        await searchFilterTest(service);
     });
 
     //! elastic storage service.
@@ -2144,5 +2640,7 @@ describe('Elastic6Service', () => {
         await totalSummaryTest(service);
 
         await aggregationTest(service);
+
+        await searchFilterTest(service);
     });
 });
