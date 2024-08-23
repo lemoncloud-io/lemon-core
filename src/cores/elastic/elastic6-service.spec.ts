@@ -13,7 +13,7 @@
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, SearchBody } from 'lemon-model';
-import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR, ParsedVersion } from './elastic6-service';
+import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
 import { ApiResponse } from '@elastic/elasticsearch';
 
 /**
@@ -128,7 +128,6 @@ export const initService = async (ver: VERSIONS) => {
 export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<void> => {
     const PASS = (e: any) => e;
     const indexName = service.options.indexName;
-    const parsedVersion: ParsedVersion = service.parsedVersion;
 
     //* destroy index
     const oldIndex = await service.findIndex(indexName);
@@ -194,7 +193,7 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
                         type: 'custom',
                     },
                     autocomplete_case_sensitive: {
-                        filter: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? ['standard'] : [],
+                        filter: service.isOldES6 ? ['standard'] : [],
                         tokenizer: 'edge_30grams',
                         type: 'custom',
                     },
@@ -228,21 +227,15 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
             },
             created_at: {
                 type: 'date',
-                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
-                    ? { format: 'strict_date_optional_time||epoch_millis' }
-                    : {}),
+                ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
             },
             deleted_at: {
                 type: 'date',
-                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
-                    ? { format: 'strict_date_optional_time||epoch_millis' }
-                    : {}),
+                ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
             },
             updated_at: {
                 type: 'date',
-                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
-                    ? { format: 'strict_date_optional_time||epoch_millis' }
-                    : {}),
+                ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
             },
         },
         dynamic_templates: [
@@ -384,7 +377,6 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
  */
 export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
     const indexName = service.options.indexName;
-    const parsedVersion: ParsedVersion = service.parsedVersion;
     //* try to search...
     await waited(2000);
     const $search: SearchBody = {
@@ -423,12 +415,12 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
                     _index: indexName,
                     _score: null,
                     _source: { $id: 'A0', name: 'a0', type: 'test', count: 0 },
-                    ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os' ? {} : { _type: '_doc' }),
+                    ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
                     sort: [0],
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 2 : { relation: 'eq', value: 2 },
+            total: service.isOldES6 ? 2 : { relation: 'eq', value: 2 },
         },
         aggregations: {
             test: {
@@ -591,7 +583,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
  * @param service - Elasticsearch service instance.
  */
 export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion: ParsedVersion = service.parsedVersion;
     //* 테스트를 위한 agent 생성
     const agent = <T = any>(id: string = 'A0') => ({
         update: (data: T) =>
@@ -637,8 +628,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     }
 
     // formatting mappings
-    const properties =
-        parsedVersion.major < 7 && parsedVersion.engine === 'es' ? mapping?._doc?.properties : mapping?.properties;
+    const properties = service.isOldES6 ? mapping?._doc?.properties : mapping?.properties;
     const fieldsWithTypes = getFieldTypes(properties);
 
     // verify mapping types
@@ -753,7 +743,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ date_field: 1234567890 })).toEqual({
         date_field: 1234567890,
     });
-    if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
+    if (service.isOldES6) {
         expect2(await agent().update({ date_field: 1.23456789 })).toEqual({
             date_field: 1.23456789,
         });
@@ -947,8 +937,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     const mapping2 = await service.getIndexMapping();
 
     // formatting mappings
-    const properties2 =
-        parsedVersion.major < 7 && parsedVersion.engine === 'es' ? mapping2?._doc?.properties : mapping2?.properties;
+    const properties2 = service.isOldES6 ? mapping2?._doc?.properties : mapping2?.properties;
     const fieldsWithTypes2 = getFieldTypes(properties2);
 
     // verify mapping types
@@ -992,8 +981,6 @@ const searchAgent = <T = any>(service: Elastic6Service<MyModel>) => ({
  */
 
 export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
-    const parsedVersion: ParsedVersion = service.parsedVersion;
-
     //* auto-indexing w/ tokenizer. keyword (basic), hangul
     expect2(
         await service.saveItem('A7', { name: 'A7 for auto indexing test', count: 10 }).catch(GETERR),
@@ -1099,7 +1086,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 2 : { relation: 'eq', value: 2 },
+            total: service.isOldES6 ? 2 : { relation: 'eq', value: 2 },
         },
         timed_out: false,
     });
@@ -1202,7 +1189,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 2 : { relation: 'eq', value: 2 },
+            total: service.isOldES6 ? 2 : { relation: 'eq', value: 2 },
         },
         timed_out: false,
     });
@@ -1261,7 +1248,6 @@ interface BulkDummyResponse {
  */
 export const bulkDummyData = async (service: Elastic6Service<any>): Promise<BulkDummyResponse> => {
     const { indexName } = service.options;
-    const parsedVersion: ParsedVersion = service.parsedVersion;
 
     const departments: Array<string> = [
         'Admin',
@@ -1301,7 +1287,7 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
             index: {
                 _index: indexName,
                 _id: doc.id,
-                ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os' ? {} : { _type: '_doc' }),
+                ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
             },
         });
         acc.push(doc);
@@ -1334,7 +1320,6 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
  */
 export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     const indexName = service.options.indexName;
-    const parsedVersion: ParsedVersion = service.parsedVersion;
 
     //* destroy index
     const oldIndex = await service.findIndex(indexName);
@@ -1449,7 +1434,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
                 salary: 16000,
             },
         ],
-        total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : 10000, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
+        total: service.isOldES6 ? 20000 : 10000, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
     });
     expect2(await searchAgent(service).searchRaw($search).catch(GETERR)).toEqual({
         _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
@@ -1535,7 +1520,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
+            total: service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
         },
         timed_out: false,
     });
@@ -1613,7 +1598,6 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
  * @param service - Elasticsearch service instance.
  */
 export const aggregationTest = async (service: Elastic6Service<any>) => {
-    const parsedVersion: ParsedVersion = service.parsedVersion;
     //* 1. employee per company
     const $companyAggregation: SearchBody = {
         size: 0, // set 0 to see only results
@@ -1663,8 +1647,8 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
         hits: {
             hits: [],
-            max_score: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 0 : null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000 },
+            max_score: service.isOldES6 ? 0 : null,
+            total: service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 },
         },
         timed_out: false,
     });
@@ -1741,8 +1725,8 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
         hits: {
             hits: [],
-            max_score: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 0 : null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000 }]\
+            max_score: service.isOldES6 ? 0 : null,
+            total: service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 },
         },
         timed_out: false,
     });
@@ -1752,8 +1736,6 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
  * @param service - Elasticsearch service instance.
  */
 export const searchFilterTest = async (service: Elastic6Service<any>) => {
-    const parsedVersion: ParsedVersion = service.parsedVersion;
-
     //* 1. Test by keyword (term query)
     const $keywordSearch: SearchBody = {
         size: 3,
@@ -1837,7 +1819,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 3334 : { relation: 'eq', value: 3334 },
+            total: service.isOldES6 ? 3334 : { relation: 'eq', value: 3334 },
         },
         timed_out: false,
     });
@@ -1974,7 +1956,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 9999 : { relation: 'eq', value: 9999 },
+            total: service.isOldES6 ? 9999 : { relation: 'eq', value: 9999 },
         },
         timed_out: false,
     });
@@ -2122,7 +2104,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
                 },
             ],
             max_score: null,
-            total: parsedVersion.major < 7 && parsedVersion.engine === 'es' ? 4 : { relation: 'eq', value: 4 },
+            total: service.isOldES6 ? 4 : { relation: 'eq', value: 4 },
         },
         timed_out: false,
     });
@@ -2185,15 +2167,11 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         count: { type: 'long' },
         created_at: {
             type: 'date',
-            ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
-                ? { format: 'strict_date_optional_time||epoch_millis' }
-                : {}),
+            ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
         },
         deleted_at: {
             type: 'date',
-            ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
-                ? { format: 'strict_date_optional_time||epoch_millis' }
-                : {}),
+            ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
         },
         department: {
             type: 'text',
@@ -2205,9 +2183,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         salary: { type: 'long' },
         updated_at: {
             type: 'date',
-            ...(parsedVersion.major >= 2 && parsedVersion.engine === 'os'
-                ? { format: 'strict_date_optional_time||epoch_millis' }
-                : {}),
+            ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
         },
     });
 };

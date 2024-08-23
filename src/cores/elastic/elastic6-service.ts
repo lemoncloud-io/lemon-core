@@ -243,6 +243,18 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public get parsedVersion(): ParsedVersion {
         return this.parseVersion(this.options.version);
     }
+    /**
+     * get isOldES6
+     */
+    public get isOldES6(): boolean {
+        return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
+    }
+    /**
+     * get isLatestOS2
+     */
+    public get isLatestOS2(): boolean {
+        return this.parsedVersion.major >= 2 && this.parsedVersion.engine === 'os';
+    }
 
     /**
      * get the root version from client
@@ -587,7 +599,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
         const client = this.client;
-        const parsedVersion: ParsedVersion = this.parsedVersion;
 
         // prepare item body and autocomplete fields
         const body: any = { ...item, [idName]: id };
@@ -597,7 +608,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const params: ElasticParams = { index: indexName, id, body: body2 };
 
         // check version to include 'type' in params
-        if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
+        if (this.isOldES6) {
             params.type = type;
         }
 
@@ -614,7 +625,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                     delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
                     const param2: ElasticParams = { index: indexName, id, body: { doc: body2 } };
-                    if (parsedVersion.major < 7 && parsedVersion.engine === 'es') param2.type = type;
+                    if (this.isOldES6) param2.type = type;
                     return client.update(param2);
                 }
                 throw e;
@@ -760,13 +771,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
-        const parsedVersion: ParsedVersion = this.parsedVersion;
-
         //! prepare params.
         const params: ElasticParams = { index: indexName, id, body: { doc: item } };
 
         // check version to include 'type' in params
-        if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
+        if (this.isOldES6) {
             params.type = type;
         }
 
@@ -777,7 +786,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 L.push(`ctx._source.${key} += ${val}`);
                 return L;
             }, []);
-            if (parsedVersion.major < 7 && parsedVersion.engine === 'es') params.body.lang = 'painless';
+            if (this.isOldES6) params.body.lang = 'painless';
             params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -820,11 +829,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
-        const parsedVersion: ParsedVersion = this.parsedVersion;
         const params: ElasticSearchParams = { index: indexName, body, searchType };
 
         // check version to include 'type' in params
-        if (parsedVersion.major < 7 && parsedVersion.engine === 'es') {
+        if (this.isOldES6) {
             params.type = type;
         }
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
