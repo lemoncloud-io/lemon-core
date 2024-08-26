@@ -66,13 +66,22 @@ describe('Elastic6QueryService', () => {
 
         /* eslint-disable prettier/prettier */
         // prepare items
-        expect2(await elastic.saveItem('AC001', { type: 'member', title: 'Senior Director', name: 'Marvin' }).catch(GETERR), '_id').toEqual({ _id: 'AC001' });
-        expect2(await elastic.saveItem('AC002', { type: 'member', title: 'Senior Software Engineer', name: 'Vickie' }).catch(GETERR), '_id').toEqual({ _id: 'AC002' });
-        expect2(await elastic.saveItem('AC003', { type: 'member', title: 'Software Developer', name: 'Gabriel' }).catch(GETERR), '_id').toEqual({ _id: 'AC003' });
-        expect2(await elastic.saveItem('AC004', { type: 'member', title: 'Designer', name: 'Cindy' }).catch(GETERR), '_id').toEqual({ _id: 'AC004' });
-        expect2(await elastic.saveItem('AC005', { type: 'department', title: 'Account' }).catch(GETERR), '_id').toEqual({ _id: 'AC005' });
-        expect2(await elastic.saveItem('AC006', { type: 'department', title: 'Software Lab' }).catch(GETERR), '_id').toEqual({ _id: 'AC006' });
-        expect2(await elastic.saveItem('AC007', { type: 'department', title: 'Design Lab' }).catch(GETERR), '_id').toEqual({ _id: 'AC007' });
+        expect2(await elastic.saveItem('AC001', {
+            type: 'member', title: 'Senior Director', name: 'Marvin',
+            id: 'AC001'
+        }).catch(GETERR), '_id').toEqual({ _id: 'AC001' });
+        expect2(await elastic.saveItem('AC002', { type: 'member', title: 'Senior Software Engineer', name: 'Vickie' ,
+            id: 'AC002'}).catch(GETERR), '_id').toEqual({ _id: 'AC002' });
+        expect2(await elastic.saveItem('AC003', { type: 'member', title: 'Software Developer', name: 'Gabriel' ,
+            id: 'AC003'}).catch(GETERR), '_id').toEqual({ _id: 'AC003' });
+        expect2(await elastic.saveItem('AC004', { type: 'member', title: 'Designer', name: 'Cindy' ,
+            id: 'AC004'}).catch(GETERR), '_id').toEqual({ _id: 'AC004' });
+        expect2(await elastic.saveItem('AC005', { type: 'department', title: 'Account' ,
+            id: 'AC005'}).catch(GETERR), '_id').toEqual({ _id: 'AC005' });
+        expect2(await elastic.saveItem('AC006', { type: 'department', title: 'Software Lab' ,
+            id: 'AC006'}).catch(GETERR), '_id').toEqual({ _id: 'AC006' });
+        expect2(await elastic.saveItem('AC007', { type: 'department', title: 'Design Lab' ,
+            id: 'AC007'}).catch(GETERR), '_id').toEqual({ _id: 'AC007' });
         expect2(await elastic.refreshIndex().catch(GETERR), '!_shards').toEqual({});
         await waited(200);
 
@@ -112,11 +121,16 @@ describe('Elastic6QueryService', () => {
 
         /* eslint-disable prettier/prettier */
         // prepare items
-        expect2(await elastic.saveItem('1000001', { title: '선을 넘는 녀석들' }).catch(GETERR), '_id').toEqual({ _id: '1000001' });
-        expect2(await elastic.saveItem('1000002', { title: '맛있는 녀석들' }).catch(GETERR), '_id').toEqual({ _id: '1000002' });
-        expect2(await elastic.saveItem('1000003', { title: 'COVID-19' }).catch(GETERR), '_id').toEqual({ _id: '1000003' });
-        expect2(await elastic.saveItem('1000004', { title: '똠얌꿍 끓이는 법' }).catch(GETERR), '_id').toEqual({ _id: '1000004' });
-        expect2(await elastic.saveItem('1000005', { title: '화장품정리대' }).catch(GETERR), '_id').toEqual({ _id: '1000005' });
+        expect2(await elastic.saveItem('1000001', { title: '선을 넘는 녀석들' ,
+            id: '1000001'}).catch(GETERR), '_id').toEqual({ _id: '1000001' });
+        expect2(await elastic.saveItem('1000002', { title: '맛있는 녀석들' ,
+            id: '1000002'}).catch(GETERR), '_id').toEqual({ _id: '1000002' });
+        expect2(await elastic.saveItem('1000003', { title: 'COVID-19' ,
+            id: '1000003'}).catch(GETERR), '_id').toEqual({ _id: '1000003' });
+        expect2(await elastic.saveItem('1000004', { title: '똠얌꿍 끓이는 법' ,
+            id: '1000004'}).catch(GETERR), '_id').toEqual({ _id: '1000004' });
+        expect2(await elastic.saveItem('1000005', { title: '화장품정리대',
+            id: '1000005'}).catch(GETERR), '_id').toEqual({ _id: '1000005' });
         await new Promise(resolve => {
             setTimeout(resolve, 1000); // require some time for indexing
         });
