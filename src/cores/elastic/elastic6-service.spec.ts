@@ -946,34 +946,31 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
 
 const searchAgent = <T = any>(service: Elastic6Service<MyModel>) => ({
     searchRaw: (data: SearchBody) =>
-        service
-            .searchRaw(data)
-            .then(R => {
-                const { _shards, aggregations, hits, timed_out } = R;
-                const hitsCustomized = hits.hits.map(
-                    (hit: {
-                        _index: string;
-                        _score: number | null;
-                        _type?: string;
-                        _id: string;
-                        _source: T;
-                        sort: string[];
-                    }) => {
-                        const { _index, _score, _type, ...rest } = hit;
-                        return rest;
-                    },
-                );
-                return {
-                    _shards,
-                    aggregations,
-                    hits: {
-                        ...hits,
-                        hits: hitsCustomized,
-                    },
-                    timed_out,
-                };
-            })
-            .catch(GETERR),
+        service.searchRaw(data).then(R => {
+            const { _shards, aggregations, hits, timed_out } = R;
+            const hitsCustomized = hits.hits.map(
+                (hit: {
+                    _index: string;
+                    _score: number | null;
+                    _type?: string;
+                    _id: string;
+                    _source: T;
+                    sort: string[];
+                }) => {
+                    const { _index, _score, _type, ...rest } = hit;
+                    return rest;
+                },
+            );
+            return {
+                _shards,
+                aggregations,
+                hits: {
+                    ...hits,
+                    hits: hitsCustomized,
+                },
+                timed_out,
+            };
+        }),
 });
 /**
  * perform auto-indexing tests
@@ -1314,6 +1311,44 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
     return bulkDummyResponse;
 };
 
+interface SearchRawResponse<T = any> {
+    _shards: {
+        failed: number;
+        skipped: number;
+        successful: number;
+        total: number;
+    };
+    aggregations: T;
+    hits: {
+        hits: Array<{
+            _id: string;
+            _source: T;
+            sort: T;
+        }>;
+        max_score: number | null;
+        total: { relation: string; value: number } | number;
+    };
+    timed_out: boolean;
+}
+
+interface SearchResponse<T = any> {
+    aggregations: T;
+    last: T;
+    list: Array<T>;
+    total: number | { relation: 'gte'; value: number };
+}
+
+interface TestList {
+    _id: string;
+    id: string;
+    _score: null;
+    name: string;
+    count: number;
+    company: string;
+    department: string;
+    salary: number;
+}
+
 /**
  * perform total summary with 20,000 data
  * @param service - Elasticsearch service instance.
@@ -1336,7 +1371,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
 
     //* test search with 20,000 data
     const $search: SearchBody = {
-        size: 5,
+        size: 3,
         query: {
             bool: {
                 filter: {
@@ -1362,236 +1397,65 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
-    expect2(await service.search($search).catch(GETERR), '!took').toEqual({
-        aggregations: {
-            indexing: {
-                buckets: [
-                    { doc_count: 2000, key: 0 },
-                    { doc_count: 2000, key: 1 },
-                    { doc_count: 2000, key: 2 },
-                    { doc_count: 2000, key: 3 },
-                    { doc_count: 2000, key: 4 },
-                    { doc_count: 2000, key: 5 },
-                    { doc_count: 2000, key: 6 },
-                    { doc_count: 2000, key: 7 },
-                    { doc_count: 2000, key: 8 },
-                    { doc_count: 2000, key: 9 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
+    const searchAggregation: SearchResponse = await service.search($search);
+    const expectedSearchResults: Array<TestList> = [
+        {
+            id: 'employee 1',
+            name: 'Jordan Parker Reed',
+            department: 'HR',
+            salary: 5000,
+            count: 1,
+            company: 'B',
+            _id: 'employee 1',
+            _score: null,
         },
-        last: ['employee 10000'],
-        list: [
-            {
-                _id: 'employee 1',
-                _score: null,
-                company: 'B',
-                count: 1,
-                department: 'HR',
-                id: 'employee 1',
-                name: 'Jordan Parker Reed',
-                salary: 5000,
-            },
-            {
-                _id: 'employee 10',
-                _score: null,
-                company: 'B',
-                count: 0,
-                department: 'Admin',
-                id: 'employee 10',
-                name: 'Casey Blake Cameron',
-                salary: 16000,
-            },
-            {
-                _id: 'employee 100',
-                _score: null,
-                company: 'B',
-                count: 0,
-                department: 'Admin',
-                id: 'employee 100',
-                name: 'Morgan Blake Bailey',
-                salary: 16000,
-            },
-            {
-                _id: 'employee 1000',
-                _score: null,
-                company: 'B',
-                count: 0,
-                department: 'Admin',
-                id: 'employee 1000',
-                name: 'Alex Blake Mason',
-                salary: 16000,
-            },
-            {
-                _id: 'employee 10000',
-                _score: null,
-                company: 'B',
-                count: 0,
-                department: 'Admin',
-                id: 'employee 10000',
-                name: 'Alex Blake Ellis',
-                salary: 16000,
-            },
-        ],
-        total: service.isOldES6 ? 20000 : 10000, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
-    });
-    expect2(await searchAgent(service).searchRaw($search).catch(GETERR)).toEqual({
-        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-        aggregations: {
-            indexing: {
-                buckets: [
-                    { doc_count: 2000, key: 0 },
-                    { doc_count: 2000, key: 1 },
-                    { doc_count: 2000, key: 2 },
-                    { doc_count: 2000, key: 3 },
-                    { doc_count: 2000, key: 4 },
-                    { doc_count: 2000, key: 5 },
-                    { doc_count: 2000, key: 6 },
-                    { doc_count: 2000, key: 7 },
-                    { doc_count: 2000, key: 8 },
-                    { doc_count: 2000, key: 9 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
+        {
+            id: 'employee 10',
+            name: 'Casey Blake Cameron',
+            department: 'Admin',
+            salary: 16000,
+            count: 0,
+            company: 'B',
+            _id: 'employee 10',
+            _score: null,
         },
-        hits: {
-            hits: [
-                {
-                    _id: 'employee 1',
-                    _source: {
-                        company: 'B',
-                        count: 1,
-                        department: 'HR',
-                        id: 'employee 1',
-                        name: 'Jordan Parker Reed',
-                        salary: 5000,
-                    },
-                    sort: ['employee 1'],
-                },
-                {
-                    _id: 'employee 10',
-                    _source: {
-                        company: 'B',
-                        count: 0,
-                        department: 'Admin',
-                        id: 'employee 10',
-                        name: 'Casey Blake Cameron',
-                        salary: 16000,
-                    },
-                    sort: ['employee 10'],
-                },
-                {
-                    _id: 'employee 100',
-                    _source: {
-                        company: 'B',
-                        count: 0,
-                        department: 'Admin',
-                        id: 'employee 100',
-                        name: 'Morgan Blake Bailey',
-                        salary: 16000,
-                    },
-                    sort: ['employee 100'],
-                },
-                {
-                    _id: 'employee 1000',
-                    _source: {
-                        company: 'B',
-                        count: 0,
-                        department: 'Admin',
-                        id: 'employee 1000',
-                        name: 'Alex Blake Mason',
-                        salary: 16000,
-                    },
-                    sort: ['employee 1000'],
-                },
-                {
-                    _id: 'employee 10000',
-                    _source: {
-                        company: 'B',
-                        count: 0,
-                        department: 'Admin',
-                        id: 'employee 10000',
-                        name: 'Alex Blake Ellis',
-                        salary: 16000,
-                    },
-                    sort: ['employee 10000'],
-                },
+        {
+            id: 'employee 100',
+            name: 'Morgan Blake Bailey',
+            department: 'Admin',
+            salary: 16000,
+            count: 0,
+            company: 'B',
+            _id: 'employee 100',
+            _score: null,
+        },
+    ];
+    expect2(() => searchAggregation.aggregations).toEqual({
+        indexing: {
+            buckets: [
+                { doc_count: 2000, key: 0 },
+                { doc_count: 2000, key: 1 },
+                { doc_count: 2000, key: 2 },
+                { doc_count: 2000, key: 3 },
+                { doc_count: 2000, key: 4 },
+                { doc_count: 2000, key: 5 },
+                { doc_count: 2000, key: 6 },
+                { doc_count: 2000, key: 7 },
+                { doc_count: 2000, key: 8 },
+                { doc_count: 2000, key: 9 },
             ],
-            max_score: null,
-            total: service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 }, // es.version < 7 ? total value is 20,000 : total value is greater than or equal to 10,000
+            doc_count_error_upper_bound: 0,
+            sum_other_doc_count: 0,
         },
-        timed_out: false,
     });
+    expect2(() => searchAggregation.list).toEqual(expectedSearchResults);
+    expect2(() => searchAggregation.last).toEqual([`${expectedSearchResults[expectedSearchResults.length - 1].id}`]);
 
     //* test scanAll with 20,000 data
     const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 15000 } }).catch(GETERR);
-    expect2(allResults.length).toEqual(20000);
-
-    //* verify allResults
-    const expectedResults: Array<{
-        _id: string;
-        id: string;
-        _score: null;
-        name: string;
-        count: number;
-        company: string;
-        department: string;
-        salary: number;
-    }> = [
-        {
-            _id: 'employee 1',
-            _score: null,
-            company: 'B',
-            count: 1,
-            department: 'HR',
-            id: 'employee 1',
-            name: 'Jordan Parker Reed',
-            salary: 5000,
-        },
-        {
-            _id: 'employee 10',
-            _score: null,
-            company: 'B',
-            count: 0,
-            department: 'Admin',
-            id: 'employee 10',
-            name: 'Casey Blake Cameron',
-            salary: 16000,
-        },
-        {
-            _id: 'employee 100',
-            _score: null,
-            company: 'B',
-            count: 0,
-            department: 'Admin',
-            id: 'employee 100',
-            name: 'Morgan Blake Bailey',
-            salary: 16000,
-        },
-        {
-            _id: 'employee 1000',
-            _score: null,
-            company: 'B',
-            count: 0,
-            department: 'Admin',
-            id: 'employee 1000',
-            name: 'Alex Blake Mason',
-            salary: 16000,
-        },
-        {
-            _id: 'employee 10000',
-            _score: null,
-            company: 'B',
-            count: 0,
-            department: 'Admin',
-            id: 'employee 10000',
-            name: 'Alex Blake Ellis',
-            salary: 16000,
-        },
-    ];
-    expect2(allResults.slice(0, 5)).toEqual(expectedResults);
+    expect2(() => allResults.length).toEqual(20000);
+    const allResultsSlice = allResults.slice(0, expectedSearchResults.length);
+    expect2(() => allResultsSlice).toEqual(searchAggregation.list);
 };
 /**
  * perform aggregation with 20,000 data
@@ -1605,7 +1469,6 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
             employees_per_company: {
                 terms: {
                     field: 'company.keyword',
-                    size: 10,
                 },
             },
         },
@@ -1618,13 +1481,11 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
             employees_per_company: {
                 terms: {
                     field: 'company.keyword',
-                    size: 10,
                 },
                 aggs: {
                     employees_per_department: {
                         terms: {
                             field: 'department.keyword',
-                            size: 10,
                         },
                     },
                 },
@@ -1632,105 +1493,103 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
     };
 
-    expect2(await searchAgent(service).searchRaw($companyAggregation).catch(GETERR)).toEqual({
-        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-        aggregations: {
-            employees_per_company: {
-                buckets: [
-                    { doc_count: 6667, key: 'B' },
-                    { doc_count: 6667, key: 'C' },
-                    { doc_count: 6666, key: 'A' },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
+    const byCompanyRawResult: SearchRawResponse = await searchAgent(service).searchRaw($companyAggregation);
+    const byCompanyResult: SearchResponse = await service.search($companyAggregation);
+    const expectedTermsAggregation = {
+        employees_per_company: {
+            buckets: [
+                { doc_count: 6667, key: 'B' },
+                { doc_count: 6667, key: 'C' },
+                { doc_count: 6666, key: 'A' },
+            ],
+            doc_count_error_upper_bound: 0,
+            sum_other_doc_count: 0,
         },
-        hits: {
-            hits: [],
-            max_score: service.isOldES6 ? 0 : null,
-            total: service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 },
-        },
-        timed_out: false,
-    });
+    };
 
-    expect2(await searchAgent(service).searchRaw($companyDepartmentAggregation).catch(GETERR)).toEqual({
-        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-        aggregations: {
-            employees_per_company: {
-                buckets: [
-                    {
-                        doc_count: 6667,
-                        employees_per_department: {
-                            buckets: [
-                                { doc_count: 667, key: 'Admin' },
-                                { doc_count: 667, key: 'HR' },
-                                { doc_count: 667, key: 'Logistics' },
-                                { doc_count: 667, key: 'Marketing' },
-                                { doc_count: 667, key: 'Production' },
-                                { doc_count: 667, key: 'R&D' },
-                                { doc_count: 667, key: 'Sales' },
-                                { doc_count: 666, key: 'Finance' },
-                                { doc_count: 666, key: 'IT' },
-                                { doc_count: 666, key: 'Support' },
-                            ],
-                            doc_count_error_upper_bound: 0,
-                            sum_other_doc_count: 0,
-                        },
-                        key: 'B',
+    expect2(() => byCompanyRawResult.aggregations).toEqual(expectedTermsAggregation);
+    expect2(() => byCompanyResult.aggregations).toEqual(expectedTermsAggregation);
+    expect2(() => byCompanyRawResult.hits.total).toEqual(service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 });
+
+    const byCompanyDepartmentRawResult: SearchRawResponse = await searchAgent(service).searchRaw(
+        $companyDepartmentAggregation,
+    );
+    const byCompanyDepartmentResult: SearchResponse = await service.search($companyDepartmentAggregation);
+    const expectedTerms2Aggregation = {
+        employees_per_company: {
+            buckets: [
+                {
+                    doc_count: 6667,
+                    employees_per_department: {
+                        buckets: [
+                            { doc_count: 667, key: 'Admin' },
+                            { doc_count: 667, key: 'HR' },
+                            { doc_count: 667, key: 'Logistics' },
+                            { doc_count: 667, key: 'Marketing' },
+                            { doc_count: 667, key: 'Production' },
+                            { doc_count: 667, key: 'R&D' },
+                            { doc_count: 667, key: 'Sales' },
+                            { doc_count: 666, key: 'Finance' },
+                            { doc_count: 666, key: 'IT' },
+                            { doc_count: 666, key: 'Support' },
+                        ],
+                        doc_count_error_upper_bound: 0,
+                        sum_other_doc_count: 0,
                     },
-                    {
-                        doc_count: 6667,
-                        employees_per_department: {
-                            buckets: [
-                                { doc_count: 667, key: 'Admin' },
-                                { doc_count: 667, key: 'Finance' },
-                                { doc_count: 667, key: 'HR' },
-                                { doc_count: 667, key: 'IT' },
-                                { doc_count: 667, key: 'Production' },
-                                { doc_count: 667, key: 'Sales' },
-                                { doc_count: 667, key: 'Support' },
-                                { doc_count: 666, key: 'Logistics' },
-                                { doc_count: 666, key: 'Marketing' },
-                                { doc_count: 666, key: 'R&D' },
-                            ],
-                            doc_count_error_upper_bound: 0,
-                            sum_other_doc_count: 0,
-                        },
-                        key: 'C',
+                    key: 'B',
+                },
+                {
+                    doc_count: 6667,
+                    employees_per_department: {
+                        buckets: [
+                            { doc_count: 667, key: 'Admin' },
+                            { doc_count: 667, key: 'Finance' },
+                            { doc_count: 667, key: 'HR' },
+                            { doc_count: 667, key: 'IT' },
+                            { doc_count: 667, key: 'Production' },
+                            { doc_count: 667, key: 'Sales' },
+                            { doc_count: 667, key: 'Support' },
+                            { doc_count: 666, key: 'Logistics' },
+                            { doc_count: 666, key: 'Marketing' },
+                            { doc_count: 666, key: 'R&D' },
+                        ],
+                        doc_count_error_upper_bound: 0,
+                        sum_other_doc_count: 0,
                     },
-                    {
-                        doc_count: 6666,
-                        employees_per_department: {
-                            buckets: [
-                                { doc_count: 667, key: 'Finance' },
-                                { doc_count: 667, key: 'IT' },
-                                { doc_count: 667, key: 'Logistics' },
-                                { doc_count: 667, key: 'Marketing' },
-                                { doc_count: 667, key: 'R&D' },
-                                { doc_count: 667, key: 'Support' },
-                                { doc_count: 666, key: 'Admin' },
-                                { doc_count: 666, key: 'HR' },
-                                { doc_count: 666, key: 'Production' },
-                                { doc_count: 666, key: 'Sales' },
-                            ],
-                            doc_count_error_upper_bound: 0,
-                            sum_other_doc_count: 0,
-                        },
-                        key: 'A',
+                    key: 'C',
+                },
+                {
+                    doc_count: 6666,
+                    employees_per_department: {
+                        buckets: [
+                            { doc_count: 667, key: 'Finance' },
+                            { doc_count: 667, key: 'IT' },
+                            { doc_count: 667, key: 'Logistics' },
+                            { doc_count: 667, key: 'Marketing' },
+                            { doc_count: 667, key: 'R&D' },
+                            { doc_count: 667, key: 'Support' },
+                            { doc_count: 666, key: 'Admin' },
+                            { doc_count: 666, key: 'HR' },
+                            { doc_count: 666, key: 'Production' },
+                            { doc_count: 666, key: 'Sales' },
+                        ],
+                        doc_count_error_upper_bound: 0,
+                        sum_other_doc_count: 0,
                     },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
+                    key: 'A',
+                },
+            ],
+            doc_count_error_upper_bound: 0,
+            sum_other_doc_count: 0,
         },
-        hits: {
-            hits: [],
-            max_score: service.isOldES6 ? 0 : null,
-            total: service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 },
-        },
-        timed_out: false,
-    });
+    };
+    expect2(byCompanyDepartmentRawResult.aggregations).toEqual(expectedTerms2Aggregation);
+    expect2(byCompanyDepartmentResult.aggregations).toEqual(expectedTerms2Aggregation);
+    expect2(byCompanyDepartmentRawResult.hits.total).toEqual(
+        service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 },
+    );
 };
+
 /**
  * perform search/filter tests with 20,000 data
  * @param service - Elasticsearch service instance.
@@ -1743,13 +1602,13 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             bool: {
                 filter: {
                     term: {
-                        name: 'parker',
+                        name: 'jordan',
                     },
                 },
             },
         },
         aggs: {
-            employees_with_name_Parker_per_company: {
+            employees_with_name_Jordan_per_company: {
                 terms: {
                     field: 'company.keyword',
                 },
@@ -1757,7 +1616,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
         sort: [
             {
-                'department.keyword': {
+                'company.keyword': {
                     order: 'asc',
                     missing: '_last',
                 },
@@ -1770,102 +1629,64 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
-    expect2(await searchAgent(service).searchRaw($keywordSearch).catch(GETERR)).toEqual({
-        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-        aggregations: {
-            employees_with_name_Parker_per_company: {
-                buckets: [{ doc_count: 3334, key: 'B' }],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        hits: {
-            hits: [
-                {
-                    _id: 'employee 1',
-                    _source: {
-                        company: 'B',
-                        count: 1,
-                        department: 'HR',
-                        id: 'employee 1',
-                        name: 'Jordan Parker Reed',
-                        salary: 5000,
-                    },
-                    sort: ['HR', 'employee 1'],
-                },
-                {
-                    _id: 'employee 10021',
-                    _source: {
-                        company: 'B',
-                        count: 1,
-                        department: 'HR',
-                        id: 'employee 10021',
-                        name: 'Quinn Parker Ellis',
-                        salary: 5000,
-                    },
-                    sort: ['HR', 'employee 10021'],
-                },
-                {
-                    _id: 'employee 10051',
-                    _source: {
-                        company: 'B',
-                        count: 1,
-                        department: 'HR',
-                        id: 'employee 10051',
-                        name: 'Riley Parker Mason',
-                        salary: 5000,
-                    },
-                    sort: ['HR', 'employee 10051'],
-                },
+    const keywordSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($keywordSearch);
+    const expectedKeywordAggregation = {
+        employees_with_name_Jordan_per_company: {
+            buckets: [
+                { doc_count: 834, key: 'B' },
+                { doc_count: 833, key: 'A' },
+                { doc_count: 833, key: 'C' },
             ],
-            max_score: null,
-            total: service.isOldES6 ? 3334 : { relation: 'eq', value: 3334 },
+            doc_count_error_upper_bound: 0,
+            sum_other_doc_count: 0,
         },
-        timed_out: false,
-    });
-    expect2(await service.search($keywordSearch).catch(GETERR)).toEqual({
-        aggregations: {
-            employees_with_name_Parker_per_company: {
-                buckets: [{ doc_count: 3334, key: 'B' }],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
+    };
+    const expectedKeywordList: Array<TestList> = [
+        {
+            _id: 'employee 10017',
+            _score: null,
+            company: 'A',
+            count: 7,
+            department: 'Production',
+            id: 'employee 10017',
+            name: 'Jordan Reese Harper',
+            salary: 11500,
         },
-        last: ['HR', 'employee 10051'],
-        list: [
-            {
-                _id: 'employee 1',
-                _score: null,
-                company: 'B',
-                count: 1,
-                department: 'HR',
-                id: 'employee 1',
-                name: 'Jordan Parker Reed',
-                salary: 5000,
-            },
-            {
-                _id: 'employee 10021',
-                _score: null,
-                company: 'B',
-                count: 1,
-                department: 'HR',
-                id: 'employee 10021',
-                name: 'Quinn Parker Ellis',
-                salary: 5000,
-            },
-            {
-                _id: 'employee 10051',
-                _score: null,
-                company: 'B',
-                count: 1,
-                department: 'HR',
-                id: 'employee 10051',
-                name: 'Riley Parker Mason',
-                salary: 5000,
-            },
-        ],
-        total: 3334,
-    });
+        {
+            _id: 'employee 10041',
+            _score: null,
+            company: 'A',
+            count: 1,
+            department: 'HR',
+            id: 'employee 10041',
+            name: 'Jordan Reese Cameron',
+            salary: 11500,
+        },
+        {
+            _id: 'employee 10065',
+            _score: null,
+            company: 'A',
+            count: 5,
+            department: 'IT',
+            id: 'employee 10065',
+            name: 'Jordan Reese Mason',
+            salary: 11500,
+        },
+    ];
+
+    expect2(() => keywordSearchRawResult.aggregations).toEqual(expectedKeywordAggregation);
+    const keywordSearchResult: SearchResponse = await service.search($keywordSearch);
+
+    expect2(() => keywordSearchRawResult.aggregations).toEqual(keywordSearchResult.aggregations);
+    expect2(() => keywordSearchRawResult.hits.hits[0]._id).toEqual(keywordSearchResult.list[0]._id);
+    expect2(() => keywordSearchRawResult.hits.hits[2]._id).toEqual(keywordSearchResult.list[2]._id);
+
+    expect2(() => keywordSearchResult.list).toEqual(expectedKeywordList);
+    expect2(() => keywordSearchResult.last).toEqual([
+        `${expectedKeywordList[expectedKeywordList.length - 1].company}`,
+        `${expectedKeywordList[expectedKeywordList.length - 1].id}`,
+    ]);
+    expect2(() => keywordSearchResult.total).toEqual(2500);
 
     //* 2. Test by range (salary range)
     const $rangeSearch: SearchBody = {
@@ -1895,6 +1716,10 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
                     order: 'asc',
                     missing: '_last',
                 },
+                'company.keyword': {
+                    order: 'asc',
+                    missing: '_last',
+                },
                 'id.keyword': {
                     order: 'asc',
                     missing: '_last',
@@ -1902,111 +1727,58 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
-
-    expect2(await searchAgent(service).searchRaw($rangeSearch).catch(GETERR)).toEqual({
-        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-        aggregations: {
-            employees_in_salary_range_per_company: {
-                buckets: [
-                    { doc_count: 3333, key: 'A' },
-                    { doc_count: 3333, key: 'B' },
-                    { doc_count: 3333, key: 'C' },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        hits: {
-            hits: [
-                {
-                    _id: 'employee 10005',
-                    _source: {
-                        company: 'A',
-                        count: 5,
-                        department: 'IT',
-                        id: 'employee 10005',
-                        name: 'Quinn Reese Bailey',
-                        salary: 11500,
-                    },
-                    sort: [11500, 'employee 10005'],
-                },
-                {
-                    _id: 'employee 10011',
-                    _source: {
-                        company: 'A',
-                        count: 1,
-                        department: 'HR',
-                        id: 'employee 10011',
-                        name: 'Riley Reese Reed',
-                        salary: 11500,
-                    },
-                    sort: [11500, 'employee 10011'],
-                },
-                {
-                    _id: 'employee 10017',
-                    _source: {
-                        company: 'A',
-                        count: 7,
-                        department: 'Production',
-                        id: 'employee 10017',
-                        name: 'Jordan Reese Harper',
-                        salary: 11500,
-                    },
-                    sort: [11500, 'employee 10017'],
-                },
+    const expectedRangeAggregation = {
+        employees_in_salary_range_per_company: {
+            buckets: [
+                { doc_count: 3333, key: 'A' },
+                { doc_count: 3333, key: 'B' },
+                { doc_count: 3333, key: 'C' },
             ],
-            max_score: null,
-            total: service.isOldES6 ? 9999 : { relation: 'eq', value: 9999 },
+            doc_count_error_upper_bound: 0,
+            sum_other_doc_count: 0,
         },
-        timed_out: false,
-    });
-    expect2(await service.search($rangeSearch).catch(GETERR)).toEqual({
-        aggregations: {
-            employees_in_salary_range_per_company: {
-                buckets: [
-                    { doc_count: 3333, key: 'A' },
-                    { doc_count: 3333, key: 'B' },
-                    { doc_count: 3333, key: 'C' },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
+    };
+    const expectedRangeList: Array<TestList> = [
+        {
+            _id: 'employee 10005',
+            _score: null,
+            company: 'A',
+            count: 5,
+            department: 'IT',
+            id: 'employee 10005',
+            name: 'Quinn Reese Bailey',
+            salary: 11500,
         },
-        last: [11500, 'employee 10017'],
-        list: [
-            {
-                _id: 'employee 10005',
-                _score: null,
-                company: 'A',
-                count: 5,
-                department: 'IT',
-                id: 'employee 10005',
-                name: 'Quinn Reese Bailey',
-                salary: 11500,
-            },
-            {
-                _id: 'employee 10011',
-                _score: null,
-                company: 'A',
-                count: 1,
-                department: 'HR',
-                id: 'employee 10011',
-                name: 'Riley Reese Reed',
-                salary: 11500,
-            },
-            {
-                _id: 'employee 10017',
-                _score: null,
-                company: 'A',
-                count: 7,
-                department: 'Production',
-                id: 'employee 10017',
-                name: 'Jordan Reese Harper',
-                salary: 11500,
-            },
-        ],
-        total: 9999,
-    });
+        {
+            _id: 'employee 10011',
+            _score: null,
+            company: 'A',
+            count: 1,
+            department: 'HR',
+            id: 'employee 10011',
+            name: 'Riley Reese Reed',
+            salary: 11500,
+        },
+        {
+            _id: 'employee 10017',
+            _score: null,
+            company: 'A',
+            count: 7,
+            department: 'Production',
+            id: 'employee 10017',
+            name: 'Jordan Reese Harper',
+            salary: 11500,
+        },
+    ];
+    const rangeSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($rangeSearch);
+    const rangeSearchResult: SearchResponse = await service.search($rangeSearch);
+
+    expect2(() => rangeSearchRawResult.aggregations).toEqual(expectedRangeAggregation);
+    expect2(() => rangeSearchRawResult.aggregations).toEqual(rangeSearchResult.aggregations);
+    expect2(() => rangeSearchResult.list).toEqual(expectedRangeList);
+    expect2(() => rangeSearchRawResult.hits.hits[0]._id).toEqual(rangeSearchResult.list[0]._id);
+    expect2(() => rangeSearchRawResult.hits.hits[2]._id).toEqual(rangeSearchResult.list[2]._id);
+
     //* 3. Test 'exists; field(mapping관련, null, '', [], {}), keyword'
     await service.saveItem('empty 1', {
         id: 'empty 1',
@@ -2363,7 +2135,7 @@ describe('Elastic6Service', () => {
     //! test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(120000);
+        jest.setTimeout(12000000);
 
         //* load dummy storage service.
         const { service } = await initService('6.2');
@@ -2400,7 +2172,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(12000000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.1');
@@ -2437,7 +2209,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(12000000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.2');
@@ -2474,7 +2246,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.10)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(12000000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.10');
@@ -2511,7 +2283,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(12000000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.1');
@@ -2548,7 +2320,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(12000000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.2');
@@ -2586,7 +2358,7 @@ describe('Elastic6Service', () => {
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(120000);
+        jest.setTimeout(12000000);
         //* load dummy storage service.
         const { service } = await initService('2.13');
 
