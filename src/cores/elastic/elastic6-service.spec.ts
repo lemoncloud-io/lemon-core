@@ -1860,12 +1860,14 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
     //     ]);
     // } else
     if (service.isOldES6) {
+        /* sort by the _score calculated using the TF-IDF algorithm */
         expect2(() => matchSearchResult.list).toEqual(expectedMatchList6);
         expect2(() => matchSearchResult.last).toEqual([
             expectedMatchList6[expectedMatchList6.length - 1]._score,
             `${expectedMatchList6[expectedMatchList6.length - 1].id}`,
         ]);
     } else {
+        /* sort by the _score calculated using the BM25 algorithm */
         expect2(() => matchSearchResult.list).toEqual(expectedMatchList);
         expect2(() => matchSearchResult.last).toEqual([
             expectedMatchList[expectedMatchList.length - 1]._score,
