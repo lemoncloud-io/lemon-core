@@ -1811,38 +1811,6 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             salary: 20000,
         },
     ];
-    const expectedMatchList2: Array<TestList> = [
-        {
-            _id: 'employee 10009',
-            _score: 2.1102757,
-            company: 'B',
-            count: 9,
-            department: 'Logistics',
-            id: 'employee 10009',
-            name: 'Jordan Parker Mason',
-            salary: 5000,
-        },
-        {
-            _id: 'employee 10049',
-            _score: 2.1102757,
-            company: 'C',
-            count: 9,
-            department: 'Logistics',
-            id: 'employee 10049',
-            name: 'Jordan Hayden Ellis',
-            salary: 20000,
-        },
-        {
-            _id: 'employee 10097',
-            _score: 2.1102757,
-            company: 'C',
-            count: 7,
-            department: 'Production',
-            id: 'employee 10097',
-            name: 'Jordan Hayden Cameron',
-            salary: 20000,
-        },
-    ];
 
     const matchSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($matchSearch);
     const matchSearchResult: SearchResponse = await service.search($matchSearch);
@@ -1852,22 +1820,15 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
     expect2(() => matchSearchRawResult.hits.hits[0]._id).toEqual(matchSearchResult.list[0]._id);
     expect2(() => matchSearchRawResult.hits.hits[2]._id).toEqual(matchSearchResult.list[2]._id);
 
-    // if (service.isLatestOS2) {
-    //     expect2(() => matchSearchResult.list).toEqual(expectedMatchList2);
-    //     expect2(() => matchSearchResult.last).toEqual([
-    //         expectedMatchList2[expectedMatchList2.length - 1]._score,
-    //         `${expectedMatchList2[expectedMatchList2.length - 1].id}`,
-    //     ]);
-    // } else
     if (service.isOldES6) {
-        /* sort by the _score calculated using the TF-IDF algorithm */
+        /* sorted by the _score calculated using the TF-IDF algorithm */
         expect2(() => matchSearchResult.list).toEqual(expectedMatchList6);
         expect2(() => matchSearchResult.last).toEqual([
             expectedMatchList6[expectedMatchList6.length - 1]._score,
             `${expectedMatchList6[expectedMatchList6.length - 1].id}`,
         ]);
     } else {
-        /* sort by the _score calculated using the BM25 algorithm */
+        /* sorted by the _score calculated using the BM25 algorithm */
         expect2(() => matchSearchResult.list).toEqual(expectedMatchList);
         expect2(() => matchSearchResult.last).toEqual([
             expectedMatchList[expectedMatchList.length - 1]._score,
