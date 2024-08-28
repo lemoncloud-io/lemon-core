@@ -957,7 +957,7 @@ const searchAgent = <T = any>(service: Elastic6Service<MyModel>) => ({
                     _source: T;
                     sort: string[];
                 }) => {
-                    const { _index, _score, _type, ...rest } = hit;
+                    const { _index, _type, ...rest } = hit;
                     return rest;
                 },
             );
@@ -1036,6 +1036,9 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         },
         sort: [
             {
+                _score: {
+                    order: 'desc',
+                },
                 count: {
                     order: 'asc',
                     missing: '_last',
@@ -1065,21 +1068,23 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
             hits: [
                 {
                     _id: 'A7',
+                    _score: 0,
                     _source: {
                         $id: 'A7',
                         count: 10,
                         name: 'A7 for auto indexing test',
                     },
-                    sort: [10],
+                    sort: [0, 10],
                 },
                 {
                     _id: 'A9',
+                    _score: 0,
                     _source: {
                         $id: 'A9',
                         count: 30,
                         name: 'A9 for auto indexing test',
                     },
-                    sort: [30],
+                    sort: [0, 30],
                 },
             ],
             max_score: null,
@@ -1099,19 +1104,19 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 sum_other_doc_count: 0,
             },
         },
-        last: [30],
+        last: [0, 30],
         list: [
             {
                 $id: 'A7',
                 _id: 'A7',
-                _score: null,
+                _score: 0,
                 count: 10,
                 name: 'A7 for auto indexing test',
             },
             {
                 $id: 'A9',
                 _id: 'A9',
-                _score: null,
+                _score: 0,
                 count: 30,
                 name: 'A9 for auto indexing test',
             },
@@ -1139,6 +1144,9 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         },
         sort: [
             {
+                _score: {
+                    order: 'desc',
+                },
                 count: {
                     order: 'asc',
                     missing: '_last',
@@ -1168,21 +1176,23 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
             hits: [
                 {
                     _id: 'A8',
+                    _score: 0,
                     _source: {
                         $id: 'A8',
                         count: 20,
                         name: '한글 테스트',
                     },
-                    sort: [20],
+                    sort: [0, 20],
                 },
                 {
                     _id: 'A10',
+                    _score: 0,
                     _source: {
                         $id: 'A10',
                         count: 40,
                         name: 'A10 한글 테스트',
                     },
-                    sort: [40],
+                    sort: [0, 40],
                 },
             ],
             max_score: null,
@@ -1202,19 +1212,19 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
                 sum_other_doc_count: 0,
             },
         },
-        last: [40],
+        last: [0, 40],
         list: [
             {
                 $id: 'A8',
                 _id: 'A8',
-                _score: null,
+                _score: 0,
                 count: 20,
                 name: '한글 테스트',
             },
             {
                 $id: 'A10',
                 _id: 'A10',
-                _score: null,
+                _score: 0,
                 count: 40,
                 name: 'A10 한글 테스트',
             },
@@ -1278,36 +1288,60 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
         };
     });
 
-    // create bulk operations
-    const operations = dataset.reduce((acc, doc) => {
-        acc.push({
-            index: {
-                _index: indexName,
-                _id: doc.id,
-                ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
-            },
-        });
-        acc.push(doc);
-        return acc;
-    }, [] as Array<{ index: { _index: string; _id: string; _type?: string } } | { id: string; name: string; count: number; department: string; salary: number; company: string }>);
-
-    // bulk
-    const bulkResponse: ApiResponse<BulkResponseBody, any> = await service.client
-        .bulk({
-            refresh: true,
-            body: operations,
-        })
-        .catch(
-            $ERROR.handler('bulk', e => {
-                throw e;
-            }),
-        );
-    const bulkDummyResponse: BulkDummyResponse = {
-        errors: bulkResponse?.body?.errors,
-        items: bulkResponse?.body?.items,
-        took: bulkResponse?.body?.took,
-        statusCode: bulkResponse?.statusCode,
+    // create bulk operations for a given chunk of data
+    const createBulkOperations = (dataChunk: any[]) => {
+        return dataChunk.reduce((acc, doc) => {
+            acc.push({
+                index: {
+                    _index: indexName,
+                    _id: doc.id,
+                    ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
+                },
+            });
+            acc.push(doc);
+            return acc;
+        }, [] as Array<{ index: { _index: string; _id: string; _type?: string } } | { id: string; name: string; count: number; department: string; salary: number; company: string }>);
     };
+
+    // bulk operation
+    const performBulkOperation = async (operations: any[]) => {
+        const bulkResponse: ApiResponse<BulkResponseBody, any> = await service.client
+            .bulk({
+                refresh: true,
+                body: operations,
+            })
+            .catch(
+                $ERROR.handler('bulk', e => {
+                    throw e;
+                }),
+            );
+        return bulkResponse;
+    };
+
+    // split the dataset into two
+    const chunkSize = 10000;
+    const firstChunk = dataset.slice(0, chunkSize);
+    const secondChunk = dataset.slice(chunkSize);
+
+    // perform bulk operations
+    const firstBulkResponse = await performBulkOperation(createBulkOperations(firstChunk));
+    await waited(10000);
+    const secondBulkResponse = await performBulkOperation(createBulkOperations(secondChunk));
+
+    // responses from both bulk operations
+    const combinedErrors = firstBulkResponse.body.errors || secondBulkResponse.body.errors;
+    const combinedItems = (firstBulkResponse.body.items || []).concat(secondBulkResponse.body.items || []);
+    const combinedTook = (firstBulkResponse.body.took || 0) + (secondBulkResponse.body.took || 0);
+    const combinedStatusCode = secondBulkResponse.statusCode || firstBulkResponse.statusCode;
+
+    //combined bulk response
+    const bulkDummyResponse: BulkDummyResponse = {
+        errors: combinedErrors,
+        items: combinedItems,
+        took: combinedTook,
+        statusCode: combinedStatusCode,
+    };
+
     return bulkDummyResponse;
 };
 
@@ -1341,7 +1375,7 @@ interface SearchResponse<T = any> {
 interface TestList {
     _id: string;
     id: string;
-    _score: null;
+    _score: number;
     name: string;
     count: number;
     company: string;
@@ -1390,6 +1424,9 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
         },
         sort: [
             {
+                _score: {
+                    order: 'desc',
+                },
                 'id.keyword': {
                     order: 'asc',
                     missing: '_last',
@@ -1407,7 +1444,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
             count: 1,
             company: 'B',
             _id: 'employee 1',
-            _score: null,
+            _score: 0,
         },
         {
             id: 'employee 10',
@@ -1417,7 +1454,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
             count: 0,
             company: 'B',
             _id: 'employee 10',
-            _score: null,
+            _score: 0,
         },
         {
             id: 'employee 100',
@@ -1427,7 +1464,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
             count: 0,
             company: 'B',
             _id: 'employee 100',
-            _score: null,
+            _score: 0,
         },
     ];
     expect2(() => searchAggregation.aggregations).toEqual({
@@ -1449,7 +1486,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
         },
     });
     expect2(() => searchAggregation.list).toEqual(expectedSearchResults);
-    expect2(() => searchAggregation.last).toEqual([`${expectedSearchResults[expectedSearchResults.length - 1].id}`]);
+    expect2(() => searchAggregation.last).toEqual([0, `${expectedSearchResults[expectedSearchResults.length - 1].id}`]);
 
     //* test scanAll with 20,000 data
     const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 15000 } }).catch(GETERR);
@@ -1595,7 +1632,7 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
  * @param service - Elasticsearch service instance.
  */
 export const searchFilterTest = async (service: Elastic6Service<any>) => {
-    //* 1. Test by keyword (term query)
+    //* 1.1 Test by keyword (filter term query)
     const $keywordSearch: SearchBody = {
         size: 3,
         query: {
@@ -1616,12 +1653,9 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
         sort: [
             {
-                'company.keyword': {
-                    order: 'asc',
-                    missing: '_last',
+                _score: {
+                    order: 'desc',
                 },
-            },
-            {
                 'id.keyword': {
                     order: 'asc',
                     missing: '_last',
@@ -1629,7 +1663,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
-    const keywordSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($keywordSearch);
+
     const expectedKeywordAggregation = {
         employees_with_name_Jordan_per_company: {
             buckets: [
@@ -1643,18 +1677,90 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
     };
     const expectedKeywordList: Array<TestList> = [
         {
-            _id: 'employee 10017',
-            _score: null,
-            company: 'A',
-            count: 7,
-            department: 'Production',
-            id: 'employee 10017',
-            name: 'Jordan Reese Harper',
-            salary: 11500,
+            _id: 'employee 1',
+            _score: 0,
+            company: 'B',
+            count: 1,
+            department: 'HR',
+            id: 'employee 1',
+            name: 'Jordan Parker Reed',
+            salary: 5000,
+        },
+        {
+            _id: 'employee 10001',
+            _score: 0,
+            company: 'C',
+            count: 1,
+            department: 'HR',
+            id: 'employee 10001',
+            name: 'Jordan Hayden Gray',
+            salary: 20000,
+        },
+        {
+            _id: 'employee 10009',
+            _score: 0,
+            company: 'B',
+            count: 9,
+            department: 'Logistics',
+            id: 'employee 10009',
+            name: 'Jordan Parker Mason',
+            salary: 5000,
+        },
+    ];
+
+    const keywordSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($keywordSearch);
+    const keywordSearchResult: SearchResponse = await service.search($keywordSearch);
+
+    expect2(() => keywordSearchRawResult.aggregations).toEqual(expectedKeywordAggregation);
+    expect2(() => keywordSearchRawResult.aggregations).toEqual(keywordSearchResult.aggregations);
+    expect2(() => keywordSearchRawResult.hits.hits[0]._id).toEqual(keywordSearchResult.list[0]._id);
+    expect2(() => keywordSearchRawResult.hits.hits[2]._id).toEqual(keywordSearchResult.list[2]._id);
+
+    expect2(() => keywordSearchResult.list).toEqual(expectedKeywordList);
+    expect2(() => keywordSearchResult.last).toEqual([0, `${expectedKeywordList[expectedKeywordList.length - 1].id}`]);
+    expect2(() => keywordSearchResult.total).toEqual(2500);
+
+    //* 1.2 Test by keyword (match query)
+    const $matchSearch: SearchBody = {
+        size: 3,
+        query: {
+            match: {
+                name: 'jordan',
+            },
+        },
+        aggs: {
+            employees_with_name_Jordan_per_company: {
+                terms: {
+                    field: 'company.keyword',
+                },
+            },
+        },
+        sort: [
+            {
+                _score: {
+                    order: 'desc',
+                },
+                'id.keyword': {
+                    order: 'asc',
+                    missing: '_last',
+                },
+            },
+        ],
+    };
+    const expectedMatchList: Array<TestList> = [
+        {
+            _id: 'employee 1001',
+            _score: 2.0919745,
+            company: 'C',
+            count: 1,
+            department: 'HR',
+            id: 'employee 1001',
+            name: 'Jordan Hayden Harper',
+            salary: 20000,
         },
         {
             _id: 'employee 10041',
-            _score: null,
+            _score: 2.0919745,
             company: 'A',
             count: 1,
             department: 'HR',
@@ -1663,30 +1769,109 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             salary: 11500,
         },
         {
-            _id: 'employee 10065',
-            _score: null,
+            _id: 'employee 10073',
+            _score: 2.0919745,
+            company: 'C',
+            count: 3,
+            department: 'Marketing',
+            id: 'employee 10073',
+            name: 'Jordan Hayden Harper',
+            salary: 20000,
+        },
+    ];
+    const expectedMatchList6: Array<TestList> = [
+        {
+            _id: 'employee 10033',
+            _score: 2.0947309,
+            company: 'B',
+            count: 3,
+            department: 'Marketing',
+            id: 'employee 10033',
+            name: 'Jordan Parker Bailey',
+            salary: 5000,
+        },
+        {
+            _id: 'employee 10089',
+            _score: 2.0947309,
             company: 'A',
-            count: 5,
-            department: 'IT',
-            id: 'employee 10065',
-            name: 'Jordan Reese Mason',
+            count: 9,
+            department: 'Logistics',
+            id: 'employee 10089',
+            name: 'Jordan Reese Bailey',
             salary: 11500,
+        },
+        {
+            _id: 'employee 10121',
+            _score: 2.0947309,
+            company: 'C',
+            count: 1,
+            department: 'HR',
+            id: 'employee 10121',
+            name: 'Jordan Hayden Mason',
+            salary: 20000,
+        },
+    ];
+    const expectedMatchList2: Array<TestList> = [
+        {
+            _id: 'employee 10009',
+            _score: 2.1102757,
+            company: 'B',
+            count: 9,
+            department: 'Logistics',
+            id: 'employee 10009',
+            name: 'Jordan Parker Mason',
+            salary: 5000,
+        },
+        {
+            _id: 'employee 10049',
+            _score: 2.1102757,
+            company: 'C',
+            count: 9,
+            department: 'Logistics',
+            id: 'employee 10049',
+            name: 'Jordan Hayden Ellis',
+            salary: 20000,
+        },
+        {
+            _id: 'employee 10097',
+            _score: 2.1102757,
+            company: 'C',
+            count: 7,
+            department: 'Production',
+            id: 'employee 10097',
+            name: 'Jordan Hayden Cameron',
+            salary: 20000,
         },
     ];
 
-    expect2(() => keywordSearchRawResult.aggregations).toEqual(expectedKeywordAggregation);
-    const keywordSearchResult: SearchResponse = await service.search($keywordSearch);
+    const matchSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($matchSearch);
+    const matchSearchResult: SearchResponse = await service.search($matchSearch);
 
-    expect2(() => keywordSearchRawResult.aggregations).toEqual(keywordSearchResult.aggregations);
-    expect2(() => keywordSearchRawResult.hits.hits[0]._id).toEqual(keywordSearchResult.list[0]._id);
-    expect2(() => keywordSearchRawResult.hits.hits[2]._id).toEqual(keywordSearchResult.list[2]._id);
+    expect2(() => matchSearchRawResult.aggregations).toEqual(expectedKeywordAggregation);
+    expect2(() => matchSearchRawResult.aggregations).toEqual(matchSearchResult.aggregations);
+    expect2(() => matchSearchRawResult.hits.hits[0]._id).toEqual(matchSearchResult.list[0]._id);
+    expect2(() => matchSearchRawResult.hits.hits[2]._id).toEqual(matchSearchResult.list[2]._id);
 
-    expect2(() => keywordSearchResult.list).toEqual(expectedKeywordList);
-    expect2(() => keywordSearchResult.last).toEqual([
-        `${expectedKeywordList[expectedKeywordList.length - 1].company}`,
-        `${expectedKeywordList[expectedKeywordList.length - 1].id}`,
-    ]);
-    expect2(() => keywordSearchResult.total).toEqual(2500);
+    if (service.isLatestOS2) {
+        expect2(() => matchSearchResult.list).toEqual(expectedMatchList2);
+        expect2(() => matchSearchResult.last).toEqual([
+            expectedMatchList2[expectedMatchList2.length - 1]._score,
+            `${expectedMatchList2[expectedMatchList2.length - 1].id}`,
+        ]);
+    } else if (service.isOldES6) {
+        expect2(() => matchSearchResult.list).toEqual(expectedMatchList6);
+        expect2(() => matchSearchResult.last).toEqual([
+            expectedMatchList6[expectedMatchList6.length - 1]._score,
+            `${expectedMatchList6[expectedMatchList6.length - 1].id}`,
+        ]);
+    } else {
+        expect2(() => matchSearchResult.list).toEqual(expectedMatchList);
+        expect2(() => matchSearchResult.last).toEqual([
+            expectedMatchList[expectedMatchList.length - 1]._score,
+            `${expectedMatchList[expectedMatchList.length - 1].id}`,
+        ]);
+    }
+    expect2(() => matchSearchResult.total).toEqual(keywordSearchResult.total);
 
     //* 2. Test by range (salary range)
     const $rangeSearch: SearchBody = {
@@ -1712,11 +1897,10 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
         sort: [
             {
-                salary: {
-                    order: 'asc',
-                    missing: '_last',
+                _score: {
+                    order: 'desc',
                 },
-                'company.keyword': {
+                salary: {
                     order: 'asc',
                     missing: '_last',
                 },
@@ -1741,7 +1925,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
     const expectedRangeList: Array<TestList> = [
         {
             _id: 'employee 10005',
-            _score: null,
+            _score: 0,
             company: 'A',
             count: 5,
             department: 'IT',
@@ -1751,7 +1935,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
         {
             _id: 'employee 10011',
-            _score: null,
+            _score: 0,
             company: 'A',
             count: 1,
             department: 'HR',
@@ -1761,7 +1945,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
         {
             _id: 'employee 10017',
-            _score: null,
+            _score: 0,
             company: 'A',
             count: 7,
             department: 'Production',
@@ -1775,9 +1959,16 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
 
     expect2(() => rangeSearchRawResult.aggregations).toEqual(expectedRangeAggregation);
     expect2(() => rangeSearchRawResult.aggregations).toEqual(rangeSearchResult.aggregations);
-    expect2(() => rangeSearchResult.list).toEqual(expectedRangeList);
     expect2(() => rangeSearchRawResult.hits.hits[0]._id).toEqual(rangeSearchResult.list[0]._id);
     expect2(() => rangeSearchRawResult.hits.hits[2]._id).toEqual(rangeSearchResult.list[2]._id);
+
+    expect2(() => rangeSearchResult.list).toEqual(expectedRangeList);
+    expect2(() => rangeSearchResult.last).toEqual([
+        0,
+        expectedRangeList[expectedRangeList.length - 1].salary,
+        `${expectedRangeList[expectedRangeList.length - 1].id}`,
+    ]);
+    expect2(() => rangeSearchResult.total).toEqual(9999);
 
     //* 3. Test 'exists; field(mapping관련, null, '', [], {}), keyword'
     await service.saveItem('empty 1', {
@@ -1827,6 +2018,9 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
         sort: [
             {
+                _score: {
+                    order: 'desc',
+                },
                 'id.keyword': {
                     order: 'asc',
                     missing: '_last',
@@ -1853,6 +2047,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             hits: [
                 {
                     _id: 'empty 1',
+                    _score: 0,
                     _source: {
                         $id: 'empty 1',
                         company: null,
@@ -1861,18 +2056,20 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
                         name: null,
                         salary: null,
                     },
-                    sort: ['empty 1'],
+                    sort: [0, 'empty 1'],
                 },
-                { _id: 'empty 2', _source: { $id: 'empty 2', id: 'empty 2' }, sort: ['empty 2'] },
+                { _id: 'empty 2', _score: 0, _source: { $id: 'empty 2', id: 'empty 2' }, sort: [0, 'empty 2'] },
                 {
                     _id: 'empty 3',
+                    _score: 0,
                     _source: { $id: 'empty 3', company: '', department: '', id: 'empty 3', name: '', salary: '' },
-                    sort: ['empty 3'],
+                    sort: [0, 'empty 3'],
                 },
                 {
                     _id: 'empty 4',
+                    _score: 0,
                     _source: { $id: 'empty 4', company: [], department: [], id: 'empty 4', name: [], salary: [] },
-                    sort: ['empty 4'],
+                    sort: [0, 'empty 4'],
                 },
             ],
             max_score: null,
@@ -1898,18 +2095,18 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             {
                 $id: 'empty 1',
                 _id: 'empty 1',
-                _score: null,
+                _score: 0,
                 company: null,
                 department: null,
                 id: 'empty 1',
                 name: null,
                 salary: null,
             },
-            { $id: 'empty 2', _id: 'empty 2', _score: null, id: 'empty 2' },
+            { $id: 'empty 2', _id: 'empty 2', _score: 0, id: 'empty 2' },
             {
                 $id: 'empty 3',
                 _id: 'empty 3',
-                _score: null,
+                _score: 0,
                 company: '',
                 department: '',
                 id: 'empty 3',
@@ -1919,7 +2116,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             {
                 $id: 'empty 4',
                 _id: 'empty 4',
-                _score: null,
+                _score: 0,
                 company: [],
                 department: [],
                 id: 'empty 4',
@@ -2135,7 +2332,7 @@ describe('Elastic6Service', () => {
     //! test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
 
         //* load dummy storage service.
         const { service } = await initService('6.2');
@@ -2172,7 +2369,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.1');
@@ -2209,7 +2406,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.2');
@@ -2246,7 +2443,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.10)', async () => {
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.10');
@@ -2283,7 +2480,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.1');
@@ -2320,7 +2517,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.2');
@@ -2358,7 +2555,7 @@ describe('Elastic6Service', () => {
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(12000000);
+        jest.setTimeout(120000);
         //* load dummy storage service.
         const { service } = await initService('2.13');
 
