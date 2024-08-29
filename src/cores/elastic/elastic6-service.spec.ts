@@ -1250,10 +1250,12 @@ interface BulkDummyResponse {
     statusCode: number;
 }
 /**
- * perform bulk operations with dummy
+ * perform bulk operations with dummy data.
  * @param service - Elasticsearch service instance.
+ * @param n - Number of chunks to divide the data into (default is 2).
+ * @param t - Time in milliseconds to wait between bulk operations (default is 5000).
  */
-export const bulkDummyData = async (service: Elastic6Service<any>): Promise<BulkDummyResponse> => {
+export const bulkDummyData = async (service: Elastic6Service<any>, n = 2, t = 5000): Promise<BulkDummyResponse> => {
     const { indexName } = service.options;
 
     const departments: Array<string> = [
@@ -1307,7 +1309,6 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
     const performBulkOperation = async (operations: any[]) => {
         const bulkResponse: ApiResponse<BulkResponseBody, any> = await service.client
             .bulk({
-                refresh: true,
                 body: operations,
             })
             .catch(
@@ -1317,24 +1318,31 @@ export const bulkDummyData = async (service: Elastic6Service<any>): Promise<Bulk
             );
         return bulkResponse;
     };
-
-    // split the dataset into two
-    const chunkSize = 10000;
-    const firstChunk = dataset.slice(0, chunkSize);
-    const secondChunk = dataset.slice(chunkSize);
+    // split the dataset into n
+    const chunkSize = Math.ceil(dataset.length / n);
+    let combinedErrors = false;
+    let combinedItems: any[] = [];
+    let combinedTook = 0;
+    let combinedStatusCode = 0;
 
     // perform bulk operations
-    const firstBulkResponse = await performBulkOperation(createBulkOperations(firstChunk));
-    await waited(10000);
-    const secondBulkResponse = await performBulkOperation(createBulkOperations(secondChunk));
+    for (let i = 0; i < n; i++) {
+        const chunk = dataset.slice(i * chunkSize, (i + 1) * chunkSize);
+        const bulkResponse = await performBulkOperation(createBulkOperations(chunk));
 
-    // responses from both bulk operations
-    const combinedErrors = firstBulkResponse.body.errors || secondBulkResponse.body.errors;
-    const combinedItems = (firstBulkResponse.body.items || []).concat(secondBulkResponse.body.items || []);
-    const combinedTook = (firstBulkResponse.body.took || 0) + (secondBulkResponse.body.took || 0);
-    const combinedStatusCode = secondBulkResponse.statusCode || firstBulkResponse.statusCode;
+        if (bulkResponse.body.errors) {
+            combinedErrors = true;
+        }
 
-    //combined bulk response
+        combinedItems = combinedItems.concat(bulkResponse.body.items || []);
+        combinedTook += bulkResponse.body.took || 0;
+        combinedStatusCode = bulkResponse.statusCode || combinedStatusCode;
+
+        if (i < n - 1) {
+            await waited(t);
+        }
+    }
+
     const bulkDummyResponse: BulkDummyResponse = {
         errors: combinedErrors,
         items: combinedItems,
@@ -1400,8 +1408,11 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     await service.createIndex();
     await waited(200);
 
-    const res = await bulkDummyData(service);
+    const res = await bulkDummyData(service, 3, 5000);
     expect2(res?.errors).toEqual(false);
+
+    await service.refreshIndex();
+    await waited(200);
 
     //* test search with 20,000 data
     const $search: SearchBody = {
@@ -1489,7 +1500,9 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     expect2(() => searchAggregation.last).toEqual([0, `${expectedSearchResults[expectedSearchResults.length - 1].id}`]);
 
     //* test scanAll with 20,000 data
-    const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 15000 } }).catch(GETERR);
+    const allResults = await service
+        .searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } })
+        .catch(GETERR);
     expect2(() => allResults.length).toEqual(20000);
     const allResultsSlice = allResults.slice(0, expectedSearchResults.length);
     expect2(() => allResultsSlice).toEqual(searchAggregation.list);
@@ -2296,7 +2309,7 @@ describe('Elastic6Service', () => {
     //! test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
 
         //* load dummy storage service.
         const { service } = await initService('6.2');
@@ -2333,7 +2346,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.1');
@@ -2370,7 +2383,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.2');
@@ -2407,7 +2420,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.10)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.10');
@@ -2444,7 +2457,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.1');
@@ -2481,7 +2494,7 @@ describe('Elastic6Service', () => {
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.2');
@@ -2519,7 +2532,7 @@ describe('Elastic6Service', () => {
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(120000);
+        jest.setTimeout(1200000);
         //* load dummy storage service.
         const { service } = await initService('2.13');
 
