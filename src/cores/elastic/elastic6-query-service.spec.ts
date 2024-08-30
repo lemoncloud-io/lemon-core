@@ -116,16 +116,11 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
 
             /* eslint-disable prettier/prettier */
             // prepare items
-            expect2(await elastic.saveItem('1000001', { title: '선을 넘는 녀석들' ,
-                id: '1000001'}).catch(GETERR), '_id').toEqual({ _id: '1000001' });
-            expect2(await elastic.saveItem('1000002', { title: '맛있는 녀석들' ,
-                id: '1000002'}).catch(GETERR), '_id').toEqual({ _id: '1000002' });
-            expect2(await elastic.saveItem('1000003', { title: 'COVID-19' ,
-                id: '1000003'}).catch(GETERR), '_id').toEqual({ _id: '1000003' });
-            expect2(await elastic.saveItem('1000004', { title: '똠얌꿍 끓이는 법' ,
-                id: '1000004'}).catch(GETERR), '_id').toEqual({ _id: '1000004' });
-            expect2(await elastic.saveItem('1000005', { title: '화장품정리대',
-                id: '1000005'}).catch(GETERR), '_id').toEqual({ _id: '1000005' });
+            expect2(await elastic.saveItem('1000001', { title: '선을 넘는 녀석들' , id: '1000001'}).catch(GETERR), '_id').toEqual({ _id: '1000001' });
+            expect2(await elastic.saveItem('1000002', { title: '맛있는 녀석들' , id: '1000002'}).catch(GETERR), '_id').toEqual({ _id: '1000002' });
+            expect2(await elastic.saveItem('1000003', { title: 'COVID-19' , id: '1000003'}).catch(GETERR), '_id').toEqual({ _id: '1000003' });
+            expect2(await elastic.saveItem('1000004', { title: '똠얌꿍 끓이는 법' , id: '1000004'}).catch(GETERR), '_id').toEqual({ _id: '1000004' });
+            expect2(await elastic.saveItem('1000005', { title: '화장품정리대', id: '1000005'}).catch(GETERR), '_id').toEqual({ _id: '1000005' });
             await new Promise(resolve => {
                 setTimeout(resolve, 1000); // require some time for indexing
             });

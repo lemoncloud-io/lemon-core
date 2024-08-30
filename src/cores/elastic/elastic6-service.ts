@@ -272,8 +272,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         if (isDump) {
             //* save into `info.json`.
-            // TODO - 자동으로 매칭되는 info.json 패스에 데이터 생성하기..
-
             const description = {
                 '!': `${this.parsedVersion?.engine}${this.options.version} client info`,
                 ...info,
