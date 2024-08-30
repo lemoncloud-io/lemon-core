@@ -820,8 +820,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     /**
      * run search and get the raw response.
+     *
      */
-    public async searchRaw(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
+    public async searchRaw<T extends object = any>(body: SearchBody, searchType?: SearchType): Promise<T> {
         if (!body) throw new Error('@body (SearchBody) is required');
         const { indexName, docType } = this.options;
         _log(NS, `- search(${indexName}, ${searchType || ''})....`);
@@ -852,15 +853,15 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
 
         //! return raw results.
-        return $res?.body;
+        return $res?.body as T;
     }
 
     /**
      * run search, and get the formatmted response.
      *
-     * TODO - define type of response.
+     * TODO - define the response type in detail see `SearchResponse`
      */
-    public async search(body: SearchBody, searchType?: SearchType) {
+    public async search(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
         const size = $U.N(body.size, 0);
         const response = await this.searchRaw(body, searchType);
         // return w/ transformed id

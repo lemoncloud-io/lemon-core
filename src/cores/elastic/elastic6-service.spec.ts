@@ -372,6 +372,9 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
 
 /**
  * perform basic search tests.
+ * - 버전에 상관없이 `search()`가 일정한(동일한) 결과를 얻어냄 (단, searchRaw()는 원본 그대로)
+ * ==> search() 호환성 보장함
+ *
  * @param service - Elasticsearch service instance.
  * @param indexName - the name of the index to search.
  */
@@ -520,6 +523,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     });
 
     //* try to overwrite, and update
+    //TODO - 빈문자열 테스트 `{ empty: '' }` 추가하여 개선하기...
     expect2(await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
         count: 10,
@@ -553,7 +557,9 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         extra: { a: null },
     });
 
-    // //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS. >> client.update(param2); 이기 때문
+    //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS. >> client.update(param2); 이기 때문
+    //TODO - 기존: `{ a:1, b: 2 }` -> 저장: `{ a: 2 }` -> 결과: `{ a: 2 }` or `{ a:2, b: null }`
+    //TODO - 마찬가지, inner-object 안의 내용에 대해서도 처리 see `updateItem('A4', { extra: { a: 1 } })`
     // expect2(await service.saveItem('A0', { nick: 'name', name: null }).catch(GETERR), '!_version').toEqual({
     //     _id: 'A0',
     //     nick: 'name',
@@ -1047,6 +1053,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         ],
     };
 
+    //TODO - `searchRaw()`의도가 불분명함 -> search() 가 이미 호환성유지되므로, 충분함.
     expect2(await searchAgent(service).searchRaw($search)).toEqual({
         _shards: {
             failed: 0,
@@ -1721,6 +1728,7 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
     ];
 
+    //TODO - `searchRaw()` 대신 search() 로 호환성 유지해보기.
     const keywordSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($keywordSearch);
     const keywordSearchResult: SearchResponse = await service.search($keywordSearch);
 
