@@ -25,7 +25,12 @@ export { elasticsearch, $hangul };
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
 // export type SearchResponse = elasticsearch.SearchResponse<any>;
-export type SearchResponse = any;
+export interface SearchResponse<T = any> {
+    total: number;
+    list: Array<T>;
+    last: Array<T>;
+    aggregations: T;
+}
 
 /**
  * options for construction.
@@ -857,7 +862,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * run search, and get the formatmted response.
      *
-     * TODO - define the response type in detail see `SearchResponse`
      */
     public async search(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
         const size = $U.N(body.size, 0);
