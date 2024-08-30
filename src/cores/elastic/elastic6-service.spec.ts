@@ -1064,34 +1064,6 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(fieldsWithTypes2).toEqual(expectedMapping);
 };
 
-const searchAgent = <T = any>(service: Elastic6Service<MyModel>) => ({
-    searchRaw: (data: SearchBody) =>
-        service.searchRaw(data).then(R => {
-            const { _shards, aggregations, hits, timed_out } = R;
-            const hitsCustomized = hits.hits.map(
-                (hit: {
-                    _index: string;
-                    _score: number | null;
-                    _type?: string;
-                    _id: string;
-                    _source: T;
-                    sort: string[];
-                }) => {
-                    const { _index, _type, ...rest } = hit;
-                    return rest;
-                },
-            );
-            return {
-                _shards,
-                aggregations,
-                hits: {
-                    ...hits,
-                    hits: hitsCustomized,
-                },
-                timed_out,
-            };
-        }),
-});
 /**
  * perform auto-indexing tests
  * @param service - Elasticsearch service instance.
@@ -1167,53 +1139,6 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         ],
     };
 
-    //TODO - `searchRaw()`의도가 불분명함 -> search() 가 이미 호환성유지되므로, 충분함.
-    expect2(await searchAgent(service).searchRaw($search)).toEqual({
-        _shards: {
-            failed: 0,
-            skipped: 0,
-            successful: 4,
-            total: 4,
-        },
-        aggregations: {
-            indexing: {
-                buckets: [
-                    { doc_count: 1, key: 10 },
-                    { doc_count: 1, key: 30 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        hits: {
-            hits: [
-                {
-                    _id: 'A7',
-                    _score: 0,
-                    _source: {
-                        $id: 'A7',
-                        count: 10,
-                        name: 'A7 for auto indexing test',
-                    },
-                    sort: [0, 10],
-                },
-                {
-                    _id: 'A9',
-                    _score: 0,
-                    _source: {
-                        $id: 'A9',
-                        count: 30,
-                        name: 'A9 for auto indexing test',
-                    },
-                    sort: [0, 30],
-                },
-            ],
-            max_score: null,
-            total: service.isOldES6 ? 2 : { relation: 'eq', value: 2 },
-        },
-        timed_out: false,
-    });
-
     expect2(await service.search($search).catch(GETERR)).toEqual({
         aggregations: {
             indexing: {
@@ -1275,52 +1200,6 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
             },
         ],
     };
-
-    expect2(await searchAgent(service).searchRaw($search2)).toEqual({
-        _shards: {
-            failed: 0,
-            skipped: 0,
-            successful: 4,
-            total: 4,
-        },
-        aggregations: {
-            indexing: {
-                buckets: [
-                    { doc_count: 1, key: 20 },
-                    { doc_count: 1, key: 40 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        hits: {
-            hits: [
-                {
-                    _id: 'A8',
-                    _score: 0,
-                    _source: {
-                        $id: 'A8',
-                        count: 20,
-                        name: '한글 테스트',
-                    },
-                    sort: [0, 20],
-                },
-                {
-                    _id: 'A10',
-                    _score: 0,
-                    _source: {
-                        $id: 'A10',
-                        count: 40,
-                        name: 'A10 한글 테스트',
-                    },
-                    sort: [0, 40],
-                },
-            ],
-            max_score: null,
-            total: service.isOldES6 ? 2 : { relation: 'eq', value: 2 },
-        },
-        timed_out: false,
-    });
 
     expect2(await service.search($search2).catch(GETERR)).toEqual({
         aggregations: {
@@ -1473,26 +1352,6 @@ export const bulkDummyData = async (service: Elastic6Service<any>, n = 2, t = 50
 
     return bulkDummyResponse;
 };
-
-interface SearchRawResponse<T = any> {
-    _shards: {
-        failed: number;
-        skipped: number;
-        successful: number;
-        total: number;
-    };
-    aggregations: T;
-    hits: {
-        hits: Array<{
-            _id: string;
-            _source: T;
-            sort: T;
-        }>;
-        max_score: number | null;
-        total: { relation: string; value: number } | number;
-    };
-    timed_out: boolean;
-}
 
 interface SearchResponse<T = any> {
     aggregations: T;
@@ -1664,7 +1523,6 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
     };
 
-    const byCompanyRawResult: SearchRawResponse = await searchAgent(service).searchRaw($companyAggregation);
     const byCompanyResult: SearchResponse = await service.search($companyAggregation);
     const expectedTermsAggregation = {
         employees_per_company: {
@@ -1678,13 +1536,8 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
     };
 
-    expect2(() => byCompanyRawResult.aggregations).toEqual(expectedTermsAggregation);
     expect2(() => byCompanyResult.aggregations).toEqual(expectedTermsAggregation);
-    expect2(() => byCompanyRawResult.hits.total).toEqual(service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 });
 
-    const byCompanyDepartmentRawResult: SearchRawResponse = await searchAgent(service).searchRaw(
-        $companyDepartmentAggregation,
-    );
     const byCompanyDepartmentResult: SearchResponse = await service.search($companyDepartmentAggregation);
     const expectedTerms2Aggregation = {
         employees_per_company: {
@@ -1754,11 +1607,7 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
             sum_other_doc_count: 0,
         },
     };
-    expect2(byCompanyDepartmentRawResult.aggregations).toEqual(expectedTerms2Aggregation);
     expect2(byCompanyDepartmentResult.aggregations).toEqual(expectedTerms2Aggregation);
-    expect2(byCompanyDepartmentRawResult.hits.total).toEqual(
-        service.isOldES6 ? 20000 : { relation: 'gte', value: 10000 },
-    );
 };
 
 /**
@@ -1842,15 +1691,8 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
     ];
 
-    //TODO - `searchRaw()` 대신 search() 로 호환성 유지해보기.
-    const keywordSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($keywordSearch);
     const keywordSearchResult: SearchResponse = await service.search($keywordSearch);
-
-    expect2(() => keywordSearchRawResult.aggregations).toEqual(expectedKeywordAggregation);
-    expect2(() => keywordSearchRawResult.aggregations).toEqual(keywordSearchResult.aggregations);
-    expect2(() => keywordSearchRawResult.hits.hits[0]._id).toEqual(keywordSearchResult.list[0]._id);
-    expect2(() => keywordSearchRawResult.hits.hits[2]._id).toEqual(keywordSearchResult.list[2]._id);
-
+    expect2(() => keywordSearchResult.aggregations).toEqual(expectedKeywordAggregation);
     expect2(() => keywordSearchResult.list).toEqual(expectedKeywordList);
     expect2(() => keywordSearchResult.last).toEqual([0, `${expectedKeywordList[expectedKeywordList.length - 1].id}`]);
     expect2(() => keywordSearchResult.total).toEqual(2500);
@@ -1947,14 +1789,8 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
     ];
 
-    const matchSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($matchSearch);
     const matchSearchResult: SearchResponse = await service.search($matchSearch);
-
-    expect2(() => matchSearchRawResult.aggregations).toEqual(expectedKeywordAggregation);
-    expect2(() => matchSearchRawResult.aggregations).toEqual(matchSearchResult.aggregations);
-    expect2(() => matchSearchRawResult.hits.hits[0]._id).toEqual(matchSearchResult.list[0]._id);
-    expect2(() => matchSearchRawResult.hits.hits[2]._id).toEqual(matchSearchResult.list[2]._id);
-
+    expect2(() => matchSearchResult.aggregations).toEqual(expectedKeywordAggregation);
     if (service.isOldES6) {
         /* sorted by the _score calculated using the TF-IDF algorithm */
         expect2(() => matchSearchResult.list).toEqual(expectedMatchList6);
@@ -2053,14 +1889,8 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             salary: 11500,
         },
     ];
-    const rangeSearchRawResult: SearchRawResponse = await searchAgent(service).searchRaw($rangeSearch);
     const rangeSearchResult: SearchResponse = await service.search($rangeSearch);
-
-    expect2(() => rangeSearchRawResult.aggregations).toEqual(expectedRangeAggregation);
-    expect2(() => rangeSearchRawResult.aggregations).toEqual(rangeSearchResult.aggregations);
-    expect2(() => rangeSearchRawResult.hits.hits[0]._id).toEqual(rangeSearchResult.list[0]._id);
-    expect2(() => rangeSearchRawResult.hits.hits[2]._id).toEqual(rangeSearchResult.list[2]._id);
-
+    expect2(() => rangeSearchResult.aggregations).toEqual(expectedRangeAggregation);
     expect2(() => rangeSearchResult.list).toEqual(expectedRangeList);
     expect2(() => rangeSearchResult.last).toEqual([
         0,
@@ -2128,54 +1958,6 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         ],
     };
 
-    expect2(await searchAgent(service).searchRaw($nullFieldTest).catch(GETERR)).toEqual({
-        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-        aggregations: {
-            employees_with_empty_field: {
-                buckets: [
-                    { doc_count: 1, key: 'empty 1' },
-                    { doc_count: 1, key: 'empty 2' },
-                    { doc_count: 1, key: 'empty 3' },
-                    { doc_count: 1, key: 'empty 4' },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        hits: {
-            hits: [
-                {
-                    _id: 'empty 1',
-                    _score: 0,
-                    _source: {
-                        $id: 'empty 1',
-                        company: null,
-                        department: null,
-                        id: 'empty 1',
-                        name: null,
-                        salary: null,
-                    },
-                    sort: [0, 'empty 1'],
-                },
-                { _id: 'empty 2', _score: 0, _source: { $id: 'empty 2', id: 'empty 2' }, sort: [0, 'empty 2'] },
-                {
-                    _id: 'empty 3',
-                    _score: 0,
-                    _source: { $id: 'empty 3', company: '', department: '', id: 'empty 3', name: '', salary: '' },
-                    sort: [0, 'empty 3'],
-                },
-                {
-                    _id: 'empty 4',
-                    _score: 0,
-                    _source: { $id: 'empty 4', company: [], department: [], id: 'empty 4', name: [], salary: [] },
-                    sort: [0, 'empty 4'],
-                },
-            ],
-            max_score: null,
-            total: service.isOldES6 ? 4 : { relation: 'eq', value: 4 },
-        },
-        timed_out: false,
-    });
     expect2(await service.search($nullFieldTest).catch(GETERR)).toEqual({
         aggregations: {
             employees_with_empty_field: {
@@ -2428,43 +2210,43 @@ describe('Elastic6Service', () => {
         });
     });
 
-    // //! test with real server
-    // it('should pass basic CRUD w/ real server (6.2)', async () => {
-    //     // if (!PROFILE) return; // ignore w/o profile
-    //     jest.setTimeout(1200000);
+    //! test with real server
+    it('should pass basic CRUD w/ real server (6.2)', async () => {
+        // if (!PROFILE) return; // ignore w/o profile
+        jest.setTimeout(1200000);
 
-    //     //* load dummy storage service.
-    //     const { service } = await initService('6.2');
+        //* load dummy storage service.
+        const { service } = await initService('6.2');
 
-    //     //* break if no live connection
-    //     if (!(await canPerformTest(service))) return;
+        //* break if no live connection
+        if (!(await canPerformTest(service))) return;
 
-    //     //* version check w/root
-    //     expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
-    //     expect2(() => service.executeSelfTest()).toEqual({
-    //         isEqual: true,
-    //         optionVersion: { engine: 'es', major: 6, minor: 2, patch: 0 },
-    //         rootVersion: { engine: 'es', major: 6, minor: 2, patch: 3 },
-    //     });
+        //* version check w/root
+        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
+        expect2(() => service.executeSelfTest()).toEqual({
+            isEqual: true,
+            optionVersion: { engine: 'es', major: 6, minor: 2, patch: 0 },
+            rootVersion: { engine: 'es', major: 6, minor: 2, patch: 3 },
+        });
 
-    //     await setupIndex(service);
+        await setupIndex(service);
 
-    //     await basicCRUDTest(service);
+        await basicCRUDTest(service);
 
-    //     await basicSearchTest(service);
+        await basicSearchTest(service);
 
-    //     await autoIndexingTest(service);
+        await autoIndexingTest(service);
 
-    //     await detailedCRUDTest(service);
+        await detailedCRUDTest(service);
 
-    //     await mismatchedTypeTest(service);
+        await mismatchedTypeTest(service);
 
-    //     await totalSummaryTest(service);
+        await totalSummaryTest(service);
 
-    //     await aggregationTest(service);
+        await aggregationTest(service);
 
-    //     await searchFilterTest(service);
-    // });
+        await searchFilterTest(service);
+    });
 
     //! elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
