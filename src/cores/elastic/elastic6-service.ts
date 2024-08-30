@@ -255,6 +255,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
     }
     /**
+     * get isOldES71
+     */
+    public get isOldES71(): boolean {
+        return this.parsedVersion.major == 7 && this.parsedVersion.minor == 1 && this.parsedVersion.engine === 'es';
+    }
+    /**
      * get isLatestOS2
      */
     public get isLatestOS2(): boolean {
