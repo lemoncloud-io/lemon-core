@@ -493,7 +493,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) new Error('@index is required!');
         _log(NS, `- destroyIndex(${indexName})`);
 
-        //! call destroy index..
+        //* call destroy index..
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.delete({ index: indexName }).catch(
@@ -522,7 +522,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) throw new Error('.indexName is required!');
         _log(NS, `- refreshIndex(${indexName})`);
 
-        //! call refresh index..
+        //* call refresh index..
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.refresh({ index: indexName }).catch(
@@ -546,7 +546,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) throw new Error('.indexName is required!');
         _log(NS, `- flushIndex(${indexName})`);
 
-        //! call flush index..
+        //* call flush index..
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.flush({ index: indexName }).catch(
@@ -567,10 +567,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     public async describe() {
         const { indexName } = this.options;
-        //! call create index..
+        //* call create index..
         _log(NS, `- describe(${indexName})`);
 
-        //! read settings.
+        //* read settings.
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.getSettings({ index: indexName }).catch(
@@ -587,12 +587,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> number_of_shards =`, settings.index && settings.index.number_of_shards); // 5
         _log(NS, `> number_of_replicas =`, settings.index && settings.index.number_of_replicas); // 1
 
-        //! read mappings.
+        //* read mappings.
         const res2 = await client.indices.getMapping({ index: indexName });
         _log(NS, `> mappings[${indexName}] =`, $U.json(res2));
         const mappings: any = (res2.body && res2.body[indexName] && res2.body[indexName].mappings) || {};
 
-        //! returns
+        //* returns
         return { settings, mappings };
     }
 
@@ -629,7 +629,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             // $ERROR.throwAsJson,
             $ERROR.handler('save', e => {
                 const msg = GETERR(e);
-                //! try to update document..
+                //* try to update document..
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
                     delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
@@ -780,7 +780,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
-        //! prepare params.
+        //* prepare params.
         const params: ElasticParams = { index: indexName, id, body: { doc: item } };
 
         // check version to include 'type' in params
@@ -789,7 +789,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         }
 
         if (increments) {
-            //! it will create if not exists.
+            //* it will create if not exists.
             params.body.upsert = { ...increments, [idName]: id };
             const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
                 L.push(`ctx._source.${key} += ${val}`);
@@ -804,9 +804,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const res: ApiResponse = await client.update(params, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
-                //! id 아이템이 없을 경우 발생함.
+                //* id 아이템이 없을 경우 발생함.
                 if (msg.startsWith('404 DOCUMENT MISSING')) throw new Error(`404 NOT FOUND - id:${id}`);
-                //! 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
+                //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
                 if (msg.startsWith('400 REMOTE TRANSPORT')) throw new Error(`400 INVALID FIELD - id:${id}`);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
@@ -820,6 +820,62 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"updated","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":8,"_primary_term":1}
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"noop","_shards":{"total":0,"successful":0,"failed":0}}
         _log(NS, `> update[${id}].res =`, $U.json({ ...res, meta: undefined }));
+
+        const _id = res.body._id;
+        const _version = res.body._version;
+        const res2: T = { ...item, _id, _version };
+        return res2;
+    }
+
+    /**
+     * replace item
+     *
+     * @param id        item-id
+     * @param item      item to index
+     * @param options   (optional) request option of client.
+     */
+    public async indexItem(
+        id: string,
+        item: T | null,
+        increments?: Incrementable,
+        options?: { maxRetries?: number },
+    ): Promise<T> {
+        const { indexName, docType, idName } = this.options;
+        const type = `${docType}`;
+        _log(NS, `- indexItem(${id})`);
+        item = !item && increments ? undefined : item;
+
+        //* prepare params.
+        const params: ElasticParams = { index: indexName, id, body: { ...item, [idName]: id } };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
+        }
+
+        if (increments) {
+            //* it will create if not exists.
+            params.body.upsert = { ...increments, [idName]: id };
+            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
+                L.push(`ctx._source.${key} += ${val}`);
+                return L;
+            }, []);
+            if (this.isOldES6) params.body.lang = 'painless';
+            params.body.script = scripts.join('; ');
+        }
+        _log(NS, `> params[${id}] =`, $U.json(params));
+        const client = this.client;
+        const res: ApiResponse = await client.index(params, options).catch(
+            $ERROR.handler('index', (e, E) => {
+                const msg = GETERR(e);
+
+                //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
+                if (msg.startsWith('400 MAPPER PARSING')) throw e;
+                throw E;
+            }),
+        );
+
+        _log(NS, `> index[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
         const _id = res.body._id;
         const _version = res.body._version;
@@ -861,7 +917,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // _log(NS, `> search[${tmp}].hits.max_score =`, $res.hits?.max_score);
         // _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
 
-        //! return raw results.
+        //* return raw results.
         return $res?.body as T;
     }
 
@@ -963,7 +1019,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const replicas: number = params.replicas === undefined ? 1 : params.replicas;
         const timeSeries: boolean = params.timeSeries === undefined ? false : params.timeSeries;
 
-        //! core config.
+        //* core config.
         const CONF_ES_DOCTYPE = docType;
         const CONF_ID_NAME = idName;
         const CONF_ES_TIMESERIES = !!timeSeries;
@@ -1045,7 +1101,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             },
         };
 
-        //! default settings.
+        //* default settings.
         const ES_SETTINGS: any = {
             settings: {
                 number_of_shards: shards,
@@ -1080,36 +1136,36 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: version < 7 && version >= 6 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
+                            filter: version < 7 && version >= 6 ? ['standard'] : [], //* error - The [standard] token filter has been removed.
                         },
                     },
                 },
             },
-            //! since 7.x. no mapping for types.
+            //* since 7.x. no mapping for types.
             mappings: version < 7 && version >= 6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
         };
 
-        //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
+        //* timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
             if (version < 7 && version >= 6) {
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
-                //! clear mappings.
+                //* clear mappings.
                 const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
                 CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
             } else {
                 ES_SETTINGS.mappings.properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings.properties['ip'] = { type: 'ip' };
 
-                //! clear mappings.
+                //* clear mappings.
                 const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
                 CLEANS.map(key => delete ES_SETTINGS.properties[key]);
             }
         }
 
-        //! returns settings.
+        //* returns settings.
         return ES_SETTINGS;
     }
 

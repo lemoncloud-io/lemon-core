@@ -514,6 +514,16 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         // '400 INVALID FIELD - id:A0',
         '400 ILLEGAL ARGUMENT - failed to execute script',
     ); // no `.count` property.
+
+    expect2(await service.indexItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({ _id: 'A0' });
+    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
+        $id: 'A0',
+        _id: 'A0',
+        ...(service.isOldES6 ? { lang: 'painless' } : {}),
+        script: 'ctx._source.count += 2',
+        upsert: { $id: 'A0', count: 2 },
+    });
+
     expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
         count: 10,
@@ -523,19 +533,16 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     });
 
     //* try to overwrite, and update
-    expect2(await service.saveItem('A0', { count: 10, nick: null, name: 'dumm' }).catch(GETERR), '!_version').toEqual({
+    expect2(await service.indexItem('A0', { nick: null, name: 'dumm' }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
-        count: 10,
         name: 'dumm',
         nick: null,
     });
     expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
         $id: 'A0',
-        count: 10,
+        _id: 'A0',
         name: 'dumm',
         nick: null,
-        type: '',
     }); // support number, string, null type.
 
     //save empty ''
@@ -550,7 +557,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         empty: '',
         name: '',
         nick: '',
-        type: '',
     });
 
     /**
@@ -577,30 +583,66 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     expect2(await service.updateItem('A4', { extra: '' }).catch(GETERR), '!_version').toEqual(
         '400 MAPPER PARSING - object mapping for [extra] tried to parse field [extra] as object, but found a concrete value',
     );
+    expect2(await service.indexItem('A4', { extra: '' }).catch(GETERR), '!_version').toEqual(
+        '400 MAPPER PARSING - object mapping for [extra] tried to parse field [extra] as object, but found a concrete value',
+    );
 
-    //TODO - NOT WORKING OVERWRITE WHOLE DOC. SO IMPROVE THIS. >> client.update(param2); 이기 때문
-    //TODO - 기존: `{ a:1, b: 2 }` -> 저장: `{ a: 2 }` -> 결과: `{ a: 2 }` or `{ a:2, b: null }`
-    //TODO - 마찬가지, inner-object 안의 내용에 대해서도 처리 see `updateItem('A4', { extra: { a: 1 } })`
-    // expect2(await service.saveItem('A0', { nick: 'name', name: null }).catch(GETERR), '!_version').toEqual({
-    //     _id: 'A0',
-    //     nick: 'name',
-    //     name: null,
-    // });
-    // expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-    //     _id: 'A0',
-    //     $id: 'A0',
-    //     nick: 'name',
-    //     name: null,
-    //     type: '',
-    //     count: 10,
-    // }); //* `count` should be cleared
+    //* overwrite whole docs by indexItem
+    expect2(await service.updateItem('A0', { a: 1, b: 2 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        a: 1,
+        b: 2,
+    });
+    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
+        $id: 'A0',
+        _id: 'A0',
+        a: 1,
+        b: 2,
+        count: '',
+        empty: '',
+        name: '',
+        nick: '',
+    });
+    expect2(await service.indexItem('A0', { a: 2 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        a: 2,
+    });
+    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        $id: 'A0',
+        a: 2,
+    });
 
+    //* overwrite inner-object by indexItem
+    expect2(await service.updateItem('A4', { extra: { a: 1, b: 2 } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A4',
+        extra: { a: 1, b: 2 },
+    });
+    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({
+        $id: 'A4',
+        _id: 'A4',
+        extra: { a: 1, b: 2 },
+    });
+    expect2(await service.indexItem('A4', { extra: { a: 2 } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A4',
+        extra: { a: 2 },
+    });
+    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({
+        $id: 'A4',
+        _id: 'A4',
+        extra: { a: 2 },
+    });
     //* delete
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
 
     //* try to update A1 (which does not exist)
     expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
+    //* try to index A1 (which does not exist)
+    expect2(await service.indexItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        name: 'b0',
+    });
 };
 
 /**
@@ -623,6 +665,15 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
                 .catch(GETERR),
         save: (data: T) => service.saveItem(id, data).catch(GETERR),
         read: () => service.readItem(id).catch(GETERR),
+        index: (data: T) =>
+            service
+                .indexItem(id, data)
+                .then(R => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { _version, _id, ...rest } = R;
+                    return rest;
+                })
+                .catch(GETERR),
     });
 
     //* 초기 데이터 저장
@@ -700,6 +751,13 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         string_field: false,
     });
     expect2(await agent().update({ string_field: {} })).toEqual(
+        service.isOldES6
+            ? '400 MAPPER PARSING - failed to parse [string_field]'
+            : service.isOldES71
+            ? "400 MAPPER PARSING - failed to parse field [string_field] of type [text] in document with id 'A0'"
+            : "400 MAPPER PARSING - failed to parse field [string_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'",
+    );
+    expect2(await agent().index({ string_field: {} })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [string_field]'
             : service.isOldES71
