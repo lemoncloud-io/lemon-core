@@ -515,6 +515,9 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         '400 ILLEGAL ARGUMENT - failed to execute script',
     ); // no `.count` property.
 
+    //TODO - `_version` 확인해보기..
+    //TODO - 1안) ????
+    //TODO - 주의) 동시에 여러건의 호출이 있었을경우 -> increments이 누적이 보장되어야함.
     expect2(await service.indexItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({ _id: 'A0' });
     expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
         $id: 'A0',

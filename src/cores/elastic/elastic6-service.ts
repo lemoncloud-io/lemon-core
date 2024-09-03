@@ -173,6 +173,8 @@ const _S = (v: any, def: string = '') =>
 /**
  * class: `Elastic6Service`
  * - basic CRUD service for Elastic Search 6
+ *
+ * TODO - extract the general super class (or interface) named like `ElasticIndexService` => version independent.
  */
 export class Elastic6Service<T extends Elastic6Item = any> {
     // internal field name to store analyzed strings for autocomplete search
@@ -763,10 +765,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
-     * update item
+     * update item (throw if not exist)
+     * `update table set a=1, b=b+2 where id='a1'`
+     * 0. no of `a1` -> 1,2 (created)
+     * 1. a,b := 10,20 -> 11,22
+     * 2. a,b := 10,null -> 11,2 (upsert)
+     * 3. a,b := null,20 -> 1,22
      *
      * @param id        item-id
      * @param item      item to update
+     * @param increments item to increase
      * @param options   (optional) request option of client.
      */
     public async updateItem(
@@ -828,7 +836,9 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
-     * replace item
+     * replace(or create) item
+     * 1. initial case w/o data. -> create data.
+     * 2. if exists already -> update(overwrite) data.
      *
      * @param id        item-id
      * @param item      item to index
