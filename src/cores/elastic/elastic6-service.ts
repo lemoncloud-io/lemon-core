@@ -788,42 +788,64 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
-        //* prepare params.
-        const params: ElasticParams = { index: indexName, id, body: {} };
+        //* prepare the script to overwrite fields
+        const scripts: string[] = [];
+        const params: Record<string, any> = { item: item || {}, increments: increments || {} };
 
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
+        // script to remove fields not in item or increments
+        scripts.push(`
+            for (String key : ctx._source.keySet().toArray()) {
+                if (!params.item.containsKey(key) && !params.increments.containsKey(key) && key != '${idName}') {
+                    ctx._source.remove(key);
+                }
+            }
+        `);
+
+        // script to update fields with values from item
+        if (item) {
+            for (const [key] of Object.entries(item)) {
+                scripts.push(`ctx._source['${key}'] = params.item['${key}'];`);
+            }
         }
 
+        // script to increment fields with values from increments
         if (increments) {
-            //* it will create if not exists.
-            params.body.upsert = { ...increments, [idName]: id };
-            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
-                L.push(
-                    `if (ctx._source.${key} != null) { ctx._source.${key} += ${val}; } else { ctx._source.${key} = ${val}; }`,
-                );
-                return L;
-            }, []);
-
-            params.body.script = {
-                source: scripts.join(' '),
-                lang: 'painless',
-            };
-        } else if (item) {
-            params.body.doc = item;
+            for (const [key] of Object.entries(increments)) {
+                scripts.push(`if (ctx._source.containsKey('${key}')) {
+                    ctx._source['${key}'] += params.increments['${key}'];
+                } else {
+                    ctx._source['${key}'] = params.increments['${key}'];
+                }`);
+            }
         }
-        _log(NS, `> params[${id}] =`, $U.json(params));
+
+        // prepare update parameters
+        const updateParams: ElasticParams = {
+            index: indexName,
+            id: id,
+            body: {
+                script: {
+                    source: scripts.join(' '),
+                    lang: 'painless',
+                    params: params,
+                },
+                upsert: { ...item, ...increments, [idName]: id },
+            },
+        };
+
+        if (this.isOldES6) {
+            updateParams.type = type;
+        }
+
+        _log(NS, `> updateParams[${id}] =`, $U.json(updateParams));
         // const { client } = instance(endpoint);
         const client = this.client;
-        const res: ApiResponse = await client.update(params, options).catch(
+        const res: ApiResponse = await client.update(updateParams, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
-                //* id 아이템이 없을 경우 발생함.
-                if (msg.startsWith('404 DOCUMENT MISSING')) throw new Error(`404 NOT FOUND - id:${id}`);
+
                 //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
                 if (msg.startsWith('400 REMOTE TRANSPORT')) throw new Error(`400 INVALID FIELD - id:${id}`);
-                if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
                 if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
@@ -868,17 +890,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // check version to include 'type' in params
         if (this.isOldES6) {
             params.type = type;
-        }
-
-        if (increments) {
-            //* it will create if not exists.
-            params.body.upsert = { ...increments, [idName]: id };
-            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
-                L.push(`ctx._source.${key} += ${val}`);
-                return L;
-            }, []);
-            if (this.isOldES6) params.body.lang = 'painless';
-            params.body.script = scripts.join('; ');
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
         const client = this.client;

@@ -327,7 +327,6 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
 export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-    expect2(await service.updateItem('A0', {}).catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
 
     //* create new item
     const A0 = { type: '', name: 'a0' };
@@ -369,14 +368,13 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
         _version: 8,
         a: 1,
         b: 2,
-        count: 0,
-        name: 'a0',
         type: 'test',
     });
-    expect2(await service.updateItem('A0', { type: 'test' }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
+    expect2(await service.updateItem('A0', { type: 'test', count: 0 }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 9,
         type: 'test',
+        count: 0,
     });
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
@@ -385,7 +383,6 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
         a: 2,
         b: 4,
         count: 0,
-        name: 'a0',
         type: 'test',
     });
 
@@ -446,7 +443,7 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
                     _id: 'A0',
                     _index: indexName,
                     _score: null,
-                    _source: { $id: 'A0', a: 2, b: 4, name: 'a0', type: 'test', count: 0 },
+                    _source: { $id: 'A0', a: 2, b: 4, type: 'test', count: 0 },
                     ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
                     sort: [0],
                 },
@@ -474,7 +471,7 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
     });
     expect2(await service.search($search).catch(GETERR)).toEqual({
         total: 2,
-        list: [{ _id: 'A0', _score: null, a: 2, b: 4, $id: 'A0', count: 0, name: 'a0', type: 'test' }],
+        list: [{ _id: 'A0', _score: null, a: 2, b: 4, $id: 'A0', count: 0, type: 'test' }],
         aggregations: {
             test: {
                 buckets: [
@@ -534,15 +531,12 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         _id: 'A0',
         $id: 'A0',
         _version: Number(data0._version) + 2,
-        type: '',
-        name: 'b0',
         nick: 'bb',
     }); // `._version` is incremented.
 
     expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({ _id: 'A0' });
 
-    //TODO - 1안) ????
-    //TODO - 주의) 동시에 여러건의 호출이 있었을경우 -> increments이 누적이 보장되어야함. 원자성 보장
+    //TODO - 주의) 동시에 여러 건의 호출이 있었을 경우 -> increments 누적이 보장되어야 함. 원자성 보장
 
     expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR)).toEqual({
         _id: 'A0',
@@ -560,9 +554,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         _id: 'A0',
         _version: 16,
         count: 12,
-        name: 'b0',
-        nick: 'bb',
-        type: '',
     }); // support number, string, null type.
 
     //save empty ''
@@ -578,7 +569,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         empty: '',
         name: '',
         nick: '',
-        type: '',
     });
 
     /**
@@ -617,11 +607,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         _id: 'A0',
         a: 1,
         b: 2,
-        count: '',
-        empty: '',
-        name: '',
-        nick: '',
-        type: '',
     });
 
     //* overwrite inner-object by indexItem
@@ -638,9 +623,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     //* delete
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
-
-    //* try to update A1 (which does not exist)
-    expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
 };
 
 /**
