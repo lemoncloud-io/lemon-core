@@ -789,7 +789,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         item = !item && increments ? undefined : item;
 
         //* prepare params.
-        const params: ElasticParams = { index: indexName, id, body: { doc: item } };
+        const params: ElasticParams = { index: indexName, id, body: {} };
 
         // check version to include 'type' in params
         if (this.isOldES6) {
@@ -800,11 +800,18 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             //* it will create if not exists.
             params.body.upsert = { ...increments, [idName]: id };
             const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
-                L.push(`ctx._source.${key} += ${val}`);
+                L.push(
+                    `if (ctx._source.${key} != null) { ctx._source.${key} += ${val}; } else { ctx._source.${key} = ${val}; }`,
+                );
                 return L;
             }, []);
-            if (this.isOldES6) params.body.lang = 'painless';
-            params.body.script = scripts.join('; ');
+
+            params.body.script = {
+                source: scripts.join(' '),
+                lang: 'painless',
+            };
+        } else if (item) {
+            params.body.doc = item;
         }
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
