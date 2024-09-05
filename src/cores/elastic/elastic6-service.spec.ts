@@ -536,8 +536,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 
     expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({ _id: 'A0' });
 
-    //TODO - 주의) 동시에 여러 건의 호출이 있었을 경우 -> increments 누적이 보장되어야 함. 원자성 보장
-
     expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 15,
@@ -1410,7 +1408,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     await service.createIndex();
     await waited(200);
 
-    const res = await bulkDummyData(service, 3, 5000);
+    const res = await bulkDummyData(service, 4, 5000);
     expect2(res?.errors).toEqual(false);
 
     await service.refreshIndex();

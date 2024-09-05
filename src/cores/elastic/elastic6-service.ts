@@ -146,7 +146,10 @@ interface ElasticParams<T extends object = any> {
      */
     type?: string;
 }
-
+interface ElasticUpdateParams extends ElasticParams {
+    if_seq_no: number;
+    if_primary_term: number;
+}
 /**
  * parameters for Elasticsearch search operations.
  *
@@ -824,27 +827,31 @@ export class ElasticIndexService<T extends ElasticItem = any> {
             }
         }
 
+        // const { client } = instance(endpoint);
+        const client = this.client;
+
+        const currentDocument = await client.get({ index: indexName, id });
+        const { _seq_no, _primary_term } = currentDocument.body;
+
         // prepare update parameters
-        const updateParams: ElasticParams = {
+        const updateParams: ElasticUpdateParams = {
             index: indexName,
             id: id,
+            if_seq_no: _seq_no,
+            if_primary_term: _primary_term,
             body: {
                 script: {
                     source: scripts.join(' '),
                     lang: 'painless',
                     params: params,
                 },
-                upsert: { ...item, ...increments, [idName]: id },
             },
         };
 
         if (this.isOldES6) {
             updateParams.type = type;
         }
-
         _log(NS, `> updateParams[${id}] =`, $U.json(updateParams));
-        // const { client } = instance(endpoint);
-        const client = this.client;
         const res: ApiResponse = await client.update(updateParams, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
