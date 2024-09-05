@@ -35,7 +35,7 @@ export interface SearchResponse<T = any> {
 /**
  * options for construction.
  */
-export interface Elastic6Option {
+export interface ElasticOption {
     /**
      * endpoint url of ES6
      */
@@ -67,15 +67,18 @@ export interface Elastic6Option {
      */
     autocompleteFields?: string[] | null;
 }
-
 /**
  * common type of item
  */
-export interface Elastic6Item extends GeneralItem {
+export interface ElasticItem extends GeneralItem {
     _id?: string;
     _version?: number;
     _score?: number;
 }
+
+/**
+ * options for retrying searchAll
+ */
 export interface RetryOptions {
     /** do retry? (default true) */
     do?: boolean;
@@ -84,7 +87,11 @@ export interface RetryOptions {
     /** maximum ㄱetries (default 3 times) */
     maxRetries?: number;
 }
-export interface Elastic6SearchAllParams {
+
+/**
+ * parameters for searchAll
+ */
+export interface ElasticSearchAllParams {
     /** search-type */
     searchType?: SearchType;
     /** limit (default -1) */
@@ -171,24 +178,22 @@ const _S = (v: any, def: string = '') =>
     typeof v === 'string' ? v : v === undefined || v === null ? def : typeof v === 'object' ? $U.json(v) : `${v}`;
 
 /**
- * class: `Elastic6Service`
- * - basic CRUD service for Elastic Search 6
- *
- * TODO - extract the general super class (or interface) named like `ElasticIndexService` => version independent.
+ * class: `ElasticIndexService`
+ * - basic CRUD service for Elastic Search
  */
-export class Elastic6Service<T extends Elastic6Item = any> {
+export class ElasticIndexService<T extends ElasticItem = any> {
     // internal field name to store analyzed strings for autocomplete search
     public static readonly DECOMPOSED_FIELD = '_decomposed';
     public static readonly QWERTY_FIELD = '_qwerty';
 
-    protected _options: Elastic6Option;
+    protected _options: ElasticOption;
     public readonly _client: elasticsearch.Client;
 
     /**
      * simple instance maker.
      *
      * ```js
-     * const { client } = Elastic6Service.instance(endpoint);
+     * const { client } = ElasticIndexService.instance(endpoint);
      * ```
      *
      * @param endpoint  service-url
@@ -209,13 +214,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * default constuctor w/ options.
      * @param options { endpoint, indexName } is required.
      */
-    public constructor(options: Elastic6Option) {
-        _inf(NS, `Elastic6Service(${options.indexName}/${options.idName})...`);
+    public constructor(options: ElasticOption) {
+        _inf(NS, `ElasticIndexService(${options.indexName}/${options.idName})...`);
         if (!options.endpoint) throw new Error('.endpoint (URL) is required');
         if (!options.indexName) throw new Error('.indexName (string) is required');
 
         // default option values: docType='_doc', idName='$id'
-        const { client } = Elastic6Service.instance(options.endpoint);
+        const { client } = ElasticIndexService.instance(options.endpoint);
         this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
         this._client = client;
     }
@@ -234,7 +239,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * get the current options.
      */
-    public get options(): Elastic6Option {
+    public get options(): ElasticOption {
         return this._options;
     }
     /**
@@ -391,7 +396,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> indices =`, $U.json(res));
 
         // eslint-disable-next-line prettier/prettier
-        const list0: any[] = Array.isArray(res) ? (res as any[]) : res?.body && Array.isArray(res?.body) ? (res?.body as any[]) : null;
+            const list0: any[] = Array.isArray(res) ? (res as any[]) : res?.body && Array.isArray(res?.body) ? (res?.body as any[]) : null;
         if (!list0) throw new Error(`@result<${typeof res}> is invalid - ${$U.json(res)}!`);
 
         // {"docs.count": "84", "docs.deleted": "7", "health": "green", "index": "dev-eureka-alarms-v1", "pri": "5", "pri.store.size": "234.3kb", "rep": "1", "status": "open", "store.size": "468.6kb", "uuid": "xPp-Sx86SgmhAWxT3cGAFw"}
@@ -452,7 +457,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     public async createIndex(settings?: any) {
         const { indexName, docType, idName, timeSeries, version } = this.options;
-        settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
+        settings = settings || ElasticIndexService.prepareSettings({ docType, idName, timeSeries, version });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
 
@@ -724,8 +729,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const _version = res.body?._version;
         const data: T = (res as any)?._source || res.body?._source || {};
         // delete internal (analyzed) field
-        delete data[Elastic6Service.DECOMPOSED_FIELD];
-        delete data[Elastic6Service.QWERTY_FIELD];
+        delete data[ElasticIndexService.DECOMPOSED_FIELD];
+        delete data[ElasticIndexService.QWERTY_FIELD];
 
         const res2: T = { ...data, _id, _version };
         return res2;
@@ -927,7 +932,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * search all until limit (-1 means no-limit)
      */
-    public async searchAll<T>(body: SearchBody, params?: Elastic6SearchAllParams) {
+    public async searchAll<T>(body: SearchBody, params?: ElasticSearchAllParams) {
         const list: T[] = [];
         for await (const chunk of this.generateSearchResult(body, params)) {
             chunk.forEach((N: T) => list.push(N));
@@ -941,7 +946,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param body          Elasticsearch Query DSL
      * @param params        optional parameters
      */
-    public async *generateSearchResult(body: SearchBody, params?: Elastic6SearchAllParams) {
+    public async *generateSearchResult(body: SearchBody, params?: ElasticSearchAllParams) {
         const doRetry = params?.retryOptions?.do ?? false;
         const t = params?.retryOptions?.t ?? 5000;
         const maxRetries = params?.retryOptions?.maxRetries ?? 3;
@@ -1011,7 +1016,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
                 {
                     autocomplete: {
-                        path_match: `${Elastic6Service.DECOMPOSED_FIELD}.*`,
+                        path_match: `${ElasticIndexService.DECOMPOSED_FIELD}.*`,
                         mapping: {
                             type: 'text',
                             analyzer: 'autocomplete_case_insensitive',
@@ -1022,7 +1027,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                 // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
                 {
                     autocomplete_qwerty: {
-                        path_match: `${Elastic6Service.QWERTY_FIELD}.*`,
+                        path_match: `${ElasticIndexService.QWERTY_FIELD}.*`,
                         mapping: {
                             type: 'text',
                             analyzer: 'autocomplete_case_sensitive',
@@ -1169,17 +1174,17 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
                         const decomposed = $hangul.asJamoSequence(value);
                         const recomposed = decomposed.replace(/[ -]/g, '');
-                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
+                        (N as any)[ElasticIndexService.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
                         // 영자판 (e.g. '레몬' -> 'fpahs')
-                        (N as any)[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
+                        (N as any)[ElasticIndexService.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
                     } else {
                         const recomposed = value.replace(/[ -]/g, '');
-                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [value, recomposed];
+                        (N as any)[ElasticIndexService.DECOMPOSED_FIELD][field] = [value, recomposed];
                     }
                 }
                 return N;
             },
-            { ...body, [Elastic6Service.DECOMPOSED_FIELD]: {}, [Elastic6Service.QWERTY_FIELD]: {} },
+            { ...body, [ElasticIndexService.DECOMPOSED_FIELD]: {}, [ElasticIndexService.QWERTY_FIELD]: {} },
         );
     }
 }
@@ -1299,6 +1304,18 @@ export const $ERROR = {
             throw $e;
         },
 };
+export interface Elastic6Option extends ElasticOption {}
+export interface Elastic6Item extends ElasticItem {}
+/**
+ * class: `Elastic6Service`
+ * - basic CRUD service for Elastic Search 6
+ */
+export class Elastic6Service<T extends Elastic6Item = any> extends ElasticIndexService<T> {
+    constructor(options: Elastic6Option) {
+        super(options);
+        _inf('Elastic6Service', `Elastic6Service(${options.indexName}/${options.idName})...`);
+    }
+}
 
 /** ****************************************************************************************************************
  *  Dummy Elastic6 Service
@@ -1307,8 +1324,8 @@ export const $ERROR = {
  * class: `DummyElastic6Service`
  * - service in-memory dummy data
  */
-export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service<T> {
-    public constructor(dataFile: string, options: Elastic6Option) {
+export class DummyElastic6Service<T extends GeneralItem> extends ElasticIndexService<T> {
+    public constructor(dataFile: string, options: ElasticOption) {
         super(options);
         _log(NS, `DummyElastic6Service(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');

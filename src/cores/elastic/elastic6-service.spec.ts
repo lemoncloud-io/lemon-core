@@ -1501,13 +1501,13 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     expect2(() => searchAggregation.list).toEqual(expectedSearchResults);
     expect2(() => searchAggregation.last).toEqual([0, `${expectedSearchResults[expectedSearchResults.length - 1].id}`]);
 
-    // //* test scanAll with 20,000 data
-    // const allResults = await service
-    //     .searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } })
-    //     .catch(GETERR);
-    // expect2(() => allResults.length).toEqual(20000);
-    // const allResultsSlice = allResults.slice(0, expectedSearchResults.length);
-    // expect2(() => allResultsSlice).toEqual(searchAggregation.list);
+    //* test scanAll with 20,000 data
+    const allResults = await service
+        .searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } })
+        .catch(GETERR);
+    expect2(() => allResults.length).toEqual(20000);
+    const allResultsSlice = allResults.slice(0, expectedSearchResults.length);
+    expect2(() => allResultsSlice).toEqual(searchAggregation.list);
 };
 /**
  * perform aggregation with 20,000 data
