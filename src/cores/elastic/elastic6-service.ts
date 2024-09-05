@@ -865,53 +865,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
-     * replace(or create) item
-     * 1. initial case w/o data. -> create data.
-     * 2. if exists already -> update(overwrite) data.
-     *
-     * @param id        item-id
-     * @param item      item to index
-     * @param options   (optional) request option of client.
-     */
-    public async indexItem(
-        id: string,
-        item: T | null,
-        increments?: Incrementable,
-        options?: { maxRetries?: number },
-    ): Promise<T> {
-        const { indexName, docType, idName } = this.options;
-        const type = `${docType}`;
-        _log(NS, `- indexItem(${id})`);
-        item = !item && increments ? undefined : item;
-
-        //* prepare params.
-        const params: ElasticParams = { index: indexName, id, body: { ...item, [idName]: id } };
-
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
-        }
-        _log(NS, `> params[${id}] =`, $U.json(params));
-        const client = this.client;
-        const res: ApiResponse = await client.index(params, options).catch(
-            $ERROR.handler('index', (e, E) => {
-                const msg = GETERR(e);
-
-                //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
-                if (msg.startsWith('400 MAPPER PARSING')) throw e;
-                throw E;
-            }),
-        );
-
-        _log(NS, `> index[${id}].res =`, $U.json({ ...res, meta: undefined }));
-
-        const _id = res.body._id;
-        const _version = res.body._version;
-        const res2: T = { ...item, _id, _version };
-        return res2;
-    }
-
-    /**
      * run search and get the raw response.
      *
      */
