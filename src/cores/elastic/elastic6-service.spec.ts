@@ -334,52 +334,47 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, _id: 'A0', _version: 2 });
 
     //* try to update fields.
+    // item: { type: 'test' }, increment: { count: 1 }
     expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 3,
         type: 'test',
     });
-
-    expect2(await service.updateItem('A0', { type: 'test' }).catch(GETERR)).toEqual({
-        _id: 'A0',
-        _version: 4,
-        type: 'test',
-    });
-
-    //* try to increment fields
-    expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({ _id: 'A0', _version: 5 });
+    // item: null, increment: {count: 0}
+    expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({ _id: 'A0', _version: 4 });
+    // item: {count: 0}, increment: -
     expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 6,
+        _version: 5,
         count: 0,
     });
-    expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({
-        _id: 'A0',
-        _version: 7,
-    });
+    // item: { type: 'test' }, increment: { a: 1, b: 2 }
     expect2(await service.updateItem('A0', { type: 'test' }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 8,
+        _version: 6,
         type: 'test',
     });
+    // _source: { type: 'test', a: 1, b: 2 } - count should not exist as overwritten
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 8,
+        _version: 6,
         a: 1,
         b: 2,
         type: 'test',
     });
+    // item: { type: 'test', count: 0 }, increment: { a: 1, b: 2 }
     expect2(await service.updateItem('A0', { type: 'test', count: 0 }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 9,
+        _version: 7,
         type: 'test',
         count: 0,
     });
+    // _source: { type: 'test', count: 0, a: 2, b: 4 } - a, b should increment: 1 to 2, 2 to 4
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 9,
+        _version: 7,
         a: 2,
         b: 4,
         count: 0,
@@ -435,7 +430,9 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
             },
         ],
     };
-    expect2(await service.searchRaw($search).catch(GETERR), '!took').toEqual({
+    // check results of searchAll
+    const searchRawResult = await service.searchRaw($search);
+    expect2(searchRawResult, '!took').toEqual({
         _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
         hits: {
             hits: [
@@ -454,14 +451,8 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
         aggregations: {
             test: {
                 buckets: [
-                    {
-                        doc_count: 1,
-                        key: 0,
-                    },
-                    {
-                        doc_count: 1,
-                        key: 1,
-                    },
+                    { doc_count: 1, key: 0 },
+                    { doc_count: 1, key: 1 },
                 ],
                 doc_count_error_upper_bound: 0,
                 sum_other_doc_count: 0,
@@ -469,7 +460,10 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
         },
         timed_out: false,
     });
-    expect2(await service.search($search).catch(GETERR)).toEqual({
+
+    // check results of search
+    const searchResult = await service.search($search);
+    expect2(() => searchResult).toEqual({
         total: 2,
         list: [{ _id: 'A0', _score: null, a: 2, b: 4, $id: 'A0', count: 0, type: 'test' }],
         aggregations: {
@@ -484,6 +478,12 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
         },
         last: [0],
     });
+
+    //verify that the results of `search` and `searchRaw` are compatible
+    expect2(() => searchRawResult.aggregations).toEqual(searchResult.aggregations);
+    expect2(() => searchResult.total).toEqual(
+        service.isOldES6 ? searchRawResult.hits.total : searchRawResult.hits.total.value,
+    );
 };
 
 /**
@@ -538,19 +538,19 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 
     expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 15,
+        _version: 13,
         count: 10,
     });
     expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 16,
+        _version: 14,
     });
 
     //* try to overwrite, and update
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 16,
+        _version: 14,
         count: 12,
     }); // support number, string, null type.
 
@@ -562,7 +562,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 17,
+        _version: 15,
         count: '',
         empty: '',
         name: '',
@@ -594,7 +594,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         '400 MAPPER PARSING - object mapping for [extra] tried to parse field [extra] as object, but found a concrete value',
     );
 
-    //* overwrite whole docs by indexItem
+    //* overwrite whole docs
     expect2(await service.updateItem('A0', { a: 1, b: 2 }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
         a: 1,
@@ -607,7 +607,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         b: 2,
     });
 
-    //* overwrite inner-object by indexItem
+    //* overwrite inner-object
     expect2(await service.updateItem('A4', { extra: { a: 1, b: 2 } }).catch(GETERR), '!_version').toEqual({
         _id: 'A4',
         extra: { a: 1, b: 2 },
@@ -853,7 +853,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
 
     /**
      * boolean_field
-     * boolean -> number로 업데이트시 오류 발생
+     * boolean -> long으로 업데이트시 오류 발생
+     * boolean -> float로 업데이트시 오류 발생
      * boolean -> {}로 업데이트시 오류 발생
      * boolean -> [1, 2, 3]으로 업데이트시 오류 발생. []는 오류 발생하지 않음.
      * */
@@ -992,7 +993,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
             : "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'",
     );
 
-    // array_field 내부 요소 타입 변경 테스트
+    /**
+     * array_field 내부 요소 타입 변경 테스트
+     * array 내부 요소 -> {}로 업데이트시 오류 발생
+     * */
     expect2(await agent().update({ array_field: [] })).toEqual({
         array_field: [],
     });
@@ -1019,7 +1023,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
             : "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'. Preview of field's value: '{b=a}'",
     );
 
-    // nested_field 내부 요소 타입 변경 테스트
+    /**
+     * nested_field 내부 요소 타입 변경 테스트
+     * nested_field 내부 요소 -> {}로 업데이트시 오류 발생
+     * */
     expect2(await agent().update({ nested_field: [{ sub1_field: 'string' }] })).toEqual({
         nested_field: [{ sub1_field: 'string' }],
     });
@@ -1046,7 +1053,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
             : "400 MAPPER PARSING - failed to parse field [nested_field.sub1_field] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
     );
 
-    // object_field 내부 요소 타입 변경 테스트
+    /**
+     * object_field 내부 요소 타입 변경 테스트
+     * object_field 내부 요소 -> {}로 업데이트시 오류 발생
+     * */
     expect2(await agent().update({ object_field: { sub_field: 'string' } })).toEqual({
         object_field: { sub_field: 'string' },
     });
@@ -1127,7 +1137,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
     // refresh index
     await service.refreshIndex();
 
-    // test for keyword(auto-indexing)
+    //* test for keyword(auto-indexing)
     const $search: SearchBody = {
         size: 2,
         query: {
@@ -1189,7 +1199,7 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
         ],
         total: 2,
     });
-    // test for hangul(auto-indexing)
+    //* test for hangul(auto-indexing)
     const $search2: SearchBody = {
         size: 2,
         query: {
@@ -1524,6 +1534,21 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
     };
 
+    const byCompanyResult: SearchResponse = await service.search($companyAggregation);
+    const expectedTermsAggregation = {
+        employees_per_company: {
+            buckets: [
+                { doc_count: 6667, key: 'B' },
+                { doc_count: 6667, key: 'C' },
+                { doc_count: 6666, key: 'A' },
+            ],
+            doc_count_error_upper_bound: 0,
+            sum_other_doc_count: 0,
+        },
+    };
+
+    expect2(() => byCompanyResult.aggregations).toEqual(expectedTermsAggregation);
+
     //* 2. employee per department within each company
     const $companyDepartmentAggregation: SearchBody = {
         size: 0,
@@ -1542,22 +1567,6 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
             },
         },
     };
-
-    const byCompanyResult: SearchResponse = await service.search($companyAggregation);
-    const expectedTermsAggregation = {
-        employees_per_company: {
-            buckets: [
-                { doc_count: 6667, key: 'B' },
-                { doc_count: 6667, key: 'C' },
-                { doc_count: 6666, key: 'A' },
-            ],
-            doc_count_error_upper_bound: 0,
-            sum_other_doc_count: 0,
-        },
-    };
-
-    expect2(() => byCompanyResult.aggregations).toEqual(expectedTermsAggregation);
-
     const byCompanyDepartmentResult: SearchResponse = await service.search($companyDepartmentAggregation);
     const expectedTerms2Aggregation = {
         employees_per_company: {
@@ -2069,7 +2078,8 @@ export const doTest = async (service: Elastic6Service<any>) => {
             await testFn();
         } catch (error) {
             const errorMessage = GETERR(error);
-            throw new Error(`${testName}: ${errorMessage}`); // 에러 발생 시 즉시 반환
+            const errorStack = error.stack || '';
+            throw new Error(`${testName}\n ${errorMessage}\n Stack trace:\n ${errorStack}`);
         }
     };
 
@@ -2093,7 +2103,7 @@ export const doTest = async (service: Elastic6Service<any>) => {
     await runTest('searchFilterTest', async () => await searchFilterTest(service));
 
     // 모든 테스트가 성공하면 Pass 반환
-    return `Pass`;
+    return `pass`;
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
@@ -2287,7 +2297,7 @@ describe('Elastic6Service', () => {
             rootVersion: { engine: 'es', major: 6, minor: 2, patch: 3 },
         });
         //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
+        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
     //! elastic storage service.
@@ -2308,7 +2318,7 @@ describe('Elastic6Service', () => {
             rootVersion: { engine: 'es', major: 7, minor: 1, patch: 1 },
         });
         //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
+        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
     //! elastic storage service.
@@ -2329,7 +2339,7 @@ describe('Elastic6Service', () => {
             rootVersion: { engine: 'es', major: 7, minor: 4, patch: 2 },
         });
         //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
+        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
     //! elastic storage service.
@@ -2350,7 +2360,7 @@ describe('Elastic6Service', () => {
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
         //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
+        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
     //! elastic storage service.
@@ -2371,7 +2381,7 @@ describe('Elastic6Service', () => {
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
         //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
+        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
     //! elastic storage service.
@@ -2392,7 +2402,7 @@ describe('Elastic6Service', () => {
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
         //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
+        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
     //! elastic storage service.
@@ -2413,6 +2423,6 @@ describe('Elastic6Service', () => {
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
         //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
+        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 });
