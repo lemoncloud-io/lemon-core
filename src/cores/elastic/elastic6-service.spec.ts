@@ -2057,6 +2057,44 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         },
     });
 };
+/**
+ * run Elastic6Service tests sequentially.
+ *
+ * @param service - Elasticsearch service instance.
+ */
+
+export const doTest = async (service: Elastic6Service<any>) => {
+    const runTest = async (testName: string, testFn: () => Promise<void>) => {
+        try {
+            await testFn();
+        } catch (error) {
+            const errorMessage = GETERR(error);
+            throw new Error(`${testName}: ${errorMessage}`); // 에러 발생 시 즉시 반환
+        }
+    };
+
+    // run tests
+    await runTest('setupIndex', async () => await setupIndex(service));
+
+    await runTest('basicCRUDTest', async () => await basicCRUDTest(service));
+
+    await runTest('basicSearchTest', async () => await basicSearchTest(service));
+
+    await runTest('autoIndexingTest', async () => await autoIndexingTest(service));
+
+    await runTest('detailedCRUDTest', async () => await detailedCRUDTest(service));
+
+    await runTest('mismatchedTypeTest', async () => await mismatchedTypeTest(service));
+
+    await runTest('totalSummaryTest', async () => await totalSummaryTest(service));
+
+    await runTest('aggregationTest', async () => await aggregationTest(service));
+
+    await runTest('searchFilterTest', async () => await searchFilterTest(service));
+
+    // 모든 테스트가 성공하면 Pass 반환
+    return `Pass`;
+};
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('Elastic6Service', () => {
@@ -2248,24 +2286,8 @@ describe('Elastic6Service', () => {
             optionVersion: { engine: 'es', major: 6, minor: 2, patch: 0 },
             rootVersion: { engine: 'es', major: 6, minor: 2, patch: 3 },
         });
-
-        await setupIndex(service);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service);
-
-        await autoIndexingTest(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummaryTest(service);
-
-        await aggregationTest(service);
-
-        await searchFilterTest(service);
+        //* run Elastic6Service tests sequentially.
+        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
     });
 
     //! elastic storage service.
@@ -2285,24 +2307,8 @@ describe('Elastic6Service', () => {
             optionVersion: { engine: 'es', major: 7, minor: 1, patch: 0 },
             rootVersion: { engine: 'es', major: 7, minor: 1, patch: 1 },
         });
-
-        await setupIndex(service);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service);
-
-        await autoIndexingTest(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummaryTest(service);
-
-        await aggregationTest(service);
-
-        await searchFilterTest(service);
+        //* run Elastic6Service tests sequentially.
+        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
     });
 
     //! elastic storage service.
@@ -2322,24 +2328,8 @@ describe('Elastic6Service', () => {
             optionVersion: { engine: 'es', major: 7, minor: 2, patch: 0 },
             rootVersion: { engine: 'es', major: 7, minor: 4, patch: 2 },
         });
-
-        await setupIndex(service);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service);
-
-        await autoIndexingTest(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummaryTest(service);
-
-        await aggregationTest(service);
-
-        await searchFilterTest(service);
+        //* run Elastic6Service tests sequentially.
+        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
     });
 
     //! elastic storage service.
@@ -2359,24 +2349,8 @@ describe('Elastic6Service', () => {
             optionVersion: { engine: 'es', major: 7, minor: 10, patch: 0 },
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
-
-        await setupIndex(service);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service);
-
-        await autoIndexingTest(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummaryTest(service);
-
-        await aggregationTest(service);
-
-        await searchFilterTest(service);
+        //* run Elastic6Service tests sequentially.
+        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
     });
 
     //! elastic storage service.
@@ -2396,24 +2370,8 @@ describe('Elastic6Service', () => {
             optionVersion: { engine: 'os', major: 1, minor: 1, patch: 0 },
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
-
-        await setupIndex(service);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service);
-
-        await autoIndexingTest(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummaryTest(service);
-
-        await aggregationTest(service);
-
-        await searchFilterTest(service);
+        //* run Elastic6Service tests sequentially.
+        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
     });
 
     //! elastic storage service.
@@ -2433,24 +2391,8 @@ describe('Elastic6Service', () => {
             optionVersion: { engine: 'os', major: 1, minor: 2, patch: 0 },
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
-
-        await setupIndex(service);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service);
-
-        await autoIndexingTest(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummaryTest(service);
-
-        await aggregationTest(service);
-
-        await searchFilterTest(service);
+        //* run Elastic6Service tests sequentially.
+        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
     });
 
     //! elastic storage service.
@@ -2470,23 +2412,7 @@ describe('Elastic6Service', () => {
             optionVersion: { engine: 'os', major: 2, minor: 13, patch: 0 },
             rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
         });
-
-        await setupIndex(service);
-
-        await basicCRUDTest(service);
-
-        await basicSearchTest(service);
-
-        await autoIndexingTest(service);
-
-        await detailedCRUDTest(service);
-
-        await mismatchedTypeTest(service);
-
-        await totalSummaryTest(service);
-
-        await aggregationTest(service);
-
-        await searchFilterTest(service);
+        //* run Elastic6Service tests sequentially.
+        expect2(await doTest(service).catch(GETERR)).toEqual('Pass');
     });
 });
