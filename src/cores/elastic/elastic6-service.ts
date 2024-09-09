@@ -813,67 +813,43 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
-        //* prepare the script to overwrite fields
-        const scripts: string[] = [];
-        const params: Record<string, any> = { item: item || {}, increments: increments || {} };
-
-        // script to remove fields not in item or increments
-        scripts.push(`
-            for (String key : ctx._source.keySet().toArray()) {
-                if (!params.item.containsKey(key) && !params.increments.containsKey(key) && key != '${idName}') {
-                    ctx._source.remove(key);
-                }
-            }
-        `);
-
-        // script to update fields with values from item
-        if (item) {
-            for (const [key] of Object.entries(item)) {
-                scripts.push(`ctx._source['${key}'] = params.item['${key}'];`);
-            }
-        }
-
-        // script to increment fields with values from increments
-        if (increments) {
-            for (const [key] of Object.entries(increments)) {
-                scripts.push(`if (ctx._source.containsKey('${key}')) {
-                    ctx._source['${key}'] += params.increments['${key}'];
-                } else {
-                    ctx._source['${key}'] = params.increments['${key}'];
-                }`);
-            }
-        }
-
         // const { client } = instance(endpoint);
         const client = this.client;
-        /**
-         * Use `_seq_no` for optimistic concurrency control to prevent conflicts.
-         * Use `_primary_term` to manage versioning and ensure the correct version of the document is updated.
-         */
+
         const currentDocument = await client.get({ index: indexName, id });
+
+        const existingItem = currentDocument.body._source || {};
+        const newItem: Record<string, any> = { ...item, [idName]: id };
+
+        // increment fields
+        if (increments) {
+            for (const [key, value] of Object.entries(increments)) {
+                if (existingItem[key]) {
+                    newItem[key] = existingItem[key] + value;
+                } else {
+                    newItem[key] = value;
+                }
+            }
+        }
+
+        // optimistic concurrency control (_seq_no and _primary_term)
         const { _seq_no, _primary_term } = currentDocument.body;
 
-        // prepare update parameters
-        const updateParams: ElasticUpdateParams = {
+        // prepare index parameters
+        const indexParams: ElasticUpdateParams = {
             index: indexName,
             id: id,
             if_seq_no: _seq_no,
             if_primary_term: _primary_term,
-            body: {
-                script: {
-                    source: scripts.join(' '),
-                    lang: 'painless',
-                    params: params,
-                },
-            },
+            body: newItem,
         };
 
         if (this.isOldES6) {
-            updateParams.type = type;
+            indexParams.type = type;
         }
-        _log(NS, `> updateParams[${id}] =`, $U.json(updateParams));
-        const res: ApiResponse = await client.update(updateParams, options).catch(
-            $ERROR.handler('update', (e, E) => {
+        _log(NS, `> updateParams[${id}] =`, $U.json(indexParams));
+        const res: ApiResponse = await client.index(indexParams, options).catch(
+            $ERROR.handler('index', (e, E) => {
                 const msg = GETERR(e);
 
                 //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
