@@ -84,7 +84,7 @@ export interface RetryOptions {
     do?: boolean;
     /** retry after t msec (default 5000ms) */
     t?: number;
-    /** maximum ㄱetries (default 3 times) */
+    /** maximum Retries (default 3 times) */
     maxRetries?: number;
 }
 
@@ -101,7 +101,7 @@ export interface ElasticSearchAllParams {
 }
 
 /**
- * typeof search-engine type
+ * type of search-engine type
  */
 export type EngineType = 'os' | 'es'; // openSearch | elasticSearch
 
@@ -146,10 +146,20 @@ interface ElasticParams<T extends object = any> {
      */
     type?: string;
 }
+/**
+ * parameters for Elasticsearch update operations.
+ */
 interface ElasticUpdateParams extends ElasticParams {
+    /**
+     * The sequence number (if_seq_no) to ensure that updates are applied in order.
+     */
     if_seq_no: number;
+    /**
+     * The primary term (if_primary_term) used in conjunction with the sequence number (if_seq_no).
+     */
     if_primary_term: number;
 }
+
 /**
  * parameters for Elasticsearch search operations.
  *
@@ -260,18 +270,22 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     }
     /**
      * get isOldES6
+     * - used when setting doctype
+     * - used when verifying mismatched error and results of search
      */
     public get isOldES6(): boolean {
         return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
     }
     /**
      * get isOldES71
+     * - used when verifying mismatched error
      */
     public get isOldES71(): boolean {
         return this.parsedVersion.major == 7 && this.parsedVersion.minor == 1 && this.parsedVersion.engine === 'es';
     }
     /**
      * get isLatestOS2
+     * - used when verifying results of search
      */
     public get isLatestOS2(): boolean {
         return this.parsedVersion.major >= 2 && this.parsedVersion.engine === 'os';
@@ -308,6 +322,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     }
 
     /**
+     * check whether the service version matches the version provided in the options.
      *
      * @protected only for internal test.
      */
@@ -368,6 +383,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
 
     /**
      * save info to a JSON file.
+     * @param info - The information to be saved
+     * @param filePath - The file path where should be saved.
      */
     private async saveInfoToFile(info: any, filePath: string) {
         try {
@@ -416,7 +433,6 @@ export class ElasticIndexService<T extends ElasticItem = any> {
             storeSize: _S(N['store.size']),
         }));
 
-        //* returns.
         return { list };
     }
     /**
@@ -444,6 +460,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
 
     /**
      * find the index by name
+     * @param indexName - name of the index
      */
     public async findIndex(indexName?: string) {
         indexName = indexName || this.options.indexName;
@@ -455,8 +472,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
 
     /**
      * create index by name
-     *
-     * @param settings      creating settings
+     * @param settings - creating settings
      */
     public async createIndex(settings?: any) {
         const { indexName, docType, idName, timeSeries, version } = this.options;
@@ -609,9 +625,9 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     /**
      * save single item
      *
-     * @param id    id
-     * @param item  item to save
-     * @param type  document type (default: doc-type given at construction time)
+     * @param id - id
+     * @param item - item to save
+     * @param type - document type (default: doc-type given at construction time)
      */
     public async saveItem(id: string, item: T, type?: string): Promise<T> {
         const { indexName, docType, idName } = this.options;
@@ -661,7 +677,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     /**
      * push item for time-series data.
      *
-     * @param item  item to push
+     * @param item - item to push
+     * @param type - document type (default: doc-type given at construction time)
      */
     public async pushItem(item: T, type?: string): Promise<T> {
         const { indexName, docType } = this.options;
@@ -697,8 +714,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     /**
      * read item with projections
      *
-     * @param id        item-id
-     * @param views     projections
+     * @param id - item-id
+     * @param views - projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
         const { indexName, docType } = this.options;
@@ -742,7 +759,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     /**
      * delete item with projections
      *
-     * @param id        item-id
+     * @param id - item-id
      */
     public async deleteItem(id: string): Promise<T> {
         const { indexName, docType } = this.options;
@@ -780,10 +797,10 @@ export class ElasticIndexService<T extends ElasticItem = any> {
      * 2. a,b := 10,null -> 11,2 (upsert)
      * 3. a,b := null,20 -> 1,22
      *
-     * @param id        item-id
-     * @param item      item to update
-     * @param increments item to increase
-     * @param options   (optional) request option of client.
+     * @param id - item-id
+     * @param item - item to update
+     * @param increments - item to increase
+     * @param options - (optional) request option of client.
      */
     public async updateItem(
         id: string,
@@ -829,7 +846,10 @@ export class ElasticIndexService<T extends ElasticItem = any> {
 
         // const { client } = instance(endpoint);
         const client = this.client;
-
+        /**
+         * Use `_seq_no` for optimistic concurrency control to prevent conflicts.
+         * Use `_primary_term` to manage versioning and ensure the correct version of the document is updated.
+         */
         const currentDocument = await client.get({ index: indexName, id });
         const { _seq_no, _primary_term } = currentDocument.body;
 
@@ -878,7 +898,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
 
     /**
      * run search and get the raw response.
-     *
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
      */
     public async searchRaw<T extends object = any>(body: SearchBody, searchType?: SearchType): Promise<T> {
         if (!body) throw new Error('@body (SearchBody) is required');
@@ -916,6 +937,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
 
     /**
      * run search, and get the formatmted response.
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
      *
      */
     public async search(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
@@ -938,6 +961,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     }
     /**
      * search all until limit (-1 means no-limit)
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param params - parameters including search type, limit, and retry options.
      */
     public async searchAll<T>(body: SearchBody, params?: ElasticSearchAllParams) {
         const list: T[] = [];
@@ -950,8 +975,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
     /**
      * create async generator that yields items queried until last
      *
-     * @param body          Elasticsearch Query DSL
-     * @param params        optional parameters
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param params - parameters including search type, limit, and retry options.
      */
     public async *generateSearchResult(body: SearchBody, params?: ElasticSearchAllParams) {
         const doRetry = params?.retryOptions?.do ?? false;

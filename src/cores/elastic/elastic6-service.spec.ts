@@ -129,7 +129,7 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
     const PASS = (e: any) => e;
     const indexName = service.options.indexName;
 
-    //* destroy index
+    //* destroy index if it already exists
     const oldIndex = await service.findIndex(indexName);
     if (oldIndex) {
         expect2(() => oldIndex, 'index').toEqual({ index: indexName });
@@ -624,7 +624,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 };
 
 /**
- * test data mismatch errors
+ * test mismatch errors
  * - update fields to null
  * - update fields with mismatched types
  * @param service - Elasticsearch service instance.
