@@ -338,23 +338,38 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 3,
+        count: 1,
+        type: 'test',
+    });
+    expect2(await service.readItem('A0').catch(GETERR)).toEqual({
+        $id: 'A0',
+        _id: 'A0',
+        _version: 3,
+        count: 1,
         type: 'test',
     });
     // item: null, increment: {count: 0}
-    expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({ _id: 'A0', _version: 4 });
+    expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({
+        _id: 'A0',
+        _version: 4,
+        count: 1,
+    });
+    expect2(await service.readItem('A0').catch(GETERR)).toEqual({ $id: 'A0', _id: 'A0', _version: 4, count: 1 });
     // item: {count: 0}, increment: -
     expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 5,
         count: 0,
     });
+    expect2(await service.readItem('A0').catch(GETERR)).toEqual({ $id: 'A0', _id: 'A0', _version: 5, count: 0 });
     // item: { type: 'test' }, increment: { a: 1, b: 2 }
     expect2(await service.updateItem('A0', { type: 'test' }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 6,
+        a: 1,
+        b: 2,
         type: 'test',
     });
-    // _source: { type: 'test', a: 1, b: 2 } - count should not exist as overwritten
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
@@ -367,10 +382,11 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     expect2(await service.updateItem('A0', { type: 'test', count: 0 }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 7,
+        a: 2,
+        b: 4,
         type: 'test',
         count: 0,
     });
-    // _source: { type: 'test', count: 0, a: 2, b: 4 } - a, b should increment: 1 to 2, 2 to 4
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
@@ -518,23 +534,27 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         name: 'push-01',
     }); // `._id` is auto-gen.
 
+    //* try to overwrite, and update
     const data0 = await service.readItem('A0');
-    expect2(await service.updateItem('A0', { name: 'b0' }).catch(GETERR), '!_version').toEqual({
+    expect2(await service.updateItem('A0', { name: 'name-01' }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
-        name: 'b0',
+        name: 'name-01',
     });
-    expect2(await service.updateItem('A0', { nick: 'bb' }).catch(GETERR), '!_version').toEqual({
+    expect2(await service.updateItem('A0', { nick: 'nick-01' }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
-        nick: 'bb',
+        nick: 'nick-01',
     });
     expect2(await service.readItem('A0').catch(GETERR), '').toEqual({
         _id: 'A0',
         $id: 'A0',
         _version: Number(data0._version) + 2,
-        nick: 'bb',
+        nick: 'nick-01',
     }); // `._version` is incremented.
 
-    expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({ _id: 'A0' });
+    expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A0',
+        count: 2,
+    });
 
     expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR)).toEqual({
         _id: 'A0',
@@ -544,9 +564,9 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
         _version: 14,
+        count: 12,
     });
 
-    //* try to overwrite, and update
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
@@ -582,11 +602,22 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         _id: 'A4',
         extra: { b: 2 },
     });
+    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({ $id: 'A4', _id: 'A4', extra: { b: 2 } });
     expect2(await service.updateItem('A4', { extra: { a: null } }).catch(GETERR), '!_version').toEqual({
         _id: 'A4',
         extra: { a: null },
     });
+    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({
+        $id: 'A4',
+        _id: 'A4',
+        extra: { a: null },
+    });
     expect2(await service.updateItem('A4', { extra: { a: '' } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A4',
+        extra: { a: '' },
+    });
+    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({
+        $id: 'A4',
         _id: 'A4',
         extra: { a: '' },
     });
