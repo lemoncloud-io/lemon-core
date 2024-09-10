@@ -819,15 +819,15 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         const currentDocument = await client.get({ index: indexName, id });
 
         const existingItem = currentDocument.body._source || {};
-        const newItem: Record<string, any> = { ...item, [idName]: id };
+        const incrementItem: Record<string, any> = {};
 
         // increment fields
         if (increments) {
             for (const [key, value] of Object.entries(increments)) {
                 if (existingItem[key]) {
-                    newItem[key] = existingItem[key] + value;
+                    incrementItem[key] = existingItem[key] + value;
                 } else {
-                    newItem[key] = value;
+                    incrementItem[key] = value;
                 }
             }
         }
@@ -841,7 +841,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
             id: id,
             if_seq_no: _seq_no,
             if_primary_term: _primary_term,
-            body: newItem,
+            body: { ...incrementItem, ...item, [idName]: id },
         };
 
         if (this.isOldES6) {
@@ -868,7 +868,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
 
         const _id = res.body._id;
         const _version = res.body._version;
-        const res2: T = { ...item, _id, _version };
+        const res2: T = { ...item, ...incrementItem, _id, _version };
         return res2;
     }
 
