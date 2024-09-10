@@ -655,13 +655,13 @@ export class ElasticIndexService<T extends ElasticItem = any> {
             // $ERROR.throwAsJson,
             $ERROR.handler('save', e => {
                 const msg = GETERR(e);
-                //* try to update document..
+                //* try to overwrite document..
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
-                    delete body2[idName]; // do set id while update
+                    // delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
-                    const param2: ElasticParams = { index: indexName, id, body: { doc: body2 } };
+                    const param2: ElasticParams = { index: indexName, id, body: { ...body2 } };
                     if (this.isOldES6) param2.type = type;
-                    return client.update(param2);
+                    return client.index(param2);
                 }
                 throw e;
             }),
@@ -813,47 +813,58 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
+        //* prepare params.
+        const params: ElasticParams = { index: indexName, id, body: {} };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
+        }
+        if (increments) {
+            //* it will create if not exists.
+            params.body.upsert = { ...increments, [idName]: id };
+
+            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
+                if (Array.isArray(val)) {
+                    // If the value is an array, append it to the existing array in the source
+                    L.push(
+                        `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) { ctx._source.${key}.addAll(params.increments.${key}); } else { ctx._source.${key} = params.increments.${key}; }`,
+                    );
+                } else {
+                    // If the value is a number, increment the existing field
+                    L.push(
+                        `if (ctx._source.${key} != null) { ctx._source.${key} += params.increments.${key}; } else { ctx._source.${key} = params.increments.${key}; }`,
+                    );
+                }
+                return L;
+            }, []);
+
+            if (item) {
+                // Handle item updates in the script
+                Object.entries(item).forEach(([key]) => {
+                    scripts.push(`ctx._source.${key} = params.item.${key};`);
+                });
+            }
+
+            params.body.script = {
+                source: scripts.join(' '),
+                lang: 'painless',
+                params: { item, increments },
+            };
+        } else if (item) {
+            params.body.doc = item;
+        }
+        _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
-
-        const currentDocument = await client.get({ index: indexName, id });
-
-        const existingItem = currentDocument.body._source || {};
-        const incrementItem: Record<string, any> = {};
-
-        // increment fields
-        if (increments) {
-            for (const [key, value] of Object.entries(increments)) {
-                if (existingItem[key]) {
-                    incrementItem[key] = existingItem[key] + value;
-                } else {
-                    incrementItem[key] = value;
-                }
-            }
-        }
-
-        // optimistic concurrency control (_seq_no and _primary_term)
-        const { _seq_no, _primary_term } = currentDocument.body;
-
-        // prepare index parameters
-        const indexParams: ElasticUpdateParams = {
-            index: indexName,
-            id: id,
-            if_seq_no: _seq_no,
-            if_primary_term: _primary_term,
-            body: { ...incrementItem, ...item, [idName]: id },
-        };
-
-        if (this.isOldES6) {
-            indexParams.type = type;
-        }
-        _log(NS, `> updateParams[${id}] =`, $U.json(indexParams));
-        const res: ApiResponse = await client.index(indexParams, options).catch(
-            $ERROR.handler('index', (e, E) => {
+        const res: ApiResponse = await client.update(params, options).catch(
+            $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
-
+                //* id 아이템이 없을 경우 발생함.
+                if (msg.startsWith('404 DOCUMENT MISSING')) throw new Error(`404 NOT FOUND - id:${id}`);
                 //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
                 if (msg.startsWith('400 REMOTE TRANSPORT')) throw new Error(`400 INVALID FIELD - id:${id}`);
+                if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
                 if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
@@ -865,10 +876,9 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"updated","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":8,"_primary_term":1}
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"noop","_shards":{"total":0,"successful":0,"failed":0}}
         _log(NS, `> update[${id}].res =`, $U.json({ ...res, meta: undefined }));
-
         const _id = res.body._id;
         const _version = res.body._version;
-        const res2: T = { ...item, ...incrementItem, _id, _version };
+        const res2: T = { ...item, _id, _version };
         return res2;
     }
 
