@@ -331,69 +331,81 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     //* create new item
     const A0 = { type: '', name: 'a0' };
     expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });
-    expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, _id: 'A0', _version: 2 });
+    expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 3 });
 
     //* try to update fields.
     // item: { type: 'test' }, increment: { count: 1 }
     expect2(await service.updateItem('A0', { type: 'test' }, { count: 1 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 3,
-        count: 1,
+        _version: 4,
         type: 'test',
     });
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 3,
+        _version: 4,
         count: 1,
+        name: 'a0',
         type: 'test',
     });
     // item: null, increment: {count: 0}
     expect2(await service.updateItem('A0', null, { count: 0 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 4,
-        count: 1,
+        _version: 5,
     });
-    expect2(await service.readItem('A0').catch(GETERR)).toEqual({ $id: 'A0', _id: 'A0', _version: 4, count: 1 });
+    expect2(await service.readItem('A0').catch(GETERR)).toEqual({
+        $id: 'A0',
+        _id: 'A0',
+        _version: 5,
+        count: 1,
+        name: 'a0',
+        type: 'test',
+    });
     // item: {count: 0}, increment: -
     expect2(await service.updateItem('A0', { count: 0 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 5,
-        count: 0,
-    });
-    expect2(await service.readItem('A0').catch(GETERR)).toEqual({ $id: 'A0', _id: 'A0', _version: 5, count: 0 });
-    // item: { type: 'test' }, increment: { a: 1, b: 2 }
-    expect2(await service.updateItem('A0', { type: 'test' }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
-        _id: 'A0',
         _version: 6,
-        a: 1,
-        b: 2,
-        type: 'test',
+        count: 0,
     });
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
         _version: 6,
+        count: 0,
+        name: 'a0',
+        type: 'test',
+    });
+    // item: { type: 'test' }, increment: { a: 1, b: 2 }
+    expect2(await service.updateItem('A0', { type: 'test' }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
+        _id: 'A0',
+        _version: 7,
+        type: 'test',
+    });
+    expect2(await service.readItem('A0').catch(GETERR)).toEqual({
+        $id: 'A0',
+        _id: 'A0',
+        _version: 7,
         a: 1,
         b: 2,
+        count: 0,
+        name: 'a0',
         type: 'test',
     });
     // item: { type: 'test', count: 0 }, increment: { a: 1, b: 2 }
     expect2(await service.updateItem('A0', { type: 'test', count: 0 }, { a: 1, b: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 7,
-        a: 2,
-        b: 4,
+        _version: 8,
         type: 'test',
         count: 0,
     });
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 7,
+        _version: 8,
         a: 2,
         b: 4,
         count: 0,
+        name: 'a0',
         type: 'test',
     });
 
@@ -456,7 +468,7 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
                     _id: 'A0',
                     _index: indexName,
                     _score: null,
-                    _source: { $id: 'A0', a: 2, b: 4, type: 'test', count: 0 },
+                    _source: { $id: 'A0', a: 2, b: 4, type: 'test', name: 'a0', count: 0 },
                     ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
                     sort: [0],
                 },
@@ -481,7 +493,7 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
     const searchResult = await service.search($search);
     expect2(() => searchResult).toEqual({
         total: 2,
-        list: [{ _id: 'A0', _score: null, a: 2, b: 4, $id: 'A0', count: 0, type: 'test' }],
+        list: [{ _id: 'A0', _score: null, a: 2, b: 4, $id: 'A0', count: 0, name: 'a0', type: 'test' }],
         aggregations: {
             test: {
                 buckets: [
@@ -534,7 +546,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         name: 'push-01',
     }); // `._id` is auto-gen.
 
-    //* try to overwrite, and update
+    //* try to update
     const data0 = await service.readItem('A0');
     expect2(await service.updateItem('A0', { name: 'name-01' }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
@@ -548,41 +560,44 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
         _id: 'A0',
         $id: 'A0',
         _version: Number(data0._version) + 2,
+        name: 'name-01',
         nick: 'nick-01',
+        type: '',
     }); // `._version` is incremented.
 
     expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
         _id: 'A0',
-        count: 2,
     });
 
     expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 13,
+        _version: 14,
         count: 10,
     });
     expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR)).toEqual({
         _id: 'A0',
-        _version: 14,
-        count: 12,
+        _version: 15,
     });
 
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 14,
+        _version: 15,
         count: 12,
+        name: 'name-01',
+        nick: 'nick-01',
+        type: '',
     }); // support number, string, null type.
 
     //save empty ''
     expect2(
         await service.saveItem('A0', { count: '', nick: '', name: '', empty: '' }).catch(GETERR),
         '!_version',
-    ).toEqual({ _id: 'A0', count: '', empty: '', name: '', nick: '' });
+    ).toEqual({ _id: 'A0', $id: 'A0', count: '', empty: '', name: '', nick: '' });
     expect2(await service.readItem('A0').catch(GETERR)).toEqual({
         $id: 'A0',
         _id: 'A0',
-        _version: 15,
+        _version: 16,
         count: '',
         empty: '',
         name: '',
@@ -590,68 +605,196 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     });
 
     /**
-     * 테스트: 내부 객체에 데이터 변경하기
+     * test:update inner-object
      */
     // 1) inner-object update w/ null support
-    expect2(await service.saveItem('A4', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
-        $id: 'A4',
-        _id: 'A4',
+    expect2(await service.saveItem('A1', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
         extra: { a: 1 },
     });
-    expect2(await service.updateItem('A4', { extra: { b: 2 } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A4',
+    expect2(await service.updateItem('A1', { extra: { b: 2 } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
         extra: { b: 2 },
     });
-    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({ $id: 'A4', _id: 'A4', extra: { b: 2 } });
-    expect2(await service.updateItem('A4', { extra: { a: null } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A4',
+    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
+        extra: { a: 1, b: 2 },
+    });
+    expect2(await service.updateItem('A1', { extra: { a: null } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
         extra: { a: null },
     });
-    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({
-        $id: 'A4',
-        _id: 'A4',
-        extra: { a: null },
+    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
+        extra: { a: null, b: 2 },
     });
-    expect2(await service.updateItem('A4', { extra: { a: '' } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A4',
+    expect2(await service.updateItem('A1', { extra: { a: '' } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
         extra: { a: '' },
     });
-    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({
-        $id: 'A4',
-        _id: 'A4',
-        extra: { a: '' },
+    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
+        extra: { a: '', b: 2 },
     });
-    expect2(await service.updateItem('A4', { extra: '' }).catch(GETERR), '!_version').toEqual(
+    expect2(await service.updateItem('A1', { extra: '' }).catch(GETERR), '!_version').toEqual(
         '400 MAPPER PARSING - object mapping for [extra] tried to parse field [extra] as object, but found a concrete value',
     );
 
     //* overwrite whole docs
-    expect2(await service.updateItem('A0', { a: 1, b: 2 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
+    expect2(await service.saveItem('A1', { a: 1, b: 2 }).catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
         a: 1,
         b: 2,
     });
-    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-        $id: 'A0',
-        _id: 'A0',
+    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
         a: 1,
         b: 2,
     });
 
     //* overwrite inner-object
-    expect2(await service.updateItem('A4', { extra: { a: 1, b: 2 } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A4',
+    expect2(await service.updateItem('A1', { extra: { innerObject: 'inner-01' } }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+        extra: { innerObject: 'inner-01' },
+    });
+    expect2(await service.saveItem('A1', { extra: { a: 1, b: 2 } }).catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
         extra: { a: 1, b: 2 },
     });
-    expect2(await service.readItem('A4').catch(GETERR), '!_version').toEqual({
-        $id: 'A4',
-        _id: 'A4',
+    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
+        $id: 'A1',
+        _id: 'A1',
         extra: { a: 1, b: 2 },
     });
+
+    /**
+     * updateItem increment test
+     */
+    // 1-1) string array increment test
+    expect2(await service.updateItem('A1', null, { stringArray: ['a'] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { stringArray: ['b', 'c'] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    //1-2) string array increment w/mismatch type
+    expect2(await service.updateItem('A1', null, { stringArray: [1] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { stringArray: [1.1] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { stringArray: [''] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { stringArray: 1 }).catch(GETERR), '!_version').toEqual(
+        '400 ILLEGAL ARGUMENT - failed to execute script',
+    );
+    // check result
+    const res1 = await service.readItem('A1').catch(GETERR);
+    expect2(() => res1.stringArray).toEqual(['a', 'b', 'c', 1, 1.1, '']);
+
+    // 2-1 ) number array increment test
+    expect2(await service.updateItem('A1', null, { numberArray: [1] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { numberArray: [2, 3] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    // 2-2) number array increment w/mismatch type
+    expect2(await service.updateItem('A1', null, { numberArray: [2.1, 3.1] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { numberArray: ['a'] }).catch(GETERR), '!_version').toEqual(
+        service.isOldES6
+            ? '400 MAPPER PARSING - failed to parse [numberArray]'
+            : service.isOldES71
+            ? "400 MAPPER PARSING - failed to parse field [numberArray] of type [long] in document with id 'A1'"
+            : "400 MAPPER PARSING - failed to parse field [numberArray] of type [long] in document with id 'A1'. Preview of field's value: 'a'",
+    );
+    expect2(await service.updateItem('A1', null, { numberArray: 1 }).catch(GETERR), '!_version').toEqual(
+        '400 ILLEGAL ARGUMENT - failed to execute script',
+    );
+    // check result
+    const res2 = await service.readItem('A1').catch(GETERR);
+    expect2(() => res2.numberArray).toEqual([1, 2, 3, 2.1, 3.1]);
+
+    // 3-1) long field increment test
+    expect2(await service.updateItem('A1', null, { longField: 1 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { longField: 2 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    // check result
+    const res31 = await service.readItem('A1').catch(GETERR);
+    expect2(() => res31.longField).toEqual(3);
+
+    // 3-2) long field increment w/mismatch float
+    expect2(await service.updateItem('A1', null, { longField: 0.345 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    // check result
+    const res32 = await service.readItem('A1').catch(GETERR);
+    expect2(() => res32.longField).toEqual(3);
+
+    // 3-3) long field increment w/mismatch array
+    expect2(await service.updateItem('A1', null, { longField: ['a'] }).catch(GETERR), '!_version').toEqual(
+        service.isOldES6
+            ? '400 MAPPER PARSING - failed to parse [longField]'
+            : service.isOldES71
+            ? "400 MAPPER PARSING - failed to parse field [longField] of type [long] in document with id 'A1'"
+            : "400 MAPPER PARSING - failed to parse field [longField] of type [long] in document with id 'A1'. Preview of field's value: 'a'",
+    );
+    expect2(await service.updateItem('A1', null, { longField: [1] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    // check result
+    const res33 = await service.readItem('A1').catch(GETERR);
+    expect2(() => res33.longField).toEqual([1]);
+
+    // 4-1) float field increment test
+    expect2(await service.updateItem('A1', null, { floatField: 0.2 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { floatField: 0.03 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    expect2(await service.updateItem('A1', null, { floatField: 1 }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    // check result
+    const res41 = await service.readItem('A1').catch(GETERR);
+    expect2(() => res41.floatField).toEqual(1.23);
+
+    // 4-2) float field increment w/mismatch array
+    expect2(await service.updateItem('A1', null, { floatField: ['a'] }).catch(GETERR), '!_version').toEqual(
+        service.isOldES6
+            ? '400 MAPPER PARSING - failed to parse [floatField]'
+            : service.isOldES71
+            ? "400 MAPPER PARSING - failed to parse field [floatField] of type [float] in document with id 'A1'"
+            : "400 MAPPER PARSING - failed to parse field [floatField] of type [float] in document with id 'A1'. Preview of field's value: 'a'",
+    );
+    expect2(await service.updateItem('A1', null, { floatField: [1] }).catch(GETERR), '!_version').toEqual({
+        _id: 'A1',
+    });
+    // check result
+    const res42 = await service.readItem('A1').catch(GETERR);
+    expect2(() => res42.floatField).toEqual([1]);
 
     //* delete
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
     expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
+
+    expect2(await service.deleteItem('A1').catch(GETERR), '!_version').toEqual({ _id: 'A1' });
+    expect2(await service.deleteItem('A1').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A1');
 };
 
 /**
