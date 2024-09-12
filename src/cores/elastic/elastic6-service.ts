@@ -1018,6 +1018,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         const replicas: number = params.replicas === undefined ? 1 : params.replicas;
         const timeSeries: boolean = params.timeSeries === undefined ? false : params.timeSeries;
 
+        const isOldES6 = version < 7 && version >= 6 ? true : false;
+
         //* core config.
         const CONF_ES_DOCTYPE = docType;
         const CONF_ID_NAME = idName;
@@ -1135,19 +1137,19 @@ export class ElasticIndexService<T extends ElasticItem = any> {
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: version < 7 && version >= 6 ? ['standard'] : [], //* error - The [standard] token filter has been removed.
+                            filter: isOldES6 ? ['standard'] : [], //* error - The [standard] token filter has been removed.
                         },
                     },
                 },
             },
             //* since 7.x. no mapping for types.
-            mappings: version < 7 && version >= 6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
+            mappings: isOldES6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
         };
 
         //* timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            if (version < 7 && version >= 6) {
+            if (isOldES6) {
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
