@@ -828,12 +828,20 @@ export class ElasticIndexService<T extends ElasticItem = any> {
                 if (Array.isArray(val)) {
                     // If the value is an array, append it to the existing array in the source
                     L.push(
-                        `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) { ctx._source.${key}.addAll(params.increments.${key}); } else { ctx._source.${key} = params.increments.${key}; }`,
+                        `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) {
+                            ctx._source.${key}.addAll(params.increments.${key});
+                        } else {
+                            ctx._source.${key} = params.increments.${key};
+                        }`,
                     );
                 } else {
                     // If the value is a number, increment the existing field
                     L.push(
-                        `if (ctx._source.${key} != null) { ctx._source.${key} += params.increments.${key}; } else { ctx._source.${key} = params.increments.${key}; }`,
+                        `if (ctx._source.${key} != null) {
+                            ctx._source.${key} += params.increments.${key};
+                        } else {
+                            ctx._source.${key} = params.increments.${key};
+                        }`,
                     );
                 }
                 return L;
@@ -1386,11 +1394,27 @@ export class DummyElastic6Service<T extends GeneralItem> extends ElasticIndexSer
 
     public async updateItem(id: string, updates: T, increments?: Incrementable): Promise<T> {
         const org = await this.readItem(id);
-        const item = { ...org, ...updates, _version: Number(org._version || 0) + 1 };
+        const item: any = { ...org, ...updates, _version: Number(org._version || 0) + 1 };
         if (increments) {
-            //TODO - support increments in dummy.
+            Object.entries(increments).forEach(([key, value]) => {
+                if (Array.isArray(value)) {
+                    if (Array.isArray(item[key])) {
+                        item[key] = [...item[key], ...value];
+                    } else {
+                        item[key] = value;
+                    }
+                } else if (typeof value === 'number') {
+                    if (typeof item[key] === 'number') {
+                        item[key] = item[key] + value;
+                    } else {
+                        item[key] = value;
+                    }
+                } else {
+                    item[key] = value;
+                }
+            });
         }
         this.buffer[id] = item;
-        return item;
+        return { id: id, _version: Number(org._version || 0) + 1, ...updates };
     }
 }

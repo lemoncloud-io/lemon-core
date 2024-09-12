@@ -2305,6 +2305,9 @@ describe('Elastic6Service', () => {
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: '' });
         expect2(await dummy.updateItem('A0', { type: 'account' }).catch(GETERR)).toEqual({ id: 'A0', _version: 1, type: 'account' });
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', _version: 1, type: 'account' });
+        expect2(await dummy.updateItem('A0', null, { stringArr : ['a'], numberArr: [1], count: 3 }).catch(GETERR)).toEqual({ id: 'A0', _version: 2 });
+        expect2(await dummy.updateItem('A0', null, { stringArr : ['b'], numberArr : [2], count: 1 }).catch(GETERR)).toEqual({ "_version": 3, "id": "A0" });
+        expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({"_version": 3, "count": 4, "id": "A0", "numberArr": [1, 2], "stringArr": ["a", "b"], "type": "account"});
         /* eslint-enable prettier/prettier */
     });
 
