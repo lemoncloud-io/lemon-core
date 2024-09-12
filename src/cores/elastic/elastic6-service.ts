@@ -91,7 +91,7 @@ export interface RetryOptions {
 /**
  * parameters for searchAll
  */
-export interface ElasticSearchAllParams {
+interface ElasticSearchAllParams {
     /** search-type */
     searchType?: SearchType;
     /** limit (default -1) */
@@ -145,19 +145,6 @@ interface ElasticParams<T extends object = any> {
      * document type (optional).
      */
     type?: string;
-}
-/**
- * parameters for Elasticsearch update operations.
- */
-interface ElasticUpdateParams extends ElasticParams {
-    /**
-     * The sequence number (if_seq_no) to ensure that updates are applied in order.
-     */
-    if_seq_no: number;
-    /**
-     * The primary term (if_primary_term) used in conjunction with the sequence number (if_seq_no).
-     */
-    if_primary_term: number;
 }
 
 /**
