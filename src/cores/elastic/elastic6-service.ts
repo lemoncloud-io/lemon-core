@@ -1553,19 +1553,18 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
         if (increments) {
             Object.entries(increments).forEach(([key, value]) => {
                 if (Array.isArray(value)) {
+                    // case of arrary increment
                     if (Array.isArray(item[key])) {
                         item[key] = [...item[key], ...value];
                     } else {
                         item[key] = value;
                     }
-                } else if (typeof value === 'number') {
+                } else {
                     if (typeof item[key] === 'number') {
                         item[key] = item[key] + value;
                     } else {
                         item[key] = value;
                     }
-                } else {
-                    item[key] = value;
                 }
             });
         }

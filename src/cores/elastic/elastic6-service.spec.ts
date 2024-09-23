@@ -1691,7 +1691,7 @@ export const doTest = async (service: Elastic6Service<any>) => {
 
     await runTest('searchFilterTest', async () => await searchFilterTest(service));
 
-    // 모든 테스트가 성공하면 Pass 반환
+    // 모든 테스트가 성공하면 pass 반환
     return `pass`;
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
