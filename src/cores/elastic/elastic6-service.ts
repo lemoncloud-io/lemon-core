@@ -256,14 +256,6 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         return this.parseVersion(this.options.version);
     }
     /**
-     * get isOldES6
-     * - used when setting doctype
-     * - used when verifying mismatched error and results of search
-     */
-    public get isOldES6(): boolean {
-        return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
-    }
-    /**
      * get isOldES71
      * - used when verifying mismatched error
      */
@@ -616,8 +608,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
      * @param item - item to save
      * @param type - document type (default: doc-type given at construction time)
      */
-    public async saveItem(id: string, item: T, type?: string): Promise<T> {
-        const { indexName, docType, idName } = this.options;
+    public async saveItem(id: string, item: T): Promise<T> {
+        const { indexName, idName } = this.options;
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -626,13 +618,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         const body: any = { ...item, [idName]: id };
         const body2 = this.popullateAutocompleteFields(body);
 
-        type = `${type || docType}`;
         const params: ElasticParams = { index: indexName, id, body: body2 };
-
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
-        }
 
         if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -647,7 +633,6 @@ export class ElasticIndexService<T extends ElasticItem = any> {
                     // delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
                     const param2: ElasticParams = { index: indexName, id, body: { ...body2 } };
-                    if (this.isOldES6) param2.type = type;
                     return client.index(param2);
                 }
                 throw e;
@@ -795,18 +780,13 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         increments?: Incrementable,
         options?: { maxRetries?: number },
     ): Promise<T> {
-        const { indexName, docType, idName } = this.options;
-        const type = `${docType}`;
+        const { indexName, idName } = this.options;
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
         //* prepare params.
         const params: ElasticParams = { index: indexName, id, body: {} };
 
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
-        }
         if (increments) {
             //* it will create if not exists.
             params.body.upsert = { ...increments, [idName]: id };
@@ -889,13 +869,8 @@ export class ElasticIndexService<T extends ElasticItem = any> {
         _log(NS, `> body =`, $U.json(body));
 
         const tmp = docType ? docType : '';
-        const type: string = docType ? `${docType}` : undefined;
         const params: ElasticSearchParams = { index: indexName, body, searchType };
 
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
-        }
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -1175,7 +1150,7 @@ export class ElasticIndexService<T extends ElasticItem = any> {
      * @param body  item body to be saved into ES6 index
      * @private
      */
-    private popullateAutocompleteFields<T = any>(body: T): T {
+    protected popullateAutocompleteFields<T = any>(body: T): T {
         const { autocompleteFields } = this.options;
         const isAutoComplete = autocompleteFields && Array.isArray(autocompleteFields) && autocompleteFields.length > 0;
         if (!isAutoComplete) return body;
@@ -1330,6 +1305,197 @@ export class Elastic6Service<T extends Elastic6Item = any> extends ElasticIndexS
         super(options);
         _inf('Elastic6Service', `Elastic6Service(${options.indexName}/${options.idName})...`);
     }
+    /**
+     * get isOldES6
+     * - used when setting doctype
+     * - used when verifying mismatched error and results of search
+     */
+    public get isOldES6(): boolean {
+        return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
+    }
+    /**
+     * save single item
+     *
+     * @param id - id
+     * @param item - item to save
+     * @param type - document type (default: doc-type given at construction time)
+     */
+    public async saveItem(id: string, item: T, type?: string): Promise<T> {
+        const { indexName, docType, idName } = this.options;
+        _log(NS, `- saveItem(${id})`);
+        // const { client } = instance(endpoint);
+        const client = this.client;
+
+        // prepare item body and autocomplete fields
+        const body: any = { ...item, [idName]: id };
+        const body2 = this.popullateAutocompleteFields(body);
+
+        type = `${type || docType}`;
+        const params: ElasticParams = { index: indexName, id, body: body2 };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
+        }
+
+        if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
+        _log(NS, `> params[${id}] =`, $U.json(params));
+
+        //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
+        const res: ApiResponse = await client.create(params).catch(
+            // $ERROR.throwAsJson,
+            $ERROR.handler('save', e => {
+                const msg = GETERR(e);
+                //* try to overwrite document..
+                if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
+                    // delete body2[idName]; // do set id while update
+                    // return this.updateItem(id, body2);
+                    const param2: ElasticParams = { index: indexName, id, body: { ...body2 } };
+                    if (this.isOldES6) param2.type = type;
+                    return client.index(param2);
+                }
+                throw e;
+            }),
+        );
+        _log(NS, `> create[${id}].res =`, $U.json({ ...res, meta: undefined }));
+
+        const _version: number = $U.N(res.body?._version, 0);
+        const _id: string = res.body?._id;
+        const res2: T = { ...body, _id, _version };
+        return res2;
+    }
+
+    /**
+     * update item (throw if not exist)
+     * `update table set a=1, b=b+2 where id='a1'`
+     * 0. no of `a1` -> 1,2 (created)
+     * 1. a,b := 10,20 -> 11,22
+     * 2. a,b := 10,null -> 11,2 (upsert)
+     * 3. a,b := null,20 -> 1,22
+     *
+     * @param id - item-id
+     * @param item - item to update
+     * @param increments - item to increase
+     * @param options - (optional) request option of client.
+     */
+    public async updateItem(
+        id: string,
+        item: T | null,
+        increments?: Incrementable,
+        options?: { maxRetries?: number },
+    ): Promise<T> {
+        const { indexName, docType, idName } = this.options;
+        const type = `${docType}`;
+        _log(NS, `- updateItem(${id})`);
+        item = !item && increments ? undefined : item;
+
+        //* prepare params.
+        const params: ElasticParams = { index: indexName, id, body: {} };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
+        }
+        if (increments) {
+            //* it will create if not exists.
+            params.body.upsert = { ...increments, [idName]: id };
+
+            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
+                if (Array.isArray(val)) {
+                    // If the value is an array, append it to the existing array in the source
+                    L.push(
+                        `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) {
+                                ctx._source.${key}.addAll(params.increments.${key});
+                            } else {
+                                ctx._source.${key} = params.increments.${key};
+                            }`,
+                    );
+                } else {
+                    // If the value is a number, increment the existing field
+                    L.push(
+                        `if (ctx._source.${key} != null) {
+                                ctx._source.${key} += params.increments.${key};
+                            } else {
+                                ctx._source.${key} = params.increments.${key};
+                            }`,
+                    );
+                }
+                return L;
+            }, []);
+
+            if (item) {
+                // Handle item updates in the script
+                Object.entries(item).forEach(([key]) => {
+                    scripts.push(`ctx._source.${key} = params.item.${key};`);
+                });
+            }
+
+            params.body.script = {
+                source: scripts.join(' '),
+                lang: 'painless',
+                params: { item, increments },
+            };
+        } else if (item) {
+            params.body.doc = item;
+        }
+        _log(NS, `> params[${id}] =`, $U.json(params));
+
+        const client = this.client;
+        const res: ApiResponse = await client.update(params, options).catch(
+            $ERROR.handler('update', (e, E) => {
+                const msg = GETERR(e);
+                //* id 아이템이 없을 경우 발생함.
+                if (msg.startsWith('404 DOCUMENT MISSING')) throw new Error(`404 NOT FOUND - id:${id}`);
+                //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
+                if (msg.startsWith('400 REMOTE TRANSPORT')) throw new Error(`400 INVALID FIELD - id:${id}`);
+                if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
+                if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
+                if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
+                if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
+                if (msg.startsWith('400 MAPPER PARSING')) throw e;
+                throw E;
+            }),
+        );
+
+        _log(NS, `> update[${id}].res =`, $U.json({ ...res, meta: undefined }));
+        const _id = res.body._id;
+        const _version = res.body._version;
+        const res2: T = { ...item, _id, _version };
+        return res2;
+    }
+
+    /**
+     * run search and get the raw response.
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
+     */
+    public async searchRaw<T extends object = any>(body: SearchBody, searchType?: SearchType): Promise<T> {
+        if (!body) throw new Error('@body (SearchBody) is required');
+        const { indexName, docType } = this.options;
+        _log(NS, `- search(${indexName}, ${searchType || ''})....`);
+        _log(NS, `> body =`, $U.json(body));
+
+        const tmp = docType ? docType : '';
+        const type: string = docType ? `${docType}` : undefined;
+        const params: ElasticSearchParams = { index: indexName, body, searchType };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
+        }
+        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
+        // const { client } = instance(endpoint);
+        const client = this.client;
+        const $res = await client.search(params).catch(
+            $ERROR.handler('search', e => {
+                _err(NS, `> search[${indexName}].err =`, e);
+                throw e;
+            }),
+        );
+
+        //* return raw results.
+        return $res?.body as T;
+    }
 }
 
 /** ****************************************************************************************************************
@@ -1339,7 +1505,7 @@ export class Elastic6Service<T extends Elastic6Item = any> extends ElasticIndexS
  * class: `DummyElastic6Service`
  * - service in-memory dummy data
  */
-export class DummyElastic6Service<T extends GeneralItem> extends ElasticIndexService<T> {
+export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service<T> {
     public constructor(dataFile: string, options: ElasticOption) {
         super(options);
         _log(NS, `DummyElastic6Service(${dataFile || ''})...`);
