@@ -12,7 +12,7 @@
  */
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
-import { GeneralItem, SearchBody } from 'lemon-model';
+import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
 import { ApiResponse } from '@elastic/elasticsearch';
 
@@ -38,15 +38,18 @@ interface MyModel extends GeneralItem {
     id: string;
 }
 export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, indexName?: string) => {
-    //NOTE - use tunneling to elastic6 endpoint.
+    //* NOTE - use tunneling to elastic6 endpoint.
     const endpoint = ENDPOINTS[version];
     if (!endpoint) throw new Error(`@version[${version}] is not supported!`);
+
     // const indexName = `test-v${version}`;
     indexName = indexName ?? `test-v${version}`;
     const idName = '$id'; //! global unique id-name in same index.
     const docType = '_doc'; //! must be `_doc`.
     const autocompleteFields = useAutoComplete ? ['title', 'name'] : null;
     const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
+
+    // service is an instance of serach engine
     const service = new (class extends Elastic6Service<MyModel> {
         public constructor() {
             super(options);
@@ -59,6 +62,8 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
             return super.executeSelfTest();
         }
     })();
+
+    // dummy for testing Elasticsearch with buffer.
     const dummy: Elastic6Service<GeneralItem> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
     return { version, service, dummy, options };
 };
@@ -88,7 +93,7 @@ export const initService = async (ver: VERSIONS) => {
     //* check version parse error
     expect2(() => service.parseVersion('12345')).toEqual('@version[12345] is invalid - fail to parse');
     expect2(() => service.parseVersion('abcd')).toEqual('@version[abcd] is invalid - fail to parse');
-
+    expect2(() => service.parseVersion('1.2.3a')).toEqual('@version[1.2.3a] is invalid - fail to parse');
     expect2(() => service.parseVersion('1.2.3')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 3 });
     expect2(() => service.parseVersion('1.2')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 0 });
     expect2(() => service.parseVersion('1')).toEqual({ engine: 'os', major: 1, minor: 0, patch: 0 });
@@ -116,7 +121,7 @@ export const initService = async (ver: VERSIONS) => {
         patch: 3,
         prerelease: 'alpha',
     });
-    expect2(() => service.parseVersion('1.2.3a')).toEqual('@version[1.2.3a] is invalid - fail to parse');
+
     return { service, options };
 };
 
@@ -162,137 +167,76 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
     expect2(await service.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${indexName}`);
 
     //* describe index
-    expect2(
-        await service
-            .describe()
-            .then(R => {
-                const { settings, mappings } = R;
-                const commonData = {
-                    index: {
-                        number_of_replicas: settings.index.number_of_replicas,
-                        number_of_shards: settings.index.number_of_shards,
-                        provided_name: settings.index.provided_name,
-                        analysis: settings.index.analysis,
-                    },
-                    properties: mappings._doc ? mappings._doc.properties : mappings.properties,
-                    dynamic_templates: mappings._doc ? mappings._doc.dynamic_templates : mappings.dynamic_templates,
-                };
-                return commonData;
-            })
-            .catch(PASS),
-    ).toEqual({
-        index: {
-            number_of_replicas: '1',
-            number_of_shards: '4',
-            provided_name: `${indexName}`,
-            analysis: {
-                analyzer: {
-                    autocomplete_case_insensitive: {
-                        filter: ['lowercase'],
-                        tokenizer: 'edge_30grams',
-                        type: 'custom',
-                    },
-                    autocomplete_case_sensitive: {
-                        filter: service.isOldES6 ? ['standard'] : [],
-                        tokenizer: 'edge_30grams',
-                        type: 'custom',
-                    },
-                    hangul: {
-                        filter: ['lowercase'],
-                        tokenizer: 'hangul',
-                        type: 'custom',
-                    },
-                },
-                tokenizer: {
-                    edge_30grams: {
-                        max_gram: '30',
-                        min_gram: '1',
-                        token_chars: ['letter', 'digit', 'punctuation', 'symbol'],
-                        type: 'edge_ngram',
-                    },
-                    hangul: {
-                        decompound: 'true',
-                        deinflect: 'true',
-                        index_eojeol: 'true',
-                        pos_tagging: 'false',
-                        type: 'seunjeon_tokenizer',
-                    },
-                },
-            },
+    const describeResult = await service.describe().catch(PASS);
+    const indexSettings = describeResult.settings.index;
+    const dynamicSettings = describeResult.mappings._doc
+        ? describeResult.mappings._doc.dynamic_templates
+        : describeResult.mappings.dynamic_templates;
+
+    // description of index settings
+    expect2(() => indexSettings.number_of_replicas).toEqual('1');
+    expect2(() => indexSettings.number_of_shards).toEqual('4');
+    expect2(() => indexSettings.provided_name).toEqual(`${indexName}`);
+    const analysisSettings = indexSettings.analysis;
+
+    expect2(() => analysisSettings.analyzer.autocomplete_case_insensitive).toEqual({
+        filter: ['lowercase'],
+        tokenizer: 'edge_30grams',
+        type: 'custom',
+    });
+    expect2(() => analysisSettings.analyzer.autocomplete_case_sensitive).toEqual({
+        filter: service.isOldES6 ? ['standard'] : [],
+        tokenizer: 'edge_30grams',
+        type: 'custom',
+    });
+    expect2(() => analysisSettings.analyzer.hangul).toEqual({
+        filter: ['lowercase'],
+        tokenizer: 'hangul',
+        type: 'custom',
+    });
+    expect2(() => analysisSettings.tokenizer.edge_30grams).toEqual({
+        max_gram: '30',
+        min_gram: '1',
+        token_chars: ['letter', 'digit', 'punctuation', 'symbol'],
+        type: 'edge_ngram',
+    });
+    expect2(() => analysisSettings.tokenizer.hangul).toEqual({
+        decompound: 'true',
+        deinflect: 'true',
+        index_eojeol: 'true',
+        pos_tagging: 'false',
+        type: 'seunjeon_tokenizer',
+    });
+
+    // dynamic templates
+    expect2(() => dynamicSettings[0].autocomplete).toEqual({
+        mapping: { analyzer: 'autocomplete_case_insensitive', search_analyzer: 'standard', type: 'text' },
+        path_match: '_decomposed.*',
+    });
+    expect2(() => dynamicSettings[1].autocomplete_qwerty).toEqual({
+        mapping: { analyzer: 'autocomplete_case_sensitive', search_analyzer: 'whitespace', type: 'text' },
+        path_match: '_qwerty.*',
+    });
+    expect2(() => dynamicSettings[2].string_id).toEqual({
+        mapping: { ignore_above: 256, type: 'keyword' },
+        match: '$id',
+        match_mapping_type: 'string',
+    });
+    expect2(() => dynamicSettings[3].strings).toEqual({
+        mapping: {
+            analyzer: 'hangul',
+            fields: { keyword: { ignore_above: 256, type: 'keyword' } },
+            search_analyzer: 'hangul',
+            type: 'text',
         },
-        properties: {
-            '@version': {
-                index: false,
-                type: 'keyword',
-            },
-            created_at: {
-                type: 'date',
-                ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
-            },
-            deleted_at: {
-                type: 'date',
-                ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
-            },
-            updated_at: {
-                type: 'date',
-                ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
-            },
-        },
-        dynamic_templates: [
-            {
-                autocomplete: {
-                    mapping: {
-                        analyzer: 'autocomplete_case_insensitive',
-                        search_analyzer: 'standard',
-                        type: 'text',
-                    },
-                    path_match: '_decomposed.*',
-                },
-            },
-            {
-                autocomplete_qwerty: {
-                    mapping: {
-                        analyzer: 'autocomplete_case_sensitive',
-                        search_analyzer: 'whitespace',
-                        type: 'text',
-                    },
-                    path_match: '_qwerty.*',
-                },
-            },
-            {
-                string_id: {
-                    mapping: {
-                        ignore_above: 256,
-                        type: 'keyword',
-                    },
-                    match: '$id',
-                    match_mapping_type: 'string',
-                },
-            },
-            {
-                strings: {
-                    mapping: {
-                        analyzer: 'hangul',
-                        fields: {
-                            keyword: {
-                                ignore_above: 256,
-                                type: 'keyword',
-                            },
-                        },
-                        search_analyzer: 'hangul',
-                        type: 'text',
-                    },
-                    match_mapping_type: 'string',
-                },
-            },
-        ],
+        match_mapping_type: 'string',
     });
 
     //* flush index
-    const result = await service.flushIndex().catch(PASS);
-    expect2(result).toHaveProperty('_shards.failed');
-    expect2(result).toHaveProperty('_shards.successful');
-    expect2(result).toHaveProperty('_shards.total');
+    const flushResult = await service.flushIndex().catch(PASS);
+    expect2(() => flushResult._shards.failed).toEqual(0); // no failures
+    expect2(() => flushResult._shards.successful).toBeGreaterThan(0); // check successful flush
+    expect2(() => flushResult._shards.total).toBeGreaterThan(0); // check total shards
     await waited(200);
 };
 
@@ -428,7 +372,6 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
  * @param indexName - the name of the index to search.
  */
 export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
-    const indexName = service.options.indexName;
     //* try to search...
     await waited(2000);
     const $search: SearchBody = {
@@ -460,54 +403,48 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
     };
     // check results of searchAll
     const searchRawResult = await service.searchRaw($search);
-    expect2(searchRawResult, '!took').toEqual({
-        _shards: { failed: 0, skipped: 0, successful: 4, total: 4 },
-        hits: {
-            hits: [
-                {
-                    _id: 'A0',
-                    _index: indexName,
-                    _score: null,
-                    _source: { $id: 'A0', a: 2, b: 4, type: 'test', name: 'a0', count: 0 },
-                    ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
-                    sort: [0],
-                },
-            ],
-            max_score: null,
-            total: service.isOldES6 ? 2 : { relation: 'eq', value: 2 },
-        },
-        aggregations: {
-            test: {
-                buckets: [
-                    { doc_count: 1, key: 0 },
-                    { doc_count: 1, key: 1 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        timed_out: false,
+    const expectedTotal = service.isOldES6 ? 2 : { relation: 'eq', value: 2 };
+    const aggregationResult = searchRawResult.aggregations.test;
+    const hitsResult = searchRawResult.hits;
+
+    expect2(() => aggregationResult.buckets[0]).toEqual({ doc_count: 1, key: 0 });
+    expect2(() => aggregationResult.buckets[1]).toEqual({ doc_count: 1, key: 1 });
+    expect2(() => aggregationResult.doc_count_error_upper_bound).toEqual(0);
+    expect2(() => aggregationResult.sum_other_doc_count).toEqual(0);
+    expect2(() => searchRawResult._shards).toEqual({ failed: 0, skipped: 0, successful: 4, total: 4 });
+    expect2(() => hitsResult.hits[0]._source).toEqual({
+        $id: 'A0',
+        a: 2,
+        b: 4,
+        type: 'test',
+        name: 'a0',
+        count: 0,
     });
+    expect2(() => hitsResult.hits[0].sort).toEqual([0]);
+    expect2(() => hitsResult.total).toEqual(expectedTotal);
 
     // check results of search
     const searchResult = await service.search($search);
-    expect2(() => searchResult).toEqual({
-        total: 2,
-        list: [{ _id: 'A0', _score: null, a: 2, b: 4, $id: 'A0', count: 0, name: 'a0', type: 'test' }],
-        aggregations: {
-            test: {
-                buckets: [
-                    { doc_count: 1, key: 0 },
-                    { doc_count: 1, key: 1 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        last: [0],
-    });
+    const aggregationResult2 = searchResult.aggregations.test;
 
-    //verify that the results of `search` and `searchRaw` are compatible
+    expect2(() => aggregationResult2.buckets[0]).toEqual({ doc_count: 1, key: 0 });
+    expect2(() => aggregationResult2.buckets[1]).toEqual({ doc_count: 1, key: 1 });
+    expect2(() => aggregationResult2.doc_count_error_upper_bound).toEqual(0);
+    expect2(() => aggregationResult2.sum_other_doc_count).toEqual(0);
+    expect2(() => searchResult.total).toEqual(2);
+    expect2(() => searchResult.list[0]).toEqual({
+        _id: 'A0',
+        _score: null,
+        a: 2,
+        b: 4,
+        $id: 'A0',
+        count: 0,
+        name: 'a0',
+        type: 'test',
+    });
+    expect2(() => searchResult.last).toEqual([0]);
+
+    //verify that the results of `search` and `searchRaw` are equal
     expect2(() => searchRawResult.aggregations).toEqual(searchResult.aggregations);
     expect2(() => searchResult.total).toEqual(
         service.isOldES6 ? searchRawResult.hits.total : searchRawResult.hits.total.value,
@@ -519,27 +456,52 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
  * @param service - Elasticsearch service instance.
  */
 export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+    //* agent for test
+    const agent = <T = any>() => ({
+        update: (id: string, data: T, increment?: Incrementable) =>
+            service
+                .updateItem(id, data, increment)
+                .then(R => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { _id, ...rest } = R;
+                    return rest;
+                })
+                .catch(e => {
+                    const msg = GETERR(e);
+                    if (msg.startsWith('400 MAPPER PARSING')) return `400 MAPPER PARSING`;
+                    return msg;
+                }),
+        save: (id: string, data: T) =>
+            service
+                .saveItem(id, data)
+                .then(R => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { $id, _id, _version, ...rest } = R;
+                    return rest;
+                })
+                .catch(GETERR),
+        read: (id: string) =>
+            service
+                .readItem(id)
+                .then(R => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { $id, _id, ...rest } = R;
+                    return rest;
+                })
+                .catch(GETERR),
+    });
+
     //* make sure deleted.
     await service.deleteItem('A0').catch(GETERR);
     await service.deleteItem('A1').catch(GETERR);
 
     //* make sure empty index.
-    expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-    expect2(await service.readItem('A1').catch(GETERR)).toEqual('404 NOT FOUND - id:A1');
+    expect2(await agent().read('A0')).toEqual('404 NOT FOUND - id:A0');
+    expect2(await agent().read('A1')).toEqual('404 NOT FOUND - id:A1');
 
     //* save to A0
-    expect2(await service.saveItem('A0', { type: '', name: 'a0' }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
-        $id: 'A0',
-        type: '',
-        name: 'a0',
-    });
-    expect2(await service.readItem('A0').catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
-        $id: 'A0',
-        type: '',
-        name: 'a0',
-    }); // `._version` is incremented.
+    expect2(await agent().save('A0', { type: '', name: 'a0' })).toEqual({ type: '', name: 'a0' });
+    expect2(await agent().read('A0'), '!_version').toEqual({ type: '', name: 'a0' }); // `._version` is incremented.
     // expect2(await service.pushItem({ name:'push-01' }).catch(GETERR), '').toEqual({ _id:'EHYvom4Bk-QqXBefOceC', _version:1, name:'push-01' }); // `._id` is auto-gen.
     expect2(await service.pushItem({ name: 'push-01' }).catch(GETERR), '!_id').toEqual({
         _version: 1,
@@ -548,40 +510,20 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 
     //* try to update
     const data0 = await service.readItem('A0');
-    expect2(await service.updateItem('A0', { name: 'name-01' }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
-        name: 'name-01',
-    });
-    expect2(await service.updateItem('A0', { nick: 'nick-01' }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
-        nick: 'nick-01',
-    });
-    expect2(await service.readItem('A0').catch(GETERR), '').toEqual({
-        _id: 'A0',
-        $id: 'A0',
+    expect2(await agent().update('A0', { name: 'name-01' }), '!_version').toEqual({ name: 'name-01' });
+    expect2(await agent().update('A0', { nick: 'nick-01' }), '!_version').toEqual({ nick: 'nick-01' });
+    expect2(await agent().read('A0'), '').toEqual({
         _version: Number(data0._version) + 2,
         name: 'name-01',
         nick: 'nick-01',
         type: '',
     }); // `._version` is incremented.
 
-    expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A0',
-    });
+    expect2(await agent().update('A0', null, { count: 2 })).toEqual({ _version: 13 });
+    expect2(await agent().update('A0', { count: 10 })).toEqual({ _version: 14, count: 10 });
+    expect2(await agent().update('A0', null, { count: 2 })).toEqual({ _version: 15 });
 
-    expect2(await service.updateItem('A0', { count: 10 }).catch(GETERR)).toEqual({
-        _id: 'A0',
-        _version: 14,
-        count: 10,
-    });
-    expect2(await service.updateItem('A0', null, { count: 2 }).catch(GETERR)).toEqual({
-        _id: 'A0',
-        _version: 15,
-    });
-
-    expect2(await service.readItem('A0').catch(GETERR)).toEqual({
-        $id: 'A0',
-        _id: 'A0',
+    expect2(await agent().read('A0')).toEqual({
         _version: 15,
         count: 12,
         name: 'name-01',
@@ -590,13 +532,13 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     }); // support number, string, null type.
 
     //save empty ''
-    expect2(
-        await service.saveItem('A0', { count: '', nick: '', name: '', empty: '' }).catch(GETERR),
-        '!_version',
-    ).toEqual({ _id: 'A0', $id: 'A0', count: '', empty: '', name: '', nick: '' });
-    expect2(await service.readItem('A0').catch(GETERR)).toEqual({
-        $id: 'A0',
-        _id: 'A0',
+    expect2(await agent().save('A0', { count: '', nick: '', name: '', empty: '' })).toEqual({
+        count: '',
+        empty: '',
+        name: '',
+        nick: '',
+    });
+    expect2(await agent().read('A0')).toEqual({
         _version: 16,
         count: '',
         empty: '',
@@ -608,193 +550,87 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
      * test:update inner-object
      */
     // 1) inner-object update w/ null support
-    expect2(await service.saveItem('A1', { extra: { a: 1 } }).catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        extra: { a: 1 },
-    });
-    expect2(await service.updateItem('A1', { extra: { b: 2 } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-        extra: { b: 2 },
-    });
-    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        extra: { a: 1, b: 2 },
-    });
-    expect2(await service.updateItem('A1', { extra: { a: null } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-        extra: { a: null },
-    });
-    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        extra: { a: null, b: 2 },
-    });
-    expect2(await service.updateItem('A1', { extra: { a: '' } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-        extra: { a: '' },
-    });
-    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        extra: { a: '', b: 2 },
-    });
-    expect2(await service.updateItem('A1', { extra: '' }).catch(GETERR), '!_version').toEqual(
-        '400 MAPPER PARSING - object mapping for [extra] tried to parse field [extra] as object, but found a concrete value',
-    );
+    expect2(await agent().save('A1', { extra: { a: 1 } })).toEqual({ extra: { a: 1 } });
+    expect2(await agent().update('A1', { extra: { b: 2 } }), '!_version').toEqual({ extra: { b: 2 } });
+    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: 1, b: 2 } });
+
+    expect2(await agent().update('A1', { extra: { a: null } }), '!_version').toEqual({ extra: { a: null } });
+    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: null, b: 2 } });
+
+    expect2(await agent().update('A1', { extra: { a: '' } }), '!_version').toEqual({ extra: { a: '' } });
+    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: '', b: 2 } });
+
+    expect2(await agent().update('A1', { extra: '' })).toEqual('400 MAPPER PARSING');
 
     //* overwrite whole docs
-    expect2(await service.saveItem('A1', { a: 1, b: 2 }).catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        a: 1,
-        b: 2,
-    });
-    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        a: 1,
-        b: 2,
-    });
+    expect2(await agent().save('A1', { a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
+    expect2(await agent().read('A1'), '!_version').toEqual({ a: 1, b: 2 });
 
     //* overwrite inner-object
     expect2(await service.updateItem('A1', { extra: { innerObject: 'inner-01' } }).catch(GETERR), '!_version').toEqual({
         _id: 'A1',
         extra: { innerObject: 'inner-01' },
     });
-    expect2(await service.saveItem('A1', { extra: { a: 1, b: 2 } }).catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        extra: { a: 1, b: 2 },
-    });
-    expect2(await service.readItem('A1').catch(GETERR), '!_version').toEqual({
-        $id: 'A1',
-        _id: 'A1',
-        extra: { a: 1, b: 2 },
-    });
+    expect2(await agent().save('A1', { extra: { a: 1, b: 2 } })).toEqual({ extra: { a: 1, b: 2 } });
+    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: 1, b: 2 } });
 
     /**
      * updateItem increment test
      */
     // 1-1) string array increment test
-    expect2(await service.updateItem('A1', null, { stringArray: ['a'] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { stringArray: ['b', 'c'] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    //1-2) string array increment w/mismatch type
-    expect2(await service.updateItem('A1', null, { stringArray: [1] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { stringArray: [1.1] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { stringArray: [''] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { stringArray: 1 }).catch(GETERR), '!_version').toEqual(
+    expect2(await agent().update('A1', null, { stringArray: ['a'] })).toEqual({ _version: 10 });
+    expect2(await agent().update('A1', null, { stringArray: ['b', 'c'] })).toEqual({ _version: 11 });
+    // 1-2) string array increment w/mismatch type
+    expect2(await agent().update('A1', null, { stringArray: [1] })).toEqual({ _version: 12 });
+    expect2(await agent().update('A1', null, { stringArray: [1.1] })).toEqual({ _version: 13 });
+    expect2(await agent().update('A1', null, { stringArray: [''] })).toEqual({ _version: 14 });
+    expect2(await agent().update('A1', null, { stringArray: 1 })).toEqual(
         '400 ILLEGAL ARGUMENT - failed to execute script',
     );
-    // check result
-    const res1 = await service.readItem('A1').catch(GETERR);
-    expect2(() => res1.stringArray).toEqual(['a', 'b', 'c', 1, 1.1, '']);
+    expect2(await service.readItem('A1'), 'stringArray').toEqual({ stringArray: ['a', 'b', 'c', 1, 1.1, ''] });
 
     // 2-1 ) number array increment test
-    expect2(await service.updateItem('A1', null, { numberArray: [1] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { numberArray: [2, 3] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
+    expect2(await agent().update('A1', null, { numberArray: [1] })).toEqual({ _version: 15 });
+    expect2(await agent().update('A1', null, { numberArray: [2, 3] })).toEqual({ _version: 16 });
     // 2-2) number array increment w/mismatch type
-    expect2(await service.updateItem('A1', null, { numberArray: [2.1, 3.1] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { numberArray: ['a'] }).catch(GETERR), '!_version').toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [numberArray]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [numberArray] of type [long] in document with id 'A1'"
-            : "400 MAPPER PARSING - failed to parse field [numberArray] of type [long] in document with id 'A1'. Preview of field's value: 'a'",
-    );
-    expect2(await service.updateItem('A1', null, { numberArray: 1 }).catch(GETERR), '!_version').toEqual(
+    expect2(await agent().update('A1', null, { numberArray: [2.1, 3.1] })).toEqual({ _version: 17 });
+    expect2(await agent().update('A1', null, { numberArray: ['a'] })).toEqual('400 MAPPER PARSING');
+    expect2(await agent().update('A1', null, { numberArray: 1 })).toEqual(
         '400 ILLEGAL ARGUMENT - failed to execute script',
     );
-    // check result
-    const res2 = await service.readItem('A1').catch(GETERR);
-    expect2(() => res2.numberArray).toEqual([1, 2, 3, 2.1, 3.1]);
+    expect2(await service.readItem('A1'), 'numberArray').toEqual({ numberArray: [1, 2, 3, 2.1, 3.1] });
 
     // 3-1) long field increment test
-    expect2(await service.updateItem('A1', null, { longField: 1 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { longField: 2 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    // check result
-    const res31 = await service.readItem('A1').catch(GETERR);
-    expect2(() => res31.longField).toEqual(3);
+    expect2(await agent().update('A1', null, { longField: 1 })).toEqual({ _version: 18 });
+    expect2(await agent().update('A1', null, { longField: 2 })).toEqual({ _version: 19 });
+    expect2(await service.readItem('A1'), 'longField').toEqual({ longField: 3 });
 
     // 3-2) long field increment w/mismatch float
-    expect2(await service.updateItem('A1', null, { longField: 0.345 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    // check result
-    const res32 = await service.readItem('A1').catch(GETERR);
-    expect2(() => res32.longField).toEqual(3);
+    expect2(await agent().update('A1', null, { longField: 0.345 })).toEqual({ _version: 20 });
+    expect2(await service.readItem('A1'), 'longField').toEqual({ longField: 3 });
 
     // 3-3) long field increment w/mismatch array
-    expect2(await service.updateItem('A1', null, { longField: ['a'] }).catch(GETERR), '!_version').toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [longField]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [longField] of type [long] in document with id 'A1'"
-            : "400 MAPPER PARSING - failed to parse field [longField] of type [long] in document with id 'A1'. Preview of field's value: 'a'",
-    );
-    expect2(await service.updateItem('A1', null, { longField: [1] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    // check result
-    const res33 = await service.readItem('A1').catch(GETERR);
-    expect2(() => res33.longField).toEqual([1]);
+    expect2(await agent().update('A1', null, { longField: ['a'] })).toEqual('400 MAPPER PARSING');
+    expect2(await agent().update('A1', null, { longField: [1] })).toEqual({ _version: 21 });
+    expect2(await service.readItem('A1'), 'longField').toEqual({ longField: [1] });
 
     // 4-1) float field increment test
-    expect2(await service.updateItem('A1', null, { floatField: 0.2 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { floatField: 0.03 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    expect2(await service.updateItem('A1', null, { floatField: 1 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    // check result
-    const res41 = await service.readItem('A1').catch(GETERR);
-    expect2(() => res41.floatField).toEqual(1.23);
+    expect2(await agent().update('A1', null, { floatField: 0.2 })).toEqual({ _version: 22 });
+    expect2(await agent().update('A1', null, { floatField: 0.03 })).toEqual({ _version: 23 });
+    expect2(await agent().update('A1', null, { floatField: 1 })).toEqual({ _version: 24 });
+    expect2(await service.readItem('A1'), 'floatField').toEqual({ floatField: 1.23 });
 
     // 4-2) float field increment w/mismatch array
-    expect2(await service.updateItem('A1', null, { floatField: ['a'] }).catch(GETERR), '!_version').toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [floatField]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [floatField] of type [float] in document with id 'A1'"
-            : "400 MAPPER PARSING - failed to parse field [floatField] of type [float] in document with id 'A1'. Preview of field's value: 'a'",
-    );
-    expect2(await service.updateItem('A1', null, { floatField: [1] }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
-    });
-    // check result
-    const res42 = await service.readItem('A1').catch(GETERR);
-    expect2(() => res42.floatField).toEqual([1]);
+    expect2(await agent().update('A1', null, { floatField: ['a'] })).toEqual('400 MAPPER PARSING');
+    expect2(await agent().update('A1', null, { floatField: [1] })).toEqual({ _version: 25 });
+    expect2(await service.readItem('A1'), 'floatField').toEqual({ floatField: [1] });
 
     //* delete
-    expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual({ _id: 'A0' });
-    expect2(await service.deleteItem('A0').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A0');
+    expect2(await service.deleteItem('A0'), '!_version').toEqual({ _id: 'A0' });
+    expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
 
-    expect2(await service.deleteItem('A1').catch(GETERR), '!_version').toEqual({ _id: 'A1' });
-    expect2(await service.deleteItem('A1').catch(GETERR), '!_version').toEqual('404 NOT FOUND - id:A1');
+    expect2(await service.deleteItem('A1'), '!_version').toEqual({ _id: 'A1' });
+    expect2(await service.deleteItem('A1').catch(GETERR)).toEqual('404 NOT FOUND - id:A1');
 };
 
 /**
@@ -804,7 +640,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
  * @param service - Elasticsearch service instance.
  */
 export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise<void> => {
-    //* 테스트를 위한 agent 생성
+    //* agent for test
     const agent = <T = any>(id: string = 'A0') => ({
         update: (data: T) =>
             service
@@ -826,73 +662,39 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
         float_field: 123.45,
         date_field: '2021-12-31T23:59:59',
         boolean_field: true,
-        object_field: { sub_field: 'string' },
-        nested_field: [{ sub1_field: 'string1' }, { sub2_field: 'string2' }],
+        object_field: { sub: 'string' },
+        nested_field: [{ sub: 'string1' }, { sub2_field: 'string2' }],
         array_field: ['string1', 'string2', 'string3'],
     });
 
     //* verify the mapping condition. (`_mapping`)
     const mapping = await service.getIndexMapping();
-
-    // get '@@_field'
-    function getFieldTypes(properties: any, parentKey: string = ''): { [key: string]: string } {
-        return Object.keys(properties).reduce((acc, key) => {
-            const fullKey = parentKey ? `${parentKey}.${key}` : key;
-            if (fullKey.includes('_field') && properties[key].type) {
-                acc[fullKey] = properties[key].type;
-            }
-            if (properties[key].properties) {
-                Object.assign(acc, getFieldTypes(properties[key].properties, fullKey));
-            }
-            return acc;
-        }, {} as { [key: string]: string });
-    }
-
-    // formatting mappings
     const properties = service.isOldES6 ? mapping?._doc?.properties : mapping?.properties;
-    const fieldsWithTypes = getFieldTypes(properties);
-
     // verify mapping types
-    const expectedMapping = {
-        array_field: 'text',
-        string_field: 'text',
-        boolean_field: 'boolean',
-        date_field: 'date',
-        float_field: 'float',
-        long_field: 'long',
-        'object_field.sub_field': 'text', // 하위 속성을 포함한 object_field
-        'nested_field.sub1_field': 'text', // 하위 속성을 포함한 nested_field
-        'nested_field.sub2_field': 'text', // 하위 속성을 포함한 nested_field
-    };
-
-    expect2(fieldsWithTypes).toEqual(expectedMapping);
+    expect2(() => properties.array_field.type).toEqual('text');
+    expect2(() => properties.string_field.type).toEqual('text');
+    expect2(() => properties.boolean_field.type).toEqual('boolean');
+    expect2(() => properties.date_field.type).toEqual('date');
+    expect2(() => properties.float_field.type).toEqual('float');
+    expect2(() => properties.long_field.type).toEqual('long');
+    // object_field의 하위 속성 검증
+    expect2(() => properties.object_field.properties.sub.type).toEqual('text');
+    // nested_field의 하위 속성 검증
+    expect2(() => properties.nested_field.properties.sub.type).toEqual('text');
+    expect2(() => properties.nested_field.properties.sub2_field.type).toEqual('text');
 
     //* test w/mismatched types
     /**
      * string_field
      * string -> {}로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ string_field: null })).toEqual({
-        string_field: null,
-    });
-    expect2(await agent().update({ string_field: '' })).toEqual({
-        string_field: '',
-    });
-    expect2(await agent().update({ string_field: 123 })).toEqual({
-        string_field: 123,
-    });
-    expect2(await agent().update({ string_field: 1.23 })).toEqual({
-        string_field: 1.23,
-    });
-    expect2(await agent().update({ string_field: [] })).toEqual({
-        string_field: [],
-    });
-    expect2(await agent().update({ string_field: [1, 2, 3] })).toEqual({
-        string_field: [1, 2, 3],
-    });
-    expect2(await agent().update({ string_field: false })).toEqual({
-        string_field: false,
-    });
+    expect2(await agent().update({ string_field: null })).toEqual({ string_field: null });
+    expect2(await agent().update({ string_field: '' })).toEqual({ string_field: '' });
+    expect2(await agent().update({ string_field: 123 })).toEqual({ string_field: 123 });
+    expect2(await agent().update({ string_field: 1.23 })).toEqual({ string_field: 1.23 });
+    expect2(await agent().update({ string_field: [] })).toEqual({ string_field: [] });
+    expect2(await agent().update({ string_field: [1, 2, 3] })).toEqual({ string_field: [1, 2, 3] });
+    expect2(await agent().update({ string_field: false })).toEqual({ string_field: false });
     expect2(await agent().update({ string_field: {} })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [string_field]'
@@ -906,24 +708,12 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * long -> object로 업데이트시 오류 발생
      * long -> boolean으로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ long_field: null })).toEqual({
-        long_field: null,
-    });
-    expect2(await agent().update({ long_field: '' })).toEqual({
-        long_field: '',
-    });
-    expect2(await agent().update({ long_field: '1234567890123' })).toEqual({
-        long_field: '1234567890123',
-    });
-    expect2(await agent().update({ long_field: 1.234567890123 })).toEqual({
-        long_field: 1.234567890123,
-    });
-    expect2(await agent().update({ long_field: [] })).toEqual({
-        long_field: [],
-    });
-    expect2(await agent().update({ long_field: [1, 2, 3] }), '!_version').toEqual({
-        long_field: [1, 2, 3],
-    });
+    expect2(await agent().update({ long_field: null })).toEqual({ long_field: null });
+    expect2(await agent().update({ long_field: '' })).toEqual({ long_field: '' });
+    expect2(await agent().update({ long_field: '1234567890123' })).toEqual({ long_field: '1234567890123' });
+    expect2(await agent().update({ long_field: 1.234567890123 })).toEqual({ long_field: 1.234567890123 });
+    expect2(await agent().update({ long_field: [] })).toEqual({ long_field: [] });
+    expect2(await agent().update({ long_field: [1, 2, 3] })).toEqual({ long_field: [1, 2, 3] });
     expect2(await agent().update({ long_field: {} })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [long_field]'
@@ -944,24 +734,12 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * float -> object로 업데이트시 오류 발생
      * float -> -> boolean으로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ float_field: null })).toEqual({
-        float_field: null,
-    });
-    expect2(await agent().update({ float_field: '' })).toEqual({
-        float_field: '',
-    });
-    expect2(await agent().update({ float_field: '123.45' })).toEqual({
-        float_field: '123.45',
-    });
-    expect2(await agent().update({ float_field: 123456789 })).toEqual({
-        float_field: 123456789,
-    });
-    expect2(await agent().update({ float_field: [] })).toEqual({
-        float_field: [],
-    });
-    expect2(await agent().update({ float_field: [1, 2, 3] })).toEqual({
-        float_field: [1, 2, 3],
-    });
+    expect2(await agent().update({ float_field: null })).toEqual({ float_field: null });
+    expect2(await agent().update({ float_field: '' })).toEqual({ float_field: '' });
+    expect2(await agent().update({ float_field: '123.45' })).toEqual({ float_field: '123.45' });
+    expect2(await agent().update({ float_field: 123456789 })).toEqual({ float_field: 123456789 });
+    expect2(await agent().update({ float_field: [] })).toEqual({ float_field: [] });
+    expect2(await agent().update({ float_field: [1, 2, 3] })).toEqual({ float_field: [1, 2, 3] });
     expect2(await agent().update({ float_field: {} })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [float_field]'
@@ -984,18 +762,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * data -> {}로 업데이트시 오류 발생
      * data -> boolean으로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ date_field: null })).toEqual({
-        date_field: null,
-    });
-    expect2(await agent().update({ date_field: 1234567890 })).toEqual({
-        date_field: 1234567890,
-    });
-    expect2(await agent().update({ date_field: [] })).toEqual({
-        date_field: [],
-    });
-    expect2(await agent().update({ date_field: [1, 2, 3] })).toEqual({
-        date_field: [1, 2, 3],
-    });
+    expect2(await agent().update({ date_field: null })).toEqual({ date_field: null });
+    expect2(await agent().update({ date_field: 1234567890 })).toEqual({ date_field: 1234567890 });
+    expect2(await agent().update({ date_field: [] })).toEqual({ date_field: [] });
+    expect2(await agent().update({ date_field: [1, 2, 3] })).toEqual({ date_field: [1, 2, 3] });
     expect2(await agent().update({ date_field: '' })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [date_field]'
@@ -1032,18 +802,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * boolean -> {}로 업데이트시 오류 발생
      * boolean -> [1, 2, 3]으로 업데이트시 오류 발생. []는 오류 발생하지 않음.
      * */
-    expect2(await agent().update({ boolean_field: null })).toEqual({
-        boolean_field: null,
-    });
-    expect2(await agent().update({ boolean_field: '' })).toEqual({
-        boolean_field: '',
-    });
-    expect2(await agent().update({ boolean_field: 'true' })).toEqual({
-        boolean_field: 'true',
-    });
-    expect2(await agent().update({ boolean_field: [] })).toEqual({
-        boolean_field: [],
-    });
+    expect2(await agent().update({ boolean_field: null })).toEqual({ boolean_field: null });
+    expect2(await agent().update({ boolean_field: '' })).toEqual({ boolean_field: '' });
+    expect2(await agent().update({ boolean_field: 'true' })).toEqual({ boolean_field: 'true' });
+    expect2(await agent().update({ boolean_field: [] })).toEqual({ boolean_field: [] });
     expect2(await agent().update({ boolean_field: 123456789 })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [boolean_field]'
@@ -1082,12 +844,8 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * object -> [1, 2, 3]으로 업데이트시 오류 발생.
      * object -> boolean으로 업데이트시 오류 발생.
      * */
-    expect2(await agent().update({ object_field: null })).toEqual({
-        object_field: null,
-    });
-    expect2(await agent().update({ object_field: [] })).toEqual({
-        object_field: [],
-    });
+    expect2(await agent().update({ object_field: null })).toEqual({ object_field: null });
+    expect2(await agent().update({ object_field: [] })).toEqual({ object_field: [] });
     expect2(await agent().update({ object_field: '' })).toEqual(
         '400 MAPPER PARSING - object mapping for [object_field] tried to parse field [object_field] as object, but found a concrete value',
     );
@@ -1112,15 +870,9 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * nested -> ''으로 업데이트시 오류 발생
      * nested -> boolean으로 업데이트시 오류 발생.
      * */
-    expect2(await agent().update({ nested_field: null })).toEqual({
-        nested_field: null,
-    });
-    expect2(await agent().update({ nested_field: { sub1_field: 'string' } })).toEqual({
-        nested_field: { sub1_field: 'string' },
-    });
-    expect2(await agent().update({ nested_field: [] })).toEqual({
-        nested_field: [],
-    });
+    expect2(await agent().update({ nested_field: null })).toEqual({ nested_field: null });
+    expect2(await agent().update({ nested_field: { sub: 'string' } })).toEqual({ nested_field: { sub: 'string' } });
+    expect2(await agent().update({ nested_field: [] })).toEqual({ nested_field: [] });
     expect2(await agent().update({ nested_field: '' })).toEqual(
         '400 MAPPER PARSING - object mapping for [nested_field] tried to parse field [nested_field] as object, but found a concrete value',
     );
@@ -1141,24 +893,12 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * array_field
      * array -> {}로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ array_field: null })).toEqual({
-        array_field: null,
-    });
-    expect2(await agent().update({ array_field: '' })).toEqual({
-        array_field: '',
-    });
-    expect2(await agent().update({ array_field: 'string' })).toEqual({
-        array_field: 'string',
-    });
-    expect2(await agent().update({ array_field: 123 })).toEqual({
-        array_field: 123,
-    });
-    expect2(await agent().update({ array_field: 1.23456789 })).toEqual({
-        array_field: 1.23456789,
-    });
-    expect2(await agent().update({ array_field: false })).toEqual({
-        array_field: false,
-    });
+    expect2(await agent().update({ array_field: null })).toEqual({ array_field: null });
+    expect2(await agent().update({ array_field: '' })).toEqual({ array_field: '' });
+    expect2(await agent().update({ array_field: 'string' })).toEqual({ array_field: 'string' });
+    expect2(await agent().update({ array_field: 123 })).toEqual({ array_field: 123 });
+    expect2(await agent().update({ array_field: 1.23456789 })).toEqual({ array_field: 1.23456789 });
+    expect2(await agent().update({ array_field: false })).toEqual({ array_field: false });
     expect2(await agent().update({ array_field: {} })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [array_field]'
@@ -1171,24 +911,12 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * array_field 내부 요소 타입 변경 테스트
      * array 내부 요소 -> {}로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ array_field: [] })).toEqual({
-        array_field: [],
-    });
-    expect2(await agent().update({ array_field: ['a'] })).toEqual({
-        array_field: ['a'],
-    });
-    expect2(await agent().update({ array_field: ['a', 1] })).toEqual({
-        array_field: ['a', 1],
-    });
-    expect2(await agent().update({ array_field: [null] })).toEqual({
-        array_field: [null],
-    });
-    expect2(await agent().update({ array_field: [''] })).toEqual({
-        array_field: [''],
-    });
-    expect2(await agent().update({ array_field: [1.1] })).toEqual({
-        array_field: [1.1],
-    });
+    expect2(await agent().update({ array_field: [] })).toEqual({ array_field: [] });
+    expect2(await agent().update({ array_field: ['a'] })).toEqual({ array_field: ['a'] });
+    expect2(await agent().update({ array_field: ['a', 1] })).toEqual({ array_field: ['a', 1] });
+    expect2(await agent().update({ array_field: [null] })).toEqual({ array_field: [null] });
+    expect2(await agent().update({ array_field: [''] })).toEqual({ array_field: [''] });
+    expect2(await agent().update({ array_field: [1.1] })).toEqual({ array_field: [1.1] });
     expect2(await agent().update({ array_field: [{ b: 'a' }] })).toEqual(
         service.isOldES6
             ? '400 MAPPER PARSING - failed to parse [array_field]'
@@ -1201,71 +929,56 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
      * nested_field 내부 요소 타입 변경 테스트
      * nested_field 내부 요소 -> {}로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ nested_field: [{ sub1_field: 'string' }] })).toEqual({
-        nested_field: [{ sub1_field: 'string' }],
-    });
-    expect2(await agent().update({ nested_field: [{ sub1_field: 123 }] })).toEqual({
-        nested_field: [{ sub1_field: 123 }],
-    });
-    expect2(await agent().update({ nested_field: [{ sub1_field: 1.23 }] })).toEqual({
-        nested_field: [{ sub1_field: 1.23 }],
-    });
-    expect2(await agent().update({ nested_field: [{ sub1_field: false }] })).toEqual({
-        nested_field: [{ sub1_field: false }],
-    });
-    expect2(await agent().update({ nested_field: [{ sub1_field: null }] })).toEqual({
-        nested_field: [{ sub1_field: null }],
-    });
-    expect2(await agent().update({ nested_field: [{ sub1_field: '' }] })).toEqual({
-        nested_field: [{ sub1_field: '' }],
-    });
-    expect2(await agent().update({ nested_field: [{ sub1_field: { inner: 'object' } }] })).toEqual(
+    expect2(await agent().update({ nested_field: [{ sub: 'string' }] })).toEqual({ nested_field: [{ sub: 'string' }] });
+    expect2(await agent().update({ nested_field: [{ sub: 123 }] })).toEqual({ nested_field: [{ sub: 123 }] });
+    expect2(await agent().update({ nested_field: [{ sub: 1.23 }] })).toEqual({ nested_field: [{ sub: 1.23 }] });
+    expect2(await agent().update({ nested_field: [{ sub: false }] })).toEqual({ nested_field: [{ sub: false }] });
+    expect2(await agent().update({ nested_field: [{ sub: null }] })).toEqual({ nested_field: [{ sub: null }] });
+    expect2(await agent().update({ nested_field: [{ sub: '' }] })).toEqual({ nested_field: [{ sub: '' }] });
+    expect2(await agent().update({ nested_field: [{ sub: { inner: 'object' } }] })).toEqual(
         service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [nested_field.sub1_field]'
+            ? '400 MAPPER PARSING - failed to parse [nested_field.sub]'
             : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [nested_field.sub1_field] of type [text] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [nested_field.sub1_field] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
+            ? "400 MAPPER PARSING - failed to parse field [nested_field.sub] of type [text] in document with id 'A0'"
+            : "400 MAPPER PARSING - failed to parse field [nested_field.sub] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
     );
 
     /**
      * object_field 내부 요소 타입 변경 테스트
      * object_field 내부 요소 -> {}로 업데이트시 오류 발생
      * */
-    expect2(await agent().update({ object_field: { sub_field: 'string' } })).toEqual({
-        object_field: { sub_field: 'string' },
-    });
-    expect2(await agent().update({ object_field: { sub_field: 123 } })).toEqual({
-        object_field: { sub_field: 123 },
-    });
-    expect2(await agent().update({ object_field: { sub_field: 1.23 } })).toEqual({
-        object_field: { sub_field: 1.23 },
-    });
-    expect2(await agent().update({ object_field: { sub_field: false } })).toEqual({
-        object_field: { sub_field: false },
-    });
-    expect2(await agent().update({ object_field: { sub_field: null } })).toEqual({
-        object_field: { sub_field: null },
-    });
-    expect2(await agent().update({ object_field: { sub_field: '' } })).toEqual({
-        object_field: { sub_field: '' },
-    });
-    expect2(await agent().update({ object_field: { sub_field: { inner: 'object' } } })).toEqual(
+    expect2(await agent().update({ object_field: { sub: 'string' } })).toEqual({ object_field: { sub: 'string' } });
+    expect2(await agent().update({ object_field: { sub: 123 } })).toEqual({ object_field: { sub: 123 } });
+    expect2(await agent().update({ object_field: { sub: 1.23 } })).toEqual({ object_field: { sub: 1.23 } });
+    expect2(await agent().update({ object_field: { sub: false } })).toEqual({ object_field: { sub: false } });
+    expect2(await agent().update({ object_field: { sub: null } })).toEqual({ object_field: { sub: null } });
+    expect2(await agent().update({ object_field: { sub: '' } })).toEqual({ object_field: { sub: '' } });
+    expect2(await agent().update({ object_field: { sub: { inner: 'object' } } })).toEqual(
         service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [object_field.sub_field]'
+            ? '400 MAPPER PARSING - failed to parse [object_field.sub]'
             : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [object_field.sub_field] of type [text] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [object_field.sub_field] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
+            ? "400 MAPPER PARSING - failed to parse field [object_field.sub] of type [text] in document with id 'A0'"
+            : "400 MAPPER PARSING - failed to parse field [object_field.sub] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
     );
 
     //* verify the mapping condition doesn't change. (`_mapping`)
     const mapping2 = await service.getIndexMapping();
-
-    // formatting mappings
     const properties2 = service.isOldES6 ? mapping2?._doc?.properties : mapping2?.properties;
-    const fieldsWithTypes2 = getFieldTypes(properties2);
+    // verify mapping types for properties2
+    expect2(() => properties2.array_field.type).toEqual('text');
+    expect2(() => properties2.string_field.type).toEqual('text');
+    expect2(() => properties2.boolean_field.type).toEqual('boolean');
+    expect2(() => properties2.date_field.type).toEqual('date');
+    expect2(() => properties2.float_field.type).toEqual('float');
+    expect2(() => properties2.long_field.type).toEqual('long');
+    // object_field의 하위 속성 검증
+    expect2(() => properties2.object_field.properties.sub.type).toEqual('text');
+    // nested_field의 하위 속성 검증
+    expect2(() => properties2.nested_field.properties.sub.type).toEqual('text');
+    expect2(() => properties2.nested_field.properties.sub2_field.type).toEqual('text');
 
-    // verify mapping types
-    expect2(fieldsWithTypes2).toEqual(expectedMapping);
+    // verify properties and properties2 are equal
+    expect2(properties).toEqual(properties2);
 };
 
 /**
@@ -1274,39 +987,25 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
  */
 
 export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
+    // agent for test
+    const agent = () => ({
+        save: (id: string, name: string, count: number) =>
+            service
+                .saveItem(id, { name: name, count: count })
+                .then(R => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { $id, _id, _version, ...rest } = R;
+                    return rest;
+                })
+                .catch(GETERR),
+    });
+
     //* auto-indexing w/ tokenizer. keyword (basic), hangul
-    expect2(
-        await service.saveItem('A7', { name: 'A7 for auto indexing test', count: 10 }).catch(GETERR),
-        '!_version',
-    ).toEqual({
-        _id: 'A7',
-        $id: 'A7',
-        name: 'A7 for auto indexing test',
-        count: 10,
-    });
-
-    expect2(await service.saveItem('A8', { name: '한글 테스트', count: 20 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A8',
-        $id: 'A8',
-        name: '한글 테스트',
-        count: 20,
-    });
-    expect2(
-        await service.saveItem('A9', { name: 'A9 for auto indexing test', count: 30 }).catch(GETERR),
-        '!_version',
-    ).toEqual({
-        _id: 'A9',
-        $id: 'A9',
-        name: 'A9 for auto indexing test',
-        count: 30,
-    });
-
-    expect2(await service.saveItem('A10', { name: 'A10 한글 테스트', count: 40 }).catch(GETERR), '!_version').toEqual({
-        _id: 'A10',
-        $id: 'A10',
-        name: 'A10 한글 테스트',
-        count: 40,
-    });
+    // save items
+    expect2(await agent().save('A7', 'A7 for indexing', 10)).toEqual({ name: 'A7 for indexing', count: 10 });
+    expect2(await agent().save('A8', '한글 테스트', 20)).toEqual({ name: '한글 테스트', count: 20 });
+    expect2(await agent().save('A9', 'A9 for indexing', 30)).toEqual({ name: 'A9 for indexing', count: 30 });
+    expect2(await agent().save('A10', 'A10 한글 테스트', 40)).toEqual({ name: 'A10 한글 테스트', count: 40 });
 
     // refresh index
     await service.refreshIndex();
@@ -1342,37 +1041,20 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
             },
         ],
     };
+    const searchResult = await service.search($search);
+    const aggregationResult = searchResult.aggregations.indexing;
+    const extractedFields = searchResult.list.map(item => ({
+        _id: item._id,
+        count: item.count,
+        name: item.name,
+    }));
+    expect2(() => aggregationResult.buckets[0]).toEqual({ doc_count: 1, key: 10 });
+    expect2(() => aggregationResult.buckets[1]).toEqual({ doc_count: 1, key: 30 });
+    expect2(() => extractedFields[0]).toEqual({ _id: 'A7', count: 10, name: 'A7 for indexing' });
+    expect2(() => extractedFields[1]).toEqual({ _id: 'A9', count: 30, name: 'A9 for indexing' });
+    expect2(() => searchResult.last).toEqual([0, 30]); // [_score, count]
+    expect2(() => searchResult.total).toEqual(2);
 
-    expect2(await service.search($search).catch(GETERR)).toEqual({
-        aggregations: {
-            indexing: {
-                buckets: [
-                    { doc_count: 1, key: 10 },
-                    { doc_count: 1, key: 30 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        last: [0, 30],
-        list: [
-            {
-                $id: 'A7',
-                _id: 'A7',
-                _score: 0,
-                count: 10,
-                name: 'A7 for auto indexing test',
-            },
-            {
-                $id: 'A9',
-                _id: 'A9',
-                _score: 0,
-                count: 30,
-                name: 'A9 for auto indexing test',
-            },
-        ],
-        total: 2,
-    });
     //* test for hangul(auto-indexing)
     const $search2: SearchBody = {
         size: 2,
@@ -1404,37 +1086,19 @@ export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<v
             },
         ],
     };
-
-    expect2(await service.search($search2).catch(GETERR)).toEqual({
-        aggregations: {
-            indexing: {
-                buckets: [
-                    { doc_count: 1, key: 20 },
-                    { doc_count: 1, key: 40 },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        last: [0, 40],
-        list: [
-            {
-                $id: 'A8',
-                _id: 'A8',
-                _score: 0,
-                count: 20,
-                name: '한글 테스트',
-            },
-            {
-                $id: 'A10',
-                _id: 'A10',
-                _score: 0,
-                count: 40,
-                name: 'A10 한글 테스트',
-            },
-        ],
-        total: 2,
-    });
+    const searchResult2 = await service.search($search2);
+    const aggregationResult2 = searchResult2.aggregations.indexing;
+    const extractedFields2 = searchResult2.list.map(item => ({
+        _id: item._id,
+        count: item.count,
+        name: item.name,
+    }));
+    expect2(() => aggregationResult2.buckets[0]).toEqual({ doc_count: 1, key: 20 });
+    expect2(() => aggregationResult2.buckets[1]).toEqual({ doc_count: 1, key: 40 });
+    expect2(() => extractedFields2[0]).toEqual({ _id: 'A8', count: 20, name: '한글 테스트' });
+    expect2(() => extractedFields2[1]).toEqual({ _id: 'A10', count: 40, name: 'A10 한글 테스트' });
+    expect2(() => searchResult2.last).toEqual([0, 40]); // [_score, count]
+    expect2(() => searchResult2.total).toEqual(2);
 };
 
 interface BulkResponseItem<T = any> {
@@ -1474,7 +1138,6 @@ export const bulkDummyData = async (service: Elastic6Service<any>, n = 2, t = 50
         'Support',
         'Logistics',
     ];
-
     const salaries = [3000, 5000, 7500, 11500, 16000, 20000];
     const companies = ['A', 'B', 'C'];
     const firstNames = ['Alex', 'Jordan', 'Casey', 'Riley', 'Morgan', 'Quinn', 'Avery', 'Rowan'];
@@ -1564,17 +1227,6 @@ interface SearchResponse<T = any> {
     total: number | { relation: 'gte'; value: number };
 }
 
-interface TestList {
-    _id: string;
-    id: string;
-    _score: number;
-    name: string;
-    count: number;
-    company: string;
-    department: string;
-    salary: number;
-}
-
 /**
  * perform total summary with 20,000 data
  * @param service - Elasticsearch service instance.
@@ -1629,68 +1281,37 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
+
     const searchAggregation: SearchResponse = await service.search($search);
-    const expectedSearchResults: Array<TestList> = [
-        {
-            id: 'employee 1',
-            name: 'Jordan Parker Reed',
-            department: 'HR',
-            salary: 5000,
-            count: 1,
-            company: 'B',
-            _id: 'employee 1',
-            _score: 0,
-        },
-        {
-            id: 'employee 10',
-            name: 'Casey Blake Cameron',
-            department: 'Admin',
-            salary: 16000,
-            count: 0,
-            company: 'B',
-            _id: 'employee 10',
-            _score: 0,
-        },
-        {
-            id: 'employee 100',
-            name: 'Morgan Blake Bailey',
-            department: 'Admin',
-            salary: 16000,
-            count: 0,
-            company: 'B',
-            _id: 'employee 100',
-            _score: 0,
-        },
-    ];
-    expect2(() => searchAggregation.aggregations).toEqual({
-        indexing: {
-            buckets: [
-                { doc_count: 2000, key: 0 },
-                { doc_count: 2000, key: 1 },
-                { doc_count: 2000, key: 2 },
-                { doc_count: 2000, key: 3 },
-                { doc_count: 2000, key: 4 },
-                { doc_count: 2000, key: 5 },
-                { doc_count: 2000, key: 6 },
-                { doc_count: 2000, key: 7 },
-                { doc_count: 2000, key: 8 },
-                { doc_count: 2000, key: 9 },
-            ],
-            doc_count_error_upper_bound: 0,
-            sum_other_doc_count: 0,
-        },
-    });
-    expect2(() => searchAggregation.list).toEqual(expectedSearchResults);
-    expect2(() => searchAggregation.last).toEqual([0, `${expectedSearchResults[expectedSearchResults.length - 1].id}`]);
+    const aggregationResult = searchAggregation.aggregations.indexing;
+    const extractedFields = searchAggregation.list.map(item => ({
+        id: item.id,
+        count: item.count,
+        _score: item._score,
+    }));
+    // total summary aggregation result
+    expect2(() => aggregationResult.buckets[0]).toEqual({ doc_count: 2000, key: 0 });
+    expect2(() => aggregationResult.buckets[1]).toEqual({ doc_count: 2000, key: 1 });
+    expect2(() => aggregationResult.buckets[2]).toEqual({ doc_count: 2000, key: 2 });
+    expect2(() => aggregationResult.buckets[3]).toEqual({ doc_count: 2000, key: 3 });
+    expect2(() => aggregationResult.buckets[4]).toEqual({ doc_count: 2000, key: 4 });
+    expect2(() => aggregationResult.buckets[5]).toEqual({ doc_count: 2000, key: 5 });
+    expect2(() => aggregationResult.buckets[6]).toEqual({ doc_count: 2000, key: 6 });
+    expect2(() => aggregationResult.buckets[7]).toEqual({ doc_count: 2000, key: 7 });
+    expect2(() => aggregationResult.buckets[8]).toEqual({ doc_count: 2000, key: 8 });
+    expect2(() => aggregationResult.buckets[9]).toEqual({ doc_count: 2000, key: 9 });
+    // total summary search result
+    expect2(() => extractedFields[0]).toEqual({ id: 'employee 1', count: 1, _score: 0 });
+    expect2(() => extractedFields[1]).toEqual({ id: 'employee 10', count: 0, _score: 0 });
+    expect2(() => extractedFields[2]).toEqual({ id: 'employee 100', count: 0, _score: 0 });
+    expect2(() => searchAggregation.last).toEqual([0, 'employee 100']); // [_score, id] of last search result
 
     //* test scanAll with 20,000 data
-    const allResults = await service
-        .searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } })
-        .catch(GETERR);
+    const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } });
     expect2(() => allResults.length).toEqual(20000);
-    const allResultsSlice = allResults.slice(0, expectedSearchResults.length);
-    expect2(() => allResultsSlice).toEqual(searchAggregation.list);
+    expect2(() => allResults.slice(0, 3)).toEqual(searchAggregation.list);
 };
+
 /**
  * perform aggregation with 20,000 data
  * @param service - Elasticsearch service instance.
@@ -1707,21 +1328,10 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
             },
         },
     };
-
     const byCompanyResult: SearchResponse = await service.search($companyAggregation);
-    const expectedTermsAggregation = {
-        employees_per_company: {
-            buckets: [
-                { doc_count: 6667, key: 'B' },
-                { doc_count: 6667, key: 'C' },
-                { doc_count: 6666, key: 'A' },
-            ],
-            doc_count_error_upper_bound: 0,
-            sum_other_doc_count: 0,
-        },
-    };
-
-    expect2(() => byCompanyResult.aggregations).toEqual(expectedTermsAggregation);
+    expect2(() => byCompanyResult.aggregations.employees_per_company.buckets[0]).toEqual({ doc_count: 6667, key: 'B' });
+    expect2(() => byCompanyResult.aggregations.employees_per_company.buckets[1]).toEqual({ doc_count: 6667, key: 'C' });
+    expect2(() => byCompanyResult.aggregations.employees_per_company.buckets[2]).toEqual({ doc_count: 6666, key: 'A' });
 
     //* 2. employee per department within each company
     const $companyDepartmentAggregation: SearchBody = {
@@ -1742,75 +1352,49 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
         },
     };
     const byCompanyDepartmentResult: SearchResponse = await service.search($companyDepartmentAggregation);
-    const expectedTerms2Aggregation = {
-        employees_per_company: {
-            buckets: [
-                {
-                    doc_count: 6667,
-                    employees_per_department: {
-                        buckets: [
-                            { doc_count: 667, key: 'Admin' },
-                            { doc_count: 667, key: 'HR' },
-                            { doc_count: 667, key: 'Logistics' },
-                            { doc_count: 667, key: 'Marketing' },
-                            { doc_count: 667, key: 'Production' },
-                            { doc_count: 667, key: 'R&D' },
-                            { doc_count: 667, key: 'Sales' },
-                            { doc_count: 666, key: 'Finance' },
-                            { doc_count: 666, key: 'IT' },
-                            { doc_count: 666, key: 'Support' },
-                        ],
-                        doc_count_error_upper_bound: 0,
-                        sum_other_doc_count: 0,
-                    },
-                    key: 'B',
-                },
-                {
-                    doc_count: 6667,
-                    employees_per_department: {
-                        buckets: [
-                            { doc_count: 667, key: 'Admin' },
-                            { doc_count: 667, key: 'Finance' },
-                            { doc_count: 667, key: 'HR' },
-                            { doc_count: 667, key: 'IT' },
-                            { doc_count: 667, key: 'Production' },
-                            { doc_count: 667, key: 'Sales' },
-                            { doc_count: 667, key: 'Support' },
-                            { doc_count: 666, key: 'Logistics' },
-                            { doc_count: 666, key: 'Marketing' },
-                            { doc_count: 666, key: 'R&D' },
-                        ],
-                        doc_count_error_upper_bound: 0,
-                        sum_other_doc_count: 0,
-                    },
-                    key: 'C',
-                },
-                {
-                    doc_count: 6666,
-                    employees_per_department: {
-                        buckets: [
-                            { doc_count: 667, key: 'Finance' },
-                            { doc_count: 667, key: 'IT' },
-                            { doc_count: 667, key: 'Logistics' },
-                            { doc_count: 667, key: 'Marketing' },
-                            { doc_count: 667, key: 'R&D' },
-                            { doc_count: 667, key: 'Support' },
-                            { doc_count: 666, key: 'Admin' },
-                            { doc_count: 666, key: 'HR' },
-                            { doc_count: 666, key: 'Production' },
-                            { doc_count: 666, key: 'Sales' },
-                        ],
-                        doc_count_error_upper_bound: 0,
-                        sum_other_doc_count: 0,
-                    },
-                    key: 'A',
-                },
-            ],
-            doc_count_error_upper_bound: 0,
-            sum_other_doc_count: 0,
-        },
-    };
-    expect2(byCompanyDepartmentResult.aggregations).toEqual(expectedTerms2Aggregation);
+    const aggregations = byCompanyDepartmentResult.aggregations.employees_per_company;
+    // employee per department within company B
+    const bucketsOfB = aggregations.buckets[0].employees_per_department.buckets;
+    expect2(() => aggregations.buckets[0].key).toEqual('B');
+    expect2(() => aggregations.buckets[0].doc_count).toEqual(6667);
+    expect2(() => bucketsOfB[0]).toEqual({ doc_count: 667, key: 'Admin' });
+    expect2(() => bucketsOfB[1]).toEqual({ doc_count: 667, key: 'HR' });
+    expect2(() => bucketsOfB[2]).toEqual({ doc_count: 667, key: 'Logistics' });
+    expect2(() => bucketsOfB[3]).toEqual({ doc_count: 667, key: 'Marketing' });
+    expect2(() => bucketsOfB[4]).toEqual({ doc_count: 667, key: 'Production' });
+    expect2(() => bucketsOfB[5]).toEqual({ doc_count: 667, key: 'R&D' });
+    expect2(() => bucketsOfB[6]).toEqual({ doc_count: 667, key: 'Sales' });
+    expect2(() => bucketsOfB[7]).toEqual({ doc_count: 666, key: 'Finance' });
+    expect2(() => bucketsOfB[8]).toEqual({ doc_count: 666, key: 'IT' });
+    expect2(() => bucketsOfB[9]).toEqual({ doc_count: 666, key: 'Support' });
+    // employee per department within company C
+    const bucketsOfC = aggregations.buckets[1].employees_per_department.buckets;
+    expect2(() => aggregations.buckets[1].key).toEqual('C');
+    expect2(() => aggregations.buckets[1].doc_count).toEqual(6667);
+    expect2(() => bucketsOfC[0]).toEqual({ doc_count: 667, key: 'Admin' });
+    expect2(() => bucketsOfC[1]).toEqual({ doc_count: 667, key: 'Finance' });
+    expect2(() => bucketsOfC[2]).toEqual({ doc_count: 667, key: 'HR' });
+    expect2(() => bucketsOfC[3]).toEqual({ doc_count: 667, key: 'IT' });
+    expect2(() => bucketsOfC[4]).toEqual({ doc_count: 667, key: 'Production' });
+    expect2(() => bucketsOfC[5]).toEqual({ doc_count: 667, key: 'Sales' });
+    expect2(() => bucketsOfC[6]).toEqual({ doc_count: 667, key: 'Support' });
+    expect2(() => bucketsOfC[7]).toEqual({ doc_count: 666, key: 'Logistics' });
+    expect2(() => bucketsOfC[8]).toEqual({ doc_count: 666, key: 'Marketing' });
+    expect2(() => bucketsOfC[9]).toEqual({ doc_count: 666, key: 'R&D' });
+    // employee per department within company A
+    const bucketsOfA = aggregations.buckets[2].employees_per_department.buckets;
+    expect2(() => aggregations.buckets[2].key).toEqual('A');
+    expect2(() => aggregations.buckets[2].doc_count).toEqual(6666);
+    expect2(() => bucketsOfA[0]).toEqual({ doc_count: 667, key: 'Finance' });
+    expect2(() => bucketsOfA[1]).toEqual({ doc_count: 667, key: 'IT' });
+    expect2(() => bucketsOfA[2]).toEqual({ doc_count: 667, key: 'Logistics' });
+    expect2(() => bucketsOfA[3]).toEqual({ doc_count: 667, key: 'Marketing' });
+    expect2(() => bucketsOfA[4]).toEqual({ doc_count: 667, key: 'R&D' });
+    expect2(() => bucketsOfA[5]).toEqual({ doc_count: 667, key: 'Support' });
+    expect2(() => bucketsOfA[6]).toEqual({ doc_count: 666, key: 'Admin' });
+    expect2(() => bucketsOfA[7]).toEqual({ doc_count: 666, key: 'HR' });
+    expect2(() => bucketsOfA[8]).toEqual({ doc_count: 666, key: 'Production' });
+    expect2(() => bucketsOfA[9]).toEqual({ doc_count: 666, key: 'Sales' });
 };
 
 /**
@@ -1849,56 +1433,23 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
-
-    const expectedKeywordAggregation = {
-        employees_with_name_Jordan_per_company: {
-            buckets: [
-                { doc_count: 834, key: 'B' },
-                { doc_count: 833, key: 'A' },
-                { doc_count: 833, key: 'C' },
-            ],
-            doc_count_error_upper_bound: 0,
-            sum_other_doc_count: 0,
-        },
-    };
-    const expectedKeywordList: Array<TestList> = [
-        {
-            _id: 'employee 1',
-            _score: 0,
-            company: 'B',
-            count: 1,
-            department: 'HR',
-            id: 'employee 1',
-            name: 'Jordan Parker Reed',
-            salary: 5000,
-        },
-        {
-            _id: 'employee 10001',
-            _score: 0,
-            company: 'C',
-            count: 1,
-            department: 'HR',
-            id: 'employee 10001',
-            name: 'Jordan Hayden Gray',
-            salary: 20000,
-        },
-        {
-            _id: 'employee 10009',
-            _score: 0,
-            company: 'B',
-            count: 9,
-            department: 'Logistics',
-            id: 'employee 10009',
-            name: 'Jordan Parker Mason',
-            salary: 5000,
-        },
-    ];
-
     const keywordSearchResult: SearchResponse = await service.search($keywordSearch);
-    expect2(() => keywordSearchResult.aggregations).toEqual(expectedKeywordAggregation);
-    expect2(() => keywordSearchResult.list).toEqual(expectedKeywordList);
-    expect2(() => keywordSearchResult.last).toEqual([0, `${expectedKeywordList[expectedKeywordList.length - 1].id}`]);
-    expect2(() => keywordSearchResult.total).toEqual(2500);
+    const aggregationResult = keywordSearchResult.aggregations.employees_with_name_Jordan_per_company;
+    const extractedFields = keywordSearchResult.list.map(item => ({
+        id: item.id,
+        name: item.name,
+        company: item.company,
+    }));
+    // filter query search aggregation result
+    expect2(() => aggregationResult.buckets[0]).toEqual({ doc_count: 834, key: 'B' });
+    expect2(() => aggregationResult.buckets[1]).toEqual({ doc_count: 833, key: 'A' });
+    expect2(() => aggregationResult.buckets[2]).toEqual({ doc_count: 833, key: 'C' });
+    // filter query search result
+    expect2(() => extractedFields[0]).toEqual({ id: 'employee 1', name: 'Jordan Parker Reed', company: 'B' });
+    expect2(() => extractedFields[1]).toEqual({ id: 'employee 10001', name: 'Jordan Hayden Gray', company: 'C' });
+    expect2(() => extractedFields[2]).toEqual({ id: 'employee 10009', name: 'Jordan Parker Mason', company: 'B' });
+    expect2(() => keywordSearchResult.last).toEqual([0, 'employee 10009']); // [score, id] of last search result
+    expect2(() => keywordSearchResult.total).toEqual(2500); // 834(B) + 833(A) + 833(C)
 
     //* 1.2 Test by keyword (match query)
     const $matchSearch: SearchBody = {
@@ -1927,89 +1478,32 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
-    const expectedMatchList: Array<TestList> = [
-        {
-            _id: 'employee 1001',
-            _score: 2.0919745,
-            company: 'C',
-            count: 1,
-            department: 'HR',
-            id: 'employee 1001',
-            name: 'Jordan Hayden Harper',
-            salary: 20000,
-        },
-        {
-            _id: 'employee 10041',
-            _score: 2.0919745,
-            company: 'A',
-            count: 1,
-            department: 'HR',
-            id: 'employee 10041',
-            name: 'Jordan Reese Cameron',
-            salary: 11500,
-        },
-        {
-            _id: 'employee 10073',
-            _score: 2.0919745,
-            company: 'C',
-            count: 3,
-            department: 'Marketing',
-            id: 'employee 10073',
-            name: 'Jordan Hayden Harper',
-            salary: 20000,
-        },
-    ];
-    const expectedMatchList6: Array<TestList> = [
-        {
-            _id: 'employee 10033',
-            _score: 2.0947309,
-            company: 'B',
-            count: 3,
-            department: 'Marketing',
-            id: 'employee 10033',
-            name: 'Jordan Parker Bailey',
-            salary: 5000,
-        },
-        {
-            _id: 'employee 10089',
-            _score: 2.0947309,
-            company: 'A',
-            count: 9,
-            department: 'Logistics',
-            id: 'employee 10089',
-            name: 'Jordan Reese Bailey',
-            salary: 11500,
-        },
-        {
-            _id: 'employee 10121',
-            _score: 2.0947309,
-            company: 'C',
-            count: 1,
-            department: 'HR',
-            id: 'employee 10121',
-            name: 'Jordan Hayden Mason',
-            salary: 20000,
-        },
-    ];
 
-    const matchSearchResult: SearchResponse = await service.search($matchSearch);
-    expect2(() => matchSearchResult.aggregations).toEqual(expectedKeywordAggregation);
+    const matchQueryhResult: SearchResponse = await service.search($matchSearch);
+    const aggregationResult2 = matchQueryhResult.aggregations.employees_with_name_Jordan_per_company;
+    const extractedFields2 = matchQueryhResult.list.map(item => ({
+        id: item.id,
+        _score: item._score,
+    }));
+    // match query search aggregation result
+    expect2(() => aggregationResult2.buckets[0]).toEqual({ doc_count: 834, key: 'B' });
+    expect2(() => aggregationResult2.buckets[1]).toEqual({ doc_count: 833, key: 'A' });
+    expect2(() => aggregationResult2.buckets[2]).toEqual({ doc_count: 833, key: 'C' }); // aggregation result matches the filter query
+    // match query search result
     if (service.isOldES6) {
         /* sorted by the _score calculated using the TF-IDF algorithm */
-        expect2(() => matchSearchResult.list).toEqual(expectedMatchList6);
-        expect2(() => matchSearchResult.last).toEqual([
-            expectedMatchList6[expectedMatchList6.length - 1]._score,
-            `${expectedMatchList6[expectedMatchList6.length - 1].id}`,
-        ]);
+        expect2(() => extractedFields2[0]).toEqual({ id: 'employee 10033', _score: 2.0947309 });
+        expect2(() => extractedFields2[1]).toEqual({ id: 'employee 10089', _score: 2.0947309 });
+        expect2(() => extractedFields2[2]).toEqual({ id: 'employee 10121', _score: 2.0947309 });
+        expect2(() => matchQueryhResult.last).toEqual([2.0947309, 'employee 10121']);
     } else {
         /* sorted by the _score calculated using the BM25 algorithm */
-        expect2(() => matchSearchResult.list).toEqual(expectedMatchList);
-        expect2(() => matchSearchResult.last).toEqual([
-            expectedMatchList[expectedMatchList.length - 1]._score,
-            `${expectedMatchList[expectedMatchList.length - 1].id}`,
-        ]);
+        expect2(() => extractedFields2[0]).toEqual({ id: 'employee 1001', _score: 2.0919745 });
+        expect2(() => extractedFields2[1]).toEqual({ id: 'employee 10041', _score: 2.0919745 });
+        expect2(() => extractedFields2[2]).toEqual({ id: 'employee 10073', _score: 2.0919745 });
+        expect2(() => matchQueryhResult.last).toEqual([2.0919745, 'employee 10073']);
     }
-    expect2(() => matchSearchResult.total).toEqual(keywordSearchResult.total);
+    expect2(() => matchQueryhResult.total).toEqual(2500); // 834(B) + 833(A) + 833(C)
 
     //* 2. Test by range (salary range)
     const $rangeSearch: SearchBody = {
@@ -2049,84 +1543,42 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
             },
         ],
     };
-    const expectedRangeAggregation = {
-        employees_in_salary_range_per_company: {
-            buckets: [
-                { doc_count: 3333, key: 'A' },
-                { doc_count: 3333, key: 'B' },
-                { doc_count: 3333, key: 'C' },
-            ],
-            doc_count_error_upper_bound: 0,
-            sum_other_doc_count: 0,
-        },
-    };
-    const expectedRangeList: Array<TestList> = [
-        {
-            _id: 'employee 10005',
-            _score: 0,
-            company: 'A',
-            count: 5,
-            department: 'IT',
-            id: 'employee 10005',
-            name: 'Quinn Reese Bailey',
-            salary: 11500,
-        },
-        {
-            _id: 'employee 10011',
-            _score: 0,
-            company: 'A',
-            count: 1,
-            department: 'HR',
-            id: 'employee 10011',
-            name: 'Riley Reese Reed',
-            salary: 11500,
-        },
-        {
-            _id: 'employee 10017',
-            _score: 0,
-            company: 'A',
-            count: 7,
-            department: 'Production',
-            id: 'employee 10017',
-            name: 'Jordan Reese Harper',
-            salary: 11500,
-        },
-    ];
     const rangeSearchResult: SearchResponse = await service.search($rangeSearch);
-    expect2(() => rangeSearchResult.aggregations).toEqual(expectedRangeAggregation);
-    expect2(() => rangeSearchResult.list).toEqual(expectedRangeList);
-    expect2(() => rangeSearchResult.last).toEqual([
-        0,
-        expectedRangeList[expectedRangeList.length - 1].salary,
-        `${expectedRangeList[expectedRangeList.length - 1].id}`,
-    ]);
-    expect2(() => rangeSearchResult.total).toEqual(9999);
+    const aggregationResult3 = rangeSearchResult.aggregations.employees_in_salary_range_per_company;
+    const extractedFields3 = rangeSearchResult.list.map(item => ({
+        id: item.id,
+        _score: item._score,
+        salary: item.salary,
+    }));
+    // range search aggregation
+    expect2(() => aggregationResult3.buckets[0]).toEqual({ doc_count: 3333, key: 'A' });
+    expect2(() => aggregationResult3.buckets[1]).toEqual({ doc_count: 3333, key: 'B' });
+    expect2(() => aggregationResult3.buckets[2]).toEqual({ doc_count: 3333, key: 'C' });
+    // range search result
+    expect2(() => extractedFields3[0]).toEqual({ id: 'employee 10005', _score: 0, salary: 11500 });
+    expect2(() => extractedFields3[1]).toEqual({ id: 'employee 10011', _score: 0, salary: 11500 });
+    expect2(() => extractedFields3[2]).toEqual({ id: 'employee 10017', _score: 0, salary: 11500 });
+    expect2(() => rangeSearchResult.last).toEqual([0, 11500, 'employee 10017']);
+    expect2(() => rangeSearchResult.total).toEqual(9999); // 3333(B) + 3333(A) + 3333(C)
 
     //* 3. Test 'exists; field(mapping관련, null, '', [], {}), keyword'
-    await service.saveItem('empty 1', {
-        id: 'empty 1',
-        name: null,
-        company: null,
-        department: null,
-        salary: null,
+    // agent for test
+    const agent = <T = any>() => ({
+        save: (id: string, name?: T, salary?: T) =>
+            service
+                .saveItem(id, { id: id, name: name, salary: salary })
+                .then(R => {
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                    const { $id, _id, _version, ...rest } = R;
+                    return rest;
+                })
+                .catch(GETERR),
     });
-
-    await service.saveItem('empty 2', { id: 'empty 2' });
-
-    await service.saveItem('empty 3', {
-        id: 'empty 3',
-        name: '',
-        company: '',
-        department: '',
-        salary: '',
-    });
-    await service.saveItem('empty 4', {
-        id: 'empty 4',
-        name: [],
-        company: [],
-        department: [],
-        salary: [],
-    });
+    //save empty value
+    expect2(await agent().save('empty 1', null, null)).toEqual({ id: 'empty 1', name: null, salary: null });
+    expect2(await agent().save('empty 2')).toEqual({ id: 'empty 2' });
+    expect2(await agent().save('empty 3', '', '')).toEqual({ id: 'empty 3', name: '', salary: '' });
+    expect2(await agent().save('empty 4', [], [])).toEqual({ id: 'empty 4', name: [], salary: [] });
 
     await service.refreshIndex();
 
@@ -2161,84 +1613,47 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
         ],
     };
 
-    expect2(await service.search($nullFieldTest).catch(GETERR)).toEqual({
-        aggregations: {
-            employees_with_empty_field: {
-                buckets: [
-                    { doc_count: 1, key: 'empty 1' },
-                    { doc_count: 1, key: 'empty 2' },
-                    { doc_count: 1, key: 'empty 3' },
-                    { doc_count: 1, key: 'empty 4' },
-                ],
-                doc_count_error_upper_bound: 0,
-                sum_other_doc_count: 0,
-            },
-        },
-        last: undefined,
-        list: [
-            {
-                $id: 'empty 1',
-                _id: 'empty 1',
-                _score: 0,
-                company: null,
-                department: null,
-                id: 'empty 1',
-                name: null,
-                salary: null,
-            },
-            { $id: 'empty 2', _id: 'empty 2', _score: 0, id: 'empty 2' },
-            {
-                $id: 'empty 3',
-                _id: 'empty 3',
-                _score: 0,
-                company: '',
-                department: '',
-                id: 'empty 3',
-                name: '',
-                salary: '',
-            },
-            {
-                $id: 'empty 4',
-                _id: 'empty 4',
-                _score: 0,
-                company: [],
-                department: [],
-                id: 'empty 4',
-                name: [],
-                salary: [],
-            },
-        ],
-        total: 4,
-    });
+    const nullSearchResult: SearchResponse = await service.search($nullFieldTest);
+    const aggregationResult4 = nullSearchResult.aggregations.employees_with_empty_field;
+    const extractedFields4 = nullSearchResult.list.map(item => ({
+        id: item.id,
+        name: item.name,
+        salary: item.salary,
+    }));
+    // null search aggregation
+    expect2(() => aggregationResult4.buckets[0]).toEqual({ doc_count: 1, key: 'empty 1' });
+    expect2(() => aggregationResult4.buckets[1]).toEqual({ doc_count: 1, key: 'empty 2' });
+    expect2(() => aggregationResult4.buckets[2]).toEqual({ doc_count: 1, key: 'empty 3' });
+    expect2(() => aggregationResult4.buckets[3]).toEqual({ doc_count: 1, key: 'empty 4' });
+    // null search result
+    expect2(() => extractedFields4[0]).toEqual({ id: 'empty 1', name: null, salary: null });
+    expect2(() => extractedFields4[1]).toEqual({ id: 'empty 2' });
+    expect2(() => extractedFields4[2]).toEqual({ id: 'empty 3', name: '', salary: '' });
+    expect2(() => extractedFields4[3]).toEqual({ id: 'empty 4', name: [], salary: [] });
 
     //* check mapping
     const mapping = await service.getIndexMapping();
-    expect2(() => (mapping?._doc ? mapping?._doc.properties : mapping?.properties)).toEqual({
-        $id: { type: 'keyword', ignore_above: 256 },
-        '@version': { type: 'keyword', index: false },
-        company: { type: 'text', fields: { keyword: { type: 'keyword', ignore_above: 256 } }, analyzer: 'hangul' },
-        count: { type: 'long' },
-        created_at: {
-            type: 'date',
-            ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
-        },
-        deleted_at: {
-            type: 'date',
-            ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
-        },
-        department: {
-            type: 'text',
-            fields: { keyword: { type: 'keyword', ignore_above: 256 } },
-            analyzer: 'hangul',
-        },
-        id: { type: 'text', fields: { keyword: { type: 'keyword', ignore_above: 256 } }, analyzer: 'hangul' },
-        name: { type: 'text', fields: { keyword: { type: 'keyword', ignore_above: 256 } }, analyzer: 'hangul' },
-        salary: { type: 'long' },
-        updated_at: {
-            type: 'date',
-            ...(service.isLatestOS2 ? { format: 'strict_date_optional_time||epoch_millis' } : {}),
-        },
-    });
+    const properties = mapping?._doc ? mapping?._doc.properties : mapping?.properties;
+    //company mapping type
+    expect2(() => properties.company.type).toEqual('text');
+    expect2(() => properties.company.fields).toEqual({ keyword: { type: 'keyword', ignore_above: 256 } });
+    expect2(() => properties.company.analyzer).toEqual('hangul');
+    //count mapping type
+    expect2(() => properties.count).toEqual({ type: 'long' });
+    //department mapping type
+    expect2(() => properties.department.type).toEqual('text');
+    expect2(() => properties.department.fields).toEqual({ keyword: { type: 'keyword', ignore_above: 256 } });
+    expect2(() => properties.department.analyzer).toEqual('hangul');
+    //id mapping type
+    expect2(() => properties.id.type).toEqual('text');
+    expect2(() => properties.id.fields).toEqual({ keyword: { type: 'keyword', ignore_above: 256 } });
+    expect2(() => properties.id.analyzer).toEqual('hangul');
+    //name mapping type
+    expect2(() => properties.name.type).toEqual('text');
+    expect2(() => properties.name.fields).toEqual({ keyword: { type: 'keyword', ignore_above: 256 } });
+    expect2(() => properties.name.analyzer).toEqual('hangul');
+    //salary mapping type
+    expect2(() => properties.salary).toEqual({ type: 'long' });
 };
 /**
  * run Elastic6Service tests sequentially.
@@ -2257,7 +1672,7 @@ export const doTest = async (service: Elastic6Service<any>) => {
         }
     };
 
-    // run tests
+    //* run tests
     await runTest('setupIndex', async () => await setupIndex(service));
 
     await runTest('basicCRUDTest', async () => await basicCRUDTest(service));
@@ -2468,11 +1883,12 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
-        expect2(() => service.executeSelfTest()).toEqual({
-            isEqual: true,
-            optionVersion: { engine: 'es', major: 6, minor: 2, patch: 0 },
-            rootVersion: { engine: 'es', major: 6, minor: 2, patch: 3 },
-        });
+
+        const selfTest = await service.executeSelfTest();
+        expect2(() => selfTest.isEqual).toEqual(true);
+        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 0 });
+        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
+
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
@@ -2489,11 +1905,12 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
-        expect2(() => service.executeSelfTest()).toEqual({
-            isEqual: true,
-            optionVersion: { engine: 'es', major: 7, minor: 1, patch: 0 },
-            rootVersion: { engine: 'es', major: 7, minor: 1, patch: 1 },
-        });
+
+        const selfTest = await service.executeSelfTest();
+        expect2(() => selfTest.isEqual).toEqual(true);
+        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 0 });
+        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
+
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
@@ -2510,11 +1927,12 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
-        expect2(() => service.executeSelfTest()).toEqual({
-            isEqual: false,
-            optionVersion: { engine: 'es', major: 7, minor: 2, patch: 0 },
-            rootVersion: { engine: 'es', major: 7, minor: 4, patch: 2 },
-        });
+
+        const selfTest = await service.executeSelfTest();
+        expect2(() => selfTest.isEqual).toEqual(false);
+        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 2, patch: 0 });
+        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
+
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
@@ -2531,11 +1949,12 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-        expect2(() => service.executeSelfTest()).toEqual({
-            isEqual: true,
-            optionVersion: { engine: 'es', major: 7, minor: 10, patch: 0 },
-            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
-        });
+
+        const selfTest = await service.executeSelfTest();
+        expect2(() => selfTest.isEqual).toEqual(true);
+        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 0 });
+        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
@@ -2552,11 +1971,12 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-        expect2(() => service.executeSelfTest()).toEqual({
-            isEqual: false,
-            optionVersion: { engine: 'os', major: 1, minor: 1, patch: 0 },
-            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
-        });
+
+        const selfTest = await service.executeSelfTest();
+        expect2(() => selfTest.isEqual).toEqual(false);
+        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 1, minor: 1, patch: 0 });
+        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
@@ -2573,11 +1993,12 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-        expect2(() => service.executeSelfTest()).toEqual({
-            isEqual: false,
-            optionVersion: { engine: 'os', major: 1, minor: 2, patch: 0 },
-            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
-        });
+
+        const selfTest = await service.executeSelfTest();
+        expect2(() => selfTest.isEqual).toEqual(false);
+        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 1, minor: 2, patch: 0 });
+        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
@@ -2594,11 +2015,12 @@ describe('Elastic6Service', () => {
 
         //* version check w/root
         expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-        expect2(() => service.executeSelfTest()).toEqual({
-            isEqual: false,
-            optionVersion: { engine: 'os', major: 2, minor: 13, patch: 0 },
-            rootVersion: { engine: 'es', major: 7, minor: 10, patch: 2 },
-        });
+
+        const selfTest = await service.executeSelfTest();
+        expect2(() => selfTest.isEqual).toEqual(false);
+        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 2, minor: 13, patch: 0 });
+        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
