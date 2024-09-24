@@ -13,7 +13,7 @@
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
-import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR } from './elastic6-service';
+import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR, Elastic6Item } from './elastic6-service';
 import { ApiResponse } from '@elastic/elasticsearch';
 
 /**
@@ -451,13 +451,22 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
     );
 };
 
+interface CRUDModel extends Elastic6Item {
+    id?: string;
+    name?: string;
+    nick?: string;
+    count?: number;
+    //TODO - extra should be `GeneralItem`
+    extra?: any | object;
+}
+
 /**
  * perform detailed CRUD tests.
  * @param service - Elasticsearch service instance.
  */
-export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Promise<void> => {
     //* agent for test
-    const agent = <T = any>() => ({
+    const agent = <T extends CRUDModel = CRUDModel>() => ({
         update: (id: string, data: T, increment?: Incrementable) =>
             service
                 .updateItem(id, data, increment)
@@ -510,6 +519,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 
     //* try to update
     const data0 = await service.readItem('A0');
+    //NOTE - sql like `update <table> set name=01 where id=A0`
     expect2(await agent().update('A0', { name: 'name-01' }), '!_version').toEqual({ name: 'name-01' });
     expect2(await agent().update('A0', { nick: 'nick-01' }), '!_version').toEqual({ nick: 'nick-01' });
     expect2(await agent().read('A0'), '').toEqual({
@@ -552,6 +562,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     // 1) inner-object update w/ null support
     expect2(await agent().save('A1', { extra: { a: 1 } })).toEqual({ extra: { a: 1 } });
     expect2(await agent().update('A1', { extra: { b: 2 } }), '!_version').toEqual({ extra: { b: 2 } });
+    //TODO - it should be `{ extra: { b:2 } }` => overwrite whole extra object.
     expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: 1, b: 2 } });
 
     expect2(await agent().update('A1', { extra: { a: null } }), '!_version').toEqual({ extra: { a: null } });
@@ -566,7 +577,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     expect2(await agent().save('A1', { a: 1, b: 2 })).toEqual({ a: 1, b: 2 });
     expect2(await agent().read('A1'), '!_version').toEqual({ a: 1, b: 2 });
 
-    //* overwrite inner-object
+    //* overwrite inner-object (it should be overritten after save)
     expect2(await service.updateItem('A1', { extra: { innerObject: 'inner-01' } }).catch(GETERR), '!_version').toEqual({
         _id: 'A1',
         extra: { innerObject: 'inner-01' },
@@ -607,18 +618,22 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
 
     // 3-2) long field increment w/mismatch float
     expect2(await agent().update('A1', null, { longField: 0.345 })).toEqual({ _version: 20 });
-    expect2(await service.readItem('A1'), 'longField').toEqual({ longField: 3 });
+    expect2(await service.readItem('A1'), 'longField').toEqual({ longField: 3 }); // := 1 + 2 + 0 (정수변환이라서)
 
     // 3-3) long field increment w/mismatch array
     expect2(await agent().update('A1', null, { longField: ['a'] })).toEqual('400 MAPPER PARSING');
     expect2(await agent().update('A1', null, { longField: [1] })).toEqual({ _version: 21 });
     expect2(await service.readItem('A1'), 'longField').toEqual({ longField: [1] });
+    //TODO - increment more array.
+    //TODO - `_version: _ver()` use lambda to make next version number.
+    expect2(await agent().update('A1', null, { longField: [2] })).toEqual({ _version: 21 });
+    expect2(await service.readItem('A1'), 'longField').toEqual({ longField: [2] });
 
     // 4-1) float field increment test
     expect2(await agent().update('A1', null, { floatField: 0.2 })).toEqual({ _version: 22 });
     expect2(await agent().update('A1', null, { floatField: 0.03 })).toEqual({ _version: 23 });
     expect2(await agent().update('A1', null, { floatField: 1 })).toEqual({ _version: 24 });
-    expect2(await service.readItem('A1'), 'floatField').toEqual({ floatField: 1.23 });
+    expect2(await service.readItem('A1'), 'floatField').toEqual({ floatField: 1.23 }); // := 0.2 + 0.03 + 1
 
     // 4-2) float field increment w/mismatch array
     expect2(await agent().update('A1', null, { floatField: ['a'] })).toEqual('400 MAPPER PARSING');
