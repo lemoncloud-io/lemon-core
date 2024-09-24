@@ -1300,7 +1300,7 @@ export interface Elastic6Item extends ElasticItem {}
  * class: `Elastic6Service`
  * - basic CRUD service for Elastic Search 6
  */
-export class Elastic6Service<T extends Elastic6Item = any> extends ElasticIndexService<T> {
+export class Elastic6Service<T extends Elastic6Item = Elastic6Item> extends ElasticIndexService<T> {
     constructor(options: Elastic6Option) {
         super(options);
         _inf('Elastic6Service', `Elastic6Service(${options.indexName}/${options.idName})...`);
@@ -1396,14 +1396,15 @@ export class Elastic6Service<T extends Elastic6Item = any> extends ElasticIndexS
         if (this.isOldES6) {
             params.type = type;
         }
+        const scripts: string[] = [];
         if (increments) {
             //* it will create if not exists.
             params.body.upsert = { ...increments, [idName]: id };
 
-            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
+            Object.entries(increments).forEach(([key, val]) => {
                 if (Array.isArray(val)) {
                     // If the value is an array, append it to the existing array in the source
-                    L.push(
+                    scripts.push(
                         `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) {
                                 ctx._source.${key}.addAll(params.increments.${key});
                             } else {
@@ -1412,7 +1413,7 @@ export class Elastic6Service<T extends Elastic6Item = any> extends ElasticIndexS
                     );
                 } else {
                     // If the value is a number, increment the existing field
-                    L.push(
+                    scripts.push(
                         `if (ctx._source.${key} != null) {
                                 ctx._source.${key} += params.increments.${key};
                             } else {
@@ -1420,24 +1421,22 @@ export class Elastic6Service<T extends Elastic6Item = any> extends ElasticIndexS
                             }`,
                     );
                 }
-                return L;
-            }, []);
-
-            if (item) {
-                // Handle item updates in the script
-                Object.entries(item).forEach(([key]) => {
-                    scripts.push(`ctx._source.${key} = params.item.${key};`);
-                });
-            }
-
-            params.body.script = {
-                source: scripts.join(' '),
-                lang: 'painless',
-                params: { item, increments },
-            };
-        } else if (item) {
-            params.body.doc = item;
+            });
         }
+
+        if (item) {
+            // Handle item updates in the script
+            Object.entries(item).forEach(([key]) => {
+                scripts.push(`ctx._source.${key} = params.item.${key};`);
+            });
+        }
+
+        params.body.script = {
+            source: scripts.join(' '),
+            lang: 'painless',
+            params: { item, increments },
+        };
+
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         const client = this.client;
