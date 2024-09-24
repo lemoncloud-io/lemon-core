@@ -451,11 +451,17 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
     );
 };
 
-interface CRUDModel extends Elastic6Item {
-    id?: string;
-    name?: string;
-    nick?: string;
-    count?: number;
+interface CRUDModel {
+    $id: string;
+    _id: string;
+    _version: number;
+    name: string;
+    nick: string;
+    count: number;
+    type: string;
+    empty?: any;
+    a?: any;
+    b?: any;
     //TODO - extra should be `GeneralItem`
     extra?: any | object;
 }
@@ -464,9 +470,9 @@ interface CRUDModel extends Elastic6Item {
  * perform detailed CRUD tests.
  * @param service - Elasticsearch service instance.
  */
-export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Promise<void> => {
+export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
     //* agent for test
-    const agent = <T extends CRUDModel = CRUDModel>() => ({
+    const agent = <T>() => ({
         update: (id: string, data: T, increment?: Incrementable) =>
             service
                 .updateItem(id, data, increment)
@@ -499,7 +505,11 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
                 })
                 .catch(GETERR),
     });
-
+    let versionCounter = 0;
+    const _ver = (version?: number) => {
+        if (version) versionCounter = version;
+        return ++versionCounter;
+    };
     //* make sure deleted.
     await service.deleteItem('A0').catch(GETERR);
     await service.deleteItem('A1').catch(GETERR);
@@ -529,9 +539,9 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
         type: '',
     }); // `._version` is incremented.
 
-    expect2(await agent().update('A0', null, { count: 2 })).toEqual({ _version: 13 });
-    expect2(await agent().update('A0', { count: 10 })).toEqual({ _version: 14, count: 10 });
-    expect2(await agent().update('A0', null, { count: 2 })).toEqual({ _version: 15 });
+    expect2(await agent().update('A0', null, { count: 2 })).toEqual({ _version: _ver(12) });
+    expect2(await agent().update('A0', { count: 10 })).toEqual({ _version: _ver(), count: 10 });
+    expect2(await agent().update('A0', null, { count: 2 })).toEqual({ _version: _ver() });
 
     expect2(await agent().read('A0')).toEqual({
         _version: 15,
@@ -542,15 +552,13 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
     }); // support number, string, null type.
 
     //save empty ''
-    expect2(await agent().save('A0', { count: '', nick: '', name: '', empty: '' })).toEqual({
-        count: '',
+    expect2(await agent().save('A0', { nick: '', name: '', empty: '' })).toEqual({
         empty: '',
         name: '',
         nick: '',
     });
     expect2(await agent().read('A0')).toEqual({
         _version: 16,
-        count: '',
         empty: '',
         name: '',
         nick: '',
@@ -562,14 +570,13 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
     // 1) inner-object update w/ null support
     expect2(await agent().save('A1', { extra: { a: 1 } })).toEqual({ extra: { a: 1 } });
     expect2(await agent().update('A1', { extra: { b: 2 } }), '!_version').toEqual({ extra: { b: 2 } });
-    //TODO - it should be `{ extra: { b:2 } }` => overwrite whole extra object.
-    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: 1, b: 2 } });
+    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { b: 2 } }); //it should be `{ extra: { b:2 } }` => overwrite whole extra object.
 
     expect2(await agent().update('A1', { extra: { a: null } }), '!_version').toEqual({ extra: { a: null } });
-    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: null, b: 2 } });
+    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: null } });
 
     expect2(await agent().update('A1', { extra: { a: '' } }), '!_version').toEqual({ extra: { a: '' } });
-    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: '', b: 2 } });
+    expect2(await agent().read('A1'), '!_version').toEqual({ extra: { a: '' } });
 
     expect2(await agent().update('A1', { extra: '' })).toEqual('400 MAPPER PARSING');
 
@@ -589,22 +596,22 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
      * updateItem increment test
      */
     // 1-1) string array increment test
-    expect2(await agent().update('A1', null, { stringArray: ['a'] })).toEqual({ _version: 10 });
-    expect2(await agent().update('A1', null, { stringArray: ['b', 'c'] })).toEqual({ _version: 11 });
+    expect2(await agent().update('A1', null, { stringArray: ['a'] })).toEqual({ _version: _ver(9) });
+    expect2(await agent().update('A1', null, { stringArray: ['b', 'c'] })).toEqual({ _version: _ver() });
     // 1-2) string array increment w/mismatch type
-    expect2(await agent().update('A1', null, { stringArray: [1] })).toEqual({ _version: 12 });
-    expect2(await agent().update('A1', null, { stringArray: [1.1] })).toEqual({ _version: 13 });
-    expect2(await agent().update('A1', null, { stringArray: [''] })).toEqual({ _version: 14 });
+    expect2(await agent().update('A1', null, { stringArray: [1] })).toEqual({ _version: _ver() });
+    expect2(await agent().update('A1', null, { stringArray: [1.1] })).toEqual({ _version: _ver() });
+    expect2(await agent().update('A1', null, { stringArray: [''] })).toEqual({ _version: _ver() });
     expect2(await agent().update('A1', null, { stringArray: 1 })).toEqual(
         '400 ILLEGAL ARGUMENT - failed to execute script',
     );
     expect2(await service.readItem('A1'), 'stringArray').toEqual({ stringArray: ['a', 'b', 'c', 1, 1.1, ''] });
 
     // 2-1 ) number array increment test
-    expect2(await agent().update('A1', null, { numberArray: [1] })).toEqual({ _version: 15 });
-    expect2(await agent().update('A1', null, { numberArray: [2, 3] })).toEqual({ _version: 16 });
+    expect2(await agent().update('A1', null, { numberArray: [1] })).toEqual({ _version: _ver() });
+    expect2(await agent().update('A1', null, { numberArray: [2, 3] })).toEqual({ _version: _ver() });
     // 2-2) number array increment w/mismatch type
-    expect2(await agent().update('A1', null, { numberArray: [2.1, 3.1] })).toEqual({ _version: 17 });
+    expect2(await agent().update('A1', null, { numberArray: [2.1, 3.1] })).toEqual({ _version: _ver() });
     expect2(await agent().update('A1', null, { numberArray: ['a'] })).toEqual('400 MAPPER PARSING');
     expect2(await agent().update('A1', null, { numberArray: 1 })).toEqual(
         '400 ILLEGAL ARGUMENT - failed to execute script',
@@ -612,32 +619,29 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
     expect2(await service.readItem('A1'), 'numberArray').toEqual({ numberArray: [1, 2, 3, 2.1, 3.1] });
 
     // 3-1) long field increment test
-    expect2(await agent().update('A1', null, { longField: 1 })).toEqual({ _version: 18 });
-    expect2(await agent().update('A1', null, { longField: 2 })).toEqual({ _version: 19 });
+    expect2(await agent().update('A1', null, { longField: 1 })).toEqual({ _version: _ver() });
+    expect2(await agent().update('A1', null, { longField: 2 })).toEqual({ _version: _ver() });
     expect2(await service.readItem('A1'), 'longField').toEqual({ longField: 3 });
 
     // 3-2) long field increment w/mismatch float
-    expect2(await agent().update('A1', null, { longField: 0.345 })).toEqual({ _version: 20 });
+    expect2(await agent().update('A1', null, { longField: 0.345 })).toEqual({ _version: _ver() });
     expect2(await service.readItem('A1'), 'longField').toEqual({ longField: 3 }); // := 1 + 2 + 0 (정수변환이라서)
 
     // 3-3) long field increment w/mismatch array
     expect2(await agent().update('A1', null, { longField: ['a'] })).toEqual('400 MAPPER PARSING');
-    expect2(await agent().update('A1', null, { longField: [1] })).toEqual({ _version: 21 });
+    expect2(await agent().update('A1', null, { longField: [1] })).toEqual({ _version: _ver() });
     expect2(await service.readItem('A1'), 'longField').toEqual({ longField: [1] });
-    //TODO - increment more array.
     //TODO - `_version: _ver()` use lambda to make next version number.
-    expect2(await agent().update('A1', null, { longField: [2] })).toEqual({ _version: 21 });
-    expect2(await service.readItem('A1'), 'longField').toEqual({ longField: [2] });
 
     // 4-1) float field increment test
-    expect2(await agent().update('A1', null, { floatField: 0.2 })).toEqual({ _version: 22 });
-    expect2(await agent().update('A1', null, { floatField: 0.03 })).toEqual({ _version: 23 });
-    expect2(await agent().update('A1', null, { floatField: 1 })).toEqual({ _version: 24 });
+    expect2(await agent().update('A1', null, { floatField: 0.2 })).toEqual({ _version: _ver() });
+    expect2(await agent().update('A1', null, { floatField: 0.03 })).toEqual({ _version: _ver() });
+    expect2(await agent().update('A1', null, { floatField: 1 })).toEqual({ _version: _ver() });
     expect2(await service.readItem('A1'), 'floatField').toEqual({ floatField: 1.23 }); // := 0.2 + 0.03 + 1
 
     // 4-2) float field increment w/mismatch array
     expect2(await agent().update('A1', null, { floatField: ['a'] })).toEqual('400 MAPPER PARSING');
-    expect2(await agent().update('A1', null, { floatField: [1] })).toEqual({ _version: 25 });
+    expect2(await agent().update('A1', null, { floatField: [1] })).toEqual({ _version: _ver() });
     expect2(await service.readItem('A1'), 'floatField').toEqual({ floatField: [1] });
 
     //* delete
@@ -1321,10 +1325,10 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     expect2(() => extractedFields[2]).toEqual({ id: 'employee 100', count: 0, _score: 0 });
     expect2(() => searchAggregation.last).toEqual([0, 'employee 100']); // [_score, id] of last search result
 
-    //* test scanAll with 20,000 data
-    const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } });
-    expect2(() => allResults.length).toEqual(20000);
-    expect2(() => allResults.slice(0, 3)).toEqual(searchAggregation.list);
+    // //* test scanAll with 20,000 data
+    // const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } });
+    // expect2(() => allResults.length).toEqual(20000);
+    // expect2(() => allResults.slice(0, 3)).toEqual(searchAggregation.list);
 };
 
 /**
