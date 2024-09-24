@@ -451,28 +451,28 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
     );
 };
 
-interface CRUDModel {
-    $id: string;
-    _id: string;
-    _version: number;
-    name: string;
-    nick: string;
-    count: number;
-    type: string;
+interface CRUDModel extends Elastic6Item {
+    $id?: string | any;
+    _id?: string | any;
+    _version?: number | any;
+    name?: string | any;
+    nick?: string | any;
+    count?: number | any;
+    type?: string | any;
     empty?: any;
     a?: any;
     b?: any;
     //TODO - extra should be `GeneralItem`
-    extra?: any | object;
+    extra?: object | any;
 }
 
 /**
  * perform detailed CRUD tests.
  * @param service - Elasticsearch service instance.
  */
-export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Promise<void> => {
     //* agent for test
-    const agent = <T>() => ({
+    const agent = <T extends CRUDModel = any>() => ({
         update: (id: string, data: T, increment?: Incrementable) =>
             service
                 .updateItem(id, data, increment)
@@ -585,8 +585,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<any>): Promise<v
     expect2(await agent().read('A1'), '!_version').toEqual({ a: 1, b: 2 });
 
     //* overwrite inner-object (it should be overritten after save)
-    expect2(await service.updateItem('A1', { extra: { innerObject: 'inner-01' } }).catch(GETERR), '!_version').toEqual({
-        _id: 'A1',
+    expect2(await agent().update('A1', { extra: { innerObject: 'inner-01' } }), '!_version').toEqual({
         extra: { innerObject: 'inner-01' },
     });
     expect2(await agent().save('A1', { extra: { a: 1, b: 2 } })).toEqual({ extra: { a: 1, b: 2 } });
@@ -1325,10 +1324,10 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
     expect2(() => extractedFields[2]).toEqual({ id: 'employee 100', count: 0, _score: 0 });
     expect2(() => searchAggregation.last).toEqual([0, 'employee 100']); // [_score, id] of last search result
 
-    // //* test scanAll with 20,000 data
-    // const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } });
-    // expect2(() => allResults.length).toEqual(20000);
-    // expect2(() => allResults.slice(0, 3)).toEqual(searchAggregation.list);
+    //* test scanAll with 20,000 data
+    const allResults = await service.searchAll($search, { retryOptions: { do: true, t: 10000, maxRetries: 100 } });
+    expect2(() => allResults.length).toEqual(20000);
+    expect2(() => allResults.slice(0, 3)).toEqual(searchAggregation.list);
 };
 
 /**
