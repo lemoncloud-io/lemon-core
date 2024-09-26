@@ -604,7 +604,8 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
     expect2(await agent().update('A1', null, { stringArray: 1 })).toEqual(
         '400 ILLEGAL ARGUMENT - failed to execute script',
     );
-    expect2(await service.readItem('A1'), 'stringArray').toEqual({ stringArray: ['a', 'b', 'c', 1, 1.1, ''] });
+    expect2(await agent().update('A1', null, { stringArray: [1] })).toEqual({ _version: _ver() });
+    expect2(await service.readItem('A1'), 'stringArray').toEqual({ stringArray: ['a', 'b', 'c', 1, 1.1, '', 1] });
 
     // 2-1 ) number array increment test
     expect2(await agent().update('A1', null, { numberArray: [1] })).toEqual({ _version: _ver() });
