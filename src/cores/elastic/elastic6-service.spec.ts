@@ -456,9 +456,9 @@ interface CRUDModel extends Elastic6Item {
     nick?: string;
     count?: number;
     type?: string;
-    empty?: any;
-    a?: any;
-    b?: any;
+    empty?: string | string[] | number | number[];
+    a?: string | string[] | number | number[];
+    b?: string | string[] | number | number[];
     //TODO - extra should be `GeneralItem`
     extra?: object | any;
 }
