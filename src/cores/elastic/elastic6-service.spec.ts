@@ -452,13 +452,10 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
 };
 
 interface CRUDModel extends Elastic6Item {
-    $id?: string | any;
-    _id?: string | any;
-    _version?: number | any;
-    name?: string | any;
-    nick?: string | any;
-    count?: number | any;
-    type?: string | any;
+    $id?: string;
+    nick?: string;
+    count?: number;
+    type?: string;
     empty?: any;
     a?: any;
     b?: any;

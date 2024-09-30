@@ -70,10 +70,14 @@ export interface ElasticOption {
 /**
  * common type of item
  */
-export interface ElasticItem extends GeneralItem {
+export interface ElasticItem {
     _id?: string;
     _version?: number;
     _score?: number;
+    /**
+     * only has simple string or number (and in arrays)
+     */
+    [key: string]: string | string[] | number | number[];
 }
 
 /**
