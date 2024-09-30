@@ -77,7 +77,7 @@ export interface ElasticItem {
     /**
      * only has simple string or number (and in arrays)
      */
-    [key: string]: string | string[] | number | number[];
+    [key: string]: string | string[] | number | number[] | undefined;
 }
 
 /**
@@ -186,12 +186,9 @@ const _S = (v: any, def: string = '') =>
  * abstarct class: `ElasticIndexService`
  * - abstract class for basic Elasticsearch CRUD operations
  * - common operations that are shared across different versions.
+ * TODO - support `Elastic` and `OpenSearch`
  */
 export abstract class ElasticIndexService<T extends ElasticItem = any> {
-    // internal field name to store analyzed strings for autocomplete search
-    public static readonly DECOMPOSED_FIELD = '_decomposed';
-    public static readonly QWERTY_FIELD = '_qwerty';
-
     protected _options: ElasticOption;
     public readonly _client: elasticsearch.Client;
 
@@ -249,6 +246,112 @@ export abstract class ElasticIndexService<T extends ElasticItem = any> {
     public get version(): number {
         const ver = $U.F(this.options.version, 6.8);
         return ver;
+    }
+    /**
+     * say hello
+     */
+    public abstract hello(): string;
+    /**
+     * save an item
+     * @param id - item id
+     * @param item - item to save
+     * @param type - document type
+     */
+    public abstract saveItem(id: string, item: T, type?: string): Promise<T>;
+
+    /**
+     * push item for time-series data
+     * @param item - item to push
+     * @param type - document type
+     */
+    public abstract pushItem(item: T, type?: string): Promise<T>;
+
+    /**
+     * read item with projections
+     * @param id - item id
+     * @param views - projections
+     */
+    public abstract readItem(id: string, views?: string[] | object): Promise<T>;
+
+    /**
+     * delete an item by id
+     * @param id - item id
+     */
+    public abstract deleteItem(id: string): Promise<T>;
+    /**
+     * update an item
+     * @param id - item id
+     * @param item - item to update
+     * @param increments - fields to increment
+     */
+    public abstract updateItem(
+        id: string,
+        item: T | null,
+        increments?: any,
+        options?: { maxRetries?: number },
+    ): Promise<T>;
+
+    /**
+     * search raw results using a query body
+     * @param body - search query
+     * @param searchType - type of search
+     */
+    public abstract searchRaw<T extends object = any>(body: any, searchType?: string): Promise<T>;
+
+    /**
+     * search and return formatted response
+     * @param body - search query
+     * @param searchType - type of search
+     */
+    public abstract search(body: any, searchType?: string): Promise<any>;
+}
+
+/** ****************************************************************************************************************
+ *  Elastic6Service
+ ** ****************************************************************************************************************/
+export interface Elastic6Option extends ElasticOption {}
+export interface Elastic6Item extends ElasticItem {}
+/**
+ * class: `Elastic6Service`
+ * - extends `ElasticIndexService` and adds version-specific implementation
+ */
+export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexService {
+    // internal field name to store analyzed strings for autocomplete search
+    public static readonly DECOMPOSED_FIELD = '_decomposed';
+    public static readonly QWERTY_FIELD = '_qwerty';
+    /**
+     * default constuctor w/ options.
+     * @param options { endpoint, indexName } is required.
+     */
+    constructor(options: Elastic6Option) {
+        super(options);
+        _inf('Elastic6Service', `Elastic6Service(${options.indexName}/${options.idName})...`);
+    }
+    /**
+     * say hello of identity.
+     */
+    public hello = () => `elastic6-service:${this.options.indexName}:${this.options.version}`;
+    /**
+     * get isOldES6
+     * - used when setting doctype
+     * - used when verifying mismatched error and results of search
+     */
+    public get isOldES6(): boolean {
+        return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
+    }
+    /**
+     * get isOldES71
+     * - used when verifying mismatched error
+     */
+    public get isOldES71(): boolean {
+        return this.parsedVersion.major == 7 && this.parsedVersion.minor == 1 && this.parsedVersion.engine === 'es';
+    }
+    /**
+     * get isLatestOS2
+     * - used when verifying results of search
+     */
+    public get isLatestOS2(): boolean {
+        return this.parsedVersion.major >= 2 && this.parsedVersion.engine === 'os';
     }
     /**
      * get the parsedVersion
@@ -367,357 +470,6 @@ export abstract class ElasticIndexService<T extends ElasticItem = any> {
                 throw e;
             });
         }
-    }
-
-    /**
-     * prepare default setting
-     * - migrated from engine-v2.
-     *
-     * @param docType       document type name
-     * @param idName        id-name
-     * @param shards        number of shards (default 4)
-     * @param replicas      number of replicas (default 1)
-     * @param timeSeries    flag of TIMESERIES (default false)
-     */
-    public static prepareSettings(params: {
-        docType: string;
-        idName: string;
-        version?: string;
-        timeSeries?: boolean;
-        shards?: number;
-        replicas?: number;
-    }) {
-        const docType: string = params.docType === undefined ? '_doc' : params.docType;
-        const idName: string = params.idName === undefined ? '$id' : params.idName;
-        const version: number = $U.F(params.version === undefined ? '6.8' : params.version);
-        const shards: number = params.shards === undefined ? 4 : params.shards;
-        const replicas: number = params.replicas === undefined ? 1 : params.replicas;
-        const timeSeries: boolean = params.timeSeries === undefined ? false : params.timeSeries;
-
-        //* core config.
-        const CONF_ES_DOCTYPE = docType;
-        const CONF_ID_NAME = idName;
-        const CONF_ES_TIMESERIES = !!timeSeries;
-
-        const ES_MAPPINGS = {
-            // NOTE: the order of dynamic templates are important.
-            dynamic_templates: [
-                // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
-                {
-                    autocomplete: {
-                        path_match: `${ElasticIndexService.DECOMPOSED_FIELD}.*`,
-                        mapping: {
-                            type: 'text',
-                            analyzer: 'autocomplete_case_insensitive',
-                            search_analyzer: 'standard',
-                        },
-                    },
-                },
-                // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
-                {
-                    autocomplete_qwerty: {
-                        path_match: `${ElasticIndexService.QWERTY_FIELD}.*`,
-                        mapping: {
-                            type: 'text',
-                            analyzer: 'autocomplete_case_sensitive',
-                            search_analyzer: 'whitespace',
-                        },
-                    },
-                },
-                // 3. string type ID field
-                {
-                    string_id: {
-                        match_mapping_type: 'string',
-                        match: CONF_ID_NAME,
-                        mapping: {
-                            type: 'keyword',
-                            ignore_above: 256,
-                        },
-                    },
-                },
-                // 4. any other string fields - use Hangul analyzer and create 'keyword' sub-field
-                {
-                    strings: {
-                        match_mapping_type: 'string',
-                        mapping: {
-                            type: 'text',
-                            analyzer: 'hangul',
-                            search_analyzer: 'hangul',
-                            fields: {
-                                // keyword sub-field
-                                // 문자열 타입에 대한 템플릿을 지정하지 않으면 기본으로 ES가 '.keyword' 서브필드를 생성하나
-                                // 문자열 타입 템플릿 재정의 시 기본으로 생성되지 않으므로 명시적으로 선언함.
-                                keyword: {
-                                    type: 'keyword',
-                                    ignore_above: 256,
-                                },
-                            },
-                        },
-                    },
-                },
-            ],
-            properties: {
-                '@version': {
-                    type: 'keyword',
-                    index: false,
-                },
-                created_at: {
-                    type: 'date',
-                    format: 'strict_date_optional_time||epoch_millis',
-                },
-                updated_at: {
-                    type: 'date',
-                    format: 'strict_date_optional_time||epoch_millis',
-                },
-                deleted_at: {
-                    type: 'date',
-                    format: 'strict_date_optional_time||epoch_millis',
-                },
-            },
-        };
-
-        //* default settings.
-        const ES_SETTINGS: any = {
-            settings: {
-                number_of_shards: shards,
-                number_of_replicas: replicas,
-                analysis: {
-                    tokenizer: {
-                        hangul: {
-                            type: 'seunjeon_tokenizer',
-                            decompound: true, // 복합명사 분해
-                            deinflect: true, // 활용어의 원형 추출
-                            index_eojeol: true, // 어절 추출
-                            pos_tagging: false, // 품사 태깅
-                        },
-                        edge_30grams: {
-                            type: 'edge_ngram',
-                            min_gram: 1,
-                            max_gram: 30,
-                            token_chars: ['letter', 'digit', 'punctuation', 'symbol'],
-                        },
-                    },
-                    analyzer: {
-                        hangul: {
-                            type: 'custom',
-                            tokenizer: 'hangul',
-                            filter: ['lowercase'],
-                        },
-                        autocomplete_case_insensitive: {
-                            type: 'custom',
-                            tokenizer: 'edge_30grams',
-                            filter: ['lowercase'],
-                        },
-                        autocomplete_case_sensitive: {
-                            type: 'custom',
-                            tokenizer: 'edge_30grams',
-                            filter: version < 7 && version >= 6 ? ['standard'] : [], //* error - The [standard] token filter has been removed.
-                        },
-                    },
-                },
-            },
-            //* since 7.x. no mapping for types.
-            mappings: version < 7 && version >= 6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
-        };
-
-        //* timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
-        if (!!CONF_ES_TIMESERIES) {
-            ES_SETTINGS.settings.refresh_interval = '5s';
-            if (version < 7 && version >= 6) {
-                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
-                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
-
-                //* clear mappings.
-                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
-                CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
-            } else {
-                ES_SETTINGS.mappings.properties['@timestamp'] = { type: 'date', doc_values: true };
-                ES_SETTINGS.mappings.properties['ip'] = { type: 'ip' };
-
-                //* clear mappings.
-                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
-                CLEANS.map(key => delete ES_SETTINGS.properties[key]);
-            }
-        }
-
-        //* returns settings.
-        return ES_SETTINGS;
-    }
-
-    /**
-     * generate autocomplete fields into the item body to be indexed
-     * @param body  item body to be saved into ES6 index
-     * @private
-     */
-    protected popullateAutocompleteFields<T = any>(body: T): T {
-        const { autocompleteFields } = this.options;
-        const isAutoComplete = autocompleteFields && Array.isArray(autocompleteFields) && autocompleteFields.length > 0;
-        if (!isAutoComplete) return body;
-        return autocompleteFields.reduce<T>(
-            (N, field) => {
-                const value = (body as any)[field] as string;
-                if (typeof value == 'string' || value) {
-                    // 한글의 경우 자모 분해 형태와 영자판 변형 형태를 제공하고, 영문의 경우 원본 텍스트만 제공한다.
-                    // 다만 사용자가 공백/하이픈을 생략하고 입력하는 경우에 대응하기 위해 공백/하이픈을 제거한 형태를 공통으로 제공한다.
-                    if ($hangul.isHangul(value, true)) {
-                        // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
-                        const decomposed = $hangul.asJamoSequence(value);
-                        const recomposed = decomposed.replace(/[ -]/g, '');
-                        (N as any)[ElasticIndexService.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
-                        // 영자판 (e.g. '레몬' -> 'fpahs')
-                        (N as any)[ElasticIndexService.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
-                    } else {
-                        const recomposed = value.replace(/[ -]/g, '');
-                        (N as any)[ElasticIndexService.DECOMPOSED_FIELD][field] = [value, recomposed];
-                    }
-                }
-                return N;
-            },
-            { ...body, [ElasticIndexService.DECOMPOSED_FIELD]: {}, [ElasticIndexService.QWERTY_FIELD]: {} },
-        );
-    }
-    /**
-     * say hello
-     */
-    public abstract hello(): string;
-    /**
-     * list indices
-     */
-    public abstract listIndices(): Promise<{ list: any[] }>;
-
-    /**
-     * get index mapping
-     */
-    public abstract getIndexMapping(): Promise<any>;
-
-    /**
-     * find an index
-     */
-    public abstract findIndex(indexName?: string): Promise<any>;
-
-    /**
-     * create index
-     */
-    public abstract createIndex(settings?: any): Promise<any>;
-
-    /**
-     * destroy an index
-     */
-    public abstract destroyIndex(): Promise<any>;
-
-    /**
-     * refresh index
-     */
-    public abstract refreshIndex(): Promise<T>;
-
-    /**
-     * flush index
-     */
-    public abstract flushIndex(): Promise<T>;
-
-    /**
-     * describe settings and mappings of the index
-     */
-    public abstract describe(): Promise<{ settings: any; mappings: any }>;
-
-    /**
-     * save an item
-     * @param id - item id
-     * @param item - item to save
-     * @param type - document type
-     */
-    public abstract saveItem(id: string, item: T, type?: string): Promise<T>;
-
-    /**
-     * push item for time-series data
-     * @param item - item to push
-     * @param type - document type
-     */
-    public abstract pushItem(item: T, type?: string): Promise<T>;
-
-    /**
-     * read item with projections
-     * @param id - item id
-     * @param views - projections
-     */
-    public abstract readItem(id: string, views?: string[] | object): Promise<T>;
-
-    /**
-     * delete an item by id
-     * @param id - item id
-     */
-    public abstract deleteItem(id: string): Promise<T>;
-
-    /**
-     * update an item
-     * @param id - item id
-     * @param item - item to update
-     * @param increments - fields to increment
-     */
-    public abstract updateItem(
-        id: string,
-        item: T | null,
-        increments?: any,
-        options?: { maxRetries?: number },
-    ): Promise<T>;
-
-    /**
-     * search raw results using a query body
-     * @param body - search query
-     * @param searchType - type of search
-     */
-    public abstract searchRaw<T extends object = any>(body: any, searchType?: string): Promise<T>;
-
-    /**
-     * search and return formatted response
-     * @param body - search query
-     * @param searchType - type of search
-     */
-    public abstract search(body: any, searchType?: string): Promise<any>;
-}
-/** ****************************************************************************************************************
- *  Elastic6Service
- ** ****************************************************************************************************************/
-export interface Elastic6Option extends ElasticOption {}
-export interface Elastic6Item extends ElasticItem {}
-/**
- * class: `Elastic6Service`
- * - extends `ElasticIndexService` and adds version-specific implementation
- */
-export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexService {
-    /**
-     * default constuctor w/ options.
-     * @param options { endpoint, indexName } is required.
-     */
-    constructor(options: Elastic6Option) {
-        super(options);
-        _inf('Elastic6Service', `Elastic6Service(${options.indexName}/${options.idName})...`);
-    }
-    /**
-     * say hello of identity.
-     */
-    public hello = () => `elastic6-service:${this.options.indexName}:${this.options.version}`;
-    /**
-     * get isOldES6
-     * - used when setting doctype
-     * - used when verifying mismatched error and results of search
-     */
-    public get isOldES6(): boolean {
-        return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
-    }
-    /**
-     * get isOldES71
-     * - used when verifying mismatched error
-     */
-    public get isOldES71(): boolean {
-        return this.parsedVersion.major == 7 && this.parsedVersion.minor == 1 && this.parsedVersion.engine === 'es';
-    }
-    /**
-     * get isLatestOS2
-     * - used when verifying results of search
-     */
-    public get isLatestOS2(): boolean {
-        return this.parsedVersion.major >= 2 && this.parsedVersion.engine === 'os';
     }
 
     /**
@@ -1065,8 +817,8 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
         const _version = res.body?._version;
         const data: T = (res as any)?._source || res.body?._source || {};
         // delete internal (analyzed) field
-        delete data[ElasticIndexService.DECOMPOSED_FIELD];
-        delete data[ElasticIndexService.QWERTY_FIELD];
+        delete data[Elastic6Service.DECOMPOSED_FIELD];
+        delete data[Elastic6Service.QWERTY_FIELD];
 
         const res2: T = { ...data, _id, _version };
         return res2;
@@ -1318,6 +1070,213 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                 }
             }
         } while (body.search_after && (limit === -1 || --limit > 0));
+    }
+    /**
+     * prepare default setting
+     * - migrated from engine-v2.
+     *
+     * @param docType       document type name
+     * @param idName        id-name
+     * @param shards        number of shards (default 4)
+     * @param replicas      number of replicas (default 1)
+     * @param timeSeries    flag of TIMESERIES (default false)
+     */
+    public static prepareSettings(params: {
+        docType: string;
+        idName: string;
+        version?: string;
+        timeSeries?: boolean;
+        shards?: number;
+        replicas?: number;
+    }) {
+        const docType: string = params.docType === undefined ? '_doc' : params.docType;
+        const idName: string = params.idName === undefined ? '$id' : params.idName;
+        const version: number = $U.F(params.version === undefined ? '6.8' : params.version);
+        const shards: number = params.shards === undefined ? 4 : params.shards;
+        const replicas: number = params.replicas === undefined ? 1 : params.replicas;
+        const timeSeries: boolean = params.timeSeries === undefined ? false : params.timeSeries;
+
+        //* core config.
+        const CONF_ES_DOCTYPE = docType;
+        const CONF_ID_NAME = idName;
+        const CONF_ES_TIMESERIES = !!timeSeries;
+
+        const ES_MAPPINGS = {
+            // NOTE: the order of dynamic templates are important.
+            dynamic_templates: [
+                // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
+                {
+                    autocomplete: {
+                        path_match: `${Elastic6Service.DECOMPOSED_FIELD}.*`,
+                        mapping: {
+                            type: 'text',
+                            analyzer: 'autocomplete_case_insensitive',
+                            search_analyzer: 'standard',
+                        },
+                    },
+                },
+                // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
+                {
+                    autocomplete_qwerty: {
+                        path_match: `${Elastic6Service.QWERTY_FIELD}.*`,
+                        mapping: {
+                            type: 'text',
+                            analyzer: 'autocomplete_case_sensitive',
+                            search_analyzer: 'whitespace',
+                        },
+                    },
+                },
+                // 3. string type ID field
+                {
+                    string_id: {
+                        match_mapping_type: 'string',
+                        match: CONF_ID_NAME,
+                        mapping: {
+                            type: 'keyword',
+                            ignore_above: 256,
+                        },
+                    },
+                },
+                // 4. any other string fields - use Hangul analyzer and create 'keyword' sub-field
+                {
+                    strings: {
+                        match_mapping_type: 'string',
+                        mapping: {
+                            type: 'text',
+                            analyzer: 'hangul',
+                            search_analyzer: 'hangul',
+                            fields: {
+                                // keyword sub-field
+                                // 문자열 타입에 대한 템플릿을 지정하지 않으면 기본으로 ES가 '.keyword' 서브필드를 생성하나
+                                // 문자열 타입 템플릿 재정의 시 기본으로 생성되지 않으므로 명시적으로 선언함.
+                                keyword: {
+                                    type: 'keyword',
+                                    ignore_above: 256,
+                                },
+                            },
+                        },
+                    },
+                },
+            ],
+            properties: {
+                '@version': {
+                    type: 'keyword',
+                    index: false,
+                },
+                created_at: {
+                    type: 'date',
+                    format: 'strict_date_optional_time||epoch_millis',
+                },
+                updated_at: {
+                    type: 'date',
+                    format: 'strict_date_optional_time||epoch_millis',
+                },
+                deleted_at: {
+                    type: 'date',
+                    format: 'strict_date_optional_time||epoch_millis',
+                },
+            },
+        };
+
+        //* default settings.
+        const ES_SETTINGS: any = {
+            settings: {
+                number_of_shards: shards,
+                number_of_replicas: replicas,
+                analysis: {
+                    tokenizer: {
+                        hangul: {
+                            type: 'seunjeon_tokenizer',
+                            decompound: true, // 복합명사 분해
+                            deinflect: true, // 활용어의 원형 추출
+                            index_eojeol: true, // 어절 추출
+                            pos_tagging: false, // 품사 태깅
+                        },
+                        edge_30grams: {
+                            type: 'edge_ngram',
+                            min_gram: 1,
+                            max_gram: 30,
+                            token_chars: ['letter', 'digit', 'punctuation', 'symbol'],
+                        },
+                    },
+                    analyzer: {
+                        hangul: {
+                            type: 'custom',
+                            tokenizer: 'hangul',
+                            filter: ['lowercase'],
+                        },
+                        autocomplete_case_insensitive: {
+                            type: 'custom',
+                            tokenizer: 'edge_30grams',
+                            filter: ['lowercase'],
+                        },
+                        autocomplete_case_sensitive: {
+                            type: 'custom',
+                            tokenizer: 'edge_30grams',
+                            filter: version < 7 && version >= 6 ? ['standard'] : [], //* error - The [standard] token filter has been removed.
+                        },
+                    },
+                },
+            },
+            //* since 7.x. no mapping for types.
+            mappings: version < 7 && version >= 6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
+        };
+
+        //* timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
+        if (!!CONF_ES_TIMESERIES) {
+            ES_SETTINGS.settings.refresh_interval = '5s';
+            if (version < 7 && version >= 6) {
+                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
+                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
+
+                //* clear mappings.
+                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
+                CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
+            } else {
+                ES_SETTINGS.mappings.properties['@timestamp'] = { type: 'date', doc_values: true };
+                ES_SETTINGS.mappings.properties['ip'] = { type: 'ip' };
+
+                //* clear mappings.
+                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
+                CLEANS.map(key => delete ES_SETTINGS.properties[key]);
+            }
+        }
+
+        //* returns settings.
+        return ES_SETTINGS;
+    }
+
+    /**
+     * generate autocomplete fields into the item body to be indexed
+     * @param body  item body to be saved into ES6 index
+     * @private
+     */
+    protected popullateAutocompleteFields<T = any>(body: T): T {
+        const { autocompleteFields } = this.options;
+        const isAutoComplete = autocompleteFields && Array.isArray(autocompleteFields) && autocompleteFields.length > 0;
+        if (!isAutoComplete) return body;
+        return autocompleteFields.reduce<T>(
+            (N, field) => {
+                const value = (body as any)[field] as string;
+                if (typeof value == 'string' || value) {
+                    // 한글의 경우 자모 분해 형태와 영자판 변형 형태를 제공하고, 영문의 경우 원본 텍스트만 제공한다.
+                    // 다만 사용자가 공백/하이픈을 생략하고 입력하는 경우에 대응하기 위해 공백/하이픈을 제거한 형태를 공통으로 제공한다.
+                    if ($hangul.isHangul(value, true)) {
+                        // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
+                        const decomposed = $hangul.asJamoSequence(value);
+                        const recomposed = decomposed.replace(/[ -]/g, '');
+                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
+                        // 영자판 (e.g. '레몬' -> 'fpahs')
+                        (N as any)[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
+                    } else {
+                        const recomposed = value.replace(/[ -]/g, '');
+                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [value, recomposed];
+                    }
+                }
+                return N;
+            },
+            { ...body, [Elastic6Service.DECOMPOSED_FIELD]: {}, [Elastic6Service.QWERTY_FIELD]: {} },
+        );
     }
 }
 
