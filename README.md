@@ -74,6 +74,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.2.9     | improve `elastic6-service` w/ latest open-search.
 | 3.2.8     | updated `ttypescript^1.5.15`, and optimized.
 | 3.2.7     | cleanup log message in `AWSS3Service`, and optimized.
 | 3.2.6     | improve `listObjects()` in `AWSS3Service` w/ prefix.
