@@ -19,13 +19,12 @@ export const instance = () => {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('HangulService', () => {
-    it('hello', async done => {
+    it('hello', async () => {
         const { service } = instance();
         expect2(await service.hello()).toEqual('hangul-service');
-        done();
     });
 
-    it('validity of public properties', async done => {
+    it('validity of public properties', async () => {
         // 기본 자모
         //  - 자음 14자 ('ㄱ','ㄴ','ㄷ',...,'ㅎ')
         //  - 모음 10자 ('ㅏ','ㅑ','ㅓ',...,'ㅣ')
@@ -41,11 +40,9 @@ describe('HangulService', () => {
         expect2(HangulService.CHOSEONG.every(isCompatibilityJamo)).toBe(true);
         expect2(HangulService.JUNGSEONG.every(isCompatibilityJamo)).toBe(true);
         expect2(HangulService.JONGSEONG.every(isCompatibilityJamo)).toBe(true);
-
-        done();
     });
 
-    it('static methods to identity Hangul characters', async done => {
+    it('static methods to identity Hangul characters', async () => {
         expect2(HangulService.isHangulJamo(''.charCodeAt(0))).toBe(false);
         expect2(HangulService.isHangulJamo('A'.charCodeAt(0))).toBe(false);
         expect2(HangulService.isHangulJamo('가'.charCodeAt(0))).toBe(false);
@@ -69,11 +66,9 @@ describe('HangulService', () => {
         expect2(HangulService.isHangulChar('가'.charCodeAt(0))).toBe(true);
         expect2(HangulService.isHangulChar('ㄱ'.charCodeAt(0))).toBe(true); // U+1100
         expect2(HangulService.isHangulChar('ᄀ'.charCodeAt(0))).toBe(true); // U+3130
-
-        done();
     });
 
-    it('method to identity Hangul text', async done => {
+    it('method to identity Hangul text', async () => {
         const { service } = instance();
 
         expect2(service.isHangul('', false)).toBe(false);
@@ -93,11 +88,9 @@ describe('HangulService', () => {
         expect2(service.isHangul('ㄱ', true)).toBe(true);
         expect2(service.isHangul('1q2w한글!', true)).toBe(true);
         expect2(service.isHangul('레몬클라우드', true)).toBe(true);
-
-        done();
     });
 
-    it('methods to analyze Hangul text', async done => {
+    it('methods to analyze Hangul text', async () => {
         const { service } = instance();
 
         expect2(service.asJamoSequence('')).toBe('');
@@ -131,7 +124,5 @@ describe('HangulService', () => {
         expect2(service.asChoseongSequence('레몬클라우드')).toBe('ㄹㅁㅋㄹㅇㄷ');
         expect2(service.asChoseongSequence('픯')).toBe('ㅍ');
         expect2(service.asChoseongSequence('똠얌꿍')).toBe('ㄸㅇㄲ');
-
-        done();
     });
 });

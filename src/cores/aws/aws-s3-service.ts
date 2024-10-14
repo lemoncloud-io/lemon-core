@@ -201,8 +201,17 @@ export class AWSS3Service implements CoreS3Service {
         const s3 = instance();
         try {
             const data = await s3.headObject(params).promise();
-            _log(NS, '> data =', $U.json(data));
-            // {"AcceptRanges": "bytes", "ContentLength": 47, "ContentType": "application/json; charset=utf-8", "ETag": "\"51f209a54902230ac3395826d7fa1851\"", "Expiration": "expiry-date=\"Mon, 10 Apr 2023 00:00:00 GMT\", rule-id=\"delete-old-json\"", "LastModified": 2023-02-08T14:53:12.000Z, "Metadata": {"contenttype": "application/json; charset=utf8", "md5": "51f209a54902230ac3395826d7fa1851"}, "ServerSideEncryption": "AES256"}
+            _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
+            // const sample = {
+            //     AcceptRanges: 'bytes',
+            //     ContentLength: 47,
+            //     ContentType: 'application/json; charset=utf-8',
+            //     ETag: '"51f209a54902230ac3395826d7fa1851"',
+            //     Expiration: 'expiry-date="Mon, 10 Apr 2023 00:00:00 GMT", rule-id="delete-old-json"',
+            //     LastModified: '2023-02-08T14:53:12.000Z',
+            //     Metadata: { contenttype: 'application/json; charset=utf8', md5: '51f209a54902230ac3395826d7fa1851' },
+            //     ServerSideEncryption: 'AES256',
+            // };
             const result: HeadObjectResult = {
                 ContentType: data.ContentType,
                 ContentLength: data.ContentLength,
@@ -343,8 +352,8 @@ export class AWSS3Service implements CoreS3Service {
         const s3 = instance();
         try {
             const data = await s3.getObjectTagging(params).promise();
-            _log(NS, `> data =`, data);
-            return data.TagSet.reduce<TagSet>((tagSet, tag) => {
+            _log(NS, `> data =`, $U.json(data));
+            return data?.TagSet?.reduce<TagSet>((tagSet, tag) => {
                 const { Key, Value } = tag;
                 tagSet[Key] = Value;
                 return tagSet;
@@ -421,7 +430,9 @@ export class AWSS3Service implements CoreS3Service {
         };
         try {
             const data = await s3.listObjectsV2(params).promise();
-            _log(NS, '> data =', $U.json(data));
+            //INFO! - minimize log output....
+            _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
+            _log(NS, '> data[0] =', $U.json(data?.Contents?.[0]));
             if (data) {
                 result.Contents = data.Contents;
                 result.MaxKeys = data.MaxKeys;
