@@ -1,0 +1,53 @@
+{
+    "!": "searchAll시 발생하는 429 Too Many Requests 에러 케이스",
+    "name": "ResponseError",
+    "meta": {
+      "body": "429 Too Many Requests /test-v6.2/_doc/_search",
+      "statusCode": 429,
+      "headers": {
+        "date": "Tue, 06 Aug 2024 08:37:36 GMT",
+        "content-type": "text/plain;charset=ISO-8859-1",
+        "content-length": "45",
+        "connection": "keep-alive"
+      },
+      "meta": {
+        "context": null,
+        "request": {
+          "params": {
+            "method": "POST",
+            "path": "/test-v6.2/_doc/_search",
+            "body": "{\"size\":5,\"query\":{\"bool\":{\"filter\":{\"term\":{\"name\":\"data\"}}}},\"aggs\":{\"indexing\":{\"terms\":{\"field\":\"count\"}}},\"sort\":[{\"count\":{\"order\":\"asc\",\"missing\":\"_last\"}}],\"search_after\":[510]}",
+            "querystring": "",
+            "headers": {
+              "user-agent": "elasticsearch-js/7.12.0 (darwin 23.5.0-arm64; Node.js v18.19.1)",
+              "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1",
+              "content-type": "application/json",
+              "content-length": "185"
+            },
+            "timeout": 30000
+          },
+          "options": {},
+          "id": 234
+        },
+        "name": "elasticsearch-js",
+        "connection": {
+          "url": "https://localhost:8443/",
+          "id": "https://localhost:8443/",
+          "headers": {},
+          "deadCount": 0,
+          "resurrectTimeout": 0,
+          "_openRequests": 0,
+          "status": "alive",
+          "roles": {
+            "master": true,
+            "data": true,
+            "ingest": true,
+            "ml": false
+          }
+        },
+        "attempts": 0,
+        "aborted": false
+      }
+    }
+  }
+  
