@@ -13,7 +13,7 @@ import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, environ } from '../../common/test-helper';
 
 import { loadDataYml } from '../../tools/';
-import { GeneralItem } from './../core-types';
+import { GeneralItem } from 'lemon-model';
 import { DynamoService, DummyDynamoService, DynamoOption } from './dynamo-service';
 
 interface MyModel extends GeneralItem {
@@ -66,6 +66,16 @@ describe('DynamoService', () => {
             expect2(() => payload.UpdateExpression).toBe('SET #myField = :myField');
             expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField': 'myField' });
             expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField': 'str' });
+
+            payload = dummy.prepareUpdateItem(id, sort, { myField_: 'str' });
+            expect2(() => payload.UpdateExpression).toBe('SET #myField_ = :myField_');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField_': 'myField_' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField_': 'str' });
+
+            payload = dummy.prepareUpdateItem(id, sort, { myField$: 'str' });
+            expect2(() => payload.UpdateExpression).toBe('SET #myField_ = :myField_');
+            expect2(() => payload.ExpressionAttributeNames).toEqual({ '#myField_': 'myField$' });
+            expect2(() => payload.ExpressionAttributeValues).toEqual({ ':myField_': 'str' });
 
             payload = dummy.prepareUpdateItem(id, sort, { fieldA: 'str', fieldB: null });
             expect2(() => payload.UpdateExpression).toBe('SET #fieldA = :fieldA, #fieldB = :fieldB');

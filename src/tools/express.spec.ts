@@ -10,7 +10,7 @@
  */
 import { $engine, $U } from '../engine/';
 import { expect2 } from '../common/test-helper';
-import { NextDecoder, NextHandler } from '../cores/core-types';
+import { NextDecoder, NextHandler } from 'lemon-model';
 import { buildExpress } from './express';
 import { loadJsonSync } from './shared';
 import request from 'supertest';

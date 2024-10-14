@@ -9,16 +9,15 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../../environ';
+import { CoreModel, CORE_FIELDS } from 'lemon-model';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, do_parrallel } from '../../engine';
 import { expect2, GETERR } from '../../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageService } from './storage-service';
 import {
-    CoreModel,
     ProxyStorageService,
     GeneralKeyMaker,
     GeneralModelFilter,
-    CORE_FIELDS,
     CoreKeyMakeable,
     CoreModelFilterable,
     UniqueFieldManager,
@@ -118,7 +117,7 @@ describe('ProxyStorageService', () => {
         expect2(storage.asTime(current)).toEqual({ createdAt: current + 10, updatedAt: current + 100, deletedAt: current + 1000 });
 
         //! check fields count.
-        expect2(CORE_FIELDS.length).toEqual(11);
+        expect2(CORE_FIELDS.length).toEqual(12);
         expect2(FIELDS.length).toEqual(2);
 
         /* eslint-enable prettier/prettier */
@@ -142,7 +141,7 @@ describe('ProxyStorageService', () => {
             expect2(storage.hello()).toEqual('proxy-storage-service:dummy-storage-service:dummy-account-data/_id');
         } else {
             //! check count of fields
-            const FIELD_COUNT = 5 + CORE_FIELDS.length + FIELDS.length - 2; // `type,meta` is common w/ StorageModel.
+            const FIELD_COUNT = 5 + CORE_FIELDS.length + FIELDS.length - 3; // `type,meta` is common w/ StorageModel.
             expect2(storage.hello()).toEqual(`proxy-storage-service:dynamo-storage-service:TestCoreTable/_id/${FIELD_COUNT}`);
             //! ignore if no profile loaded.
             if (!PROFILE) return done();

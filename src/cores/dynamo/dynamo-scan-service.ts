@@ -9,7 +9,7 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { _log, _inf, $U } from '../../engine/';
-import { GeneralItem } from '../core-types';
+import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
 const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -125,14 +125,15 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         //! get instance of dynamodoc, and execute query().
         const { dynamodoc } = DynamoService.instance();
         const res = await dynamodoc.scan(payload).promise();
-        _log(NS, `> scan.res =`, $U.json(res));
+        _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
+        res?.Items && _log(NS, `> scan[0] =`, $U.json(res?.Items?.[0]));
 
         const items: unknown[] = res.Items || [];
         const count = res.Count;
         const scannedCount = res.ScannedCount;
         const $lek = res.LastEvaluatedKey || {};
-        _log(NS, `> scan.items.len =`, items.length);
         _log(NS, `> scan.count =`, count);
+        _log(NS, `> scan.items.len =`, items.length);
         _log(NS, `> scan.scannedCount =`, scannedCount);
         _log(NS, `> scan.last =`, $lek);
 

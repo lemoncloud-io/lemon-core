@@ -1,4 +1,3 @@
-[![travis](https://travis-ci.org/lemoncloud-io/lemon-core.svg?branch=master)](https://travis-ci.org/lemoncloud-io/lemon-core)
 [![codecov](https://codecov.io/gh/lemoncloud-io/lemon-core/branch/master/graph/badge.svg)](https://codecov.io/gh/lemoncloud-io/lemon-core)
 [![npm version](https://badge.fury.io/js/lemon-core.svg)](https://badge.fury.io/js/lemon-core)
 [![GitHub version](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core.svg)](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core)
@@ -71,27 +70,27 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 
 ----------------
-# TODO TASK #
-
-- [x] use environ as default region like `ap-northeast-2` (or use current region).
-- [x] draw protocol's sequence diagram w/ `callback` mechanism.
-- [x] on protocol, use local account name as accountId for NextContext.
-- [x] for protocol.enqueue(), use the optional delayed wait time.
-- [x] notification-handler is directly subscribed to `SNS` like `lemon-hello-out`.
-
-
-----------------
 # VERSION INFO #
 
 | Version   | Description
 |--         |--
-| 3.1.1     | support `ManagerProxy`, `AbstractProxy` and `$ES6`.
+| 3.2.9     | improve `elastic6-service` w/ latest open-search.
+| 3.2.8     | updated `ttypescript^1.5.15`, and optimized.
+| 3.2.7     | cleanup log message in `AWSS3Service`, and optimized.
+| 3.2.6     | improve `listObjects()` in `AWSS3Service` w/ prefix.
+| 3.2.5     | improve `doReportError` in `lambda-web-handler`.
+| 3.2.4     | updated with `lemon-model@1.0.2`.
+| 3.2.3     | support `ES7.10`, and improve sync to elastic.
+| 3.2.1     | improve `getIdentityId()` w/ `env:LOCAL_ACCOUNT`.
+| 3.2.0     | upgrade all packages, and clear `audit fix`.
+| 3.1.2     | refactoring with `lemon-model@1.0.0` for shared types.
+| 3.1.1     | support `ManagerProxy`, `AbstractProxy` and `$ES6`. (`x-lemon-identity` as WebToken)
 | 3.1.0     | upgrade `typescript^4.6.2`, and optimized.
 | 3.0.2     | support `helpers` like `$T`.
 | 3.0.0     | improve search-client with `@elastic/elasticsearch@7.12` to support AWS `OpenSearch 1.1` (compartible with `ES6.2`).
 | 2.2.20    | improve an extra feature from `aws-s3-service` to 'lemon-images-api'
 | 2.2.19    | improve search filtering feature for `ES6 autocomplete search`.
-| 2.2.18    | support `$U.jwt(passcode).encode(...)` w/ `jsonwebtoken`.
+| 2.2.18    | support `$U.jwt(passcode).encode(...)` w/ `npm`.
 | 2.2.16    | hot-fix `utf8 encoding of json` in `AWS.S3`.
 | 2.2.15    | hot-fix `Cannot read property 'setIndex' of null` in `Dynamo`.
 | 2.2.14    | support `CacheService`, and support appending entry into list in `Dynamo`.

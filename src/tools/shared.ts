@@ -70,7 +70,7 @@ export const loadDataYml = (file: string, folder?: string): any => {
     folder = folder || 'data';
     const path = `./${folder}/` + file + (file.endsWith('.yml') ? '' : '.yml');
     if (!fs.existsSync(path)) throw new Error('404 NOT FOUND - data-file:' + path);
-    return yaml.safeLoad(fs.readFileSync(path, 'utf8'));
+    return yaml.load(fs.readFileSync(path, 'utf8'));
 };
 
 interface AdaptiveParam<T> {

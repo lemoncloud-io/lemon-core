@@ -6,6 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-07-19 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2023-02-08 support of `listObject()`
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -21,24 +22,105 @@ import AWS from 'aws-sdk';
 import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
+import { Body, GetObjectOutput } from 'aws-sdk/clients/s3';
+import { GETERR } from '../../common/test-helper';
 
 /** ****************************************************************************************************************
  *  Core Types.
  ** ****************************************************************************************************************/
 export type Metadata = AWS.S3.Metadata;
+export type S3Object = AWS.S3.Object;
 
 export interface TagSet {
     [key: string]: string;
 }
 
+/**
+ * type: `HeadObjectResult`
+ * - some properties of `HeadObjectOutput`
+ */
+export interface HeadObjectResult {
+    ContentType: string;
+    ContentLength: number;
+    Metadata: Metadata;
+    ETag: string;
+    LastModified: string;
+}
+
+/**
+ * type: `PutObjectResult`
+ * - only some properties from origin-result.
+ */
 export interface PutObjectResult {
     Location: string;
-    ETag: string;
     Bucket: string;
     Key: string;
+    /**
+     * An ETag is an opaque identifier assigned by a web server to a specific version of a resource found at a URL.
+     */
+    ETag: string;
+    /**
+     * Size of the body in bytes.
+     */
     ContentLength?: number;
+    /**
+     * A standard MIME type describing the format of the object data.
+     */
     ContentType?: string;
+    /**
+     * A map of metadata to store with the object in S3.
+     */
     Metadata?: Metadata;
+}
+
+/**
+ * type: `GetObjectResult`
+ * - only some properties from origin-result.
+ */
+export interface GetObjectResult {
+    /**
+     * Size of the body in bytes.
+     */
+    ContentLength?: number;
+    /**
+     * A standard MIME type describing the format of the object data.
+     */
+    ContentType?: string;
+    /**
+     * A map of metadata to store with the object in S3.
+     */
+    Metadata?: Metadata;
+    /**
+     * Object data.
+     */
+    Body?: Body;
+    /**
+     * An ETag is an opaque identifier assigned by a web server to a specific version of a resource found at a URL.
+     */
+    ETag: string;
+    /**
+     * The number of tags, if any, on the object.
+     */
+    TagCount?: number;
+}
+
+/**
+ * type: `ListObjectResult`
+ * - only some properties from origin-result.
+ */
+export interface ListObjectResult {
+    /** list of object infor */
+    Contents: S3Object[];
+    /** limit of each request */
+    MaxKeys: number;
+    /** total key-count read */
+    KeyCount: number;
+    /** flag to have more */
+    IsTruncated?: boolean;
+    /** valid only if truncated, and has more */
+    NextContinuationToken?: string;
+    /** internal error-string */
+    error?: string;
 }
 
 export interface CoreS3Service extends CoreServices {
@@ -75,12 +157,17 @@ const instance = () => {
     return new AWS.S3(config); // SQS Instance. shared one???
 };
 
-//! main service instance.
+/**
+ * main service implement.
+ */
 export class AWSS3Service implements CoreS3Service {
     /**
-     * environ name config.
+     * environ name to use `bucket`
      */
     public static ENV_S3_NAME = 'MY_S3_BUCKET';
+    /**
+     * default `bucket` name
+     */
     public static DEF_S3_BUCKET = 'lemon-hello-www';
 
     /**
@@ -100,21 +187,39 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * retrieve metadata without returning the object
+     *
      * @param {string} key
      * @return  metadata object / null if not exists
      */
-    public headObject = async (key: string): Promise<any> => {
-        if (!key) throw new Error('@key is required!');
+    public headObject = async (key: string): Promise<HeadObjectResult> => {
+        if (!key) throw new Error(`@key (string) is required - headObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        // call s3.headObject.
         const s3 = instance();
         try {
             const data = await s3.headObject(params).promise();
-            _log(NS, '> data =', $U.json(data));
-            return data;
+            _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
+            // const sample = {
+            //     AcceptRanges: 'bytes',
+            //     ContentLength: 47,
+            //     ContentType: 'application/json; charset=utf-8',
+            //     ETag: '"51f209a54902230ac3395826d7fa1851"',
+            //     Expiration: 'expiry-date="Mon, 10 Apr 2023 00:00:00 GMT", rule-id="delete-old-json"',
+            //     LastModified: '2023-02-08T14:53:12.000Z',
+            //     Metadata: { contenttype: 'application/json; charset=utf8', md5: '51f209a54902230ac3395826d7fa1851' },
+            //     ServerSideEncryption: 'AES256',
+            // };
+            const result: HeadObjectResult = {
+                ContentType: data.ContentType,
+                ContentLength: data.ContentLength,
+                Metadata: data.Metadata,
+                ETag: data.ETag,
+                LastModified: $U.ts(data.LastModified),
+            };
+            return result;
         } catch (e) {
             if (e.statusCode == 404) return null;
             _err(NS, '! err=', e);
@@ -147,7 +252,7 @@ export class AWSS3Service implements CoreS3Service {
         metadata?: Metadata,
         tags?: TagSet,
     ): Promise<PutObjectResult> => {
-        if (!content) throw new Error('@content is required!');
+        if (!content) throw new Error(`@content (buffer) is required - putObject()`);
 
         const paramBuilder = new S3PutObjectRequestBuilder(this.bucket(), content);
         key && paramBuilder.setKey(key);
@@ -167,12 +272,16 @@ export class AWSS3Service implements CoreS3Service {
             delete (data as any).key; // NOTE: remove undeclared property 'key' returned from aws-sdk
             _log(NS, `> data[${data.Bucket}].Location =`, $U.json(data.Location));
 
-            return {
-                ...data,
+            const result: PutObjectResult = {
+                Bucket: data.Bucket,
+                Location: data.Location,
+                Key: data.Key,
+                ETag: data.ETag,
                 ContentType: params.ContentType,
                 ContentLength: params.ContentLength,
                 Metadata: params.Metadata,
             };
+            return result;
         } catch (e) {
             _err(NS, `! err[${params.Bucket}] =`, e);
             throw e;
@@ -184,18 +293,21 @@ export class AWSS3Service implements CoreS3Service {
      *
      * @param {string} key
      */
-    public getObject = async (key: string): Promise<any> => {
-        if (!key) throw new Error('@key is required!');
+    public getObject = async (key: string): Promise<GetObjectResult> => {
+        if (!key) throw new Error(`@key (string) is required - getObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        //* call s3.getObject.
         const s3 = instance();
         try {
-            const data = await s3.getObject(params).promise();
+            const data: GetObjectOutput = await s3.getObject(params).promise();
             _log(NS, '> data.type =', typeof data);
-            return data as any;
+            const { ContentType, ContentLength, Body, ETag, Metadata, TagCount } = data;
+            const result: GetObjectResult = { ContentType, ContentLength, Body, ETag, Metadata };
+            if (TagCount) result.TagCount = TagCount;
+            return result;
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
@@ -207,19 +319,19 @@ export class AWSS3Service implements CoreS3Service {
      *
      * @param {string} key  ex) 'hello-0001.json' , 'dist/hello-0001.json
      */
-    public getDecodedObject = async (key: string): Promise<any> => {
-        if (!key) throw new Error('@key is required!');
+    public getDecodedObject = async <T = object>(key: string): Promise<T> => {
+        if (!key) throw new Error(`@key (string) is required - getDecodedObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        //* call s3.getObject.
         const s3 = instance();
         try {
             const data = await s3.getObject(params).promise();
             _log(NS, '> data.type =', typeof data);
             const content = data.Body.toString();
-            return JSON.parse(content);
+            return JSON.parse(content) as T;
         } catch (e) {
             _err(NS, '! err=', e);
             throw e;
@@ -228,18 +340,20 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * get tag-set of object
+     *
      * @param {string} key
      */
     public getObjectTagging = async (key: string): Promise<TagSet> => {
+        if (!key) throw new Error(`@key (string) is required - getObjectTagging(${key ?? ''})`);
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.getObject.
+        //* call s3.getObjectTagging.
         const s3 = instance();
         try {
             const data = await s3.getObjectTagging(params).promise();
-            _log(NS, `> data =`, data);
-            return data.TagSet.reduce<TagSet>((tagSet, tag) => {
+            _log(NS, `> data =`, $U.json(data));
+            return data?.TagSet?.reduce<TagSet>((tagSet, tag) => {
                 const { Key, Value } = tag;
                 tagSet[Key] = Value;
                 return tagSet;
@@ -252,15 +366,16 @@ export class AWSS3Service implements CoreS3Service {
 
     /**
      * delete object from bucket
+     *
      * @param {string} key
      */
     public deleteObject = async (key: string): Promise<void> => {
-        if (!key) throw new Error('@key is required!');
+        if (!key) throw new Error(`@key (string) is required - deleteObject(${key ?? ''})`);
 
         const Bucket = this.bucket();
         const params = { Bucket, Key: key };
 
-        //! call s3.deleteObject.
+        //* call s3.deleteObject.
         const s3 = instance();
         try {
             const data = await s3.deleteObject(params).promise();
@@ -269,6 +384,86 @@ export class AWSS3Service implements CoreS3Service {
             _err(NS, '! err=', e);
             throw e;
         }
+    };
+
+    /**
+     * list objects in bucket
+     */
+    public listObjects = async (options?: {
+        /** keys that begin with the specified prefix. */
+        prefix?: string;
+        /** use to group keys */
+        delimiter?: string;
+        /** maximum number of keys returned in single request (default 10, max 1000) */
+        limit?: number;
+        /** flag to read all keys (each request contains `limit`) */
+        unlimited?: boolean;
+        /** same as NextContinuationToken */
+        nextToken?: string;
+        /** (optional) flag to throw error if error, or see `.error` in result */
+        throwable?: boolean;
+    }): Promise<ListObjectResult> => {
+        // if (!key) throw new Error('@key is required!');
+        const Prefix = options?.prefix ?? '';
+        const Delimiter = options?.delimiter ?? '/';
+        const MaxKeys = Math.min(options?.limit ?? 10, 1000);
+        const unlimited = options?.unlimited ?? false;
+        const nextToken = options?.nextToken;
+        const throwable = options?.throwable ?? true;
+
+        //* build the req-params.
+        const Bucket = this.bucket();
+        const params: AWS.S3.ListObjectsV2Request = {
+            Bucket,
+            Prefix,
+            Delimiter,
+            MaxKeys,
+        };
+        if (nextToken) params.ContinuationToken = nextToken;
+
+        //* call s3.listObjectsV2.
+        const s3 = instance();
+        const result: ListObjectResult = {
+            Contents: null,
+            MaxKeys,
+            KeyCount: 0,
+        };
+        try {
+            const data = await s3.listObjectsV2(params).promise();
+            //INFO! - minimize log output....
+            _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
+            _log(NS, '> data[0] =', $U.json(data?.Contents?.[0]));
+            if (data) {
+                result.Contents = data.Contents;
+                result.MaxKeys = data.MaxKeys;
+                result.KeyCount = data.KeyCount;
+                result.IsTruncated = data.IsTruncated;
+                result.NextContinuationToken = data.NextContinuationToken;
+            }
+
+            //* list all keys.
+            if (unlimited) {
+                while (result.IsTruncated) {
+                    //* fetch next list.
+                    const res2 = await s3
+                        .listObjectsV2({ ...params, ContinuationToken: result.NextContinuationToken })
+                        .promise();
+
+                    //* update contents.
+                    result.Contents = result.Contents.concat(0 ? res2.Contents.slice(1) : res2.Contents);
+                    result.IsTruncated = res2.IsTruncated;
+                    result.KeyCount += $U.N(res2.KeyCount, 0);
+                    result.NextContinuationToken = res2.NextContinuationToken;
+                }
+            }
+        } catch (e) {
+            _err(NS, '! err=', e);
+            if (throwable) throw e;
+            result.error = GETERR(e);
+        }
+
+        // returns.
+        return result;
     };
 }
 

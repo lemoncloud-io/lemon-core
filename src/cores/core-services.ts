@@ -8,9 +8,7 @@
  *
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-export * from './core-types';
-
-import { NextMode, NextContext } from './core-types';
+import { NextMode, NextContext } from 'lemon-model';
 
 export type STAGE = '' | 'local' | 'dev' | 'prod';
 

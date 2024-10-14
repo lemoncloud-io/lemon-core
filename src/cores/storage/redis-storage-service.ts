@@ -257,8 +257,8 @@ export class RedisStorageService<T extends StorageModel> implements StorageServi
             .exec();
         RedisStorageService.throwIfTransactionError(results);
 
-        const data = results[0][1];
-        if (Object.keys(data).length > 0) {
+        const data: any = results[0][1];
+        if (data && Object.keys(data).length > 0) {
             const ret = this.deserialize(data);
             _log(NS, `> delete[${id}].ret =`, $U.json(ret));
             return ret;

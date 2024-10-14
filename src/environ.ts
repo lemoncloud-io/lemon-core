@@ -63,7 +63,7 @@ export const loadEnviron = (process: any, options?: Options) => {
         const path = `${ENV_PATH || './env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
         if (!fs.existsSync(path)) throw new Error('FILE NOT FOUND:' + path);
         if (!isLocal) _log(`! loading yml-file: "${path}"`);
-        const $doc: any = yaml.safeLoad(fs.readFileSync(path, 'utf8'));
+        const $doc: any = yaml.load(fs.readFileSync(path, 'utf8'));
         const $src: any = ($doc && $doc[STAGE]) || {};
         const $new = Object.keys($src).reduce(($O: any, key: string) => {
             const val = $src[key];

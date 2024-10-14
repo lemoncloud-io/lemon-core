@@ -11,26 +11,9 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
+import { StorageModel, GeneralItem, Incrementable } from 'lemon-model';
+export { StorageModel };
 const NS = $U.NS('STRS', 'green'); // NAMESPACE TO BE PRINTED.
-
-/**
- * only for type information for internal partition-key.
- */
-export interface InternalKey {
-    _id?: string; // default partition-key name.
-}
-
-/**
- * use shared `NoSQL` data storage. (ex: DynamoDB, MongoDB, ...)
- * - use `key-value` simple storage service.
- * - `no-search`: need to support 'search' function. (but scan)
- */
-export interface StorageModel extends InternalKey {
-    id?: string; // unique id value.
-    type?: string; // type of data.
-    stereo?: string; // stereo of type.
-    meta?: string | any; // json formated string (or parsed object).
-}
 
 /**
  * Abstract Concept of `StorageService`
@@ -99,7 +82,6 @@ export interface StorageService<T extends StorageModel> {
 /** ****************************************************************************************************************
  *  Data Storage Service
  ** ****************************************************************************************************************/
-import { GeneralItem, Incrementable } from '../core-types';
 import { DynamoService, KEY_TYPE } from '../dynamo/';
 import { loadDataYml } from '../../tools/shared';
 

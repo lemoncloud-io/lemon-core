@@ -1,0 +1,64 @@
+{
+  "!": "es7.10 client info",
+  "body": {
+    "name": "6a2e79c7875cb8d2509d1a8c3f8297c4",
+    "cluster_name": "085403634746:test-es710",
+    "cluster_uuid": "P_hJ6SH4S-qWAQljG0WkQg",
+    "version": {
+      "number": "7.10.2",
+      "build_flavor": "oss",
+      "build_type": "tar",
+      "build_hash": "unknown",
+      "build_date": "2024-04-25T14:12:01.330812Z",
+      "build_snapshot": false,
+      "lucene_version": "8.7.0",
+      "minimum_wire_compatibility_version": "6.8.0",
+      "minimum_index_compatibility_version": "6.0.0-beta1"
+    },
+    "tagline": "You Know, for Search"
+  },
+  "statusCode": 200,
+  "headers": {
+    "date": "Fri, 09 Aug 2024 05:48:33 GMT",
+    "content-type": "application/json; charset=UTF-8",
+    "content-length": "531",
+    "connection": "keep-alive",
+    "access-control-allow-origin": "*"
+  },
+  "meta": {
+    "context": null,
+    "request": {
+      "params": {
+        "method": "GET",
+        "path": "/",
+        "body": null,
+        "querystring": "",
+        "headers": {
+          "user-agent": "elasticsearch-js/7.12.0 (darwin 23.5.0-arm64; Node.js v18.19.1)",
+          "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1"
+        },
+        "timeout": 30000
+      },
+      "options": {},
+      "id": 2
+    },
+    "name": "elasticsearch-js",
+    "connection": {
+      "url": "https://localhost:9710/",
+      "id": "https://localhost:9710/",
+      "headers": {},
+      "deadCount": 0,
+      "resurrectTimeout": 0,
+      "_openRequests": 1,
+      "status": "alive",
+      "roles": {
+        "master": true,
+        "data": true,
+        "ingest": true,
+        "ml": false
+      }
+    },
+    "attempts": 0,
+    "aborted": false
+  }
+}

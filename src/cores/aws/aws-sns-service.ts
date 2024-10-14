@@ -137,34 +137,33 @@ export class AWSSNSService implements CoreSnsService {
      */
     public publish = async (target: string, subject: string, payload: any): Promise<string> => {
         _inf(NS, `publish(${target}, ${subject})...`);
-        return this.endpoint(target).then(arn => {
-            if (!arn) throw new Error('.arn is required! target:' + target);
-            _log(NS, `> payload[${arn}] =`, $U.json(payload));
-            const params = {
-                TopicArn: arn,
-                Subject: subject,
-                Message: JSON.stringify({
-                    default: payload && typeof payload == 'object' ? JSON.stringify(payload) : payload,
-                }),
-                MessageStructure: 'json',
-            };
-            // _log(NS, '> params =', params);
-            //! call sns.publish()
-            const region = arn.split(':')[3];
-            if (!region) throw new Error('region is required. arn:' + arn);
-            const sns = new AWS.SNS({ region });
-            return sns
-                .publish(params)
-                .promise()
-                .then(res => {
-                    _log(NS, `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
-                    return (res && res.MessageId) || '';
-                })
-                .catch(e => {
-                    _err(NS, '! err=', e);
-                    throw e;
-                });
-        });
+        const arn = await this.endpoint(target);
+        if (!arn) throw new Error(`.arn is required! target:${target}`);
+        _log(NS, `> payload[${arn}] =`, $U.json(payload));
+        const params = {
+            TopicArn: arn,
+            Subject: subject,
+            Message: JSON.stringify({
+                default: payload && typeof payload == 'object' ? JSON.stringify(payload) : payload,
+            }),
+            MessageStructure: 'json',
+        };
+        // _log(NS, '> params =', params);
+        //! call sns.publish()
+        const region = arn.split(':')[3];
+        if (!region) throw new Error(`@region is required. arn:${arn}`);
+        const sns = new AWS.SNS({ region });
+        return sns
+            .publish(params)
+            .promise()
+            .then(res => {
+                _log(NS, `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
+                return (res && res.MessageId) || '';
+            })
+            .catch(e => {
+                _err(NS, '! err=', e);
+                throw e;
+            });
     };
 
     /**
@@ -172,8 +171,8 @@ export class AWSSNSService implements CoreSnsService {
      * - default to `lemon-hello-sns` or using `env[REPORT_ERROR_ARN]`
      *
      * @param e             Error instance
-     * @param message       simple text message or object to override.
-     * @param target        (optional)
+     * @param data          simple text message or object to override.
+     * @param target        (optional) target SNS arn (default is `REPORT_ERROR_ARN`)
      */
     public reportError = async (e: Error, data: any, target?: string): Promise<string> => {
         if (!e) return 'N/A';

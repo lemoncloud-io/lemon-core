@@ -588,22 +588,33 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
     /**
      * register this.
+     *
+     * @return size of proxies.
      */
     public register(mgr: ManagerProxy<any, any>) {
         this._proxies.push(mgr);
+        return this._proxies.length;
     }
 
     /**
-     * 업데이트할 항목을 모두 저장함
+     * save all updates by each proxies.
+     * - 업데이트할 항목을 모두 저장함
+     *
+     * @param options running parameters.
      */
-    public async saveAllUpdates(parrallel?: number) {
-        parrallel = $U.N(parrallel, this.parrallel);
+    public async saveAllUpdates(options?: {
+        /** (optional) the parrallel factor  */
+        parrallel?: number;
+        /** (optional) flag to use only valid value (not null) (default true) */
+        onlyValid?: boolean;
+    }) {
+        const parrallel = $U.N(options?.parrallel, this.parrallel);
         type Model = CoreModel<U>;
         type TYPE = { id: string; N: Model; _: () => Promise<Model> };
 
         // STEP.1 prepare the list of updater.
         const list = this.allProxies.reduce((L: TYPE[], $p: ManagerProxy<any, CoreManager<any, any, any>>) => {
-            const $set = $p.alls(true);
+            const $set = $p.alls(true, options?.onlyValid);
             return Object.entries($set).reduce((L: TYPE[], [id, N]) => {
                 const hasUpdate = Object.keys(N).length > 0;
                 if (hasUpdate) {
@@ -656,13 +667,22 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
      * the cached identity model
      */
     protected _identity: { [key: string]: NextIdentityAccess } = {};
-    public async getIdentity$(identityId: string): Promise<NextIdentityAccess> {
+
+    /**
+     * fetch(or load) identity.
+     *
+     * @param identityId id to find
+     * @param force (optional) force to reload if not available
+     * @returns the cached identity-access
+     */
+    public async getIdentity$(identityId: string, force?: boolean): Promise<NextIdentityAccess> {
+        if (!identityId) return null;
         // STEP.1 check if in stock.
         const val = this._identity[identityId];
-        if (val !== undefined) return val;
-        // STEP.2 fetch remotely, and save
+        if (val !== undefined && !force) return val;
+        // STEP.2 fetch remotely, and save in cache.
         const { $identity } = await this.fetchIdentityAccess(identityId);
-        this._identity[identityId] = $identity;
+        this._identity[identityId] = $identity ? $identity : null; //! mark as 'null' not to fetch futher
         return $identity;
     }
 

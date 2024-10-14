@@ -11,7 +11,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
-import { NextContext, NextHandler } from './../core-services';
+import { NextContext, NextHandler } from 'lemon-model';
 import { LambdaHandler, SNSHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';

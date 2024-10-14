@@ -12,7 +12,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-import { GeneralItem, Incrementable } from './../core-types';
+import { GeneralItem, Incrementable } from 'lemon-model';
 import { loadDataYml } from '../../tools/';
 import AWS from 'aws-sdk';
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
@@ -202,7 +202,7 @@ export class DynamoService<T extends GeneralItem> {
      */
     public prepareItemKey(id: string, sort: any) {
         const { tableName, idName, sortName } = this.options;
-        if (!id) throw new Error('@id is required!');
+        if (!id) throw new Error(`@id is required - prepareItemKey(${tableName}/${idName})`);
         // _log(NS, `prepareItemKey(${tableName}/${id}/${sort || ''})...`);
         //! prepare payload.
         const payload = {
@@ -233,7 +233,7 @@ export class DynamoService<T extends GeneralItem> {
         debug && $update && _log(NS, `> $update =`, $U.json($update));
         debug && $increment && _log(NS, `> $increment =`, $U.json($increment));
         const Key = this.prepareItemKey(id, sort).Key;
-        const norm = (_: string) => `${_}`.replace(/[.\\:\/]/g, '_');
+        const norm = (_: string) => `${_}`.replace(/[.\\:\/$]/g, '_');
 
         //! prepare payload.
         let payload = Object.entries($update).reduce(

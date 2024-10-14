@@ -10,7 +10,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
-import { NextMode, NextContext } from './../core-types';
+import { NextMode, NextContext } from 'lemon-model';
 import {
     STAGE,
     ProtocolService,

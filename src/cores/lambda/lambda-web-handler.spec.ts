@@ -9,9 +9,10 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { $U } from '../../engine/';
+import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
 import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
 import { loadJsonSync, credentials } from '../../tools/';
-import { NextDecoder, NextHandler, NextContext, ProtocolParam } from './../core-services';
+import { ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
@@ -176,9 +177,15 @@ describe('LambdaWEBHandler', () => {
             const alias = 'lemon-identity-key';
             const expectedHead =
                 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiIg44WO7Z6BIiwidWlkIjoiVSIsImdpZCI6ImciLCJyb2xlcyI6WyImQCAkKy0iXSwiaXNzIjoia21zL2xlbW9uLWlkZW50aXR5LWtleSIsImlhdCI6MTY1MjE0OTM1MywiZXhwIjoxNjUyMjM1NzUzfQ';
+            const _alias = (iss: string, prefix = 'kms/') =>
+                iss.includes(',') ? iss.substring(prefix.length, iss.indexOf(',')) : iss.substring(prefix.length);
             expect2(() => current).toEqual(1652149353000);
+            expect2(() => _alias(`kms/abc`)).toEqual('abc');
+            expect2(() => _alias(`kms/abc,ef`)).toEqual('abc');
+
             const $enc = await $t.encodeIdentityJWT(identity, { current, alias });
             expect2(() => $enc, 'token').toEqual({ token: `${expectedHead}.${$enc.signature}` });
+
             expect2(() => $U.jwt().decode($enc.token)).toEqual({
                 iss: `kms/${alias}`,
                 exp: 1652235753,

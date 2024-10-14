@@ -280,6 +280,14 @@ describe('utils', () => {
         expect2(() => $T.parseMeta(true)).toEqual({ type: 'boolean', value: true });
     });
 
+    it('should pass $T.onlyDefined', () => {
+        expect2(() => $T.onlyDefined(null, null)).toBe(null);
+        expect2(() => $T.onlyDefined({ a: 1, b: null, c: undefined }, null)).toEqual({ a: 1, b: null });
+
+        expect2(() => Object.keys({ a: 1, b: null, c: undefined })).toEqual(['a', 'b', 'c']);
+        expect2(() => Object.keys($T.onlyDefined({ a: 1, b: null, c: undefined }, null))).toEqual(['a', 'b']);
+    });
+
     it('should pass $rand', () => {
         // range
         expect2(() => $rand.range(3)).toEqual([0, 1, 2]);
@@ -453,17 +461,72 @@ describe('utils', () => {
     it('should pass getIdentityId()', async done => {
         const { $context, identityId } = await instance();
 
-        /* eslint-disable prettier/prettier */
+        //! check in `env/none.yml`
+        const LOCAL_ACCOUNT = 'my-local-iid';
+        expect2(() => $U.env('LOCAL_ACCOUNT')).toEqual(LOCAL_ACCOUNT);
+
         expect2(() => getIdentityId($context.signed)).toBe(identityId);
         expect2(() => getIdentityId($context.unsigned)).toBeNull();
-        /* eslint-enable prettier/prettier */
+        expect2(() => getIdentityId(null)).toEqual();
+        expect2(() => getIdentityId({})).toEqual();
+        expect2(() => getIdentityId({ domain: 'localhost' })).toEqual(LOCAL_ACCOUNT);
+
+        expect2(() => isUserAuthorized($context.signed)).toBe(true);
+        expect2(() => isUserAuthorized($context.unsigned)).toBe(false);
+
+        expect2(() => isUserAuthorized({ ...$context.signed, domain: 'localhost', identity: {} })).toBe(true);
+        expect2(() => isUserAuthorized({ ...$context.unsigned, domain: 'localhost', identity: {} })).toBe(true);
+
+        //* tracking context (1st try)
+        const preCtx1 = { ...$context.unsigned, domain: 'localhost', identity: { ...$context.unsigned.identity } };
+        expect2(() => preCtx1, 'identity,domain').toEqual({
+            domain: 'localhost',
+            identity: {
+                accountId: null,
+                caller: undefined,
+                identityId: null,
+                identityPoolId: null,
+                identityProvider: null,
+                lang: 'ko',
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            },
+        });
+        expect2(() => isUserAuthorized(preCtx1)).toBe(true);
+        expect2(() => preCtx1, 'identity,domain').toEqual({
+            domain: 'localhost',
+            identity: {
+                accountId: null,
+                caller: undefined,
+                identityId: LOCAL_ACCOUNT,
+                identityPoolId: null,
+                identityProvider: null,
+                lang: 'ko',
+                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+            },
+        });
+
+        //* tracking context (1st try)
+        const preCtx2 = { ...$context.unsigned, domain: 'localhost', identity: { ...$context.unsigned.identity } };
+        expect2(() => isUserAuthorized(preCtx2, { lang: 'en' })).toBe(true);
+        expect2(() => preCtx2, 'identity,domain').toEqual({
+            domain: 'localhost',
+            identity: {
+                identityId: LOCAL_ACCOUNT,
+                lang: 'en',
+            },
+        });
 
         done();
     });
 
     it('should pass $T.merge()', async done => {
         expect2(() => $T.merge(null, { a: 2, b: null })).toEqual({ a: 2 });
+        expect2(() => $T.merge(undefined, { a: 2, b: null })).toEqual({ a: 2 });
+
         expect2(() => $T.merge(null, null)).toEqual(null);
+        expect2(() => $T.merge(undefined, null)).toEqual(undefined);
+        expect2(() => $T.merge(null, undefined)).toEqual(null);
+
         expect2(() => $T.merge({ a: 3, b: 2 }, { a: 2, b: null })).toEqual({ a: 2 });
 
         done();

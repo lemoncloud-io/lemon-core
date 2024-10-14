@@ -24,6 +24,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, $U, _log, _inf, _err } from './index';
+import { NextContext } from 'lemon-model';
 
 //! import sub-modules.
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
@@ -31,7 +32,6 @@ import { loadJsonSync } from '../tools/shared';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
 
 import * as $lambda from 'aws-lambda';
-import { NextContext } from '../cores/core-types';
 type Context = $lambda.Context;
 type RequestContext = $lambda.APIGatewayEventRequestContext;
 
@@ -294,11 +294,11 @@ export interface ParrallelCallback<T, U> {
  *
  * **TODO** - improve return types by refering callback.
  *
- * @param list          any list
+ * @param param         any list
  * @param callback      (item)=>any | Promise<any>
- * @param size          (optional) size
- * @param pos           (optional) current pos
- * @param result        (optional) result set.
+ * @param size          (optional) size of parrallel (default 10)
+ * @param pos           (optional) current pos (default 0)
+ * @param result        (optional) result set in stacked.
  */
 export const do_parrallel = <T, U>(
     param: T[] | ParrallelParam<T>,

@@ -18,7 +18,7 @@ import {
     SimpleSearchParam,
     AutocompleteSearchParam,
     SearchBody,
-} from '../core-types';
+} from 'lemon-model';
 import { Elastic6Service, SearchType } from './elastic6-service';
 import $hangul from './hangul-service';
 const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
