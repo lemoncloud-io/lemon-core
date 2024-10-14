@@ -15,7 +15,9 @@ import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
 import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
 import $hangul from './hangul-service';
 import { loadDataYml } from '../../tools';
-import { GETERR } from '../../common/test-helper';
+import { GETERR, waited } from '../../common/test-helper';
+import fs from 'fs';
+import path from 'path';
 const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
 
 // export shared one
@@ -23,12 +25,17 @@ export { elasticsearch, $hangul };
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
 // export type SearchResponse = elasticsearch.SearchResponse<any>;
-export type SearchResponse = any;
+export interface SearchResponse<T = any> {
+    total: number;
+    list: Array<T>;
+    last: Array<T>;
+    aggregations: T;
+}
 
 /**
  * options for construction.
  */
-export interface Elastic6Option {
+export interface ElasticOption {
     /**
      * endpoint url of ES6
      */
@@ -58,41 +65,138 @@ export interface Elastic6Option {
     /**
      * fields to provide autocomplete(Search-as-You-Type) feature
      */
-    autocompleteFields?: string[];
+    autocompleteFields?: string[] | null;
 }
-
 /**
  * common type of item
  */
-export interface Elastic6Item extends GeneralItem {
+export interface ElasticItem {
     _id?: string;
     _version?: number;
     _score?: number;
+    /**
+     * only has simple string or number (and in arrays)
+     */
+    [key: string]: string | string[] | number | number[] | undefined;
 }
 
+/**
+ * options for retrying searchAll
+ */
+export interface RetryOptions {
+    /** do retry? (default true) */
+    do?: boolean;
+    /** retry after t msec (default 5000ms) */
+    t?: number;
+    /** maximum Retries (default 3 times) */
+    maxRetries?: number;
+}
+
+/**
+ * parameters for searchAll
+ */
+interface ElasticSearchAllParams {
+    /** search-type */
+    searchType?: SearchType;
+    /** limit (default -1) */
+    limit?: number;
+    /** options for retrying (default true)*/
+    retryOptions?: RetryOptions;
+}
+
+/**
+ * type of search-engine type
+ */
+export type EngineType = 'os' | 'es'; // openSearch | elasticSearch
+
+/**
+ * parsed version with major and minor version numbers.
+ */
+export interface ParsedVersion {
+    /** search-engine type */
+    engine?: EngineType;
+    /** major version */
+    major: number;
+    /** minor version */
+    minor: number;
+    /** patch version */
+    patch: number;
+    /** pre-release label (e.g., 'alpha', 'beta') */
+    prerelease?: string;
+    /** build metadata */
+    build?: string;
+}
+
+/**
+ * parameters for Elasticsearch operations.
+ *
+ * @template T type of the body content.
+ */
+interface ElasticParams<T extends object = any> {
+    /**
+     * index name.
+     */
+    index: string;
+    /**
+     * document ID.
+     */
+    id: string;
+    /**
+     * body content.
+     */
+    body: T;
+    /**
+     * document type (optional).
+     */
+    type?: string;
+}
+/**
+ * parameters for Elasticsearch search operations.
+ *
+ * @template T type of the body content.
+ */
+interface ElasticSearchParams<T extends object = any> {
+    /**
+     * index name.
+     */
+    index: string;
+    /**
+     * search body content.
+     */
+    body: T;
+    /**
+     * document type (optional).
+     */
+    type?: string;
+    /**
+     * search type
+     * (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
+     */
+    searchType: SearchType;
+}
 /**
  * convert to string.
  */
 const _S = (v: any, def: string = '') =>
     typeof v === 'string' ? v : v === undefined || v === null ? def : typeof v === 'object' ? $U.json(v) : `${v}`;
-
+/** ****************************************************************************************************************
+ *  Elastic Index Service
+ ** ****************************************************************************************************************/
 /**
- * class: `Elastic6Service`
- * - basic CRUD service for Elastic Search 6
+ * abstarct class: `ElasticIndexService`
+ * - abstract class for basic Elasticsearch CRUD operations
+ * - common operations that are shared across different versions.
+ * TODO - support `Elastic` and `OpenSearch`
  */
-export class Elastic6Service<T extends Elastic6Item = any> {
-    // internal field name to store analyzed strings for autocomplete search
-    public static readonly DECOMPOSED_FIELD = '_decomposed';
-    public static readonly QWERTY_FIELD = '_qwerty';
-
-    protected _options: Elastic6Option;
+export abstract class ElasticIndexService<T extends ElasticItem = any> {
+    protected _options: ElasticOption;
     public readonly _client: elasticsearch.Client;
 
     /**
      * simple instance maker.
      *
      * ```js
-     * const { client } = Elastic6Service.instance(endpoint);
+     * const { client } = ElasticIndexService.instance(endpoint);
      * ```
      *
      * @param endpoint  service-url
@@ -113,21 +217,16 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * default constuctor w/ options.
      * @param options { endpoint, indexName } is required.
      */
-    public constructor(options: Elastic6Option) {
-        _inf(NS, `Elastic6Service(${options.indexName}/${options.idName})...`);
+    public constructor(options: ElasticOption) {
+        _inf(NS, `ElasticIndexService(${options.indexName}/${options.idName})...`);
         if (!options.endpoint) throw new Error('.endpoint (URL) is required');
         if (!options.indexName) throw new Error('.indexName (string) is required');
 
         // default option values: docType='_doc', idName='$id'
-        const { client } = Elastic6Service.instance(options.endpoint);
+        const { client } = ElasticIndexService.instance(options.endpoint);
         this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
         this._client = client;
     }
-
-    /**
-     * say hello of identity.
-     */
-    public hello = () => `elastic6-service:${this.options.indexName}:${this.version}`;
 
     /**
      * get the client instance.
@@ -138,13 +237,239 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * get the current options.
      */
-    public get options(): Elastic6Option {
+    public get options(): ElasticOption {
         return this._options;
     }
-
+    /**
+     * get the version from options
+     */
     public get version(): number {
         const ver = $U.F(this.options.version, 6.8);
         return ver;
+    }
+    /**
+     * say hello
+     */
+    public abstract hello(): string;
+    /**
+     * save an item
+     * @param id - item id
+     * @param item - item to save
+     * @param type - document type
+     */
+    public abstract saveItem(id: string, item: T, type?: string): Promise<T>;
+
+    /**
+     * push item for time-series data
+     * @param item - item to push
+     * @param type - document type
+     */
+    public abstract pushItem(item: T, type?: string): Promise<T>;
+
+    /**
+     * read item with projections
+     * @param id - item id
+     * @param views - projections
+     */
+    public abstract readItem(id: string, views?: string[] | object): Promise<T>;
+
+    /**
+     * delete an item by id
+     * @param id - item id
+     */
+    public abstract deleteItem(id: string): Promise<T>;
+    /**
+     * update an item
+     * @param id - item id
+     * @param item - item to update
+     * @param increments - fields to increment
+     */
+    public abstract updateItem(
+        id: string,
+        item: T | null,
+        increments?: any,
+        options?: { maxRetries?: number },
+    ): Promise<T>;
+
+    /**
+     * search raw results using a query body
+     * @param body - search query
+     * @param searchType - type of search
+     */
+    public abstract searchRaw<T extends object = any>(body: any, searchType?: string): Promise<T>;
+
+    /**
+     * search and return formatted response
+     * @param body - search query
+     * @param searchType - type of search
+     */
+    public abstract search(body: any, searchType?: string): Promise<any>;
+}
+
+/** ****************************************************************************************************************
+ *  Elastic6Service
+ ** ****************************************************************************************************************/
+export interface Elastic6Option extends ElasticOption {}
+export interface Elastic6Item extends ElasticItem {}
+/**
+ * class: `Elastic6Service`
+ * - extends `ElasticIndexService` and adds version-specific implementation
+ */
+export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexService {
+    // internal field name to store analyzed strings for autocomplete search
+    public static readonly DECOMPOSED_FIELD = '_decomposed';
+    public static readonly QWERTY_FIELD = '_qwerty';
+    /**
+     * default constuctor w/ options.
+     * @param options { endpoint, indexName } is required.
+     */
+    constructor(options: Elastic6Option) {
+        super(options);
+        _inf('Elastic6Service', `Elastic6Service(${options.indexName}/${options.idName})...`);
+    }
+    /**
+     * say hello of identity.
+     */
+    public hello = () => `elastic6-service:${this.options.indexName}:${this.options.version}`;
+    /**
+     * get isOldES6
+     * - used when setting doctype
+     * - used when verifying mismatched error and results of search
+     */
+    public get isOldES6(): boolean {
+        return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
+    }
+    /**
+     * get isOldES71
+     * - used when verifying mismatched error
+     */
+    public get isOldES71(): boolean {
+        return this.parsedVersion.major == 7 && this.parsedVersion.minor == 1 && this.parsedVersion.engine === 'es';
+    }
+    /**
+     * get isLatestOS2
+     * - used when verifying results of search
+     */
+    public get isLatestOS2(): boolean {
+        return this.parsedVersion.major >= 2 && this.parsedVersion.engine === 'os';
+    }
+    /**
+     * get the parsedVersion
+     */
+    public get parsedVersion(): ParsedVersion {
+        return this.parseVersion(this.options.version);
+    }
+    /**
+     * get the root version from client
+     *
+     * @protected only for internal test.
+     */
+    protected async getVersion(options?: { dump?: boolean }): Promise<ParsedVersion> {
+        const isDump = options?.dump ?? false;
+
+        // it consumes about >20ms
+        const info = await this.client.info();
+
+        const rootVersion: string = $U.S(info.body.version.number);
+        const parsedVersion: ParsedVersion = this.parseVersion(rootVersion, { throwable: true });
+
+        if (isDump) {
+            //* save into `info.json`.
+            const description = {
+                '!': `${this.parsedVersion?.engine}${this.options.version} client info`,
+                ...info,
+            };
+            const filePath = path.resolve(
+                __dirname,
+                `../../../data/samples/${this.parsedVersion?.engine}${this.options.version}/info.json`,
+            );
+            await this.saveInfoToFile(description, filePath);
+        }
+
+        return parsedVersion;
+    }
+
+    /**
+     * check whether the service version matches the version provided in the options.
+     *
+     * @protected only for internal test.
+     */
+    protected async executeSelfTest() {
+        // STEP.1 read the parsed-version.
+        const optionVersion: ParsedVersion = this.parsedVersion;
+
+        // STEP.2 get the real version via `getVersion()`
+        const rootVersion: ParsedVersion = await this.getVersion();
+
+        // STEP.3 validate version
+        const isEqual =
+            optionVersion.engine === rootVersion.engine &&
+            optionVersion.major === rootVersion.major &&
+            optionVersion.minor === rootVersion.minor;
+
+        // Return the comparison result
+        return {
+            isEqual: isEqual,
+            optionVersion: optionVersion,
+            rootVersion: rootVersion,
+        };
+    }
+
+    /**
+     * parse version according to Semantic Versioning (SemVer) rules.
+     *
+     * @param version The version string to parse (e.g., "1.2.3", "1.2.3-alpha.1", "1.2.3+build.001").
+     * @param options Optional configuration for throwable behavior.
+     * @returns A ParsedVersion object or null if parsing fails and throwable is false.
+     */
+    public parseVersion(version: string, options?: { throwable?: boolean }): ParsedVersion {
+        const isThrowable = options?.throwable ?? true;
+
+        if (!version && isThrowable) throw new Error(`@version (string) is required!`);
+
+        // RegEx to match Semantic Versioning patterns
+        const match = version?.match(
+            /^(\d{1,2})(?:\.(\d{1,2}))?(?:\.(\d{1,2}))?(?:-([a-zA-Z0-9-.]+))?(?:\+([a-zA-Z0-9-.]+))?$/,
+        );
+
+        if (!match) {
+            if (isThrowable) throw new Error(`@version[${version}] is invalid - fail to parse`);
+            return null;
+        }
+
+        const res: ParsedVersion = {
+            engine: $U.N(match[1], 10) < 6 ? 'os' : 'es',
+            major: $U.N(match[1], 10),
+            minor: match[2] !== undefined ? $U.N(match[2], 10) : 0,
+            patch: match[3] !== undefined ? $U.N(match[3], 10) : 0,
+            ...(match[4] !== undefined ? { prerelease: match[4] } : {}),
+            ...(match[5] !== undefined ? { build: match[5] } : {}),
+        };
+
+        return res;
+    }
+
+    /**
+     * save info to a JSON file.
+     * @param info - The information to be saved
+     * @param filePath - The file path where should be saved.
+     */
+    private async saveInfoToFile(info: any, filePath: string) {
+        try {
+            const directory = path.dirname(filePath);
+
+            // check whether directory exists
+            if (!fs.existsSync(directory)) {
+                fs.mkdirSync(directory, { recursive: true });
+            }
+
+            // write info to file
+            fs.writeFileSync(filePath, JSON.stringify(info, null, 2));
+        } catch {
+            $ERROR.handler('saveIntoFile', e => {
+                throw e;
+            });
+        }
     }
 
     /**
@@ -153,13 +478,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     public async listIndices() {
         _log(NS, `- listIndices()`);
 
-        //! call create index..
-        // const { client } = instance(endpoint);
+        //* prepare client..
         const client = this.client;
         const res = await client.cat.indices({ format: 'json' });
         _log(NS, `> indices =`, $U.json(res));
+
         // eslint-disable-next-line prettier/prettier
-        const list0: any[] = Array.isArray(res) ? (res as any[]) : res?.body && Array.isArray(res?.body) ? (res?.body as any[]) : null;
+            const list0: any[] = Array.isArray(res) ? (res as any[]) : res?.body && Array.isArray(res?.body) ? (res?.body as any[]) : null;
         if (!list0) throw new Error(`@result<${typeof res}> is invalid - ${$U.json(res)}!`);
 
         // {"docs.count": "84", "docs.deleted": "7", "health": "green", "index": "dev-eureka-alarms-v1", "pri": "5", "pri.store.size": "234.3kb", "rep": "1", "status": "open", "store.size": "468.6kb", "uuid": "xPp-Sx86SgmhAWxT3cGAFw"}
@@ -176,12 +501,34 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             storeSize: _S(N['store.size']),
         }));
 
-        //! returns.
         return { list };
+    }
+    /**
+     * get mapping of an index
+     * @param indexName - name of the index
+     */
+    public async getIndexMapping() {
+        const client = this.client;
+        const indexName = this.options.indexName;
+        const res = await client.indices.getMapping({ index: indexName }).catch(
+            // $ERROR.throwAsJson,
+            $ERROR.handler('getMapping', e => {
+                const msg = GETERR(e);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
+                throw e;
+            }),
+        );
+
+        const mapping = res?.body ? res.body[indexName]?.mappings : null;
+
+        if (!mapping) throw new Error(`@indexName[${indexName}] is not found - ${$U.json(res)}!`);
+
+        return mapping;
     }
 
     /**
      * find the index by name
+     * @param indexName - name of the index
      */
     public async findIndex(indexName?: string) {
         indexName = indexName || this.options.indexName;
@@ -193,8 +540,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     /**
      * create index by name
-     *
-     * @param settings      creating settings
+     * @param settings - creating settings
      */
     public async createIndex(settings?: any) {
         const { indexName, docType, idName, timeSeries, version } = this.options;
@@ -202,7 +548,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
 
-        //! prepare payload
+        //* prepare payload
         const payload = {
             settings: {
                 number_of_shards: 5,
@@ -212,8 +558,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         };
         _log(NS, `> settings[${indexName}] = `, $U.json(payload));
 
-        //! call create index..
-        // const { client } = instance(endpoint);
+        //* call create index..
         const client = this.client;
         const res = await client.indices.create({ index: indexName, body: payload }).catch(
             // $ERROR.throwAsJson,
@@ -226,7 +571,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // if (res) throw res;
         _log(NS, `> create[${indexName}] =`, $U.json({ ...res, meta: undefined }));
 
-        //! build result.
+        //* build result.
         return {
             status: res.statusCode,
             index: indexName,
@@ -242,7 +587,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) new Error('@index is required!');
         _log(NS, `- destroyIndex(${indexName})`);
 
-        //! call create index..
+        //* call destroy index..
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.delete({ index: indexName }).catch(
@@ -271,7 +616,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) throw new Error('.indexName is required!');
         _log(NS, `- refreshIndex(${indexName})`);
 
-        //! call refresh index..
+        //* call refresh index..
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.refresh({ index: indexName }).catch(
@@ -295,7 +640,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         if (!indexName) throw new Error('.indexName is required!');
         _log(NS, `- flushIndex(${indexName})`);
 
-        //! call flush index..
+        //* call flush index..
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.flush({ index: indexName }).catch(
@@ -316,10 +661,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      */
     public async describe() {
         const { indexName } = this.options;
-        //! call create index..
+        //* call create index..
         _log(NS, `- describe(${indexName})`);
 
-        //! read settings.
+        //* read settings.
         // const { client } = instance(endpoint);
         const client = this.client;
         const res = await client.indices.getSettings({ index: indexName }).catch(
@@ -336,21 +681,21 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `> number_of_shards =`, settings.index && settings.index.number_of_shards); // 5
         _log(NS, `> number_of_replicas =`, settings.index && settings.index.number_of_replicas); // 1
 
-        //! read mappings.
+        //* read mappings.
         const res2 = await client.indices.getMapping({ index: indexName });
         _log(NS, `> mappings[${indexName}] =`, $U.json(res2));
         const mappings: any = (res2.body && res2.body[indexName] && res2.body[indexName].mappings) || {};
 
-        //! returns
+        //* returns
         return { settings, mappings };
     }
 
     /**
      * save single item
      *
-     * @param id    id
-     * @param item  item to save
-     * @param type  document type (default: doc-type given at construction time)
+     * @param id - id
+     * @param item - item to save
+     * @param type - document type (default: doc-type given at construction time)
      */
     public async saveItem(id: string, item: T, type?: string): Promise<T> {
         const { indexName, docType, idName } = this.options;
@@ -363,7 +708,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const body2 = this.popullateAutocompleteFields(body);
 
         type = `${type || docType}`;
-        const params = { index: indexName, type, id, body: body2 };
+        const params: ElasticParams = { index: indexName, id, body: body2 };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
+        }
+
         if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
 
@@ -372,12 +723,13 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             // $ERROR.throwAsJson,
             $ERROR.handler('save', e => {
                 const msg = GETERR(e);
-                //! try to update document..
+                //* try to overwrite document..
                 if (msg.startsWith('409 VERSION CONFLICT ENGINE')) {
-                    delete body2[idName]; // do set id while update
+                    // delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
-                    const param2 = { index: indexName, type, id, body: { doc: body2 } };
-                    return client.update(param2);
+                    const param2: ElasticParams = { index: indexName, id, body: { ...body2 } };
+                    if (this.isOldES6) param2.type = type;
+                    return client.index(param2);
                 }
                 throw e;
             }),
@@ -393,7 +745,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * push item for time-series data.
      *
-     * @param item  item to push
+     * @param item - item to push
+     * @param type - document type (default: doc-type given at construction time)
      */
     public async pushItem(item: T, type?: string): Promise<T> {
         const { indexName, docType } = this.options;
@@ -429,8 +782,8 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * read item with projections
      *
-     * @param id        item-id
-     * @param views     projections
+     * @param id - item-id
+     * @param views - projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
         const { indexName, docType } = this.options;
@@ -454,6 +807,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             $ERROR.handler('read', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
         );
@@ -473,7 +827,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     /**
      * delete item with projections
      *
-     * @param id        item-id
+     * @param id - item-id
      */
     public async deleteItem(id: string): Promise<T> {
         const { indexName, docType } = this.options;
@@ -488,6 +842,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             $ERROR.handler('read', e => {
                 const msg = GETERR(e);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
+                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
                 throw e;
             }),
             // $ERROR.throwAsJson,
@@ -503,15 +858,21 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 
     /**
-     * update item
+     * update item (throw if not exist)
+     * `update table set a=1, b=b+2 where id='a1'`
+     * 0. no of `a1` -> 1,2 (created)
+     * 1. a,b := 10,20 -> 11,22
+     * 2. a,b := 10,null -> 11,2 (upsert)
+     * 3. a,b := null,20 -> 1,22
      *
-     * @param id        item-id
-     * @param item      item to update
-     * @param options   (optional) request option of client.
+     * @param id - item-id
+     * @param item - item to update
+     * @param increments - item to increase
+     * @param options - (optional) request option of client.
      */
     public async updateItem(
         id: string,
-        item: T,
+        item: T | null,
         increments?: Incrementable,
         options?: { maxRetries?: number },
     ): Promise<T> {
@@ -520,33 +881,68 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
-        //! prepare params.
-        const params: any = { index: indexName, type, id, body: { doc: item } };
-        const version = this.version;
-        if (increments) {
-            //! it will create if not exists.
-            params.body.upsert = { ...increments, [idName]: id };
-            const scripts = Object.entries(increments).reduce<string[]>((L, [key, val]) => {
-                L.push(`ctx._source.${key} += ${val}`);
-                return L;
-            }, []);
-            if (version < 7.0) params.body.lang = 'painless';
-            params.body.script = scripts.join('; ');
+        //* prepare params.
+        const params: ElasticParams = { index: indexName, id, body: {} };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
         }
+        const scripts: string[] = [];
+        if (increments) {
+            //* it will create if not exists.
+            params.body.upsert = { ...increments, [idName]: id };
+
+            Object.entries(increments).forEach(([key, val]) => {
+                if (Array.isArray(val)) {
+                    // If the value is an array, append it to the existing array in the source
+                    scripts.push(
+                        `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) {
+                            ctx._source.${key}.addAll(params.increments.${key});
+                        } else {
+                            ctx._source.${key} = params.increments.${key};
+                        }`,
+                    );
+                } else {
+                    // If the value is a number, increment the existing field
+                    scripts.push(
+                        `if (ctx._source.${key} != null) {
+                            ctx._source.${key} += params.increments.${key};
+                        } else {
+                            ctx._source.${key} = params.increments.${key};
+                        }`,
+                    );
+                }
+            });
+        }
+
+        if (item) {
+            // Handle item updates in the script
+            Object.entries(item).forEach(([key]) => {
+                scripts.push(`ctx._source.${key} = params.item.${key};`);
+            });
+        }
+
+        params.body.script = {
+            source: scripts.join(' '),
+            lang: 'painless',
+            params: { item, increments },
+        };
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
         const res: ApiResponse = await client.update(params, options).catch(
             $ERROR.handler('update', (e, E) => {
                 const msg = GETERR(e);
-                //! id 아이템이 없을 경우 발생함.
+                //* id 아이템이 없을 경우 발생함.
                 if (msg.startsWith('404 DOCUMENT MISSING')) throw new Error(`404 NOT FOUND - id:${id}`);
-                //! 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
+                //* 해당 속성이 없을때 업데이트 하려면 생길 수 있음.
                 if (msg.startsWith('400 REMOTE TRANSPORT')) throw new Error(`400 INVALID FIELD - id:${id}`);
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
                 if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
+                if (msg.startsWith('400 MAPPER PARSING')) throw e;
                 throw E;
             }),
             // $ERROR.throwAsJson,
@@ -554,7 +950,6 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"updated","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":8,"_primary_term":1}
         // {"_index":"test-v3","_type":"_doc","_id":"aaa","_version":2,"result":"noop","_shards":{"total":0,"successful":0,"failed":0}}
         _log(NS, `> update[${id}].res =`, $U.json({ ...res, meta: undefined }));
-
         const _id = res.body._id;
         const _version = res.body._version;
         const res2: T = { ...item, _id, _version };
@@ -563,8 +958,10 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
     /**
      * run search and get the raw response.
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
      */
-    public async searchRaw(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
+    public async searchRaw<T extends object = any>(body: SearchBody, searchType?: SearchType): Promise<T> {
         if (!body) throw new Error('@body (SearchBody) is required');
         const { indexName, docType } = this.options;
         _log(NS, `- search(${indexName}, ${searchType || ''})....`);
@@ -572,7 +969,12 @@ export class Elastic6Service<T extends Elastic6Item = any> {
 
         const tmp = docType ? docType : '';
         const type: string = docType ? `${docType}` : undefined;
-        const params = { index: indexName, type, body, searchType };
+        const params: ElasticSearchParams = { index: indexName, body, searchType };
+
+        // check version to include 'type' in params
+        if (this.isOldES6) {
+            params.type = type;
+        }
         _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -589,14 +991,17 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         // _log(NS, `> search[${tmp}].hits.max_score =`, $res.hits?.max_score);
         // _log(NS, `> search[${tmp}].hits.hits[0] =`, $res.hits && $U.json($res.hits.hits[0]));
 
-        //! return raw results.
-        return $res?.body;
+        //* return raw results.
+        return $res?.body as T;
     }
 
     /**
      * run search, and get the formatmted response.
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
+     *
      */
-    public async search(body: SearchBody, searchType?: SearchType) {
+    public async search(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
         const size = $U.N(body.size, 0);
         const response = await this.searchRaw(body, searchType);
         // return w/ transformed id
@@ -614,7 +1019,58 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             aggregations: response.aggregations,
         };
     }
+    /**
+     * search all until limit (-1 means no-limit)
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param params - parameters including search type, limit, and retry options.
+     */
+    public async searchAll<T>(body: SearchBody, params?: ElasticSearchAllParams) {
+        const list: T[] = [];
+        for await (const chunk of this.generateSearchResult(body, params)) {
+            chunk.forEach((N: T) => list.push(N));
+        }
+        return list;
+    }
 
+    /**
+     * create async generator that yields items queried until last
+     *
+     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
+     * @param params - parameters including search type, limit, and retry options.
+     */
+    public async *generateSearchResult(body: SearchBody, params?: ElasticSearchAllParams) {
+        const doRetry = params?.retryOptions?.do ?? false;
+        const t = params?.retryOptions?.t ?? 5000;
+        const maxRetries = params?.retryOptions?.maxRetries ?? 3;
+        let limit = params?.limit ?? -1;
+        let retryCount = 0;
+
+        if (!body.sort) body.sort = '_doc';
+
+        do {
+            try {
+                const { list, last } = await this.search(body, params?.searchType);
+
+                body.search_after = last;
+
+                if (list.length === 0 && !body.search_after) {
+                    break;
+                }
+
+                yield list;
+            } catch (e) {
+                const msg = GETERR(e);
+
+                if (doRetry && msg.startsWith('429 UNKNOWN') && retryCount < maxRetries) {
+                    retryCount++;
+                    await waited(t);
+                    continue;
+                } else {
+                    throw e;
+                }
+            }
+        } while (body.search_after && (limit === -1 || --limit > 0));
+    }
     /**
      * prepare default setting
      * - migrated from engine-v2.
@@ -640,7 +1096,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
         const replicas: number = params.replicas === undefined ? 1 : params.replicas;
         const timeSeries: boolean = params.timeSeries === undefined ? false : params.timeSeries;
 
-        //! core config.
+        //* core config.
         const CONF_ES_DOCTYPE = docType;
         const CONF_ID_NAME = idName;
         const CONF_ES_TIMESERIES = !!timeSeries;
@@ -722,7 +1178,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
             },
         };
 
-        //! default settings.
+        //* default settings.
         const ES_SETTINGS: any = {
             settings: {
                 number_of_shards: shards,
@@ -757,36 +1213,36 @@ export class Elastic6Service<T extends Elastic6Item = any> {
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: version < 7.0 ? ['standard'] : [], //! error - The [standard] token filter has been removed.
+                            filter: version < 7 && version >= 6 ? ['standard'] : [], //* error - The [standard] token filter has been removed.
                         },
                     },
                 },
             },
-            //! since 7.x. no mapping for types.
-            mappings: version < 7.0 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
+            //* since 7.x. no mapping for types.
+            mappings: version < 7 && version >= 6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
         };
 
-        //! timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
+        //* timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            if (version < 7.0) {
+            if (version < 7 && version >= 6) {
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
 
-                //! clear mappings.
+                //* clear mappings.
                 const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
                 CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
             } else {
                 ES_SETTINGS.mappings.properties['@timestamp'] = { type: 'date', doc_values: true };
                 ES_SETTINGS.mappings.properties['ip'] = { type: 'ip' };
 
-                //! clear mappings.
+                //* clear mappings.
                 const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
                 CLEANS.map(key => delete ES_SETTINGS.properties[key]);
             }
         }
 
-        //! returns settings.
+        //* returns settings.
         return ES_SETTINGS;
     }
 
@@ -795,7 +1251,7 @@ export class Elastic6Service<T extends Elastic6Item = any> {
      * @param body  item body to be saved into ES6 index
      * @private
      */
-    private popullateAutocompleteFields<T = any>(body: T): T {
+    protected popullateAutocompleteFields<T = any>(body: T): T {
         const { autocompleteFields } = this.options;
         const isAutoComplete = autocompleteFields && Array.isArray(autocompleteFields) && autocompleteFields.length > 0;
         if (!isAutoComplete) return body;
@@ -824,11 +1280,11 @@ export class Elastic6Service<T extends Elastic6Item = any> {
     }
 }
 
-interface ErrorReasonDetail {
+interface ErrorReasonDetail<T = any> {
     status: number;
     type: string;
     reason?: string;
-    cause?: any;
+    cause?: T;
 }
 interface ErrorReason {
     status: number;
@@ -887,18 +1343,25 @@ export const $ERROR = {
         const status = `${E.statusCode || ''}`;
         const message = `${E.message || E.msg || ''}`;
         const reason = ((E: any): ErrorReasonDetail => {
-            //! from ES7.1
+            //* from ES7.1
             if (E.meta && typeof E.meta == 'object') {
                 const type = _S(E?.message).toUpperCase().split('_').slice(0, -1).join(' ');
                 const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
-                return { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
+                const $res = $ERROR.parseMeta<any>(E.meta);
+                //* find the reason.
+                const reason = $res.body?.error?.reason;
+                const result: ErrorReasonDetail = { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
+                if (typeof reason !== 'undefined') {
+                    result.reason = reason;
+                }
+                return result;
             }
 
-            //! from ES6.2
+            //* from ES6.2
             if (!E.response) return null;
             const $res = $ERROR.parseMeta<any>(E.response);
 
-            //! find the root-cause.
+            //* find the root-cause.
             const pic1 = (N: any[] | any, i = 0) => (N && Array.isArray(N) ? N[i] : N);
             const cause: any = pic1($res?.error?.root_cause);
             const status = $U.N($res.error?.status || $res.status);
@@ -909,7 +1372,8 @@ export const $ERROR = {
             const type = _S(cause?.type).toUpperCase().split('_').slice(0, -1).join(' ');
             return { status, reason, cause, type: type || reason };
         })(E);
-        //! FINAL. convert to error-object.
+
+        //* FINAL. convert to error-object.
         return {
             status: $U.N(status, reason?.status || 0),
             message: message || reason?.reason,
@@ -921,12 +1385,12 @@ export const $ERROR = {
         (name: string, cb?: (e: Error, E?: ErrorReason) => any) =>
         (e: any): any => {
             const E = $ERROR.asError(e);
-            //! unknown error found..
+            //* unknown error found..
             if (!E?.status) {
                 _err(NS, `! err[${name}]@handler =`, e instanceof Error, $U.json(e));
                 throw e;
             }
-            const $e = new Error(`${E.status} ${E.reason.type} - ${E.message}`);
+            const $e = new Error(`${E.status} ${E.reason?.type ?? ''} - ${E.reason?.reason ?? E.message ?? ''}`);
             if (cb) return cb($e, E);
             throw $e;
         },
@@ -940,7 +1404,7 @@ export const $ERROR = {
  * - service in-memory dummy data
  */
 export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service<T> {
-    public constructor(dataFile: string, options: Elastic6Option) {
+    public constructor(dataFile: string, options: ElasticOption) {
         super(options);
         _log(NS, `DummyElastic6Service(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');
@@ -983,11 +1447,26 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
 
     public async updateItem(id: string, updates: T, increments?: Incrementable): Promise<T> {
         const org = await this.readItem(id);
-        const item = { ...org, ...updates, _version: Number(org._version || 0) + 1 };
+        const item: any = { ...org, ...updates, _version: Number(org._version || 0) + 1 };
         if (increments) {
-            //TODO - support increments in dummy.
+            Object.entries(increments).forEach(([key, value]) => {
+                if (Array.isArray(value)) {
+                    // case of arrary increment
+                    if (Array.isArray(item[key])) {
+                        item[key] = [...item[key], ...value];
+                    } else {
+                        item[key] = value;
+                    }
+                } else {
+                    if (typeof item[key] === 'number') {
+                        item[key] = item[key] + value;
+                    } else {
+                        item[key] = value;
+                    }
+                }
+            });
         }
         this.buffer[id] = item;
-        return item;
+        return { id: id, _version: Number(org._version || 0) + 1, ...updates };
     }
 }
