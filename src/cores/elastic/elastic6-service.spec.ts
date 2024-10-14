@@ -258,7 +258,7 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
         if (GETERR(e).endsWith('unknown error')) return false;
         //* index does not exist
         if (GETERR(e).startsWith('404 NOT FOUND')) return false;
-        console.error('! err =', e);
+        // console.error('! err =', e);
 
         //* rethrow
         throw e;
