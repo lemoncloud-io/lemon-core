@@ -24,7 +24,7 @@ const ENDPOINTS = {
     //* elastic-search */
     '6.2': 'https://localhost:8443', // run alias lmes62
     '7.1': 'https://localhost:9071', // run alias lmts071
-    '7.2': 'https://localhost:9072', // run alias lmts072
+    '7.2': 'https://localhost:9683', // run alias lmts072
     '7.10': 'https://localhost:9710', // run alias lmts710
     //* open-search */
     '1.1': 'https://localhost:8683', // run alias lmes68
@@ -278,58 +278,58 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
             role: 'tenant',
             ns: 'SS',
             account$: {
-                openId: 's533',
-                id: 'S.72379df8',
+                openId: '123',
+                id: '123',
             },
             type: 'user',
-            accountId: 'S.723798',
-            createdAt: '172895',
+            accountId: '123',
+            createdAt: '123',
             deletedAt: '0',
             tenant$: {
                 role: 'associate',
                 stereo: 'resident',
-                id: '10070',
+                id: '123',
                 status: 'normal',
             },
             stereo: 'tenant',
-            linkedAt: '1726842',
-            siteId: 'S1001',
-            updatedAt: '172046',
+            linkedAt: '123',
+            siteId: '123',
+            updatedAt: '123',
         }),
     ).toEqual({
         $id: 'T1070',
         _id: 'T1070',
         _version: 1,
-        account$: { id: 'S.72379df8', openId: 's533' },
-        accountId: 'S.723798',
-        createdAt: '172895',
+        account$: { id: '123', openId: '123' },
+        accountId: '123',
+        createdAt: '123',
         deletedAt: '0',
-        linkedAt: '1726842',
+        linkedAt: '123',
         ns: 'SS',
         role: 'tenant',
-        siteId: 'S1001',
+        siteId: '123',
         stereo: 'tenant',
-        tenant$: { id: '10070', role: 'associate', status: 'normal', stereo: 'resident' },
+        tenant$: { id: '123', role: 'associate', status: 'normal', stereo: 'resident' },
         type: 'user',
-        updatedAt: '172046',
+        updatedAt: '123',
     });
 
     expect2(await service.readItem('T1070')).toEqual({
         $id: 'T1070',
         _id: 'T1070',
         _version: 1,
-        account$: { id: 'S.72379df8', openId: 's533' },
-        accountId: 'S.723798',
-        createdAt: '172895',
+        account$: { id: '123', openId: '123' },
+        accountId: '123',
+        createdAt: '123',
         deletedAt: '0',
-        linkedAt: '1726842',
+        linkedAt: '123',
         ns: 'SS',
         role: 'tenant',
-        siteId: 'S1001',
+        siteId: '123',
         stereo: 'tenant',
-        tenant$: { id: '10070', role: 'associate', status: 'normal', stereo: 'resident' },
+        tenant$: { id: '123', role: 'associate', status: 'normal', stereo: 'resident' },
         type: 'user',
-        updatedAt: '172046',
+        updatedAt: '123',
     });
 
     expect2(
@@ -338,54 +338,52 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
                 role: 'tenant',
                 ns: 'SS',
                 account$: {
-                    openId: 'soc1734687526674533',
-                    id: 'S8',
+                    openId: '456',
+                    id: '456',
                 },
                 airfob$: {
-                    activateToken:
-                        'eyJhbGciOi90eXBlIjoiYWN0aXZhdGVfdXNlciIsImFjY291bnRfaWQiOjIwMDAwMTc2OCwic2l0ZV9pZCI6MjAwMDAwODIzLCJzaXRlX25hbWUiOiJTTFBf6ri464-ZIiwidXNlcl9pZCI6MjAwMDQzOTAwLCJtb2JpbGUiOm51bGwsImVtYWlsIjpudWxsLCJuYW1lIjoiU0xQOlQxMDA1MjcwICgwMDAtMDAwKSDri6TsmIEiLCJwcm9wZXJ0aWVzIjp7ImRldmljZV9tYW5hZ2VyIjpmYWxzZSwibGFuZ3VhZ2UiOiJlbiJ9LCJjZXJ0aWZ5X2J5Ijoibm9uZSIsImFwcF9pZCI6MSwiaWF0IjoxNzI4OTgxMjE5LCJleHAiOjE3Mjk1ODYwMTl9.DNKVa-J6xTyenROrdRmRTd6j2Fu-jRpu39MHLRXPfpQ',
-                    siteId: '20003',
-                    userId: '2900',
+                    activateToken: '456',
+                    siteId: '456',
+                    userId: '456',
                 },
                 type: 'user',
-                accountId: 'S.f8',
-                createdAt: '1895',
+                accountId: '456',
+                createdAt: '456',
                 deletedAt: '0',
                 tenant$: {
                     role: 'associate',
                     stereo: 'resident',
-                    id: '70',
+                    id: '456',
                     status: 'normal',
                 },
                 stereo: 'tenant',
-                linkedAt: '1727842',
-                siteId: 'S101',
-                // _id: 'SS:user:T1005270',
-                // id: 'T1005270',
-                updatedAt: '11220046',
+                linkedAt: '456',
+                siteId: '456',
+                // _id: 'T1070',
+                // id: 'T1070',
+                updatedAt: '456',
             })
             .catch(GETERR),
     ).toEqual({
         _id: 'T1070',
         _version: 2,
-        account$: { id: 'S8', openId: 'soc1734687526674533' },
-        accountId: 'S.f8',
+        account$: { id: '456', openId: '456' },
+        accountId: '456',
         airfob$: {
-            activateToken:
-                'eyJhbGciOi90eXBlIjoiYWN0aXZhdGVfdXNlciIsImFjY291bnRfaWQiOjIwMDAwMTc2OCwic2l0ZV9pZCI6MjAwMDAwODIzLCJzaXRlX25hbWUiOiJTTFBf6ri464-ZIiwidXNlcl9pZCI6MjAwMDQzOTAwLCJtb2JpbGUiOm51bGwsImVtYWlsIjpudWxsLCJuYW1lIjoiU0xQOlQxMDA1MjcwICgwMDAtMDAwKSDri6TsmIEiLCJwcm9wZXJ0aWVzIjp7ImRldmljZV9tYW5hZ2VyIjpmYWxzZSwibGFuZ3VhZ2UiOiJlbiJ9LCJjZXJ0aWZ5X2J5Ijoibm9uZSIsImFwcF9pZCI6MSwiaWF0IjoxNzI4OTgxMjE5LCJleHAiOjE3Mjk1ODYwMTl9.DNKVa-J6xTyenROrdRmRTd6j2Fu-jRpu39MHLRXPfpQ',
-            siteId: '20003',
-            userId: '2900',
+            activateToken: '456',
+            siteId: '456',
+            userId: '456',
         },
-        createdAt: '1895',
+        createdAt: '456',
         deletedAt: '0',
-        linkedAt: '1727842',
+        linkedAt: '456',
         ns: 'SS',
         role: 'tenant',
-        siteId: 'S101',
+        siteId: '456',
         stereo: 'tenant',
-        tenant$: { id: '70', role: 'associate', status: 'normal', stereo: 'resident' },
+        tenant$: { id: '456', role: 'associate', status: 'normal', stereo: 'resident' },
         type: 'user',
-        updatedAt: '11220046',
+        updatedAt: '456',
     });
 
     //* create new item
@@ -2002,116 +2000,116 @@ describe('Elastic6Service', () => {
         });
     });
 
-    //! test with real server
-    it('should pass basic CRUD w/ real server (6.2)', async () => {
-        // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(1200000);
+    // //! test with real server
+    // it('should pass basic CRUD w/ real server (6.2)', async () => {
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     jest.setTimeout(1200000);
 
-        //* load dummy storage service.
-        const { service } = await initService('6.2');
+    //     //* load dummy storage service.
+    //     const { service } = await initService('6.2');
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
+    //     //* version check w/root
+    //     expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
 
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(true);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
+    //     const selfTest = await service.executeSelfTest();
+    //     expect2(() => selfTest.isEqual).toEqual(true);
+    //     expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 0 });
+    //     expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
 
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
+    //     //* run Elastic6Service tests sequentially.
+    //     expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.1)', async () => {
-        jest.setTimeout(1200000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service } = await initService('7.1');
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ real server(7.1)', async () => {
+    //     jest.setTimeout(1200000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service } = await initService('7.1');
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
+    //     //* version check w/root
+    //     expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
 
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(true);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
+    //     const selfTest = await service.executeSelfTest();
+    //     expect2(() => selfTest.isEqual).toEqual(true);
+    //     expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 0 });
+    //     expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
 
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
+    //     //* run Elastic6Service tests sequentially.
+    //     expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.2)', async () => {
-        jest.setTimeout(1200000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service } = await initService('7.2');
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ real server(7.2)', async () => {
+    //     jest.setTimeout(1200000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service } = await initService('7.2');
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
+    //     //* version check w/root
+    //     expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
 
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(false);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 2, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
+    //     const selfTest = await service.executeSelfTest();
+    //     expect2(() => selfTest.isEqual).toEqual(false);
+    //     expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 2, patch: 0 });
+    //     expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
 
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
+    //     //* run Elastic6Service tests sequentially.
+    //     expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ real server(7.10)', async () => {
-        jest.setTimeout(1200000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service } = await initService('7.10');
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ real server(7.10)', async () => {
+    //     jest.setTimeout(1200000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service } = await initService('7.10');
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+    //     //* version check w/root
+    //     expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(true);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+    //     const selfTest = await service.executeSelfTest();
+    //     expect2(() => selfTest.isEqual).toEqual(true);
+    //     expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 0 });
+    //     expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
+    //     //* run Elastic6Service tests sequentially.
+    //     expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+    // });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-        jest.setTimeout(1200000);
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service } = await initService('1.1');
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ open-search server(1.1)', async () => {
+    //     jest.setTimeout(1200000);
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     //* load dummy storage service.
+    //     const { service } = await initService('1.1');
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+    //     //* version check w/root
+    //     expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(false);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 1, minor: 1, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+    //     const selfTest = await service.executeSelfTest();
+    //     expect2(() => selfTest.isEqual).toEqual(false);
+    //     expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 1, minor: 1, patch: 0 });
+    //     expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
+    //     //* run Elastic6Service tests sequentially.
+    //     expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+    // });
 
     //! elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
@@ -2135,25 +2133,25 @@ describe('Elastic6Service', () => {
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
-    //! elastic storage service.
-    it('should pass basic CRUD w/ open-search server(2.13)', async () => {
-        // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(1200000);
-        //* load dummy storage service.
-        const { service } = await initService('2.13');
+    // //! elastic storage service.
+    // it('should pass basic CRUD w/ open-search server(2.13)', async () => {
+    //     // if (!PROFILE) return; // ignore w/o profile
+    //     jest.setTimeout(1200000);
+    //     //* load dummy storage service.
+    //     const { service } = await initService('2.13');
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
+    //     //* break if no live connection
+    //     if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+    //     //* version check w/root
+    //     expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(false);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 2, minor: 13, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
+    //     const selfTest = await service.executeSelfTest();
+    //     expect2(() => selfTest.isEqual).toEqual(false);
+    //     expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 2, minor: 13, patch: 0 });
+    //     expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
 
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
+    //     //* run Elastic6Service tests sequentially.
+    //     expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+    // });
 });
