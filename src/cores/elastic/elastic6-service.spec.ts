@@ -272,6 +272,120 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
 
+    //* err test
+    expect2(
+        await service.saveItem('T1070', {
+            role: 'tenant',
+            ns: 'SS',
+            account$: {
+                openId: '123',
+                id: '123',
+            },
+            type: 'user',
+            accountId: '123',
+            createdAt: '123',
+            deletedAt: '0',
+            tenant$: {
+                role: 'associate',
+                stereo: 'resident',
+                id: '123',
+                status: 'normal',
+            },
+            stereo: 'tenant',
+            linkedAt: '123',
+            siteId: '123',
+            updatedAt: '123',
+        }),
+    ).toEqual({
+        $id: 'T1070',
+        _id: 'T1070',
+        _version: 1,
+        account$: { id: '123', openId: '123' },
+        accountId: '123',
+        createdAt: '123',
+        deletedAt: '0',
+        linkedAt: '123',
+        ns: 'SS',
+        role: 'tenant',
+        siteId: '123',
+        stereo: 'tenant',
+        tenant$: { id: '123', role: 'associate', status: 'normal', stereo: 'resident' },
+        type: 'user',
+        updatedAt: '123',
+    });
+
+    expect2(await service.readItem('T1070')).toEqual({
+        $id: 'T1070',
+        _id: 'T1070',
+        _version: 1,
+        account$: { id: '123', openId: '123' },
+        accountId: '123',
+        createdAt: '123',
+        deletedAt: '0',
+        linkedAt: '123',
+        ns: 'SS',
+        role: 'tenant',
+        siteId: '123',
+        stereo: 'tenant',
+        tenant$: { id: '123', role: 'associate', status: 'normal', stereo: 'resident' },
+        type: 'user',
+        updatedAt: '123',
+    });
+
+    expect2(
+        await service
+            .updateItem('T1070', {
+                role: 'tenant',
+                ns: 'SS',
+                account$: {
+                    openId: '456',
+                    id: '456',
+                },
+                airfob$: {
+                    activateToken: '456',
+                    siteId: '456',
+                    userId: '456',
+                },
+                type: 'user',
+                accountId: '456',
+                createdAt: '456',
+                deletedAt: '0',
+                tenant$: {
+                    role: 'associate',
+                    stereo: 'resident',
+                    id: '456',
+                    status: 'normal',
+                },
+                stereo: 'tenant',
+                linkedAt: '456',
+                siteId: '456',
+                // _id: 'T1070',
+                // id: 'T1070',
+                updatedAt: '456',
+            })
+            .catch(GETERR),
+    ).toEqual({
+        _id: 'T1070',
+        _version: 2,
+        account$: { id: '456', openId: '456' },
+        accountId: '456',
+        airfob$: {
+            activateToken: '456',
+            siteId: '456',
+            userId: '456',
+        },
+        createdAt: '456',
+        deletedAt: '0',
+        linkedAt: '456',
+        ns: 'SS',
+        role: 'tenant',
+        siteId: '456',
+        stereo: 'tenant',
+        tenant$: { id: '456', role: 'associate', status: 'normal', stereo: 'resident' },
+        type: 'user',
+        updatedAt: '456',
+    });
+
     //* create new item
     const A0 = { type: '', name: 'a0' };
     expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });
