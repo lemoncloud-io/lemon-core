@@ -272,6 +272,122 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
 
+    //* err test
+    expect2(
+        await service.saveItem('T1070', {
+            role: 'tenant',
+            ns: 'SS',
+            account$: {
+                openId: 's533',
+                id: 'S.72379df8',
+            },
+            type: 'user',
+            accountId: 'S.723798',
+            createdAt: '172895',
+            deletedAt: '0',
+            tenant$: {
+                role: 'associate',
+                stereo: 'resident',
+                id: '10070',
+                status: 'normal',
+            },
+            stereo: 'tenant',
+            linkedAt: '1726842',
+            siteId: 'S1001',
+            updatedAt: '172046',
+        }),
+    ).toEqual({
+        $id: 'T1070',
+        _id: 'T1070',
+        _version: 1,
+        account$: { id: 'S.72379df8', openId: 's533' },
+        accountId: 'S.723798',
+        createdAt: '172895',
+        deletedAt: '0',
+        linkedAt: '1726842',
+        ns: 'SS',
+        role: 'tenant',
+        siteId: 'S1001',
+        stereo: 'tenant',
+        tenant$: { id: '10070', role: 'associate', status: 'normal', stereo: 'resident' },
+        type: 'user',
+        updatedAt: '172046',
+    });
+
+    expect2(await service.readItem('T1070')).toEqual({
+        $id: 'T1070',
+        _id: 'T1070',
+        _version: 1,
+        account$: { id: 'S.72379df8', openId: 's533' },
+        accountId: 'S.723798',
+        createdAt: '172895',
+        deletedAt: '0',
+        linkedAt: '1726842',
+        ns: 'SS',
+        role: 'tenant',
+        siteId: 'S1001',
+        stereo: 'tenant',
+        tenant$: { id: '10070', role: 'associate', status: 'normal', stereo: 'resident' },
+        type: 'user',
+        updatedAt: '172046',
+    });
+
+    expect2(
+        await service
+            .updateItem('T1070', {
+                role: 'tenant',
+                ns: 'SS',
+                account$: {
+                    openId: 'soc1734687526674533',
+                    id: 'S8',
+                },
+                airfob$: {
+                    activateToken:
+                        'eyJhbGciOi90eXBlIjoiYWN0aXZhdGVfdXNlciIsImFjY291bnRfaWQiOjIwMDAwMTc2OCwic2l0ZV9pZCI6MjAwMDAwODIzLCJzaXRlX25hbWUiOiJTTFBf6ri464-ZIiwidXNlcl9pZCI6MjAwMDQzOTAwLCJtb2JpbGUiOm51bGwsImVtYWlsIjpudWxsLCJuYW1lIjoiU0xQOlQxMDA1MjcwICgwMDAtMDAwKSDri6TsmIEiLCJwcm9wZXJ0aWVzIjp7ImRldmljZV9tYW5hZ2VyIjpmYWxzZSwibGFuZ3VhZ2UiOiJlbiJ9LCJjZXJ0aWZ5X2J5Ijoibm9uZSIsImFwcF9pZCI6MSwiaWF0IjoxNzI4OTgxMjE5LCJleHAiOjE3Mjk1ODYwMTl9.DNKVa-J6xTyenROrdRmRTd6j2Fu-jRpu39MHLRXPfpQ',
+                    siteId: '20003',
+                    userId: '2900',
+                },
+                type: 'user',
+                accountId: 'S.f8',
+                createdAt: '1895',
+                deletedAt: '0',
+                tenant$: {
+                    role: 'associate',
+                    stereo: 'resident',
+                    id: '70',
+                    status: 'normal',
+                },
+                stereo: 'tenant',
+                linkedAt: '1727842',
+                siteId: 'S101',
+                // _id: 'SS:user:T1005270',
+                // id: 'T1005270',
+                updatedAt: '11220046',
+            })
+            .catch(GETERR),
+    ).toEqual({
+        _id: 'T1070',
+        _version: 2,
+        account$: { id: 'S8', openId: 'soc1734687526674533' },
+        accountId: 'S.f8',
+        airfob$: {
+            activateToken:
+                'eyJhbGciOi90eXBlIjoiYWN0aXZhdGVfdXNlciIsImFjY291bnRfaWQiOjIwMDAwMTc2OCwic2l0ZV9pZCI6MjAwMDAwODIzLCJzaXRlX25hbWUiOiJTTFBf6ri464-ZIiwidXNlcl9pZCI6MjAwMDQzOTAwLCJtb2JpbGUiOm51bGwsImVtYWlsIjpudWxsLCJuYW1lIjoiU0xQOlQxMDA1MjcwICgwMDAtMDAwKSDri6TsmIEiLCJwcm9wZXJ0aWVzIjp7ImRldmljZV9tYW5hZ2VyIjpmYWxzZSwibGFuZ3VhZ2UiOiJlbiJ9LCJjZXJ0aWZ5X2J5Ijoibm9uZSIsImFwcF9pZCI6MSwiaWF0IjoxNzI4OTgxMjE5LCJleHAiOjE3Mjk1ODYwMTl9.DNKVa-J6xTyenROrdRmRTd6j2Fu-jRpu39MHLRXPfpQ',
+            siteId: '20003',
+            userId: '2900',
+        },
+        createdAt: '1895',
+        deletedAt: '0',
+        linkedAt: '1727842',
+        ns: 'SS',
+        role: 'tenant',
+        siteId: 'S101',
+        stereo: 'tenant',
+        tenant$: { id: '70', role: 'associate', status: 'normal', stereo: 'resident' },
+        type: 'user',
+        updatedAt: '11220046',
+    });
+
     //* create new item
     const A0 = { type: '', name: 'a0' };
     expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });

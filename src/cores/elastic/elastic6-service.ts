@@ -897,19 +897,19 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                 if (Array.isArray(val)) {
                     // If the value is an array, append it to the existing array in the source
                     scripts.push(
-                        `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) {
-                            ctx._source.${key}.addAll(params.increments.${key});
+                        `if (ctx._source['${key}'] != null && ctx._source['${key}'] instanceof List) {
+                            ctx._source['${key}'].addAll(params.increments['${key}']);
                         } else {
-                            ctx._source.${key} = params.increments.${key};
+                            ctx._source['${key}'] = params.increments['${key}'];
                         }`,
                     );
                 } else {
                     // If the value is a number, increment the existing field
                     scripts.push(
-                        `if (ctx._source.${key} != null) {
-                            ctx._source.${key} += params.increments.${key};
+                        `if (ctx._source['${key}'] != null) {
+                            ctx._source['${key}'] += params.increments['${key}'];
                         } else {
-                            ctx._source.${key} = params.increments.${key};
+                            ctx._source['${key}'] = params.increments['${key}'];
                         }`,
                     );
                 }
@@ -919,7 +919,7 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
         if (item) {
             // Handle item updates in the script
             Object.entries(item).forEach(([key]) => {
-                scripts.push(`ctx._source.${key} = params.item.${key};`);
+                scripts.push(`ctx._source['${key}'] = params.item['${key}'];`);
             });
         }
 
