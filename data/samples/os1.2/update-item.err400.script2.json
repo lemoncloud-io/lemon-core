@@ -1,0 +1,89 @@
+{
+    "!": "invalid character error",
+    "name": "ResponseError",
+    "meta": {
+      "body": {
+        "error": {
+          "root_cause": [
+            {
+              "type": "illegal_argument_exception",
+              "reason": "failed to execute script"
+            }
+          ],
+          "type": "illegal_argument_exception",
+          "reason": "failed to execute script",
+          "caused_by": {
+            "type": "script_exception",
+            "reason": "compile error",
+            "script_stack": [
+              "... ereo; ctx._source.account$ = params.item.account$; ...",
+              "                             ^---- HERE"
+            ],
+            "script": "ctx._source.ns = params.item.ns; ctx._source.type = params.item.type; ctx._source.stereo = params.item.stereo; ctx._source.account$ = params.item.account$; ctx._source.createdAt = params.item.createdAt; ctx._source.updatedAt = params.item.updatedAt; ctx._source.deletedAt = params.item.deletedAt; ctx._source.extra$ = params.item.extra$;",
+            "lang": "painless",
+            "position": {
+              "offset": 130,
+              "start": 105,
+              "end": 155
+            },
+            "caused_by": {
+              "type": "illegal_argument_exception",
+              "reason": "unexpected character [$].",
+              "caused_by": {
+                "type": "lexer_no_viable_alt_exception",
+                "reason": "lexer_no_viable_alt_exception: null"
+              }
+            }
+          }
+        },
+        "status": 400
+      },
+      "statusCode": 400,
+      "headers": {
+        "date": "Mon, 21 Oct 2024 04:36:24 GMT",
+        "content-type": "application/json; charset=UTF-8",
+        "content-length": "972",
+        "connection": "keep-alive",
+        "access-control-allow-origin": "*"
+      },
+      "meta": {
+        "context": null,
+        "request": {
+          "params": {
+            "method": "POST",
+            "path": "/test-v1.2/_update/T1070",
+            "body": "{\"script\":{\"source\":\"ctx._source.ns = params.item.ns; ctx._source.type = params.item.type; ctx._source.stereo = params.item.stereo; ctx._source.account$ = params.item.account$; ctx._source.createdAt = params.item.createdAt; ctx._source.updatedAt = params.item.updatedAt; ctx._source.deletedAt = params.item.deletedAt; ctx._source.extra$ = params.item.extra$;\",\"lang\":\"painless\",\"params\":{\"item\":{\"ns\":\"SS\",\"type\":\"user\",\"stereo\":\"tenant\",\"account$\":{\"openId\":\"123\",\"id\":\"123\"},\"createdAt\":\"2024-10-21T14:30:00Z\",\"updatedAt\":\"2024-10-21T14:30:00Z\",\"deletedAt\":\"0\",\"extra$\":{\"activateToken\":\"123\",\"siteId\":\"123\",\"userId\":\"123\"}}}}}",
+            "querystring": "",
+            "headers": {
+              "user-agent": "elasticsearch-js/7.12.0 (darwin 23.6.0-arm64; Node.js v18.19.1)",
+              "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1",
+              "content-type": "application/json",
+              "content-length": "629"
+            },
+            "timeout": 30000
+          },
+          "options": {},
+          "id": 22
+        },
+        "name": "elasticsearch-js",
+        "connection": {
+          "url": "https://localhost:9683/",
+          "id": "https://localhost:9683/",
+          "headers": {},
+          "deadCount": 0,
+          "resurrectTimeout": 0,
+          "_openRequests": 0,
+          "status": "alive",
+          "roles": {
+            "master": true,
+            "data": true,
+            "ingest": true,
+            "ml": false
+          }
+        },
+        "attempts": 0,
+        "aborted": false
+      }
+    }
+  }
+  

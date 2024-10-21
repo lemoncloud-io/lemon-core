@@ -941,8 +941,14 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
-                if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
                 if (msg.startsWith('400 MAPPER PARSING')) throw e;
+                if (
+                    msg.startsWith('400 ILLEGAL ARGUMENT - Cannot apply') ||
+                    msg.startsWith('400 ILLEGAL ARGUMENT - class_cast_exception:')
+                )
+                    throw new Error(`400 ILLEGAL ARGUMENT - failed to update due to type mismatch in item's field`); // at ES7.1
+                if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
+
                 throw E;
             }),
             // $ERROR.throwAsJson,
@@ -1349,7 +1355,10 @@ export const $ERROR = {
                 const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
                 const $res = $ERROR.parseMeta<any>(E.meta);
                 //* find the reason.
-                const reason = $res.body?.error?.reason;
+                const reason =
+                    $res.body?.error?.reason === 'failed to execute script'
+                        ? $res.body?.error?.caused_by?.caused_by?.reason
+                        : $res.body?.error?.reason;
                 const result: ErrorReasonDetail = { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
                 if (typeof reason !== 'undefined') {
                     result.reason = reason;
