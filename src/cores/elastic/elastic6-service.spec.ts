@@ -272,6 +272,57 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
 
+    //* err test
+    const data = {
+        ns: 'SS',
+        type: 'user',
+        stereo: 'tenant',
+        account$: {
+            openId: '123',
+            id: '123',
+        },
+        createdAt: '2024-10-21T14:30:00Z',
+        updatedAt: '2024-10-21T14:30:00Z',
+        deletedAt: '0',
+    };
+    const extra$ = {
+        activateToken: '123',
+        siteId: '123',
+        userId: '123',
+    };
+    // save data
+    expect2(await service.saveItem('T1070', data)).toEqual({ ...data, $id: 'T1070', _id: 'T1070', _version: 1 });
+    expect2(await service.readItem('T1070')).toEqual({ ...data, $id: 'T1070', _id: 'T1070', _version: 1 });
+
+    // add extra$ to data
+    expect2(await service.updateItem('T1070', { ...data, extra$ })).toEqual({
+        ...data,
+        extra$,
+        _id: 'T1070',
+        _version: 2,
+    });
+    expect2(await service.readItem('T1070')).toEqual({
+        ...data,
+        extra$,
+        _id: 'T1070',
+        $id: 'T1070',
+        _version: 2,
+    });
+    // update extra$ to null
+    expect2(await service.updateItem('T1070', { ...data, extra$: null })).toEqual({
+        ...data,
+        extra$: null,
+        _id: 'T1070',
+        _version: 3,
+    });
+    expect2(await service.readItem('T1070')).toEqual({
+        ...data,
+        extra$: null,
+        _id: 'T1070',
+        $id: 'T1070',
+        _version: 3,
+    });
+
     //* create new item
     const A0 = { type: '', name: 'a0' };
     expect2(await service.saveItem('A0', A0).catch(GETERR)).toEqual({ ...A0, $id: 'A0', _id: 'A0', _version: 2 });
@@ -599,7 +650,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
     expect2(await agent().update('A1', null, { stringArray: [1.1] })).toEqual({ _version: _ver() });
     expect2(await agent().update('A1', null, { stringArray: [''] })).toEqual({ _version: _ver() });
     expect2(await agent().update('A1', null, { stringArray: 1 })).toEqual(
-        '400 ILLEGAL ARGUMENT - failed to execute script',
+        "400 ILLEGAL ARGUMENT - failed to update due to type mismatch in item's field",
     );
     expect2(await agent().update('A1', null, { stringArray: [1] })).toEqual({ _version: _ver() });
     expect2(await service.readItem('A1'), 'stringArray').toEqual({ stringArray: ['a', 'b', 'c', 1, 1.1, '', 1] });
@@ -611,7 +662,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
     expect2(await agent().update('A1', null, { numberArray: [2.1, 3.1] })).toEqual({ _version: _ver() });
     expect2(await agent().update('A1', null, { numberArray: ['a'] })).toEqual('400 MAPPER PARSING');
     expect2(await agent().update('A1', null, { numberArray: 1 })).toEqual(
-        '400 ILLEGAL ARGUMENT - failed to execute script',
+        "400 ILLEGAL ARGUMENT - failed to update due to type mismatch in item's field",
     );
     expect2(await service.readItem('A1'), 'numberArray').toEqual({ numberArray: [1, 2, 3, 2.1, 3.1] });
 
@@ -628,7 +679,6 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
     expect2(await agent().update('A1', null, { longField: ['a'] })).toEqual('400 MAPPER PARSING');
     expect2(await agent().update('A1', null, { longField: [1] })).toEqual({ _version: _ver() });
     expect2(await service.readItem('A1'), 'longField').toEqual({ longField: [1] });
-    //TODO - `_version: _ver()` use lambda to make next version number.
 
     // 4-1) float field increment test
     expect2(await agent().update('A1', null, { floatField: 0.2 })).toEqual({ _version: _ver() });

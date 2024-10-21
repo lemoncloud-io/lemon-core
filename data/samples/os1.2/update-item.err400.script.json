@@ -1,0 +1,87 @@
+{
+    "!": "type mismatch error",
+    "name": "ResponseError",
+    "meta": {
+      "body": {
+        "error": {
+          "root_cause": [
+            {
+              "type": "illegal_argument_exception",
+              "reason": "failed to execute script"
+            }
+          ],
+          "type": "illegal_argument_exception",
+          "reason": "failed to execute script",
+          "caused_by": {
+            "type": "script_exception",
+            "reason": "runtime error",
+            "script_stack": [
+              "ctx._source['numberArray'] += params.increments['numberArray'];\n",
+              "                        } else {\n",
+              "                            ",
+              "                                               ^---- HERE"
+            ],
+            "script": "if (ctx._source['numberArray'] != null) {\n    ctx._source['numberArray'] += params.increments['numberArray'];\n} else {\n    ctx._source['numberArray'] = params.increments['numberArray'];\n}",
+            "lang": "painless",
+            "position": {
+              "offset": 117,
+              "start": 70,
+              "end": 195
+            },
+            "caused_by": {
+              "type": "class_cast_exception",
+              "reason": "Cannot apply [+] operation to types [java.util.ArrayList] and [java.lang.Integer]."
+            }
+          }
+        },
+        "status": 400
+      },
+      "statusCode": 400,
+      "headers": {
+        "date": "Mon, 21 Oct 2024 02:02:46 GMT",
+        "content-type": "application/json; charset=UTF-8",
+        "content-length": "717",
+        "connection": "keep-alive",
+        "access-control-allow-origin": "*"
+      },
+      "meta": {
+        "context": null,
+        "request": {
+          "params": {
+            "method": "POST",
+            "path": "/test-v1.2/_update/A1",
+            "body": "{\"upsert\":{\"numberArray\":1,\"$id\":\"A1\"},\"script\":{\"source\":\"if (ctx._source['numberArray'] != null) {\\n                            ctx._source['numberArray'] += params.increments['numberArray'];\\n                        } else {\\n                            ctx._source['numberArray'] = params.increments['numberArray'];\\n                        }\",\"lang\":\"painless\",\"params\":{\"increments\":{\"numberArray\":1}}}}",
+            "querystring": "",
+            "headers": {
+              "user-agent": "elasticsearch-js/7.12.0 (darwin 23.6.0-arm64; Node.js v18.19.1)",
+              "x-elastic-client-meta": "es=7.12.0,js=18.19.1,t=7.12.0,hc=18.19.1",
+              "content-type": "application/json",
+              "content-length": "409"
+            },
+            "timeout": 30000
+          },
+          "options": {},
+          "id": 94
+        },
+        "name": "elasticsearch-js",
+        "connection": {
+          "url": "https://localhost:9683/",
+          "id": "https://localhost:9683/",
+          "headers": {},
+          "deadCount": 0,
+          "resurrectTimeout": 0,
+          "_openRequests": 0,
+          "status": "alive",
+          "roles": {
+            "master": true,
+            "data": true,
+            "ingest": true,
+            "ml": false
+          }
+        },
+        "attempts": 0,
+        "aborted": false
+      }
+    }
+  }
+  

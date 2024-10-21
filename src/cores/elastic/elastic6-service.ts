@@ -897,19 +897,19 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                 if (Array.isArray(val)) {
                     // If the value is an array, append it to the existing array in the source
                     scripts.push(
-                        `if (ctx._source.${key} != null && ctx._source.${key} instanceof List) {
-                            ctx._source.${key}.addAll(params.increments.${key});
+                        `if (ctx._source['${key}'] != null && ctx._source['${key}'] instanceof List) {
+                            ctx._source['${key}'].addAll(params.increments['${key}']);
                         } else {
-                            ctx._source.${key} = params.increments.${key};
+                            ctx._source['${key}'] = params.increments['${key}'];
                         }`,
                     );
                 } else {
                     // If the value is a number, increment the existing field
                     scripts.push(
-                        `if (ctx._source.${key} != null) {
-                            ctx._source.${key} += params.increments.${key};
+                        `if (ctx._source['${key}'] != null) {
+                            ctx._source['${key}'] += params.increments['${key}'];
                         } else {
-                            ctx._source.${key} = params.increments.${key};
+                            ctx._source['${key}'] = params.increments['${key}'];
                         }`,
                     );
                 }
@@ -919,7 +919,7 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
         if (item) {
             // Handle item updates in the script
             Object.entries(item).forEach(([key]) => {
-                scripts.push(`ctx._source.${key} = params.item.${key};`);
+                scripts.push(`ctx._source['${key}'] = params.item['${key}'];`);
             });
         }
 
@@ -941,8 +941,14 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                 if (msg.startsWith('404 NOT FOUND')) throw new Error(`404 NOT FOUND - id:${id}`);
                 if (msg.startsWith('400 ACTION REQUEST VALIDATION')) throw e;
                 if (msg.startsWith('400 INVALID FIELD')) throw e; // at ES6.8
-                if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
                 if (msg.startsWith('400 MAPPER PARSING')) throw e;
+                if (
+                    msg.startsWith('400 ILLEGAL ARGUMENT - Cannot apply') ||
+                    msg.startsWith('400 ILLEGAL ARGUMENT - class_cast_exception:')
+                )
+                    throw new Error(`400 ILLEGAL ARGUMENT - failed to update due to type mismatch in item's field`); // at ES7.1
+                if (msg.startsWith('400 ILLEGAL ARGUMENT')) throw e; // at ES7.1
+
                 throw E;
             }),
             // $ERROR.throwAsJson,
@@ -1349,7 +1355,10 @@ export const $ERROR = {
                 const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
                 const $res = $ERROR.parseMeta<any>(E.meta);
                 //* find the reason.
-                const reason = $res.body?.error?.reason;
+                const reason =
+                    $res.body?.error?.reason === 'failed to execute script'
+                        ? $res.body?.error?.caused_by?.caused_by?.reason
+                        : $res.body?.error?.reason;
                 const result: ErrorReasonDetail = { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
                 if (typeof reason !== 'undefined') {
                     result.reason = reason;
