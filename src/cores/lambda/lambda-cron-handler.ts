@@ -25,7 +25,7 @@ export type CronNextHandler = NextHandler<CronParam, void>;
  * - default CRON Handler w/ event-listeners.
  */
 export class LambdaCronHandler extends LambdaSubHandler<CronHandler> {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
@@ -49,7 +49,7 @@ export class LambdaCronHandler extends LambdaSubHandler<CronHandler> {
      * Default CRON Handler.
      */
     public handle: CronHandler = async (event, context): Promise<void> => {
-        //! for each records.
+        //* for each records.
         _log(NS, `handle()...`);
         _log(NS, '> event =', $U.json(event));
         const ID = '!';

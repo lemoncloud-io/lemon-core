@@ -60,7 +60,7 @@ export interface DynamoStreamCallback<T = any> {
  * - default DynamoDBStream Handler w/ event-listeners.
  */
 export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHandler> {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
@@ -80,14 +80,14 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
         this.listeners.push(handler);
     }
 
-    //! for debugging. save last result
+    //* for debugging. save last result
     protected $lastResult: any = null;
 
     /**
      * Default Handler.
      */
     public handle: DynamoStreamHandler = async (event, context): Promise<void> => {
-        //! for each records.
+        //* for each records.
         const records: DynamoDBRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
         // _log(NS, '> event =', $U.json(event));
@@ -106,7 +106,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             const $new = dynamodb.NewImage ? toJavascript(dynamodb.NewImage, null) : null; // null if eventName == 'REMOVE'
             const $old = dynamodb.OldImage ? toJavascript(dynamodb.OldImage, null) : null; // null if eventName == 'INSERT'
 
-            //! 이제 변경된 데이터를 추적해서, 이후 처리 지원. (update 는 호출만되어도 이벤트가 발생하게 됨)
+            //* 이제 변경된 데이터를 추적해서, 이후 처리 지원. (update 는 호출만되어도 이벤트가 발생하게 됨)
             const diff = eventName === 'MODIFY' ? $U.diff($old, $new) : [];
             const node = $new || $old || {}; // make sure not null.
             const prev = diff.reduce<any>((M: any, key: any) => {
@@ -114,11 +114,11 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                 return M;
             }, {});
 
-            //! prepare next-handler's param & body.
+            //* prepare next-handler's param & body.
             const param: DynamoStreamParam = { region, eventId, eventName, tableName };
             const body: DynamoStreamBody = { keys: $key, diff, prev, node };
 
-            //! call all listeners in parrallel.
+            //* call all listeners in parrallel.
             const asyncNext = (fn: DynamoStreamNextHandler, j: number) =>
                 new Promise(resolve => {
                     resolve(fn('!', param, body, context));
@@ -128,7 +128,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             return `${i}`;
         };
 
-        //! serialize all record...
+        //* serialize all record...
         this.$lastResult = await do_parrallel(
             records,
             (record, i) => onStreamRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
@@ -171,7 +171,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             prev && _log(NS, `> prev =`, $U.json(prev));
             // node && _log(NS, `> node =`, $U.json(node));
 
-            //! find id.
+            //* find id.
             const _id = (node && node[idName]) || keys[idName];
             if (!_id) {
                 node && _log(NS, `> node =`, $U.json(node));
@@ -179,29 +179,29 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                 return;
             }
 
-            //! origin object, and apply filter.
-            const item: T = $U.cleanup({ ...node }); //! remove internals like '_' '$'.
+            //* origin object, and apply filter.
+            const item: T = $U.cleanup({ ...node }); //* remove internals like '_' '$'.
             const passed: boolean = !filter ? true : filter(_id, item, diff, prev);
             if (passed !== true && passed !== undefined) {
                 _log(NS, `WARN! node[${_id}] is by-passed`);
                 return;
             }
 
-            //! call pre sync function
+            //* call pre sync function
             if (onBeforeSync) await onBeforeSync(_id, eventName, item, diff, prev);
 
-            //! update or save.
+            //* update or save.
             if (false) {
             } else if (eventName == 'REMOVE') {
-                //! clear data.
+                //* clear data.
                 const res = await service.deleteItem(_id); // ignore error.
                 _log(NS, `> deleted[${_id}] =`, $U.json(res));
             } else if (hasDecomposed) {
-                //! overwrite all.
+                //* overwrite all.
                 const res = await service.saveItem(_id, item);
                 _log(NS, `> saved[${_id}] @1 =`, $U.json(res));
             } else if (diff && Array.isArray(diff) && diff.length) {
-                //! try to update in advance, then save.
+                //* try to update in advance, then save.
                 const $upt = diff.reduce<any>((M: any, key: string) => {
                     M[key] = item[key as keyof Elastic6Item];
                     return M;
@@ -213,12 +213,12 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
                 });
                 _log(NS, `> updated[${_id}] @2 =`, $U.json(res));
             } else {
-                //! overwrite all.
+                //* overwrite all.
                 const res = await service.saveItem(_id, item);
                 _log(NS, `> saved[${_id}] @2 =`, $U.json(res));
             }
 
-            //! call post sync function
+            //* call post sync function
             if (onAfterSync) await onAfterSync(_id, eventName, item, diff, prev);
         };
         return handler;

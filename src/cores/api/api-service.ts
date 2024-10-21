@@ -154,13 +154,13 @@ export class APIService implements APIServiceClient {
         } else if (proxy) {
             this.client = APIService.buildClient(this.type, this.endpoint, this.headers, null, proxy);
         } else {
-            //! use default `env.BACKBONE_API` to detect proxy-server.
+            //* use default `env.BACKBONE_API` to detect proxy-server.
             const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
             this.client = APIService.buildClient(this.type, this.endpoint, this.headers, BACKBONE);
         }
     }
 
-    //! relay hello.
+    //* relay hello.
     public hello = () => `api-service:${this.client.hello()}`;
 
     /**
@@ -178,21 +178,21 @@ export class APIService implements APIServiceClient {
         _log(NS, `buildClient(${type || ''})...`);
         if (!endpoint) throw new Error('@endpoint (url) is required');
         const host = `${endpoint || ''}`.split('/')[2];
-        //! if using backbone, need host+path for full-url. or need only `type` + `id/cmd` pair for direct http agent.
+        //* if using backbone, need host+path for full-url. or need only `type` + `id/cmd` pair for direct http agent.
         const base = !proxy && backbone ? `${endpoint || ''}` : undefined;
-        //! make the default proxy-client if not in.
+        //* make the default proxy-client if not in.
         if (proxy) {
             proxy = proxy;
         } else if (backbone) {
-            //! use web-proxy configuration.
+            //* use web-proxy configuration.
             const NAME = `WEB:${host}-${type || ''}`;
             const encoder = (name: string, path: string) => encodeURIComponent(path);
             const relayHeaderKey = 'x-lemon-';
             const resultKey = 'result';
-            //! use default backbone's web-proxy service.
+            //* use default backbone's web-proxy service.
             proxy = createHttpWebProxy(NAME, `${backbone}/web`, headers, encoder, relayHeaderKey, resultKey);
         } else {
-            //! use direct web request.. (only read `type` + `id/cmd` later)
+            //* use direct web request.. (only read `type` + `id/cmd` later)
             const NAME = `API:${host}-${type || ''}`;
             proxy = createHttpWebProxy(NAME, endpoint, headers, (n, s) => s, '');
         }
@@ -445,37 +445,37 @@ export class APIService implements APIServiceClient {
     /**
      * GET HOST/PATH?$param
      */
-    public doGet = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
-        return this.client.doGet(id, cmd, $param, $body, hash);
-    };
+    public async doGet<T = any>(id: string, cmd?: string, $param?: any, $body?: any, hash?: string) {
+        return this.client.doGet<T>(id, cmd, $param, $body, hash);
+    }
 
     /**
      * PUT HOST/PATH?$param
      */
-    public doPut = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
-        return this.client.doPut(id, cmd, $param, $body, hash);
-    };
+    public async doPut<T = any>(id: string, cmd?: string, $param?: any, $body?: any, hash?: string) {
+        return this.client.doPut<T>(id, cmd, $param, $body, hash);
+    }
 
     /**
      * POST HOST/PATH?$param
      */
-    public doPost = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
-        return this.client.doPost(id, cmd, $param, $body, hash);
-    };
+    public async doPost<T = any>(id: string, cmd?: string, $param?: any, $body?: any, hash?: string) {
+        return this.client.doPost<T>(id, cmd, $param, $body, hash);
+    }
 
     /**
      * PATCH HOST/PATH?$param
      */
-    public doPatch = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
-        return this.client.doPatch(id, cmd, $param, $body, hash);
-    };
+    public async doPatch<T = any>(id: string, cmd?: string, $param?: any, $body?: any, hash?: string) {
+        return this.client.doPatch<T>(id, cmd, $param, $body, hash);
+    }
 
     /**
      * DELETE HOST/PATH?$param
      */
-    public doDelete = async (id: string, cmd?: string, $param?: any, $body?: any, hash?: string) => {
-        return this.client.doDelete(id, cmd, $param, $body, hash);
-    };
+    public async doDelete<T = any>(id: string, cmd?: string, $param?: any, $body?: any, hash?: string) {
+        return this.client.doDelete<T>(id, cmd, $param, $body, hash);
+    }
 }
 
 /** ********************************************************************************************************************
@@ -535,7 +535,7 @@ export const createHttpWebProxy = (
             _isNa(path1) && _log(NS, `> host(id) =`, typeof path1, path1);
             _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
 
-            //! prepare request parameters
+            //* prepare request parameters
             // eslint-disable-next-line prettier/prettier
             const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
             const url =
@@ -552,7 +552,7 @@ export const createHttpWebProxy = (
                 json: typeof $body === 'string' ? false : true,
             };
 
-            //! relay HEADERS to `WEB-API`
+            //* relay HEADERS to `WEB-API`
             if (headers) {
                 options.headers = Object.keys(headers).reduce((H: any, key: string) => {
                     const val = headers[key];
@@ -566,16 +566,16 @@ export const createHttpWebProxy = (
             _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
             _log(NS, '> options =', $U.json(options));
 
-            //! returns promise
+            //* returns promise
             return new Promise((resolve, reject) => {
-                //! start request..
+                //* start request..
                 request(options, function (error: any, response: any, body: any) {
                     error && _err(NS, '>>>>> requested! err=', error);
                     if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
-                    //! detecte trouble.
+                    //* detecte trouble.
                     const statusCode = response.statusCode;
                     const statusMessage = response.statusMessage;
-                    //! if not in success
+                    //* if not in success
                     if (statusCode !== 200 && statusCode !== 201) {
                         const msg = body ? GETERR(body) : `${statusMessage || ''}`;
                         if (statusCode === 400 || statusCode === 404) {
@@ -587,7 +587,7 @@ export const createHttpWebProxy = (
                         body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
                         return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
                     }
-                    //! try to parse body.
+                    //* try to parse body.
                     try {
                         if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
                             body = JSON.parse(body);
@@ -597,7 +597,7 @@ export const createHttpWebProxy = (
                     } catch (e) {
                         _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
                     }
-                    //! ok! successed.
+                    //* ok! successed.
                     resolve(body);
                 });
             }).then((res: any) => {
@@ -662,7 +662,7 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
                 const key2 = qs ? `${key}${key.indexOf('?') > 0 ? '&' : '?'}${qs}` : key;
                 const key3 = hash ? `${key2}${hash ? '#' : ''}${hash || ''}` : key2;
                 // if (file.indexOf('#') > 0) console.info(`! file[${file}] =`, key3);
-                //! save by file & key.
+                //* save by file & key.
                 M[file] = data;
                 M[key3] = data;
                 return M;
@@ -704,7 +704,7 @@ export class MocksAPIService implements ApiHttpProxy, APIServiceClient {
         } else if (err) {
             throw err;
         }
-        //! returns data.
+        //* returns data.
         return data.data ? JSON.parse($U.json(data.data)) : data.data;
     }
 

@@ -20,14 +20,14 @@ import yaml from 'js-yaml';
 import AWS from 'aws-sdk';
 
 //! load json in sync.
-export const loadJsonSync = (name: string, def: any = {}) => {
+export const loadJsonSync = <T extends object = any>(name: string, def = {}): T => {
     name = !name.startsWith('./') ? `./${name}` : name;
     try {
         const rawdata = fs.readFileSync(name);
-        return JSON.parse(rawdata.toString());
+        return JSON.parse(rawdata.toString()) as T;
     } catch (e) {
-        if (def) def.error = `${e.message || e}`;
-        return def;
+        if (def && typeof def === 'object') (def as any).error = `${e.message || e}`;
+        return def as T;
     }
 };
 
@@ -66,7 +66,7 @@ export const hasCredentials = (): boolean => {
 };
 
 //! load yml data via './data/<file>.yml'
-export const loadDataYml = (file: string, folder?: string): any => {
+export const loadDataYml = <T extends object = any>(file: string, folder?: string): T => {
     folder = folder || 'data';
     const path = `./${folder}/` + file + (file.endsWith('.yml') ? '' : '.yml');
     if (!fs.existsSync(path)) throw new Error('404 NOT FOUND - data-file:' + path);

@@ -18,7 +18,7 @@ const NS = $U.NS('HCOG', 'yellow'); // NAMESPACE TO BE PRINTED.
  * - default COGNITO Handler w/ event-listeners.
  */
 export class LambdaCognitoHandler extends LambdaSubHandler<CognitoHandler> {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
@@ -35,7 +35,7 @@ export class LambdaCognitoHandler extends LambdaSubHandler<CognitoHandler> {
      * Default COGNITO Handler.
      */
     public handle: CognitoHandler = async (event): Promise<any> => {
-        //! for each records.
+        //* for each records.
         _log(NS, `handle()...`);
         _log(NS, '> event =', $U.json(event));
     };

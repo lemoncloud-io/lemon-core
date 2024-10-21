@@ -128,7 +128,7 @@ const WAIT = getRunParam('wait', 1000) as number;
 const SID = getRunParam('sid', '');
 const CMD = getRunParam('cmd', '');
 const OPT = getRunParam('opt', '');
-const [PAGE, MAX] = (() => {
+const [PAGE, MAX] = ((): number[] => {
     let page = getRunParam('page', '');
     let max = getRunParam('max', 1);
     if (`${page}`.indexOf('~') > 0) {
@@ -137,6 +137,7 @@ const [PAGE, MAX] = (() => {
         max = parseInt(pages[1]) || 0;
     } else {
         page = Number(page);
+        max = Number(max);
     }
     return [page, max];
 })();

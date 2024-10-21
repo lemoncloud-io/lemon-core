@@ -130,14 +130,14 @@ export const buildReportError =
  * - general lambda handler so that routes to proper target handlers.
  */
 export class LambdaHandler {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = $U.env('REPORT_ERROR', '1') == '1';
 
-    //! handler map.
+    //* handler map.
     protected _map: HandlerMap = {};
 
     public config: ConfigService;
-    //! protected constructor.
+    //* protected constructor.
     public constructor(config?: ConfigService) {
         this.config = config;
     }
@@ -154,34 +154,34 @@ export class LambdaHandler {
         if (key) this._map[key] = handler;
     }
 
-    //! Find Service By Event
+    //* Find Service By Event
     public findService = (event: any): HandlerType => {
         const headers = (event && event.headers) || {};
         _log(NS, `> headers =`, $U.json(headers));
-        //! check if AWS SNS Notification Subscription -> notification controller.
+        //* check if AWS SNS Notification Subscription -> notification controller.
         if (
             event.requestContext &&
             headers['x-amz-sns-message-type'] &&
             headers['x-amz-sns-message-id'] &&
             headers['x-amz-sns-topic-arn']
         ) {
-            //! via HTTP/HTTPS SNS
+            //* via HTTP/HTTPS SNS
             return 'notification';
         } else if (event.requestContext && event.pathParameters !== undefined) {
-            //! via ApiGateway
+            //* via ApiGateway
             return 'web';
         } else if (event.requestContext && event.requestContext.eventType !== undefined) {
-            //! via WEB-SOCKET from ApiGateway
+            //* via WEB-SOCKET from ApiGateway
             return 'wss';
         } else {
             if (event.cron) {
-                //! via CloudWatch's cron.
+                //* via CloudWatch's cron.
                 return 'cron';
             } else if (event.userPoolId) {
-                //! via cognito event
+                //* via cognito event
                 return 'cognito';
             } else if (event.Records) {
-                //! decode `Records` to find target.
+                //* decode `Records` to find target.
                 const records = Array.isArray(event.Records) ? event.Records : [];
                 const sns: any[] = records.filter((_: any) => (_.Sns ? true : false)); // via sns event.
                 const sqs: any[] = records.filter((_: any) => _.eventSource == 'aws:sqs'); // via sqs data/
@@ -202,19 +202,19 @@ export class LambdaHandler {
     public async handle(event: any, context: Context): Promise<any> {
         if (!event) throw new Error('@event is required!');
 
-        //! WARN! allows for using callbacks as finish/error-handlers
+        //* WARN! allows for using callbacks as finish/error-handlers
         if (context) context.callbackWaitsForEmptyEventLoop = false;
 
-        //! Check API parameters.
+        //* Check API parameters.
         const main: Handler = (event: any, context: Context, callback: Callback<any>): Promise<any> | void => {
             const type = this.findService(event);
             _log(NS, `main(${type})...`);
             const handler = this._map[type];
             if (handler && typeof handler == 'function') {
-                //! low level handler function.
+                //* low level handler function.
                 return handler(event, context, callback);
             } else if (handler && typeof handler == 'object') {
-                //! must be `LambdaHandlerService`.
+                //* must be `LambdaHandlerService`.
                 const $svc: LambdaHandlerService = handler;
                 const $ctx: Promise<NextContext> = $svc.packContext
                     ? $svc.packContext(event, context)
@@ -226,12 +226,12 @@ export class LambdaHandler {
                 }
                 return $svc.handle(event, null);
             }
-            //! raise error if not found.
+            //* raise error if not found.
             _inf(NS, `WARN! unknown[${type}].event =`, $U.json(event));
             callback && callback(new Error(`400 UNKNOWN - service:${type}`));
         };
 
-        //! call promised.
+        //* call promised.
         const promise = (main: Handler, event: any, context: Context): Promise<any> =>
             new Promise((resolve, reject) => {
                 try {
@@ -251,11 +251,11 @@ export class LambdaHandler {
                 }
             });
 
-        //! call main.. (it will return result or promised)
+        //* call main.. (it will return result or promised)
         return promise(main, event, context)
             .then(_ => {
                 // if (_ !== undefined) _log(NS, '! res =', $U.json(_));
-                if (_ !== undefined) _log(NS, '! res =', $U.S(_, 320, 64, ' .... ')); //! cut result string.
+                if (_ !== undefined) _log(NS, '! res =', $U.S(_, 320, 64, ' .... ')); //* cut result string.
                 // ((context && context.done) || callback)(null, _);
                 // return true;
                 return _;
@@ -267,7 +267,7 @@ export class LambdaHandler {
                     // return false;
                     throw e;
                 }
-                //! report this error.
+                //* report this error.
                 return doReportError(e, context, event)
                     .catch(_ => _) // safe call w/o error.
                     .then(() => {
@@ -285,7 +285,7 @@ export class LambdaHandler {
      * @param param protocol parameters
      */
     public async handleProtocol<TResult = any>(param: ProtocolParam): Promise<TResult> {
-        //! if valid API Request, then use $web's function.
+        //* if valid API Request, then use $web's function.
         const $web: LambdaHandlerService = this._map['web'] as LambdaHandlerService;
         if (!$web || typeof $web != 'object') throw new Error(`500 NO WEB HANDLER - name:web`);
         return $web.handleProtocol(param);
