@@ -18,6 +18,9 @@
  */
 import $cores, {
     AbstractManager,
+    APIHeaders,
+    APIHttpMethod,
+    ApiHttpProxy,
     CacheService,
     CoreModel,
     CoreModelFilterable,
@@ -37,9 +40,13 @@ import $cores, {
     SearchBody,
     StorageMakeable,
 } from '../cores/';
-import { $U, _log } from '../engine/';
+import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $protocol, $slack, $T, my_parrallel } from '../helpers';
+import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
+import REQUEST from 'request';
+import queryString from 'query-string';
+import AWS from 'aws-sdk';
 import elasticsearch from '@elastic/elasticsearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -1014,39 +1021,234 @@ export function sourceToItem<T>(_source: T, idName: string = '$id'): T {
 }
 
 /**
- * describe (or parse) the endpoint url
- * - it detects if endpoint is the proxied search.
- * - it detects if endpoint needs the tunneling.
- *
- * @param url
+ * internal helper function.
  */
-export function describeEndpointUrl(url: string, options?: { throwable?: boolean; errScope?: string }) {
-    const errScope = options?.errScope ?? `describeEndpointUrl()`;
-    const throwable = options?.throwable ?? true;
-    url = /^\/\/[a-z0-9]+/.test(url) ? `https:${url}` : url;
-    if (throwable) {
-        if (!url) throw new Error(`@url(string) is required - ${errScope}`);
-        if (!(url?.startsWith('http://') || url?.startsWith('https://')))
-            throw new Error(`@url[${url ?? ''}] is invalid (no http) - ${errScope}`);
-    }
+const $X = {
+    /**
+     * describe (or parse) the endpoint url
+     * - it detects if endpoint is the proxied search.
+     * - it detects if endpoint needs the tunneling.
+     *
+     * @param url
+     */
+    describeEndpointUrl: (url: string, options?: { throwable?: boolean; errScope?: string }) => {
+        const errScope = options?.errScope ?? `describeEndpointUrl()`;
+        const throwable = options?.throwable ?? true;
+        url = /^\/\/[a-z0-9]+/.test(url) ? `https:${url}` : url;
+        if (throwable) {
+            if (!url) throw new Error(`@url(string) is required - ${errScope}`);
+            if (!(url?.startsWith('http://') || url?.startsWith('https://')))
+                throw new Error(`@url[${url ?? ''}] is invalid (no http) - ${errScope}`);
+        }
 
-    const $url = new URL(url);
+        const $url = new URL(url);
 
-    const host = $U.S($url.hostname || $url.host);
-    const isTunnel = $url.hostname === 'localhost';
-    const protocol = $U.S($url.protocol).split(':')[0] ?? '';
-    const port = $U.N($url.port, url?.startsWith('https') ? 443 : 80);
-    const hosts = host.split('.');
-    //* use `/search/0/proxy` working with deployed enpoint (requires access-key)
-    const isProxy = host.endsWith('.amazonaws.com') && hosts[hosts.length - 4] == 'execute-api';
+        const host = $U.S($url.hostname || $url.host);
+        const isTunnel = $url.hostname === 'localhost';
+        const protocol = $U.S($url.protocol).split(':')[0] ?? '';
+        const port = $U.N($url.port, url?.startsWith('https') ? 443 : 80);
+        const hosts = host.split('.');
+        //* use `/search/0/proxy` working with deployed enpoint (requires access-key)
+        const isProxy = host.endsWith('.amazonaws.com') && hosts[hosts.length - 4] == 'execute-api';
+        const region = isProxy ? hosts[hosts.length - 3] : undefined;
 
-    return {
-        protocol,
-        port,
-        isTunnel,
-        isProxy,
-    };
-}
+        return {
+            protocol,
+            host,
+            port,
+            region,
+            isTunnel,
+            isProxy,
+        };
+    },
+    /**
+     * load the local credential
+     * - throws if not found.
+     * @param profile (optional) target profile (default use `loadProfile()`, '' use the default);
+     */
+    loadCredentials: (profile?: string): AWS.Credentials => {
+        const errScope = `loadCredentials(${profile ?? ''})`;
+        // determine the final profile parameter.
+        const _profile = (name: string) => {
+            if (typeof name === 'string') return name ? name : null;
+            const NAME = $U.env('NAME', '');
+            return NAME && NAME !== 'none' ? NAME : null;
+        };
+        profile = _profile(profile);
+        const credentials = new AWS.SharedIniFileCredentials({ profile });
+        if (!credentials?.accessKeyId) throw new Error(`@profile[${profile ?? ''}] is invalid - ${errScope}`);
+        return credentials;
+    },
+    /**
+     * create http-web-proxy agent which using endpoint as proxy server.
+     * - originally refer to `createHttpWebProxy()`
+     *
+     * # as cases.
+     * as proxy agent: GET <endpoint>/<host?>/<path?>
+     * as direct agent: GET <endpoint>/<id?>/<cmd?>
+     *
+     * @param endpoint  service url (ex: `https://xyz.execute-api.~/dev/search/0/proxy`)
+     * @param options   optionals parameters.
+     */
+    createHttpSearchProxy: (
+        endpoint: string,
+        options?: {
+            /** client-name (default `env.NAME`) */
+            name?: string;
+            /** headers */
+            headers?: APIHeaders;
+            /** path encoder (default encodeURIComponent) */
+            encoder?: (name: string, path: string) => string;
+            /** relay-key in headers for proxy. */
+            relayHeaderKey?: string;
+            /** resultKey in response */
+            resultKey?: string;
+            /** credentials to load */
+            credentials?: AWS.Credentials;
+            /** region */
+            region?: string;
+        },
+    ): ApiHttpProxy => {
+        const name = options?.name ?? $U.env('NAME');
+        const errScope = `createHttpSearchProxy(${name ?? ''})`;
+        if (!endpoint) throw new Error(`@endpoint (url) is required - ${errScope}`);
+        const NS = $U.NS(`X${name}`, 'magenta'); // NAMESPACE TO BE PRINTED.
+        const headers = options?.headers;
+        const encoder = options?.encoder ?? ((name, path) => path);
+        const relayHeaderKey = options?.relayHeaderKey || '';
+        const resultKey = options?.resultKey ?? '';
+
+        // initialize AWS SigV4 Client
+        const _client = () => {
+            if (!options?.credentials) return null;
+            const $cred = options?.credentials;
+            const $info = $X.describeEndpointUrl(endpoint, { throwable: false });
+            const config: sigV4ClientConfig = {
+                accessKey: $cred?.accessKeyId,
+                secretKey: $cred?.secretAccessKey,
+                serviceName: 'execute-api',
+                host: $info?.host,
+                region: options?.region ?? $info?.region,
+                endpoint,
+            };
+            return sigV4Client(config);
+        };
+        const sigClient = _client();
+
+        /**
+         * class: `ApiHttpProxy`
+         * - http proxy client via backbone's web.
+         */
+        return new (class implements ApiHttpProxy {
+            // eslint-disable-next-line @typescript-eslint/no-empty-function
+            public constructor() {}
+            public hello = () => `http-search-proxy:${name}`;
+            public doProxy<T = any>(
+                method: APIHttpMethod,
+                path1?: string,
+                path2?: string,
+                $param?: any,
+                $body?: any,
+                ctx?: any,
+            ): Promise<T> {
+                if (!method) throw new Error(`@method is required - ${errScope}`);
+                _log(NS, `doProxy(${method})..`);
+                const _isNa = (a: any) => a === undefined || a === null;
+                _log(NS, '> endpoint =', endpoint);
+                _isNa(path1) && _log(NS, `> host(id) =`, typeof path1, path1);
+                _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
+
+                //! prepare request parameters
+                // eslint-disable-next-line prettier/prettier
+            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+                const url =
+                    endpoint +
+                    (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
+                    (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
+                    (!query_string ? '' : '?' + query_string);
+                const request = REQUEST;
+                const options: any = {
+                    method,
+                    uri: url,
+                    headers: { ...headers },
+                    body: $body === null ? undefined : $body,
+                    json: typeof $body === 'string' ? false : true,
+                };
+
+                if (sigClient) {
+                    const signedRequest = sigClient.signRequest({
+                        method,
+                        path:
+                            (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
+                            (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`),
+                        queryParams: $param,
+                        headers: options.headers,
+                        body: $body,
+                    });
+                    options.headers = { ...options.headers, ...signedRequest.headers };
+                    options.uri = signedRequest.url;
+                }
+
+                //* relay HEADERS to `WEB-API`
+                if (headers) {
+                    options.headers = Object.keys(headers).reduce((H: any, key: string) => {
+                        const val = headers[key];
+                        const name = `${relayHeaderKey}${key}`;
+                        const text = `${val}`;
+                        H[name] = text;
+                        return H;
+                    }, options.headers);
+                }
+                _log(NS, ' url :=', options.method, url);
+                _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
+                _log(NS, '> options =', $U.json(options));
+
+                //* returns promise
+                return new Promise((resolve, reject) => {
+                    //* start request..
+                    request(options, function (error: any, response: any, body: any) {
+                        error && _err(NS, '>>>>> requested! err=', error);
+                        if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
+                        //* detect trouble.
+                        const statusCode = response.statusCode;
+                        const statusMessage = response.statusMessage;
+                        //* if not in success
+                        if (statusCode !== 200 && statusCode !== 201) {
+                            const msg = body ? GETERR(body) : `${statusMessage || ''}`;
+                            if (statusCode === 400 || statusCode === 404) {
+                                const title = `${
+                                    (statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'
+                                }`.toUpperCase();
+                                const message = msg.startsWith('404 NOT FOUND')
+                                    ? msg
+                                    : `${statusCode} ${title} - ${msg}`;
+                                return reject(new Error(message));
+                            }
+                            statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
+                            body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
+                            return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
+                        }
+                        //* try to parse body.
+                        try {
+                            if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
+                                body = JSON.parse(body);
+                            } else if (body && typeof body == 'string' && body.startsWith('[') && body.endsWith(']')) {
+                                body = JSON.parse(body);
+                            }
+                        } catch (e) {
+                            _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
+                        }
+                        //* ok! succeeded.
+                        resolve(body);
+                    });
+                }).then((res: any) => {
+                    if (resultKey && res && res[resultKey] !== undefined) return res[resultKey];
+                    return res;
+                });
+            }
+        })();
+    },
+};
 
 /**
  * `SearchProxyBody`
@@ -1067,7 +1269,7 @@ export interface SearchProxyBody {
 /**
  * factory function for `$ES6`
  */
-const _ES6 = (): Elastic6Instance => {
+const _ES6 = (): Elastic6Instance & { $X: typeof $X } => {
     return new (class extends Elastic6Instance {
         public hello(): string {
             return `Elastic6Instance`;
@@ -1089,6 +1291,12 @@ const _ES6 = (): Elastic6Instance => {
                 tableName,
                 autocompleteFields,
             });
+        }
+        /**
+         * expose the internal helpers. (ONLY for debugging)
+         */
+        get $X() {
+            return $X;
         }
     })();
 };

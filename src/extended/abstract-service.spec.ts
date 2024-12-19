@@ -14,15 +14,7 @@ import { keys } from 'ts-transformer-keys';
 import { CoreModel, NextContext } from '../cores/';
 import { expect2, GETERR } from '../common/test-helper';
 import { $U } from '../engine';
-import {
-    $ES6,
-    AbstractProxy,
-    CoreManager,
-    CoreService,
-    describeEndpointUrl,
-    filterFields,
-    ManagerProxy,
-} from './abstract-service';
+import { $ES6, AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
 
 /**
  * type: `Model`
@@ -213,14 +205,17 @@ describe('abstract-service', () => {
         //* the search options.
         expect2(() => $ES6.options).toEqual(null);
 
-        expect2(() => describeEndpointUrl(null, { errScope: 'test' })).toEqual('@url(string) is required - test');
-        expect2(() => describeEndpointUrl('/')).toEqual('@url[/] is invalid (no http) - describeEndpointUrl()');
-        expect2(() => describeEndpointUrl('/abc')).toEqual('@url[/abc] is invalid (no http) - describeEndpointUrl()');
+        const $X = ($ES6 as any).$X;
+        const describe = $X.describeEndpointUrl;
+
+        expect2(() => describe(null, { errScope: 'test' })).toEqual('@url(string) is required - test');
+        expect2(() => describe('/')).toEqual('@url[/] is invalid (no http) - describeEndpointUrl()');
+        expect2(() => describe('/abc')).toEqual('@url[/abc] is invalid (no http) - describeEndpointUrl()');
 
         //* internal VPC
         if (1) {
             const url1 = `https://vpc-xyz.aos.ap-northeast-2.on.aws`;
-            expect2(() => describeEndpointUrl(url1)).toEqual({
+            expect2(() => describe(url1), '!host').toEqual({
                 protocol: 'https',
                 port: 443,
                 isTunnel: false,
@@ -230,8 +225,9 @@ describe('abstract-service', () => {
         //* public VPC
         if (1) {
             const url1 = `https://vpc-xyz.ap-northeast-2.es.amazonaws.com:444`;
-            expect2(() => describeEndpointUrl(url1)).toEqual({
+            expect2(() => describe(url1)).toEqual({
                 protocol: 'https',
+                host: 'vpc-xyz.ap-northeast-2.es.amazonaws.com',
                 port: 444,
                 isTunnel: false,
                 isProxy: false,
@@ -240,32 +236,77 @@ describe('abstract-service', () => {
         //* public execute-api
         if (1) {
             const url1 = `http://xyz.execute-api.ap-northeast-2.amazonaws.com/dev`;
-            expect2(() => describeEndpointUrl(url1)).toEqual({
+            expect2(() => describe(url1), '!host').toEqual({
                 protocol: 'http',
                 port: 80,
                 isTunnel: false,
                 isProxy: true,
+                region: 'ap-northeast-2',
             });
         }
         //* some search-proxy
         if (1) {
             const url1 = `//zzz.execute-api.ap-northeast-2.amazonaws.com/dev/search/0/proxy`;
-            expect2(() => describeEndpointUrl(url1)).toEqual({
+            expect2(() => describe(url1), '!host').toEqual({
                 protocol: 'https',
                 port: 443,
                 isTunnel: false,
                 isProxy: true,
+                region: 'ap-northeast-2',
             });
         }
         //* tunneling (or local)
         if (1) {
             const url1 = `https://localhost:8683`;
-            expect2(() => describeEndpointUrl(url1)).toEqual({
+            expect2(() => describe(url1)).toEqual({
                 protocol: 'https',
                 port: 8683,
+                host: 'localhost',
                 isTunnel: true,
                 isProxy: false,
             });
         }
+
+        //* test of loadCredentials()
+        if (!PROFILE) {
+            expect2(() => $X.loadCredentials(), 'profile').toEqual({ profile: 'default' });
+            expect2(() => $X.loadCredentials(''), 'profile').toEqual({ profile: 'default' });
+            expect2(() => $X.loadCredentials('temp')).toEqual('@profile[temp] is invalid - loadCredentials(temp)');
+            expect2(() => $X.loadCredentials('lemon'), 'profile').toEqual({ profile: 'lemon' });
+
+            const cred = $X.loadCredentials('lemon');
+            expect2(() => [typeof cred?.accessKeyId, cred?.accessKeyId?.length].join(':')).toEqual('string:20');
+            expect2(() => [typeof cred?.secretAccessKey, cred?.secretAccessKey?.length].join(':')).toEqual('string:40');
+        }
+    });
+
+    //* check of createHttpSearchProxy()
+    it('should pass $ES6.$X.createHttpSearchProxy()', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}]`);
+            return;
+        }
+
+        // use `lemon-hello-api` in prod.
+        const endpoint = `https://hg9errxv25.execute-api.ap-northeast-2.amazonaws.com/prod`;
+        const $X = $ES6.$X;
+        const credentials = $X.loadCredentials(PROFILE);
+        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
+
+        // GET method test
+        expect2(
+            await proxy
+                .doProxy('GET', undefined)
+                .then((s: string) => s.split('\n').map(s => s.split('/')[0]))
+                .catch(GETERR),
+        ).toEqual(['lemon-hello-api', 'lemon-core']);
+
+        expect2(await proxy.doProxy('GET', 'hello', '1').catch(GETERR)).toEqual({ name: 'cloud' });
+        expect2(await proxy.doProxy('POST', 'hello', 'echo').catch(GETERR), 'id,cmd,param').toEqual({
+            id: '!',
+            cmd: 'echo',
+            param: null,
+        });
     });
 });
