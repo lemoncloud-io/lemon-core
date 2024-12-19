@@ -1020,8 +1020,32 @@ export function sourceToItem<T>(_source: T, idName: string = '$id'): T {
  *
  * @param url
  */
-export function describeEndpointUrl(url: string) {
-    return 'ok';
+export function describeEndpointUrl(url: string, options?: { throwable?: boolean; errScope?: string }) {
+    const errScope = options?.errScope ?? `describeEndpointUrl()`;
+    const throwable = options?.throwable ?? true;
+    url = /^\/\/[a-z0-9]+/.test(url) ? `https:${url}` : url;
+    if (throwable) {
+        if (!url) throw new Error(`@url(string) is required - ${errScope}`);
+        if (!(url?.startsWith('http://') || url?.startsWith('https://')))
+            throw new Error(`@url[${url ?? ''}] is invalid (no http) - ${errScope}`);
+    }
+
+    const $url = new URL(url);
+
+    const host = $U.S($url.hostname || $url.host);
+    const isTunnel = $url.hostname === 'localhost';
+    const protocol = $U.S($url.protocol).split(':')[0] ?? '';
+    const port = $U.N($url.port, url?.startsWith('https') ? 443 : 80);
+    const hosts = host.split('.');
+    //* use `/search/0/proxy` working with deployed enpoint (requires access-key)
+    const isProxy = host.endsWith('.amazonaws.com') && hosts[hosts.length - 4] == 'execute-api';
+
+    return {
+        protocol,
+        port,
+        isTunnel,
+        isProxy,
+    };
 }
 
 /**
@@ -1052,8 +1076,8 @@ const _ES6 = (): Elastic6Instance => {
             // 0. load from env configuration.
             const endpoint = $U.env('ES6_ENDPOINT', '');
             const indexName = $U.env('ES6_INDEX', 'test-v1');
-            const esVersion = $U.env('ES6_VERSION', '6.8'); //! version of elastic server (default 6.8)
-            const esDocType = $U.env('ES6_DOCTYPE', ''); //! version of elastic server (default `_doc`)
+            const esVersion = $U.env('ES6_VERSION', '6.8'); //* version of elastic server (default 6.8)
+            const esDocType = $U.env('ES6_DOCTYPE', ''); //* version of elastic server (default `_doc`)
             const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
             const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
             // 1. initialize instance.

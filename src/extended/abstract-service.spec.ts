@@ -13,8 +13,16 @@ import { loadProfile } from '../environ';
 import { keys } from 'ts-transformer-keys';
 import { CoreModel, NextContext } from '../cores/';
 import { expect2, GETERR } from '../common/test-helper';
-import { $ES6, AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
 import { $U } from '../engine';
+import {
+    $ES6,
+    AbstractProxy,
+    CoreManager,
+    CoreService,
+    describeEndpointUrl,
+    filterFields,
+    ManagerProxy,
+} from './abstract-service';
 
 /**
  * type: `Model`
@@ -204,5 +212,60 @@ describe('abstract-service', () => {
 
         //* the search options.
         expect2(() => $ES6.options).toEqual(null);
+
+        expect2(() => describeEndpointUrl(null, { errScope: 'test' })).toEqual('@url(string) is required - test');
+        expect2(() => describeEndpointUrl('/')).toEqual('@url[/] is invalid (no http) - describeEndpointUrl()');
+        expect2(() => describeEndpointUrl('/abc')).toEqual('@url[/abc] is invalid (no http) - describeEndpointUrl()');
+
+        //* internal VPC
+        if (1) {
+            const url1 = `https://vpc-xyz.aos.ap-northeast-2.on.aws`;
+            expect2(() => describeEndpointUrl(url1)).toEqual({
+                protocol: 'https',
+                port: 443,
+                isTunnel: false,
+                isProxy: false,
+            });
+        }
+        //* public VPC
+        if (1) {
+            const url1 = `https://vpc-xyz.ap-northeast-2.es.amazonaws.com:444`;
+            expect2(() => describeEndpointUrl(url1)).toEqual({
+                protocol: 'https',
+                port: 444,
+                isTunnel: false,
+                isProxy: false,
+            });
+        }
+        //* public execute-api
+        if (1) {
+            const url1 = `http://xyz.execute-api.ap-northeast-2.amazonaws.com/dev`;
+            expect2(() => describeEndpointUrl(url1)).toEqual({
+                protocol: 'http',
+                port: 80,
+                isTunnel: false,
+                isProxy: true,
+            });
+        }
+        //* some search-proxy
+        if (1) {
+            const url1 = `//zzz.execute-api.ap-northeast-2.amazonaws.com/dev/search/0/proxy`;
+            expect2(() => describeEndpointUrl(url1)).toEqual({
+                protocol: 'https',
+                port: 443,
+                isTunnel: false,
+                isProxy: true,
+            });
+        }
+        //* tunneling (or local)
+        if (1) {
+            const url1 = `https://localhost:8683`;
+            expect2(() => describeEndpointUrl(url1)).toEqual({
+                protocol: 'https',
+                port: 8683,
+                isTunnel: true,
+                isProxy: false,
+            });
+        }
     });
 });

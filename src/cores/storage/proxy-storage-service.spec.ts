@@ -198,8 +198,8 @@ describe('ProxyStorageService', () => {
         expect2(await $user.read('aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:user:aaa');
         expect2(await $test.nextId()).toEqual(1000003);
         expect2(await $test.nextId(0)).toEqual(1000003); // get the current
-        expect2(await $test.nextId(1)).toEqual(1000004);
-        expect2(await $test.nextId(1000010 - 1000004)).toEqual(1000010);
+        expect2(await $test.nextId(3)).toEqual(1000006);
+        expect2(await $test.nextId(1000010 - 1000006)).toEqual(1000010);
 
         const lastId = '1000011';
 
