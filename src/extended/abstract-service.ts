@@ -42,7 +42,7 @@ import $cores, {
 } from '../cores/';
 import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
-import { $protocol, $slack, $T, my_parrallel } from '../helpers';
+import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
 import REQUEST from 'request';
 import queryString from 'query-string';
@@ -825,10 +825,41 @@ export class Elastic6Synchronizer {
 }
 
 /**
- * class `ElasticInstance`
+ * type: `Elastic6ContructParams`
+ * - params for `new Elastic6Instance()`
+ */
+export interface Elastic6ContructParams {
+    /** url endpoint */
+    endpoint: string;
+    /** name of index */
+    indexName: string;
+    /** ES engine version(6.2 ~ 7.x) */
+    esVersion: string;
+    /** doc-type (only valid under 6.2) */
+    esDocType: string;
+    /** dynamo table-name to synchronize */
+    tableName: string;
+    /** (optional) field to make auto-complele */
+    autocompleteFields?: string[];
+}
+
+/**
+ * type: `Elastic6SearchParams`
+ */
+export interface Elastic6SearchParams {
+    /** index-name */
+    indexName?: string;
+    /** search-type */
+    searchType?: 'query_then_fetch' | 'dfs_query_then_fetch';
+    /** (optional) signature to check the request */
+    signature?: string;
+}
+
+/**
+ * class `AbstractElastic6Instance`
  * - to manipulate the shared Elasticsearch resources.
  */
-export abstract class Elastic6Instance {
+export abstract class AbstractElastic6Instance {
     /**
      * Elasticsearch client
      */
@@ -856,28 +887,8 @@ export abstract class Elastic6Instance {
         esDocType,
         tableName,
         autocompleteFields,
-    }: {
-        /** url endpoint */
-        endpoint: string;
-        /** name of index */
-        indexName: string;
-        /** ES engine version(6.2 ~ 7.x) */
-        esVersion: string;
-        /** doc-type (only valid under 6.2) */
-        esDocType: string;
-        /** dynamo-table to sync */
-        tableName: string;
-        /** field to make auto-complele */
-        autocompleteFields: string[];
-    }) {
-        // const endpoint = $U.env('ES6_ENDPOINT', '');
-        // const indexName = $U.env('ES6_INDEX', 'test-v1');
-        // const esVersion = $U.env('ES6_VERSION', '6.8'); //! version of elastic server (default 6.8)
-        // const esDocType = $U.env('ES6_DOCTYPE', ''); //! version of elastic server (default `_doc`)
-        // const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
-        // const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
-
-        // initialize Elasticsearch only if valid endpoint.
+    }: Elastic6ContructParams) {
+        // initialize Elasticsearch only if there are valid endpoint & index
         if (endpoint && indexName) {
             const options: Elastic6Option = {
                 endpoint,
@@ -972,13 +983,7 @@ export abstract class Elastic6Instance {
      * @param body          Elasticsearch Query DSL
      * @param params        see 'search_type' in Elasticsearch documentation
      */
-    public async search<T>(
-        body: any,
-        params?: {
-            indexName?: string;
-            searchType?: 'query_then_fetch' | 'dfs_query_then_fetch';
-        },
-    ): Promise<SearchResult<T>> {
+    public async search<T>(body: any, params?: Elastic6SearchParams): Promise<SearchResult<T>> {
         if (!this.elastic) throw new Error(`Could not read Elasticsearch endpoint or index setting.`);
         const searchType = params?.searchType;
         const elastic = params?.indexName
@@ -1001,6 +1006,53 @@ export abstract class Elastic6Instance {
 
             yield list;
         } while (body.search_after);
+    }
+}
+
+export class Elastic6Instance extends AbstractElastic6Instance {
+    public constructor(params: Elastic6ContructParams) {
+        super(params);
+    }
+    public hello(): string {
+        return `Elastic6Instance`;
+    }
+    /**
+     * expose the internal helpers. (ONLY for debugging)
+     */
+    get $X() {
+        return $X;
+    }
+}
+
+/**
+ * (internal) class: `Elastic6Proxy`
+ * - proxied agent to handle `search()`
+ */
+class Elastic6Proxy extends Elastic6Instance {
+    public constructor(params: Elastic6ContructParams, protected readonly proxy: ApiHttpProxy) {
+        super(params);
+    }
+    public hello(): string {
+        return `Elastic6Proxy`;
+    }
+
+    /**
+     * search raw query
+     *
+     * @override
+     */
+    public async search<T>(body: any, params?: Elastic6SearchParams): Promise<SearchResult<T>> {
+        const _hmac = (s: string | string[], delim = ':', prefix = 'v1') =>
+            [prefix, $U.hmac(Array.isArray(s) ? s.join(delim) : s, 'base64')].join(delim);
+        //* use proxy if possible.
+        if (this.proxy) {
+            const service = $info()?.service;
+            const indexName = params?.indexName ?? this.options?.indexName ?? '';
+            const signature = params?.signature ?? _hmac([_hmac(service), indexName]);
+            const $body: SearchProxyBody = { body, service, index: indexName, signature };
+            return this.proxy.doProxy('POST', null, null, params, $body);
+        }
+        return super.search(body, params);
     }
 }
 
@@ -1053,11 +1105,17 @@ const $X = {
         const region = isProxy ? hosts[hosts.length - 3] : undefined;
 
         return {
+            /** protocol */
             protocol,
+            /** host name */
             host,
+            /** port number */
             port,
+            /** region in cloud */
             region,
+            /** flag to use tunneling w/ ssh */
             isTunnel,
+            /** flag to use proxy */
             isProxy,
         };
     },
@@ -1267,38 +1325,51 @@ export interface SearchProxyBody {
 }
 
 /**
- * factory function for `$ES6`
+ * (internal) factory function for `$ES6`
+ *
+ * @param options (optional) for debugging
  */
-const _ES6 = (): Elastic6Instance & { $X: typeof $X } => {
-    return new (class extends Elastic6Instance {
-        public hello(): string {
-            return `Elastic6Instance`;
+export const _ES6 = (options?: { endpoint?: string; useProxy?: boolean; profile?: string }): Elastic6Instance => {
+    // 0. load from env configuration.
+    const endpoint = options?.endpoint ?? $U.env('ES6_ENDPOINT', '');
+    const indexName = $U.env('ES6_INDEX', 'test-v1');
+    const esVersion = $U.env('ES6_VERSION', '6.8'); //* version of elastic server (default 6.8)
+    const esDocType = $U.env('ES6_DOCTYPE', ''); //* version of elastic server (default `_doc`)
+    const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
+    const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
+
+    // use search-proxy by detectiong automatically.
+    const _isProxy = (): boolean => {
+        const isProxy = $U.env('ES6_IS_PROXY', '')?.toLowerCase();
+        if (isProxy == '1' || isProxy == 'y' || isProxy == 'true') return true;
+        if (endpoint) {
+            const $res = $X.describeEndpointUrl(endpoint, { throwable: false });
+            if ($res?.isProxy) return true;
         }
-        public constructor() {
-            // 0. load from env configuration.
-            const endpoint = $U.env('ES6_ENDPOINT', '');
-            const indexName = $U.env('ES6_INDEX', 'test-v1');
-            const esVersion = $U.env('ES6_VERSION', '6.8'); //* version of elastic server (default 6.8)
-            const esDocType = $U.env('ES6_DOCTYPE', ''); //* version of elastic server (default `_doc`)
-            const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
-            const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
-            // 1. initialize instance.
-            super({
-                endpoint,
-                indexName,
-                esVersion,
-                esDocType,
-                tableName,
-                autocompleteFields,
-            });
-        }
-        /**
-         * expose the internal helpers. (ONLY for debugging)
-         */
-        get $X() {
-            return $X;
-        }
-    })();
+        return false;
+    };
+    const useProxy = options?.useProxy ?? _isProxy();
+    const profile = options?.profile;
+
+    // prepare constructor parameters.
+    const params: Elastic6ContructParams = {
+        endpoint,
+        indexName,
+        esVersion,
+        esDocType,
+        tableName,
+        autocompleteFields,
+    };
+
+    //* use proxy.
+    if (useProxy) {
+        const credentials = $X.loadCredentials(profile);
+        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
+        return new Elastic6Proxy(params, proxy);
+    }
+
+    //* make a default instance.
+    return new Elastic6Instance(params);
 };
 
 /**

@@ -11,10 +11,19 @@
  */
 import { loadProfile } from '../environ';
 import { keys } from 'ts-transformer-keys';
-import { CoreModel, NextContext } from '../cores/';
+import { CoreModel, NextContext, SearchBody } from '../cores/';
 import { expect2, GETERR } from '../common/test-helper';
 import { $U } from '../engine';
-import { $ES6, AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
+import {
+    $ES6,
+    _ES6,
+    AbstractProxy,
+    CoreManager,
+    CoreService,
+    Elastic6SearchParams,
+    filterFields,
+    ManagerProxy,
+} from './abstract-service';
 
 /**
  * type: `Model`
@@ -307,6 +316,40 @@ describe('abstract-service', () => {
             id: '!',
             cmd: 'echo',
             param: null,
+        });
+    });
+
+    //* check of _ES6
+    it('should pass _ES6 factory', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}]`);
+            return;
+        }
+
+        // use `lemon-templates-api` in dev.
+        const endpoint = `https://ag1qbtayhj.execute-api.ap-northeast-2.amazonaws.com/dev/search/echo/query`;
+        const $X = $ES6.$X;
+        const credentials = $X.loadCredentials(PROFILE);
+        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
+
+        // GET method test
+        const param: Elastic6SearchParams = { searchType: 'query_then_fetch' };
+        const body: SearchBody = { size: 1, query: null };
+        expect2(await proxy.doProxy('POST', null, null, param, { body }).catch(GETERR), '!context').toEqual({
+            param,
+            body: { body },
+        });
+
+        const agent = _ES6({ endpoint });
+        expect2(await agent.search(body, param).catch(GETERR), '!context').toEqual({
+            param,
+            body: {
+                body,
+                index: 'test-v1',
+                service: 'lemon-core',
+                signature: 'v1:84g6M+IU2X/yfcyYqUxNAgQPKYlnucbWrPhP+hFYXUE=',
+            },
         });
     });
 });
