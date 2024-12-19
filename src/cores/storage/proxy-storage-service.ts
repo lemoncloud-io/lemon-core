@@ -402,8 +402,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param nextStep  (optional) the incremental step to get next. (default 1)
      */
     public async nextSeq(type: ModelType, nextInit?: number, nextStep = 1): Promise<number> {
-        const errScope = `nextSeq(${type ?? ''}, ${nextInit ?? ''})`;
+        const errScope = `nextSeq(${type ?? ''})`;
         _log(NS, `${errScope}...`);
+        if (typeof nextInit === 'number' && nextInit < 0)
+            throw new Error(`@nextInit[${nextInit}] is invalid - ${errScope}`);
         if (typeof nextStep !== 'number' || nextStep < 0)
             throw new Error(`@stepNext[${nextStep}] is invalid - ${errScope}`);
         const { createdAt, updatedAt } = this.asTime();

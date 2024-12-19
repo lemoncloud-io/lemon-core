@@ -1333,10 +1333,19 @@ export interface SearchProxyBody {
  *
  * @param options (optional) for debugging
  */
-export const _ES6 = (options?: { endpoint?: string; useProxy?: boolean; profile?: string }): Elastic6Instance => {
+export const _ES6 = (options?: {
+    /** endpoint url */
+    endpoint?: string;
+    /** index-name */
+    indexName?: string;
+    /** flag to use search-proxy */
+    useProxy?: boolean;
+    /** aws:profile to use in proxy */
+    profile?: string;
+}): Elastic6Instance => {
     // 0. load from env configuration.
     const endpoint = options?.endpoint ?? $U.env('ES6_ENDPOINT', '');
-    const indexName = $U.env('ES6_INDEX', 'test-v1');
+    const indexName = options?.indexName ?? $U.env('ES6_INDEX', 'test-v1');
     const esVersion = $U.env('ES6_VERSION', '6.8'); //* version of elastic server (default 6.8)
     const esDocType = $U.env('ES6_DOCTYPE', ''); //* version of elastic server (default `_doc`)
     const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
