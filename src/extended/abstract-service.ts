@@ -1009,6 +1009,10 @@ export abstract class AbstractElastic6Instance {
     }
 }
 
+/**
+ * class: `Elastic6Instance`
+ * - default agent to handle search.
+ */
 export class Elastic6Instance extends AbstractElastic6Instance {
     public constructor(params: Elastic6ContructParams) {
         super(params);
@@ -1216,9 +1220,8 @@ const $X = {
                 _isNa(path1) && _log(NS, `> host(id) =`, typeof path1, path1);
                 _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
 
-                //! prepare request parameters
                 // eslint-disable-next-line prettier/prettier
-            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+                const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
                 const url =
                     endpoint +
                     (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
@@ -1233,6 +1236,7 @@ const $X = {
                     json: typeof $body === 'string' ? false : true,
                 };
 
+                //* build signed url
                 if (sigClient) {
                     const signedRequest = sigClient.signRequest({
                         method,
@@ -1252,7 +1256,7 @@ const $X = {
                     options.headers = Object.keys(headers).reduce((H: any, key: string) => {
                         const val = headers[key];
                         const name = `${relayHeaderKey}${key}`;
-                        const text = `${val}`;
+                        const text = `${val ?? ''}`;
                         H[name] = text;
                         return H;
                     }, options.headers);
