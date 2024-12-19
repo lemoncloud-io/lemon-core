@@ -402,19 +402,26 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param nextStep  (optional) the incremental step to get next. (default 1)
      */
     public async nextSeq(type: ModelType, nextInit?: number, nextStep = 1): Promise<number> {
-        _log(NS, `nextSeq(${type}, ${nextInit ?? ''})..`);
+        const errScope = `nextSeq(${type ?? ''}, ${nextInit ?? ''})`;
+        _log(NS, `${errScope}...`);
         if (typeof nextStep !== 'number' || nextStep < 0)
-            throw new Error(`@stepNext[${nextStep}] is invalid - nextSeq(${type})`);
+            throw new Error(`@stepNext[${nextStep}] is invalid - ${errScope}`);
         const { createdAt, updatedAt } = this.asTime();
         const _id = this.asKey(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
-        let res = await this.storage.increment(_id, { next: nextStep } as T, { updatedAt } as T); // it will create new row if not exists. (like upset)
-        if (res.next == 1) {
-            const $key = this.service.asKey$(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
-            nextInit = nextInit === undefined || nextInit === null ? ProxyStorageService.AUTO_SEQUENCE : nextInit;
-            const $upd: T = { next: nextInit } as T;
-            const $inc: T = { ...$key, createdAt, updatedAt } as T;
-            res = await this.storage.increment(_id, $upd, $inc); //! increment w/ update-set
-        }
+        const _next = async () => {
+            // it will create new row if not exists. (like upset)
+            //TODO - improve the initial `next` if not exits.
+            const res = await this.storage.increment(_id, { next: nextStep } as T, { updatedAt } as T);
+            if (res.next == 1) {
+                const $key = this.service.asKey$(ProxyStorageService.TYPE_SEQUENCE as ModelType, `${type}`);
+                nextInit = nextInit === undefined || nextInit === null ? ProxyStorageService.AUTO_SEQUENCE : nextInit;
+                const $upd: T = { next: nextInit } as T;
+                const $inc: T = { ...$key, createdAt, updatedAt } as T;
+                return this.storage.increment(_id, $upd, $inc); //! increment w/ update-set
+            }
+            return res;
+        };
+        const res = await _next();
         return res.next;
     }
 
@@ -551,7 +558,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public async doSave(type: ModelType, id: string, node: T, $create?: T) {
         //! read origin model w/o error.
         const $org: T = (await this.doRead(type, id, null).catch(e => {
-            if (`${e.message}`.startsWith('404 NOT FOUND')) return null; // mark null to create later.
+            if (`${e.message}`.startsWith('404 NOT FOUND')) return null as T; // mark null to create later.
             throw e;
         })) as T;
 
@@ -714,8 +721,12 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
 
     /**
      * get next auto-sequence id in number like `1000003`.
+     *
+     * @param step (optional) next step value (must be >0) (`0` means getting the current value)
      */
-    public nextId = (): Promise<number> => this.storage.nextSeq(this.type);
+    public nextId = (step?: number): Promise<number> => {
+        return this.storage.nextSeq(this.type, undefined, step);
+    };
 
     /**
      * get uuid like `d01764cd-9ef2-41e2-9e88-68e79555c979`
