@@ -13,7 +13,8 @@ import { loadProfile } from '../environ';
 import { keys } from 'ts-transformer-keys';
 import { CoreModel, NextContext } from '../cores/';
 import { expect2, GETERR } from '../common/test-helper';
-import { AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
+import { $ES6, AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
+import { $U } from '../engine';
 
 /**
  * type: `Model`
@@ -85,7 +86,7 @@ describe('abstract-service', () => {
     PROFILE && console.info('! PROFILE =', PROFILE);
 
     //! basic function
-    it('should pass basic function', async done => {
+    it('should pass basic function', async () => {
         const { service } = instance();
         expect2(() => service.hello()).toEqual('backend-service:TT/dummy-data.yml');
 
@@ -114,12 +115,10 @@ describe('abstract-service', () => {
         expect2(await $test.findByKey('1')).toEqual(null);
         expect2(await $test.getMulti(['1', '1'])).toEqual([null, null]);
         expect2(await $test.getMulti$(['1', '1'])).toEqual({ '1': { id: '1', error: '404 NOT FOUND - test:1' } });
-
-        done();
     });
 
     //! basic ManagerProxy()
-    it('should pass ManagerProxy()', async done => {
+    it('should pass ManagerProxy()', async () => {
         const { service, current } = instance();
         expect2(() => service.hello()).toEqual('backend-service:TT/dummy-data.yml');
 
@@ -191,7 +190,19 @@ describe('abstract-service', () => {
             id: 'a',
             name: 'hi a',
         });
+    });
 
-        done();
+    //! check of `$ES6`
+    it('should pass $ES6', async () => {
+        const { service, current } = instance();
+
+        expect2(() => $ES6.hello()).toEqual('Elastic6Instance');
+
+        //* check environment
+        expect2(() => $U.env('ES6_ENDPOINT', '')).toEqual('');
+        expect2(() => $U.env('ES6_INDEX', '')).toEqual('');
+
+        //* the search options.
+        expect2(() => $ES6.options).toEqual(null);
     });
 });

@@ -34,6 +34,7 @@ import $cores, {
     NextIdentityAccess,
     NextIdentityCognito,
     ProxyStorageService,
+    SearchBody,
     StorageMakeable,
 } from '../cores/';
 import { $U, _log } from '../engine/';
@@ -190,7 +191,7 @@ export abstract class CoreManager<
      */
     public async find(id: string): Promise<Model | null> {
         return this.retrieve(id).catch(e => {
-            if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+            if (GETERR(e).startsWith('404 NOT FOUND')) return null as Model;
             throw e;
         });
     }
@@ -201,7 +202,7 @@ export abstract class CoreManager<
      */
     public async findByKey(key: string): Promise<Model | null> {
         return this.storage.storage.read(key).catch(e => {
-            if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+            if (GETERR(e).startsWith('404 NOT FOUND')) return null as Model;
             throw e;
         });
     }
@@ -256,7 +257,7 @@ export abstract class CoreManager<
      */
     public async findByUniqueField(uniqueValue: string): Promise<Model | null> {
         return this.getByUniqueField(uniqueValue).catch(e => {
-            if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+            if (GETERR(e).startsWith('404 NOT FOUND')) return null as Model;
             throw e;
         });
     }
@@ -820,7 +821,7 @@ export class Elastic6Synchronizer {
  * class `ElasticInstance`
  * - to manipulate the shared Elasticsearch resources.
  */
-export class Elastic6Instance {
+export abstract class Elastic6Instance {
     /**
      * Elasticsearch client
      */
@@ -884,6 +885,9 @@ export class Elastic6Instance {
             this.synchronizer = new Elastic6Synchronizer(this.elastic, { tableName });
         }
     }
+
+    /** say hello */
+    public abstract hello(): string;
 
     /**
      * read the current elastic6-option.
@@ -1010,26 +1014,63 @@ export function sourceToItem<T>(_source: T, idName: string = '$id'): T {
 }
 
 /**
+ * describe (or parse) the endpoint url
+ * - it detects if endpoint is the proxied search.
+ * - it detects if endpoint needs the tunneling.
+ *
+ * @param url
+ */
+export function describeEndpointUrl(url: string) {
+    return 'ok';
+}
+
+/**
+ * `SearchProxyBody`
+ * - the body to `/search/0/proxy`
+ */
+export interface SearchProxyBody {
+    /** the main search-body */
+    body: SearchBody;
+
+    /** service-name of request (ex: `lemon-sandbox-api`) */
+    service?: string;
+    /** index name to search via proxy (must be same as `env.ES6_INDEX`) */
+    index?: string;
+    /** (optional) signature to validate this request. */
+    signature?: string;
+}
+
+/**
+ * factory function for `$ES6`
+ */
+const _ES6 = (): Elastic6Instance => {
+    return new (class extends Elastic6Instance {
+        public hello(): string {
+            return `Elastic6Instance`;
+        }
+        public constructor() {
+            // 0. load from env configuration.
+            const endpoint = $U.env('ES6_ENDPOINT', '');
+            const indexName = $U.env('ES6_INDEX', 'test-v1');
+            const esVersion = $U.env('ES6_VERSION', '6.8'); //! version of elastic server (default 6.8)
+            const esDocType = $U.env('ES6_DOCTYPE', ''); //! version of elastic server (default `_doc`)
+            const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
+            const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
+            // 1. initialize instance.
+            super({
+                endpoint,
+                indexName,
+                esVersion,
+                esDocType,
+                tableName,
+                autocompleteFields,
+            });
+        }
+    })();
+};
+
+/**
  * const `$ES6`
  * - default instance as a singleton by env configuration.
  */
-export const $ES6 = new (class extends Elastic6Instance {
-    public constructor() {
-        // 0. load from env configuration.
-        const endpoint = $U.env('ES6_ENDPOINT', '');
-        const indexName = $U.env('ES6_INDEX', 'test-v1');
-        const esVersion = $U.env('ES6_VERSION', '6.8'); //! version of elastic server (default 6.8)
-        const esDocType = $U.env('ES6_DOCTYPE', ''); //! version of elastic server (default `_doc`)
-        const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
-        const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
-        // 1. initialize instance.
-        super({
-            endpoint,
-            indexName,
-            esVersion,
-            esDocType,
-            tableName,
-            autocompleteFields,
-        });
-    }
-})();
+export const $ES6 = _ES6();
