@@ -565,6 +565,7 @@ describe('LambdaWEBHandler', () => {
         expect2(await $web.packContext(event, null).catch(GETERR)).toEqual({
             ...context,
             identity: {
+                accessKey: 'ASIARHYTUBQ5JTV4FX4Q',
                 accountId: '796730245826',
                 caller: 'AROAIBXAJA2J7SUQOWJMO:CognitoIdentityCredentials',
                 identityId: 'ap-northeast-2:dbd95fb4-1234-2345-4567-56e5bc95e444',
