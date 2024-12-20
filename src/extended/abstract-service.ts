@@ -18,6 +18,9 @@
  */
 import $cores, {
     AbstractManager,
+    APIHeaders,
+    APIHttpMethod,
+    ApiHttpProxy,
     CacheService,
     CoreModel,
     CoreModelFilterable,
@@ -34,11 +37,16 @@ import $cores, {
     NextIdentityAccess,
     NextIdentityCognito,
     ProxyStorageService,
+    SearchBody,
     StorageMakeable,
 } from '../cores/';
-import { $U, _log } from '../engine/';
+import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
-import { $protocol, $slack, $T, my_parrallel } from '../helpers';
+import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
+import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
+import REQUEST from 'request';
+import queryString from 'query-string';
+import AWS from 'aws-sdk';
 import elasticsearch from '@elastic/elasticsearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -190,7 +198,7 @@ export abstract class CoreManager<
      */
     public async find(id: string): Promise<Model | null> {
         return this.retrieve(id).catch(e => {
-            if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+            if (GETERR(e).startsWith('404 NOT FOUND')) return null as Model;
             throw e;
         });
     }
@@ -201,7 +209,7 @@ export abstract class CoreManager<
      */
     public async findByKey(key: string): Promise<Model | null> {
         return this.storage.storage.read(key).catch(e => {
-            if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+            if (GETERR(e).startsWith('404 NOT FOUND')) return null as Model;
             throw e;
         });
     }
@@ -256,7 +264,7 @@ export abstract class CoreManager<
      */
     public async findByUniqueField(uniqueValue: string): Promise<Model | null> {
         return this.getByUniqueField(uniqueValue).catch(e => {
-            if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+            if (GETERR(e).startsWith('404 NOT FOUND')) return null as Model;
             throw e;
         });
     }
@@ -817,10 +825,41 @@ export class Elastic6Synchronizer {
 }
 
 /**
- * class `ElasticInstance`
+ * type: `Elastic6ContructParams`
+ * - params for `new Elastic6Instance()`
+ */
+export interface Elastic6ContructParams {
+    /** url endpoint */
+    endpoint: string;
+    /** name of index */
+    indexName: string;
+    /** ES engine version(6.2 ~ 7.x) */
+    esVersion: string;
+    /** doc-type (only valid under 6.2) */
+    esDocType: string;
+    /** dynamo table-name to synchronize */
+    tableName: string;
+    /** (optional) field to make auto-complele */
+    autocompleteFields?: string[];
+}
+
+/**
+ * type: `Elastic6SearchParams`
+ */
+export interface Elastic6SearchParams {
+    /** index-name */
+    indexName?: string;
+    /** search-type */
+    searchType?: 'query_then_fetch' | 'dfs_query_then_fetch';
+    /** (optional) signature to check the request */
+    signature?: string;
+}
+
+/**
+ * class `AbstractElastic6Instance`
  * - to manipulate the shared Elasticsearch resources.
  */
-export class Elastic6Instance {
+export abstract class AbstractElastic6Instance {
     /**
      * Elasticsearch client
      */
@@ -848,28 +887,8 @@ export class Elastic6Instance {
         esDocType,
         tableName,
         autocompleteFields,
-    }: {
-        /** url endpoint */
-        endpoint: string;
-        /** name of index */
-        indexName: string;
-        /** ES engine version(6.2 ~ 7.x) */
-        esVersion: string;
-        /** doc-type (only valid under 6.2) */
-        esDocType: string;
-        /** dynamo-table to sync */
-        tableName: string;
-        /** field to make auto-complele */
-        autocompleteFields: string[];
-    }) {
-        // const endpoint = $U.env('ES6_ENDPOINT', '');
-        // const indexName = $U.env('ES6_INDEX', 'test-v1');
-        // const esVersion = $U.env('ES6_VERSION', '6.8'); //! version of elastic server (default 6.8)
-        // const esDocType = $U.env('ES6_DOCTYPE', ''); //! version of elastic server (default `_doc`)
-        // const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
-        // const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
-
-        // initialize Elasticsearch only if valid endpoint.
+    }: Elastic6ContructParams) {
+        // initialize Elasticsearch only if there are valid endpoint & index
         if (endpoint && indexName) {
             const options: Elastic6Option = {
                 endpoint,
@@ -884,6 +903,9 @@ export class Elastic6Instance {
             this.synchronizer = new Elastic6Synchronizer(this.elastic, { tableName });
         }
     }
+
+    /** say hello */
+    public abstract hello(): string;
 
     /**
      * read the current elastic6-option.
@@ -961,13 +983,7 @@ export class Elastic6Instance {
      * @param body          Elasticsearch Query DSL
      * @param params        see 'search_type' in Elasticsearch documentation
      */
-    public async search<T>(
-        body: any,
-        params?: {
-            indexName?: string;
-            searchType?: 'query_then_fetch' | 'dfs_query_then_fetch';
-        },
-    ): Promise<SearchResult<T>> {
+    public async search<T>(body: any, params?: Elastic6SearchParams): Promise<SearchResult<T>> {
         if (!this.elastic) throw new Error(`Could not read Elasticsearch endpoint or index setting.`);
         const searchType = params?.searchType;
         const elastic = params?.indexName
@@ -994,6 +1010,57 @@ export class Elastic6Instance {
 }
 
 /**
+ * class: `Elastic6Instance`
+ * - default agent to handle search.
+ */
+export class Elastic6Instance extends AbstractElastic6Instance {
+    public constructor(params: Elastic6ContructParams) {
+        super(params);
+    }
+    public hello(): string {
+        return `Elastic6Instance`;
+    }
+    /**
+     * expose the internal helpers. (ONLY for debugging)
+     */
+    get $X() {
+        return $X;
+    }
+}
+
+/**
+ * (internal) class: `Elastic6Proxy`
+ * - proxied agent to handle `search()`
+ */
+class Elastic6Proxy extends Elastic6Instance {
+    public constructor(params: Elastic6ContructParams, protected readonly proxy: ApiHttpProxy) {
+        super(params);
+    }
+    public hello(): string {
+        return `Elastic6Proxy`;
+    }
+
+    /**
+     * search raw query
+     *
+     * @override
+     */
+    public async search<T>(body: any, params?: Elastic6SearchParams): Promise<SearchResult<T>> {
+        const _hmac = (s: string | string[], delim = ':', prefix = 'v1') =>
+            [prefix, $U.hmac(Array.isArray(s) ? s.join(delim) : s, 'base64')].join(delim);
+        //* use proxy if possible.
+        if (this.proxy) {
+            const service = $info()?.service;
+            const indexName = params?.indexName ?? this.options?.indexName ?? '';
+            const signature = params?.signature ?? _hmac([_hmac(service), indexName]);
+            const $body: SearchProxyBody = { body, service, index: indexName, signature };
+            return this.proxy.doProxy('POST', null, null, params, $body);
+        }
+        return super.search(body, params);
+    }
+}
+
+/**
  * from Elasticsearch document to model item
  * - replace the elastic's `$id` field to `_id` of dynamo-table.
  *
@@ -1010,26 +1077,316 @@ export function sourceToItem<T>(_source: T, idName: string = '$id'): T {
 }
 
 /**
+ * internal helper function.
+ */
+const $X = {
+    /**
+     * describe (or parse) the endpoint url
+     * - it detects if endpoint is the proxied search.
+     * - it detects if endpoint needs the tunneling.
+     *
+     * @param url
+     */
+    describeEndpointUrl: (url: string, options?: { throwable?: boolean; errScope?: string }) => {
+        const errScope = options?.errScope ?? `describeEndpointUrl()`;
+        const throwable = options?.throwable ?? true;
+        url = /^\/\/[a-z0-9]+/.test(url) ? `https:${url}` : url;
+        if (throwable) {
+            if (!url) throw new Error(`@url(string) is required - ${errScope}`);
+            if (!(url?.startsWith('http://') || url?.startsWith('https://')))
+                throw new Error(`@url[${url ?? ''}] is invalid (no http) - ${errScope}`);
+        }
+
+        const $url = new URL(url);
+
+        const host = $U.S($url.hostname || $url.host);
+        const isTunnel = $url.hostname === 'localhost';
+        const protocol = $U.S($url.protocol).split(':')[0] ?? '';
+        const port = $U.N($url.port, url?.startsWith('https') ? 443 : 80);
+        const hosts = host.split('.');
+        //* use `/search/0/proxy` working with deployed enpoint (requires access-key)
+        const isProxy = host.endsWith('.amazonaws.com') && hosts[hosts.length - 4] == 'execute-api';
+        const region = isProxy ? hosts[hosts.length - 3] : undefined;
+
+        return {
+            /** protocol */
+            protocol,
+            /** host name */
+            host,
+            /** port number */
+            port,
+            /** region in cloud */
+            region,
+            /** flag to use tunneling w/ ssh */
+            isTunnel,
+            /** flag to use proxy */
+            isProxy,
+        };
+    },
+    /**
+     * load the local credential
+     * - throws if not found.
+     * @param profile (optional) target profile (default use `loadProfile()`, '' use the default);
+     */
+    loadCredentials: (profile?: string): AWS.Credentials => {
+        const errScope = `loadCredentials(${profile ?? ''})`;
+        // determine the final profile parameter.
+        const _profile = (name: string) => {
+            if (typeof name === 'string') return name ? name : null;
+            const NAME = $U.env('NAME', '');
+            return NAME && NAME !== 'none' ? NAME : null;
+        };
+        profile = _profile(profile);
+        const credentials = new AWS.SharedIniFileCredentials({ profile });
+        if (!credentials?.accessKeyId) throw new Error(`@profile[${profile ?? ''}] is invalid - ${errScope}`);
+        return credentials;
+    },
+    /**
+     * create http-web-proxy agent which using endpoint as proxy server.
+     * - originally refer to `createHttpWebProxy()`
+     *
+     * # as cases.
+     * as proxy agent: GET <endpoint>/<host?>/<path?>
+     * as direct agent: GET <endpoint>/<id?>/<cmd?>
+     *
+     * @param endpoint  service url (ex: `https://xyz.execute-api.~/dev/search/0/proxy`)
+     * @param options   optionals parameters.
+     */
+    createHttpSearchProxy: (
+        endpoint: string,
+        options?: {
+            /** client-name (default `env.NAME`) */
+            name?: string;
+            /** headers */
+            headers?: APIHeaders;
+            /** path encoder (default encodeURIComponent) */
+            encoder?: (name: string, path: string) => string;
+            /** relay-key in headers for proxy. */
+            relayHeaderKey?: string;
+            /** resultKey in response */
+            resultKey?: string;
+            /** credentials to load */
+            credentials?: AWS.Credentials;
+            /** region */
+            region?: string;
+        },
+    ): ApiHttpProxy => {
+        const name = options?.name ?? $U.env('NAME');
+        const errScope = `createHttpSearchProxy(${name ?? ''})`;
+        if (!endpoint) throw new Error(`@endpoint (url) is required - ${errScope}`);
+        const NS = $U.NS(`X${name}`, 'magenta'); // NAMESPACE TO BE PRINTED.
+        const headers = options?.headers;
+        const encoder = options?.encoder ?? ((name, path) => path);
+        const relayHeaderKey = options?.relayHeaderKey || '';
+        const resultKey = options?.resultKey ?? '';
+
+        // initialize AWS SigV4 Client
+        const _client = () => {
+            if (!options?.credentials) return null;
+            const $cred = options?.credentials;
+            const $info = $X.describeEndpointUrl(endpoint, { throwable: false });
+            const config: sigV4ClientConfig = {
+                accessKey: $cred?.accessKeyId,
+                secretKey: $cred?.secretAccessKey,
+                serviceName: 'execute-api',
+                host: $info?.host,
+                region: options?.region ?? $info?.region,
+                endpoint,
+            };
+            return sigV4Client(config);
+        };
+        const sigClient = _client();
+
+        /**
+         * class: `ApiHttpProxy`
+         * - http proxy client via backbone's web.
+         */
+        return new (class implements ApiHttpProxy {
+            // eslint-disable-next-line @typescript-eslint/no-empty-function
+            public constructor() {}
+            public hello = () => `http-search-proxy:${name}`;
+            public doProxy<T = any>(
+                method: APIHttpMethod,
+                path1?: string,
+                path2?: string,
+                $param?: any,
+                $body?: any,
+                ctx?: any,
+            ): Promise<T> {
+                if (!method) throw new Error(`@method is required - ${errScope}`);
+                _log(NS, `doProxy(${method})..`);
+                const _isNa = (a: any) => a === undefined || a === null;
+                _log(NS, '> endpoint =', endpoint);
+                _isNa(path1) && _log(NS, `> host(id) =`, typeof path1, path1);
+                _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
+
+                // eslint-disable-next-line prettier/prettier
+                const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+                const url =
+                    endpoint +
+                    (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
+                    (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
+                    (!query_string ? '' : '?' + query_string);
+                const request = REQUEST;
+                const options: any = {
+                    method,
+                    uri: url,
+                    headers: { ...headers },
+                    body: $body === null ? undefined : $body,
+                    json: typeof $body === 'string' ? false : true,
+                };
+
+                //* build signed url
+                if (sigClient) {
+                    const signedRequest = sigClient.signRequest({
+                        method,
+                        path:
+                            (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
+                            (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`),
+                        queryParams: $param,
+                        headers: options.headers,
+                        body: $body,
+                    });
+                    options.headers = { ...options.headers, ...signedRequest.headers };
+                    options.uri = signedRequest.url;
+                }
+
+                //* relay HEADERS to `WEB-API`
+                if (headers) {
+                    options.headers = Object.keys(headers).reduce((H: any, key: string) => {
+                        const val = headers[key];
+                        const name = `${relayHeaderKey}${key}`;
+                        const text = `${val ?? ''}`;
+                        H[name] = text;
+                        return H;
+                    }, options.headers);
+                }
+                _log(NS, ' url :=', options.method, url);
+                _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
+                _log(NS, '> options =', $U.json(options));
+
+                //* returns promise
+                return new Promise((resolve, reject) => {
+                    //* start request..
+                    request(options, function (error: any, response: any, body: any) {
+                        error && _err(NS, '>>>>> requested! err=', error);
+                        if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
+                        //* detect trouble.
+                        const statusCode = response.statusCode;
+                        const statusMessage = response.statusMessage;
+                        //* if not in success
+                        if (statusCode !== 200 && statusCode !== 201) {
+                            const msg = body ? GETERR(body) : `${statusMessage || ''}`;
+                            if (statusCode === 400 || statusCode === 404) {
+                                const title = `${
+                                    (statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'
+                                }`.toUpperCase();
+                                const message = msg.startsWith('404 NOT FOUND')
+                                    ? msg
+                                    : `${statusCode} ${title} - ${msg}`;
+                                return reject(new Error(message));
+                            }
+                            statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
+                            body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
+                            return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
+                        }
+                        //* try to parse body.
+                        try {
+                            if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
+                                body = JSON.parse(body);
+                            } else if (body && typeof body == 'string' && body.startsWith('[') && body.endsWith(']')) {
+                                body = JSON.parse(body);
+                            }
+                        } catch (e) {
+                            _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
+                        }
+                        //* ok! succeeded.
+                        resolve(body);
+                    });
+                }).then((res: any) => {
+                    if (resultKey && res && res[resultKey] !== undefined) return res[resultKey];
+                    return res;
+                });
+            }
+        })();
+    },
+};
+
+/**
+ * `SearchProxyBody`
+ * - the body to `/search/0/proxy`
+ */
+export interface SearchProxyBody {
+    /** the main search-body */
+    body: SearchBody;
+
+    /** service-name of request (ex: `lemon-sandbox-api`) */
+    service?: string;
+    /** index name to search via proxy (must be same as `env.ES6_INDEX`) */
+    index?: string;
+    /** (optional) signature to validate this request. */
+    signature?: string;
+}
+
+/**
+ * (internal) factory function for `$ES6`
+ *
+ * @param options (optional) for debugging
+ */
+export const _ES6 = (options?: {
+    /** endpoint url */
+    endpoint?: string;
+    /** index-name */
+    indexName?: string;
+    /** flag to use search-proxy */
+    useProxy?: boolean;
+    /** aws:profile to use in proxy */
+    profile?: string;
+}): Elastic6Instance => {
+    // 0. load from env configuration.
+    const endpoint = options?.endpoint ?? $U.env('ES6_ENDPOINT', '');
+    const indexName = options?.indexName ?? $U.env('ES6_INDEX', 'test-v1');
+    const esVersion = $U.env('ES6_VERSION', '6.8'); //* version of elastic server (default 6.8)
+    const esDocType = $U.env('ES6_DOCTYPE', ''); //* version of elastic server (default `_doc`)
+    const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
+    const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
+
+    // use search-proxy by detectiong automatically.
+    const _isProxy = (): boolean => {
+        const isProxy = $U.env('ES6_IS_PROXY', '')?.toLowerCase();
+        if (isProxy == '1' || isProxy == 'y' || isProxy == 'true') return true;
+        if (endpoint) {
+            const $res = $X.describeEndpointUrl(endpoint, { throwable: false });
+            if ($res?.isProxy) return true;
+        }
+        return false;
+    };
+    const useProxy = options?.useProxy ?? _isProxy();
+    const profile = options?.profile;
+
+    // prepare constructor parameters.
+    const params: Elastic6ContructParams = {
+        endpoint,
+        indexName,
+        esVersion,
+        esDocType,
+        tableName,
+        autocompleteFields,
+    };
+
+    //* use proxy.
+    if (useProxy) {
+        const credentials = $X.loadCredentials(profile);
+        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
+        return new Elastic6Proxy(params, proxy);
+    }
+
+    //* make a default instance.
+    return new Elastic6Instance(params);
+};
+
+/**
  * const `$ES6`
  * - default instance as a singleton by env configuration.
  */
-export const $ES6 = new (class extends Elastic6Instance {
-    public constructor() {
-        // 0. load from env configuration.
-        const endpoint = $U.env('ES6_ENDPOINT', '');
-        const indexName = $U.env('ES6_INDEX', 'test-v1');
-        const esVersion = $U.env('ES6_VERSION', '6.8'); //! version of elastic server (default 6.8)
-        const esDocType = $U.env('ES6_DOCTYPE', ''); //! version of elastic server (default `_doc`)
-        const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
-        const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
-        // 1. initialize instance.
-        super({
-            endpoint,
-            indexName,
-            esVersion,
-            esDocType,
-            tableName,
-            autocompleteFields,
-        });
-    }
-})();
+export const $ES6 = _ES6();

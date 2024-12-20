@@ -716,7 +716,9 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
             identity.accountId = $id.accountId; // account-id should be same as context.accountId
             identity.userAgent = $id.userAgent; // user-agent string.
-            identity.caller = $id.caller ?? undefined; // caller string.
+            if (typeof $id.caller == 'string') identity.caller = $id.caller;
+            if (typeof $id.accessKey == 'string') identity.accessKey = $id.accessKey;
+            if (typeof $id.apiKey == 'string') identity.apiKey = $id.apiKey;
             _inf(NS, '! identity(new) :=', $U.json({ ...identity }));
         }
         //TODO - transform to access identity via `lemon-accounts-api` service @200106

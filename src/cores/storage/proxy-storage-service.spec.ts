@@ -170,6 +170,7 @@ describe('ProxyStorageService', () => {
         expect2(await storage.doRead('sequence' as MyType, 'test').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:sequence:test');
         expect2(await storage.nextSeq('test')).toEqual(1000001);
         expect2(await storage.nextSeq('test')).toEqual(1000002);
+        expect2(await storage.nextSeq('test', -1).catch(GETERR)).toEqual('@nextInit[-1] is invalid - nextSeq(test)');
 
         expect2((await storage.nextUuid()).length).toEqual('d01764cd-9ef2-41e2-9e88-68e79555c979'.length);
         expect2((await storage.nextUuid()).split('-').length).toEqual('d01764cd-9ef2-41e2-9e88-68e79555c979'.split('-').length);
@@ -196,6 +197,13 @@ describe('ProxyStorageService', () => {
         expect2(await $test.read('aaa').catch(GETERR), '_id,stereo').toEqual({ _id:'TT:test:aaa', stereo:'a' });
         expect2(await $test.read('bbb').catch(GETERR), '!updatedAt').toEqual({ _id:'TT:test:bbb', stereo:'b' });
         expect2(await $user.read('aaa').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:user:aaa');
+        expect2(await $test.nextId().catch(GETERR)).toEqual(1000003);
+        expect2(await $test.nextId(0).catch(GETERR)).toEqual(1000003); // get the current
+        expect2(await $test.nextId(3).catch(GETERR)).toEqual(1000006);
+        expect2(await $test.nextId(-1).catch(GETERR)).toEqual('@stepNext[-1] is invalid - nextSeq(test)');
+        expect2(await $test.nextId(1000010 - 1000006)).toEqual(1000010);
+
+        const lastId = '1000011';
 
         //! test filters.
         if (1) {
@@ -222,7 +230,7 @@ describe('ProxyStorageService', () => {
             expect2(await $test.update(id, { count:2 })).toEqual({ _id, count: 2, updatedAt });
             expect2(await $test.increment(id, { count:2 })).toEqual({ _id, count: 4, updatedAt });
             expect2(await $test.delete(id)).toEqual({ _id, id, name:'bob', ns:'TT', type:'test', count:4, createdAt, updatedAt, deletedAt:0 });
-            expect2(await $test.insert({ name:'col' }), 'id,name').toEqual({ id:'1000003', name:'col' });
+            expect2(await $test.insert({ name:'col' }), 'id,name').toEqual({ id: lastId, name:'col' });
 
             //! test lock
             expect2(await $test.read(id).catch(GETERR)).toEqual(`404 NOT FOUND - _id:${_id}`);                      // BE SURE 404
