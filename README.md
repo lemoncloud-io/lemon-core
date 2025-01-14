@@ -74,6 +74,8 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.2.12    | improve `buildResponse()` to determin content-type of html.
+| 3.2.11    | updated `elastic6-service` to support `SearchProxy`.
 | 3.2.10    | updated `elastic6-service` to fix `400 ILLEGAL ARGUMENT` (script parsing).
 | 3.2.9     | improve `elastic6-service` w/ latest open-search.
 | 3.2.8     | updated `ttypescript^1.5.15`, and optimized.

@@ -76,10 +76,12 @@ type ProxyChain = ProxyParams | ProxyResponser;
  */
 export const buildResponse = (statusCode: number, body: any, contentType?: string, origin?: string): ProxyResult => {
     const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
+    const _isHtml = (body: string) =>
+        body.startsWith('<!DOCTYPE html>') || (body.startsWith('<') && body.endsWith('>'));
     contentType =
         contentType ||
         (typeof body === 'string'
-            ? body.startsWith('<') && body.endsWith('>')
+            ? _isHtml(body)
                 ? 'text/html; charset=utf-8'
                 : 'text/plain; charset=utf-8'
             : 'application/json; charset=utf-8');
