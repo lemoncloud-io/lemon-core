@@ -351,8 +351,8 @@ export class APIService implements APIServiceClient {
             const load = { method, endpoint, param, body, context };
             return this.target
                 .doProxy(method, host, path, param, body, context, hash)
-                .then((data: any) => ({ index, load, data, error: null }))
-                .catch((error: any) => ({ index, load, data: null, error }))
+                .then((data: any) => ({ index, load, data, error: null as any }))
+                .catch((error: any) => ({ index, load, data: null as any, error }))
                 .then(({ index, load, data, error }) => {
                     const baseDir = (() => {
                         // eslint-disable-next-line prettier/prettier
@@ -402,8 +402,8 @@ export class APIService implements APIServiceClient {
                 throw new Error(`@method is not valid. method:${method}`);
             };
             return call(method)
-                .then((data: any) => ({ index, load, data, error: null }))
-                .catch((error: any) => ({ index, load, data: null, error }))
+                .then((data: any) => ({ index, load, data, error: null as any }))
+                .catch((error: any) => ({ index, load, data: null as any, error }))
                 .then(({ index, load, data, error }) => {
                     const baseDir = (() => {
                         // eslint-disable-next-line prettier/prettier

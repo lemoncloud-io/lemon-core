@@ -654,6 +654,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
     /**
      * featch identity-acess from `lemon-accounts-api`
+     *
+     * @deprecated useless anymore since 3.2.10
      */
     protected async fetchIdentityAccess(identityId: string, domain?: string) {
         domain = $T.S(domain, this.context.domain);
@@ -673,6 +675,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
     /**
      * the cached identity model
+     *
+     * @deprecated useless anymore since 3.2.10
      */
     protected _identity: { [key: string]: NextIdentityAccess } = {};
 
@@ -682,6 +686,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
      * @param identityId id to find
      * @param force (optional) force to reload if not available
      * @returns the cached identity-access
+     *
+     * @deprecated useless anymore since 3.2.10
      */
     public async getIdentity$(identityId: string, force?: boolean): Promise<NextIdentityAccess> {
         if (!identityId) return null;
@@ -705,6 +711,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
     /**
      * get the current identity object (or throw access-error)
+     *
+     * @deprecated useless anymore since 3.2.10
      */
     public async getCurrentIdentity$(throwable = true): Promise<NextIdentityAccess> {
         const identityId = await this.getCurrentIdentityId(throwable);
