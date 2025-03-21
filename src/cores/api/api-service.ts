@@ -67,7 +67,7 @@ export interface ApiHttpProxy {
      */
     doProxy<T = any>(
         method: APIHttpMethod,
-        host: string,
+        host?: string,
         path?: string,
         param?: any,
         body?: any,

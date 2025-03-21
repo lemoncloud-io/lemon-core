@@ -21,6 +21,7 @@ import {
     $info,
     parseRange,
     my_sequence,
+    createSigV4Proxy,
 } from './helpers';
 import $cores from '../cores/';
 
@@ -217,7 +218,7 @@ describe('utils', () => {
     });
 
     //! test makeRandomCode()
-    it('should pass makeRandomCode()', async done => {
+    it('should pass makeRandomCode()', async () => {
     /* eslint-disable prettier/prettier */
         const client = $T;
         if (1){
@@ -248,7 +249,6 @@ describe('utils', () => {
             expect2(/[1-9][0-9]{5}/.test(client.makeRandomCode(6).val.toString())).toEqual(true);
         }
         /* eslint-enable prettier/prettier */
-        done();
     });
 
     it('should pass $T.perf()', async () => {
@@ -331,27 +331,23 @@ describe('utils', () => {
         });
     });
 
-    it('should pass misc function()', async done => {
+    it('should pass misc function()', async () => {
         //! test if making target protocol-url
         const $prot1 = $protocol({}, '//self/hello/0');
 
         //NOTE - package dependent
         expect2(() => $prot1.asTargetUrl()).toEqual('api://lemon-core-dev/hello/0');
-
-        done();
     });
 
-    it('should pass $info()', async done => {
+    it('should pass $info()', async () => {
         expect2(() => $info()).toEqual({
             service: 'lemon-core',
             stage: expect.any(String),
             version: expect.any(String),
         });
-
-        done();
     });
 
-    it('should pass parseRange()', async done => {
+    it('should pass parseRange()', async () => {
         expect2(() => parseRange('[1020 TO 3030]')).toEqual({ gte: 1020, lte: 3030 });
         expect2(() => parseRange('[1020 TO 3030}')).toEqual({ gte: 1020, lt: 3030 });
         expect2(() => parseRange('{80 TO 81]')).toEqual({ gt: 80, lte: 81 });
@@ -363,12 +359,10 @@ describe('utils', () => {
         expect2(() => parseRange('{* TO *}')).toEqual(undefined);
         expect2(() => parseRange('[* TO *}')).toEqual(undefined);
         expect2(() => parseRange('[* TO *]')).toEqual(undefined);
-
-        done();
     });
 
     //! test of my_parrallel()
-    it('should pass my_parrallel()', async done => {
+    it('should pass my_parrallel()', async () => {
         interface MyModel {
             id: string;
             error: string;
@@ -407,11 +401,9 @@ describe('utils', () => {
             { id: '1', error: 'yes error of me' },
             { id: '2', error: null, data: 2 },
         ]);
-
-        done();
     });
 
-    it('should pass my_sequence()', async done => {
+    it('should pass my_sequence()', async () => {
         interface MyModel {
             id: string;
             error: string;
@@ -446,19 +438,16 @@ describe('utils', () => {
             expect2(() => result.actionTime).toBeGreaterThan(previousActionTime + actionDelay - 0.1);
             previousActionTime = result.actionTime;
         });
-        done();
     });
 
-    it('should pass isUserAuthorized()', async done => {
+    it('should pass isUserAuthorized()', async () => {
         const { $context } = await instance();
 
         expect2(() => isUserAuthorized($context.signed)).toBe(true);
         expect2(() => isUserAuthorized($context.unsigned)).toBe(false);
-
-        done();
     });
 
-    it('should pass getIdentityId()', async done => {
+    it('should pass getIdentityId()', async () => {
         const { $context, identityId } = await instance();
 
         //! check in `env/none.yml`
@@ -515,11 +504,22 @@ describe('utils', () => {
                 lang: 'en',
             },
         });
-
-        done();
     });
 
-    it('should pass $T.merge()', async done => {
+    it('should pass createSigV4Proxy()', async () => {
+        expect2(() => createSigV4Proxy(null, null)).toEqual('@endpoint (url) is required - createSigV4Proxy()');
+        expect2(() => createSigV4Proxy('abc', null)).toEqual('@endpoint (url) is required - createSigV4Proxy(abc)');
+
+        expect2(() => createSigV4Proxy('abc', 'local')?.hello()).toEqual('http-web-proxy:abc');
+        expect2(() => createSigV4Proxy('abc', 'local')?.doProxy(null, null)).toEqual(
+            `@method is required - createSigV4Proxy(abc)`,
+        );
+        expect2(() => createSigV4Proxy('abc', 'local')?.doProxy('GET', null)).toEqual(
+            '@endpoint[local] is invalid - createSigV4Proxy(abc)',
+        );
+    });
+
+    it('should pass $T.merge()', async () => {
         expect2(() => $T.merge(null, { a: 2, b: null })).toEqual({ a: 2 });
         expect2(() => $T.merge(undefined, { a: 2, b: null })).toEqual({ a: 2 });
 
@@ -528,7 +528,5 @@ describe('utils', () => {
         expect2(() => $T.merge(null, undefined)).toEqual(null);
 
         expect2(() => $T.merge({ a: 3, b: 2 }, { a: 2, b: null })).toEqual({ a: 2 });
-
-        done();
     });
 });

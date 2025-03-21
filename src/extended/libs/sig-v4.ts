@@ -1,6 +1,7 @@
 /**
  * `sig-v4.ts`
  *
+ * @author      Louis <louis@lemoncloud.io>
  * @author      Claire <claire@lemoncloud.io>
  * @date        2024-12-02 initial version
  *
@@ -186,6 +187,9 @@ const buildAuthorizationHeader = (accessKey: string, credentialScope: string, he
     )}, Signature=${signature}`;
 };
 
+/**
+ * config for sigV4Client
+ */
 export interface sigV4ClientConfig {
     host?: string;
     accessKey?: string;
@@ -198,6 +202,9 @@ export interface sigV4ClientConfig {
     endpoint?: string;
 }
 
+/**
+ * create the sigV4Client for signed request to AWS
+ */
 export const sigV4Client = (config: sigV4ClientConfig) => {
     const awsSigV4Client: { [key: string]: any } = {};
 

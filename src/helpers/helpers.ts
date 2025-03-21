@@ -11,11 +11,15 @@
  *
  * @copyright (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import $cores, { NextContext, NextIdentityCognito, ProtocolModule, ProtocolService, SimpleSet } from '../cores/';
-import { $U, doReportSlack, do_parrallel } from '../engine/';
+import $cores, { APIHeaders, APIHttpMethod, ApiHttpProxy, NextContext, NextIdentityCognito } from '../cores/';
+import { ProtocolModule, ProtocolService, SimpleSet } from '../cores/';
+import $engine, { $U, doReportSlack, do_parrallel } from '../engine/';
 import { GETERR } from '../common/test-helper';
-import querystring from 'querystring';
+import { sigV4Client, sigV4ClientConfig } from '../extended/libs/sig-v4';
 import { performance } from 'perf_hooks';
+
+import REQUEST from 'request';
+import queryString from 'query-string';
 
 /**
  * Helpers to transform data-types.
@@ -409,7 +413,7 @@ export const $protocol = (
             const [path, qs] = callback.split('?');
             if (path) {
                 const [type, id, cmd] = path.split('/');
-                const param = querystring.parse(qs);
+                const param = queryString.parse(qs);
                 return { type, id, cmd, param };
             }
         }
@@ -632,3 +636,164 @@ export const my_sequence = <T extends { id?: string; error?: string }, U = T>(
     list: T[],
     func: (item: T, index?: number) => Promise<U>,
 ) => my_parrallel(list, func, 1);
+
+/**
+ * create api-http-proxy with sig-v4 agent, which using endpoint as proxy server.
+ *
+ * # as cases.
+ * as proxy agent: GET <endpoint>/<host?>/<path?>
+ * as direct agent: GET <endpoint>/<id?>/<cmd?>
+ *
+ * @param name              client-name
+ * @param endpoint          service url (or backbone proxy-url)
+ * @param sigConfig         sig-v4 client-config
+ * @param options           optional parameters
+ */
+export const createSigV4Proxy = (
+    /** name of client */
+    name: string,
+    /** endpoint of service */
+    endpoint: string,
+    /** sig-v4 client-config */
+    sigConfig?: sigV4ClientConfig,
+    /** (optional) parameters */
+    options?: {
+        /** headers */
+        headers?: APIHeaders;
+        /** path encoder (default encodeURIComponent) */
+        encoder?: (name: string, path: string) => string;
+        /** relay-key in headers for proxy. */
+        relayHeaderKey?: string;
+        /** resultKey in response */
+        resultKey?: string;
+        /** flag to print log (default false) */
+        verbose?: boolean;
+    },
+): ApiHttpProxy => {
+    const errScope = `createSigV4Proxy(${name ?? ''})`;
+    if (!endpoint) throw new Error(`@endpoint (url) is required - ${errScope}`);
+    const NS = $U.NS(`X${name}`, 'magenta'); // NAMESPACE TO BE PRINTED.
+    const encoder = options?.encoder ?? ((name, path) => path);
+    const relayHeaderKey = options?.relayHeaderKey ?? '';
+    const resultKey = options?.resultKey ?? '';
+    const verbose = options?.verbose ?? false;
+
+    const _log = verbose ? $engine.log : () => {};
+    const _err = verbose ? $engine.err : () => {};
+    const _inf = verbose ? $engine.inf : () => {};
+
+    // initialize AWS SigV4 Client
+    const sigClient = sigConfig ? sigV4Client({ ...sigConfig, endpoint }) : null;
+
+    /**
+     * class: `ApiHttpProxy`
+     * - http proxy client via backbone's web.
+     */
+    return new (class implements ApiHttpProxy {
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        public constructor(readonly headers?: APIHeaders) {}
+        public hello = () => `http-web-proxy:${name}`;
+        public doProxy<T = any>(
+            method: APIHttpMethod,
+            path1?: string,
+            path2?: string,
+            $param?: any,
+            $body?: any,
+            $ctx?: any,
+        ): Promise<T> {
+            if (!method) throw new Error(`@method is required - ${errScope}`);
+            if (!endpoint?.startsWith('http') && !endpoint?.startsWith('https'))
+                throw new Error(`@endpoint[${endpoint}] is invalid - ${errScope}`);
+            _inf(NS, `doProxy(${method})..`);
+            const _isNa = (a: any) => a === undefined || a === null;
+            _log(NS, '> endpoint =', endpoint);
+            _isNa(path1) && _log(NS, `> host(id) =`, typeof path1, path1);
+            _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
+
+            //* prepare request parameters
+            // eslint-disable-next-line prettier/prettier
+            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+            const url =
+                endpoint +
+                (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
+                (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
+                (!query_string ? '' : '?' + query_string);
+            const request = REQUEST;
+            const options: any = {
+                method,
+                uri: url,
+                headers: { ...this.headers },
+                body: $body === null ? undefined : $body,
+                json: typeof $body === 'string' ? false : true,
+            };
+
+            if (sigClient) {
+                const signedRequest = sigClient.signRequest({
+                    method,
+                    path:
+                        (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
+                        (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`),
+                    queryParams: $param,
+                    headers: options.headers,
+                    body: $body,
+                });
+                options.headers = { ...options.headers, ...signedRequest.headers };
+                options.uri = signedRequest.url;
+            }
+
+            //* relay HEADERS to `WEB-API`
+            if (this.headers) {
+                const headers = this.headers;
+                options.headers = Object.keys(headers).reduce((H: any, key: string) => {
+                    const val = headers[key];
+                    const name = `${relayHeaderKey}${key}`;
+                    const text = `${val}`;
+                    H[name] = text;
+                    return H;
+                }, options.headers);
+            }
+            _log(NS, ' url :=', options.method, url);
+            _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
+            _log(NS, '> options =', $U.json(options));
+
+            //* returns promise
+            return new Promise((resolve, reject) => {
+                //* start request..
+                request(options, function (error: any, response: any, body: any) {
+                    error && _err(NS, '>>>>> requested! err=', error);
+                    if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
+                    //* detect trouble.
+                    const statusCode = response.statusCode;
+                    const statusMessage = response.statusMessage;
+                    //* if not in success
+                    if (statusCode !== 200 && statusCode !== 201) {
+                        const msg = body ? GETERR(body) : `${statusMessage || ''}`;
+                        if (statusCode === 400 || statusCode === 404) {
+                            const title = `${(statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'}`.toUpperCase();
+                            const message = msg.startsWith('404 NOT FOUND') ? msg : `${statusCode} ${title} - ${msg}`;
+                            return reject(new Error(message));
+                        }
+                        statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
+                        body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
+                        return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
+                    }
+                    //* try to parse body.
+                    try {
+                        if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
+                            body = JSON.parse(body);
+                        } else if (body && typeof body == 'string' && body.startsWith('[') && body.endsWith(']')) {
+                            body = JSON.parse(body);
+                        }
+                    } catch (e) {
+                        _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
+                    }
+                    //* ok! succeeded.
+                    resolve(body);
+                });
+            }).then((res: any) => {
+                if (resultKey && res && res[resultKey] !== undefined) return res[resultKey];
+                return res;
+            });
+        }
+    })(options?.headers);
+};
