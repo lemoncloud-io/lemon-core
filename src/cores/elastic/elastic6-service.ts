@@ -218,9 +218,10 @@ export abstract class ElasticIndexService<T extends ElasticItem = any> {
      * @param options { endpoint, indexName } is required.
      */
     public constructor(options: ElasticOption) {
-        _inf(NS, `ElasticIndexService(${options.indexName}/${options.idName})...`);
-        if (!options.endpoint) throw new Error('.endpoint (URL) is required');
-        if (!options.indexName) throw new Error('.indexName (string) is required');
+        const errScope = `ElasticIndexService(${options.indexName}/${options.idName ?? ''})`;
+        if (!options.endpoint) throw new Error(`.endpoint (URL) is required - ${errScope}`);
+        if (!options.indexName) throw new Error(`.indexName (string) is required - ${errScope}`);
+        _inf(NS, `(${errScope})...`);
 
         // default option values: docType='_doc', idName='$id'
         const { client } = ElasticIndexService.instance(options.endpoint);
