@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "3.2.14",
+  "version": "3.2.15",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -65,7 +65,7 @@
     "ioredis": "^5.2.3",
     "js-yaml": "^4.1.0",
     "jsonwebtoken": "^9.0.0",
-    "lemon-model": "^1.0.3",
+    "lemon-model": "^1.0.4",
     "lodash": "^4.17.21",
     "memcached": "^2.2.2",
     "mime-types": "^2.1.35",
