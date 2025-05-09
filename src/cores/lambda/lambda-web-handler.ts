@@ -11,6 +11,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @date        2022-04-07 use env, and opt header-parser
+ * @date        2025-05-09 improved to support `referer` and `origin` header.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */

@@ -74,6 +74,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 3.2.14    | improve `NextContext` to support `referer` and `origin` header.
 | 3.2.13    | improve `createSigV4Proxy()` to support the sig-v4 request to AWS.
 | 3.2.12    | improve `buildResponse()` to determin content-type of html.
 | 3.2.11    | updated `elastic6-service` to support `SearchProxy`.
