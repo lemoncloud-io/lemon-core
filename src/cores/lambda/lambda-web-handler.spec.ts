@@ -124,7 +124,7 @@ describe('LambdaWEBHandler', () => {
 
             expect2(() => $t.isExternal()).toEqual(true);
             expect2(() => $t.parseLanguageHeader()).toEqual();
-            expect2(() => $t.parseIdentityHeader()).toEqual({ lang: undefined as string });
+            expect2(await $t.parseIdentityHeader()).toEqual({ lang: undefined as string });
         }
 
         //! test `tools()` of headers
@@ -147,7 +147,7 @@ describe('LambdaWEBHandler', () => {
 
             expect2(() => $t.isExternal()).toEqual(false);
             expect2(() => $t.parseLanguageHeader()).toEqual('ko/kr');
-            expect2(() => $t.parseIdentityHeader()).toEqual({ meta: '1122', lang: 'ko/kr' });
+            expect2(await $t.parseIdentityHeader()).toEqual({ meta: '1122', lang: 'ko/kr' });
 
             const identity: NextIdentity = { sid: ' ㅎ힁', uid: 'U', gid: 'g', roles: ['&@ $+-'] };
             const current = ($U.dt('2022-05-10 11:22:33', 9) as Date).getTime();
@@ -509,7 +509,13 @@ describe('LambdaWEBHandler', () => {
     it('should pass packContext(public) via lambda protocol', async done => {
         const { lambda, service: $web } = instance();
         const $pack = loadJsonSync('package.json');
-        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+        const event = loadJsonSync('data/samples/events/sample.event.web.json');
+        expect2(() => event?.headers, 'origin,referer,User-Agent').toEqual({
+            origin: 'http://localhost:5004',
+            referer: 'http://localhost:5004/',
+            'User-Agent': 'HTTPie/1.0.2',
+        });
+
         // const identity: any = loadJsonSync('data/samples/events/sample.cognito.identity.json');
         const context: NextContext = {
             accountId: '796730245826',
@@ -535,6 +541,8 @@ describe('LambdaWEBHandler', () => {
             clientIp: '221.149.250.0',
             userAgent: 'HTTPie/1.0.2',
             source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+            origin: 'http://localhost:5004',
+            referer: 'http://localhost:5004/',
         });
 
         //! pack context by header
@@ -554,7 +562,13 @@ describe('LambdaWEBHandler', () => {
     it('should pass packContext(authed) via lambda protocol', async done => {
         const { lambda, service: $web } = instance();
         const $pack = loadJsonSync('package.json');
-        const event: any = loadJsonSync('data/samples/events/sample.event.web.signed.json');
+        const event = loadJsonSync('data/samples/events/sample.event.web.signed.json');
+        expect2(() => event?.headers, 'origin,referer,User-Agent').toEqual({
+            origin: 'http://localhost:8888',
+            referer: 'http://localhost:8888/?code=auth:bc7dd7fe-5d27-45d8-ba45-fa5dc64a7c0a',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
+        });
+
         const context: NextContext = {
             accountId: '796730245826',
             requestId: 'a9bff61d-8eaf-4e1d-8e8e-364ed1bef646',
@@ -580,6 +594,8 @@ describe('LambdaWEBHandler', () => {
             clientIp: '221.149.50.0',
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
             source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+            origin: 'http://localhost:8888',
+            referer: 'http://localhost:8888/?code=auth:bc7dd7fe-5d27-45d8-ba45-fa5dc64a7c0a',
         });
 
         done();
