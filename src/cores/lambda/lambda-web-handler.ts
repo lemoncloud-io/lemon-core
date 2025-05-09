@@ -128,13 +128,13 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
         return () => success(FAVICON_ICO, 'image/x-icon');
     }
 
-    //! transform to protocol-context.
+    //* transform to protocol-context.
     if (event && event.headers && !event.headers[HEADER_PROTOCOL_CONTEXT])
         event.headers[HEADER_PROTOCOL_CONTEXT] = $ctx ? $U.json($ctx) : null;
     const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
     _log(NS, '! protocol-param =', $U.json({ ...param, body: undefined })); // hide `.body` in log.
 
-    //! returns object..
+    //* returns object..
     return { event, param };
 };
 
@@ -144,25 +144,25 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
 export const mxNextHandler =
     (thiz: LambdaWEBHandler) =>
     async (params: ProxyChain): Promise<ProxyResult> => {
-        //! determine if param or func.
+        //* determine if param or func.
         const fx: ProxyResponser = typeof params == 'function' ? params : null;
         const $param: ProxyParams = params && typeof params == 'object' ? params : null;
         const { param, event } = $param || {};
 
-        //! call the main handler()
+        //* call the main handler()
         const R = $param ? await thiz.handleProtocol(param, event) : fx;
 
-        //! - if like to override the full response, then return function.
+        //* - if like to override the full response, then return function.
         if (R && typeof R == 'function') return R();
 
-        //! - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+        //* - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
         const { httpMethod: method, headers } = event || {};
         if (method && method != 'GET') {
             const origin = `${(headers && headers['origin']) || ''}`;
             return success(R, null, origin);
         }
 
-        //! returns response..
+        //* returns response..
         return success(R);
     };
 
@@ -175,34 +175,34 @@ export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) =>
     if (message.startsWith('404 NOT FOUND')) return notfound(message);
     _err(NS, `! err.msg =`, message);
 
-    //! common format of error.
+    //* common format of error.
     if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
         const status = $U.N(message.substring(0, 3), 0);
-        //! handle for 302/301 redirect. format: 303 REDIRECT - http://~~~
+        //* handle for 302/301 redirect. format: 303 REDIRECT - http://~~~
         if ((status == 301 || status == 302) && message.indexOf(' - ') > 0) {
             const loc = message.substring(message.indexOf(' - ') + 3).trim();
             if (loc) return redirect(loc, status);
         }
-        //! handle for `400 SIGNATURE - fail to verify!`. ignore report-error.
+        //* handle for `400 SIGNATURE - fail to verify!`. ignore report-error.
         if (status == 400 && message.startsWith('400 SIGNATURE')) {
             return failure(message, status);
         }
 
-        //! report error and returns
+        //* report error and returns
         if (LambdaHandler.REPORT_ERROR)
             return doReportError(e, $ctx, event)
                 .catch(GETERR)
                 .then(() => failure(message, status));
         return failure(message, status);
     } else if (typeof message == 'string' && /^\.[a-zA-Z0-9_\-]+/.test(message)) {
-        //! handle for message `.name () is required!`
+        //* handle for message `.name () is required!`
         if (LambdaHandler.REPORT_ERROR)
             return doReportError(e, $ctx, event)
                 .catch(GETERR)
                 .then(() => failure(message, 400));
         return failure(message, 400);
     } else if (typeof message == 'string' && /^\@[a-zA-Z0-9_\-]+/.test(message)) {
-        //! handle for message `@name () is required!`
+        //* handle for message `@name () is required!`
         if (LambdaHandler.REPORT_ERROR)
             return doReportError(e, $ctx, event)
                 .catch(GETERR)
@@ -210,7 +210,7 @@ export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) =>
         return failure(message, 400);
     }
 
-    //! report error and returns
+    //* report error and returns
     if (LambdaHandler.REPORT_ERROR)
         return doReportError(e, $ctx, event)
             .catch(GETERR)
@@ -223,10 +223,10 @@ export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) =>
  * - default WEB Handler w/ event-listeners.
  */
 export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
-    //! handlers map.
+    //* handlers map.
     private _handlers: { [key: string]: NextDecoder | CoreWEBController } = {};
 
     /**
@@ -271,7 +271,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * get all decoders.
      */
     public getHandlerDecoders(): { [key: string]: NextDecoder } {
-        //! copy
+        //* copy
         return Object.entries(this._handlers).reduce<{ [key: string]: NextDecoder }>((M, [key, val]) => {
             if (typeof val == 'function') M[key] = val;
             else M[key] = (m: any, i: any, c: any) => (val as CoreWEBController).decode(m, i, c);
@@ -283,7 +283,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * Default WEB Handler.
      */
     public handle: WEBHandler = async (event, $ctx) => {
-        //! inspect API parameters.
+        //* inspect API parameters.
         _log(NS, `handle()....`);
         const $path = event.pathParameters || {};
         const $param = event.queryStringParameters || {};
@@ -291,7 +291,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         _log(NS, '! $path =', $U.json($path));
         _log(NS, '! $param =', $U.json($param));
 
-        //! start promised..
+        //* start promised..
         return promised(event, $ctx).then(mxNextHandler(this)).catch(mxNextFailure(event, $ctx));
     };
 
@@ -312,34 +312,34 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const $body = param.body;
         const context = param.context;
 
-        //! debug print body.
+        //* debug print body.
         if (!$body) {
             _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID})....`);
         } else {
             _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID}).... body.len=`, $body ? $U.json($body).length : -1);
         }
 
-        //! find target next function
+        //* find target next function
         // const decoder: NextDecoder | CoreWEBController = this._handlers[TYPE];
         const next: NextHandler<any, TResult, any> = ((decoder: any) => {
-            //! as default handler '/', say the current version.
+            //* as default handler '/', say the current version.
             if (MODE === 'LIST' && TYPE === '' && ID === '' && CMD === '') {
                 return async () => {
                     const $pack = loadJsonSync('package.json');
                     const name = ($pack && $pack.name) || 'LEMON API';
                     const version = ($pack && $pack.version) || '0.0.0';
                     const modules = [`${name}/${version}`];
-                    //! shows version of `lemon-core` via `dependencies`.
+                    //* shows version of `lemon-core` via `dependencies`.
                     const coreVer = $pack && $pack.dependencies && $pack.dependencies['lemon-core'];
                     if (coreVer) modules.push(`lemon-core/${coreVer.startsWith('^') ? coreVer.substring(1) : coreVer}`);
                     return modules.join('\n');
                 };
             }
 
-            //! error if no decoder.
+            //* error if no decoder.
             if (!decoder) return null;
 
-            //! use decoder() to find target.
+            //* use decoder() to find target.
             if (typeof decoder == 'function') return (decoder as NextDecoder)(MODE, ID, CMD, PATH);
             else if (typeof decoder == 'object') {
                 const func = (decoder as CoreWEBController).decode(MODE, ID, CMD, PATH);
@@ -350,13 +350,13 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             return null;
         })(this._handlers[TYPE]);
 
-        //! if no next, then report error.
+        //* if no next, then report error.
         if (!next || typeof next != 'function') {
             _err(NS, `! WARN ! MISSING NEXT-HANDLER. event=`, $U.json(event));
             throw new Error(`404 NOT FOUND - ${MODE} /${TYPE}/${ID}${CMD ? `/${CMD}` : ''}`);
         }
 
-        //! call next.. (it will return result or promised)
+        //* call next.. (it will return result or promised)
         return (() => {
             try {
                 const R = next(ID, $param, $body, context);
@@ -382,7 +382,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     public async packContext(event: APIGatewayProxyEvent, orgContext?: Context): Promise<NextContext> {
         _log(NS, `packContext(${event ? '' : 'null'})..`);
         if (!event) return null;
-        //! prepare chain object.
+        //* prepare chain object.
         const reqContext: APIGatewayEventRequestContext = event?.requestContext;
         orgContext && _log(NS, `> orgContext =`, $U.S(orgContext, 256, 32));
         reqContext && _log(NS, `> reqContext =`, $U.S(reqContext, 256, 32));
@@ -390,7 +390,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         // STEP.1 support lambda call JWT Token authentication.
         const headers = event.headers;
         if (headers && headers[HEADER_PROTOCOL_CONTEXT]) {
-            //! if it is protocol request via lambda, then returns valid context.
+            //* if it is protocol request via lambda, then returns valid context.
             const $param = $protocol.service.asTransformer('web').transformToParam(event);
             return $param?.context;
         }
@@ -398,10 +398,17 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         // STEP.2 use internal identity json data via python lambda call.
         const $tool = this.tools(headers);
         const identity = await $tool.parseIdentityHeader();
-        const cookie = $tool.parseCookiesHeader();
+        const _prepare = (): NextContext => {
+            const cookie = $tool.parseCookiesHeader();
+            const domain = $tool.getHeader('host');
+            const referer = $tool.getHeader('referer');
+            const origin = $tool.getHeader('origin');
+            const userAgent = $tool.getHeader('user-agent');
+            return { identity, cookie, domain, referer, origin, userAgent };
+        };
 
         // STEP.3. prepare the final `next-context`.
-        const $ctx = await $tool.prepareContext({ identity, cookie }, reqContext);
+        const $ctx = await $tool.prepareContext(_prepare(), reqContext);
         $ctx.source = $protocol.service.myProtocolURI($ctx); // self service-uri as source
 
         // FINIAL. returns
@@ -482,8 +489,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
      * get values by name
      * @param name case-insentive name of field
      */
-    public getHeaders = (name: string): string[] =>
-        Object.entries(this.headers).reduce<string[]>((L, [key, val]) => {
+    public getHeaders(name: string): string[] {
+        return Object.entries(this.headers).reduce<string[]>((L, [key, val]) => {
             if (name === key || key.toLowerCase() === name) {
                 if (Array.isArray(val)) {
                     val.forEach(val => {
@@ -501,14 +508,15 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             }
             return L;
         }, []);
+    }
 
     /**
      * get the last value in header by name
      */
-    public getHeader = (name: string): string => {
+    public getHeader(name: string): string {
         const vals = this.getHeaders(name);
         return vals.length < 1 ? undefined : vals[vals.length - 1];
-    };
+    }
 
     /**
      * check if this request is from externals (like API-GW)
@@ -534,10 +542,10 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
      * - support ONLY JWT Token authentication (verification).
      * - iat
      */
-    public parseIdentityHeader = async <T extends NextIdentity = NextIdentity>(
+    public async parseIdentityHeader<T extends NextIdentity = NextIdentity>(
         name: string = HEADER_LEMON_IDENTITY,
-    ): Promise<T> => {
-        //! internal means `request from internal services`
+    ): Promise<T> {
+        //* internal means `request from internal services`
         const isInternal = !this.isExternal();
         const val = this.getHeader(name);
         let result: NextIdentity = val ? { meta: val } : {};
@@ -554,23 +562,23 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             _err(NS, '!WARN! identity =', val);
             result.error = GETERR(e);
         }
-        //! overwrite finally language selection.
+        //* overwrite finally language selection.
         const lang = this.parseLanguageHeader() ?? result?.lang;
         return { ...result, lang } as T;
-    };
+    }
 
     /**
      * parse as identity from json encoded text.
      */
-    public parseIdentityJson = async (val: string) => {
+    public async parseIdentityJson(val: string) {
         if (typeof val !== 'string') throw new Error(`@val[${val}] is invalid - not string!`);
-        //! (ONLY for internal) parse payload as `json`
+        //* (ONLY for internal) parse payload as `json`
         const data = JSON.parse(val);
         // if (typeof data?.ns !== 'string') throw new Error(`.ns[${data?.ns}] is required - IdentityHeader`);
         if (typeof data?.sid !== 'string' || !data?.sid)
             throw new Error(`.sid[${data?.sid}] is required - IdentityHeader`);
         return data as NextIdentity;
-    };
+    }
 
     /**
      * find(or make) the proper KMSService per key
@@ -587,7 +595,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
     /**
      * encode as JWT string.
      */
-    public encodeIdentityJWT = async (
+    public async encodeIdentityJWT(
         identity: NextIdentity,
         params?: {
             /** KMS alias to use */
@@ -595,7 +603,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             /** current ms */
             current?: number;
         },
-    ) => {
+    ) {
         // STEP.0 validate paramters.
         if (!identity || typeof identity !== 'object')
             throw new Error(`@identity (object) is required - but ${typeof identity}`);
@@ -605,9 +613,9 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         const alias = params?.alias;
         const payload = {
             ...identity,
-            iss: alias ? `kms/${alias}` : null, //! issuer name. (must be alias of KMS)
-            iat: Math.floor(current / 1000), //! issued at
-            exp: Math.floor(current / 1000) + 24 * 60 * 60, //! max 1 day.
+            iss: alias ? `kms/${alias}` : null, //* issuer name. (must be alias of KMS)
+            iat: Math.floor(current / 1000), //* issued at
+            exp: Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
         };
         const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
         const data = {
@@ -625,12 +633,12 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
         const signature = $kms ? await $kms.sign(message, true) : '';
         const token = [message, signature].join('.');
         return { signature, message, token };
-    };
+    }
 
     /**
      * parse as jwt-token, and validate the signature.
      */
-    public parseIdentityJWT = async <T extends NextIdentityJwt = NextIdentityJwt>(
+    public async parseIdentityJWT<T extends NextIdentityJwt = NextIdentityJwt>(
         token: string,
         params?: {
             /** current ms */
@@ -638,10 +646,10 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             /** flag to verify JWT (default true) */
             verify?: boolean;
         },
-    ): Promise<T> => {
+    ): Promise<T> {
         const isVerify = params?.verify ?? true;
 
-        //! it must be JWT Token. verify signature, and load.
+        //* it must be JWT Token. verify signature, and load.
         if (typeof token !== 'string' || !token) throw new Error(`@token (string) is required - but ${typeof token}`);
         // STEP.1 decode jwt, and extract { iss, iat, exp }
         const current = params?.current ?? $U.current_time_ms();
@@ -672,22 +680,22 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             if (!exp || exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid - expired!`);
             return data as T;
         }
-        //! or throw
+        //* or throw
         throw new Error(`@iss[${iss}] is invalid - unsupportable issuer!`);
-    };
+    }
 
     /**
      * parse of header[HEADER_LEMON_LANGUAGE] to get language-type.
      */
-    public parseLanguageHeader = (name: string = HEADER_LEMON_LANGUAGE): string => {
+    public parseLanguageHeader(name: string = HEADER_LEMON_LANGUAGE) {
         const val = this.getHeader(name);
         return typeof val === 'string' ? val.trim().toLowerCase() : undefined;
-    };
+    }
 
     /**
      * parse of header[HEADER_LEMON_LANGUAGE] to get cookie-set.
      */
-    public parseCookiesHeader = (name: string = HEADER_COOKIE): { [key: string]: string } => {
+    public parseCookiesHeader(name: string = HEADER_COOKIE): { [key: string]: string } {
         const cookie = this.getHeader(name);
         if (!cookie) return undefined;
         const parseCookies = (str: string) => {
@@ -697,43 +705,40 @@ export class MyHttpHeaderTool implements HttpHeaderTool {
             return obj;
         };
         return parseCookies(cookie);
-    };
+    }
 
     /**
      * override with AWS request-context
      */
-    public prepareContext = async (
-        $org: NextContext,
-        reqContext: APIGatewayEventRequestContext,
-    ): Promise<NextContext> => {
+    public async prepareContext($org: NextContext, reqContext: APIGatewayEventRequestContext): Promise<NextContext> {
+        const errScope = `web.prepareContext(${$org?.requestId ?? ''})`;
         // STEP.4 override w/ cognito authentication to NextIdentity.
         if (reqContext?.identity?.cognitoIdentityPoolId !== undefined) {
-            const identity = $org.identity as NextIdentityCognito;
-            if (!identity) throw new Error(`.identity is required - prepareContext()`);
+            const $idt = $org?.identity as NextIdentityCognito;
+            if (!$idt) throw new Error(`.identity (NextIdentity) is required - ${errScope}`);
 
-            const $id = reqContext.identity;
-            _inf(NS, '! identity(req) :=', $U.json({ ...$id }));
-            identity.identityProvider = $id.cognitoAuthenticationProvider; // provider string.
-            identity.identityPoolId = $id.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
-            identity.identityId = $id.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
-            identity.accountId = $id.accountId; // account-id should be same as context.accountId
-            identity.userAgent = $id.userAgent; // user-agent string.
-            if (typeof $id.caller == 'string') identity.caller = $id.caller;
-            if (typeof $id.accessKey == 'string') identity.accessKey = $id.accessKey;
-            if (typeof $id.apiKey == 'string') identity.apiKey = $id.apiKey;
-            _inf(NS, '! identity(new) :=', $U.json({ ...identity }));
+            const $req = reqContext.identity;
+            _inf(NS, '! identity(req) :=', $U.json($req));
+            $idt.identityProvider = $req.cognitoAuthenticationProvider; // provider string.
+            $idt.identityPoolId = $req.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
+            $idt.identityId = $req.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
+            $idt.accountId = $req.accountId; // account-id should be same as context.accountId
+            $idt.userAgent = $req.userAgent; // user-agent string.
+            if (typeof $req.caller == 'string') $idt.caller = $req.caller;
+            if (typeof $req.accessKey == 'string') $idt.accessKey = $req.accessKey;
+            if (typeof $req.apiKey == 'string') $idt.apiKey = $req.apiKey;
+            _inf(NS, '! identity(new) :=', $U.json({ ...$idt }));
         }
-        //TODO - transform to access identity via `lemon-accounts-api` service @200106
 
         // STEP.5 extract additional request infor from req-context.
-        const clientIp = `${reqContext?.identity?.sourceIp || ''}`;
-        const userAgent = `${reqContext?.identity?.userAgent || ''}`;
-        const requestId = `${reqContext?.requestId || ''}`;
-        const accountId = `${reqContext?.accountId || ''}`;
-        const domain = `${reqContext?.domainName || this.getHeader('host') || ''}`; //! chore avoid null of headers
+        const clientIp = `${reqContext?.identity?.sourceIp || $org?.clientIp || ''}`;
+        const userAgent = `${reqContext?.identity?.userAgent || $org?.userAgent || ''}`;
+        const requestId = `${reqContext?.requestId || $org?.requestId || ''}`;
+        const accountId = `${reqContext?.accountId || $org?.accountId || ''}`;
+        const domain = `${reqContext?.domainName || $org?.domain || ''}`; //* chore avoid null of headers
 
-        //! save into headers and returns.
+        //* save into headers and returns.
         const context: NextContext = { ...$org, userAgent, clientIp, requestId, accountId, domain };
         return context;
-    };
+    }
 }
