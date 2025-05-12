@@ -505,6 +505,49 @@ describe('LambdaWEBHandler', () => {
         done();
     });
 
+    //! GET catch-all path (/{proxy+})
+    it('should pass success GET /{proxy+}', async () => {
+        /* eslint-enable prettier/prettier */
+        const { service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.proxy.json');
+
+        //! GET /hello/
+        const proxy1 = '/';
+        event.pathParameters['proxy'] = proxy1;
+        const res = await service.handle(event, null);
+        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(res, 'body').toEqual({
+            body: $U.json({
+                id: encodeURIComponent(proxy1),
+                hello: encodeURIComponent(proxy1),
+            }),
+        });
+
+        //! GET /hello/symbol.jpg
+        const proxy2 = '/symbol.jpg';
+        event.pathParameters['proxy'] = proxy2;
+        const res2 = await service.handle(event, null);
+        expect2(res2, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(res2, 'body').toEqual({
+            body: $U.json({
+                id: encodeURIComponent(proxy2),
+                hello: encodeURIComponent(proxy2),
+            }),
+        });
+
+        const proxy3 = '/assets/symbol.jpg';
+        event.pathParameters['proxy'] = proxy3;
+        const res3 = await service.handle(event, null);
+        expect2(res3, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(res3, 'body').toEqual({
+            body: $U.json({
+                id: encodeURIComponent(proxy3),
+                hello: encodeURIComponent(proxy3),
+            }),
+        });
+        // /* eslint-enable prettier/prettier */
+    });
+
     //! test packContext() via lambda protocol
     it('should pass packContext(public) via lambda protocol', async done => {
         const { lambda, service: $web } = instance();

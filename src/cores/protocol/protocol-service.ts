@@ -586,7 +586,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const contType = `${headers['content-type'] || headers['Content-Type'] || ''}`.toLowerCase();
         _log(NS, `content-type =`, contType);
         //! the path format should be `/{type}/{id}/{cmd}`
-        const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || {};
+        const $path: { type?: string; id?: string; cmd?: string; proxy?: string } = event.pathParameters || {};
         const param = event.queryStringParameters;
         const body = ((body: any, type: string): any => {
             const isText = body && typeof body == 'string';
@@ -612,7 +612,10 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const stage: STAGE = `${requestContext.stage || ''}` as STAGE;
         const type = $path.type || `${resource || path || ''}`.split('/')[1] || ''; // 1st path param will be type of resource.
         const mode: NextMode =
-            httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : (`${httpMethod}`.toUpperCase() as NextMode);
+            httpMethod == 'GET' && !$path.id && !$path.cmd && !$path.proxy
+                ? 'LIST'
+                : (`${httpMethod}`.toUpperCase() as NextMode);
+        if ($path.proxy) $path.id = encodeURIComponent($path.proxy);
 
         //! validate values.
         if (context && context.accountId && requestContext.accountId != context.accountId)
