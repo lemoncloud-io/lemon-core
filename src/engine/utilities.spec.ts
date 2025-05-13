@@ -19,32 +19,27 @@ export const instance = () => {
     return { $engine, $U };
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe(`core/utilities.ts`, () => {
-    //! test Module Manager
-    test('check env()', async done => {
+    //* test Module Manager
+    test('check env()', async () => {
         const { $U } = instance();
 
         expect2($U.env('hi')).toEqual(undefined);
         expect2($U.env('hi', '')).toEqual('');
         expect2($U.env('hi', 'hoho')).toEqual('hoho');
-
-        done();
     });
 
-    //! test uuid()
-    test('check uuid()', async done => {
+    //* test uuid()
+    test('check uuid()', async () => {
         const { $U } = instance();
 
         expect2($U.uuid().length).toEqual('e82f0f6e-3b06-4cfb-8e56-12e046a8814e'.length);
         expect2($U.uuid().split('-').length).toEqual('e82f0f6e-3b06-4cfb-8e56-12e046a8814e'.split('-').length);
-
-        done();
     });
 
-    //! test qs()
-    test('check qs()', async done => {
+    //* test qs()
+    test('check qs()', async () => {
         const { $U } = instance();
 
         const qs = {
@@ -56,12 +51,10 @@ describe(`core/utilities.ts`, () => {
 
         expect2($U.qs.stringify(qs)).toEqual('a=1&b=x%20y&c=z%3F%3Dy&d=p%26q');
         expect2($U.qs.parse('a=1&b=x%20y&c=z%3F%3Dy&d=p%26q')).toEqual(qs);
-
-        done();
     });
 
-    //! test datetime()
-    test('check datetime()', async done => {
+    //* test datetime()
+    test('check datetime()', async () => {
         const { $U } = instance();
         const date1 = '79-11-26';
         const date2 = '19-11-26';
@@ -79,51 +72,47 @@ describe(`core/utilities.ts`, () => {
 
         expect2($U.dt(date1)).toEqual(new Date(1979, 10, 26, 12, 0, 0));
         expect2($U.dt(date2)).toEqual(new Date(2019, 10, 26, 12, 0, 0));
-
-        done();
     });
 
-    //! test cryto()
-    test('check cryto()', async done => {
+    //* test cryto()
+    test('check cryto()', async () => {
         const { $U } = instance();
 
         const passwd = 'lemon';
         const $crypt = $U.crypto(passwd);
         const $crypt2 = $U.crypto('LM~1212@' + 'SES');
 
-        /* eslint-disable prettier/prettier */
         expect2(() => $crypt.encrypt(passwd)).toEqual('mwy4PPoRKDwGLlimYBvm8jbzAT0EMTl0FB7ErItyFEIux4bclkJc');
         expect2(() => $crypt.decrypt($crypt.encrypt(passwd))).toEqual(passwd);
         expect2(() => $crypt2.decrypt($crypt.encrypt(passwd))).toEqual('400 INVALID PASSWD - invalid magic string!');
-        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual('gXdY3v6rQMtSeXwF');
-        /* eslint-enable prettier/prettier */
-
-        done();
+        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual(
+            'gXdY3v6rQMtSeXwF',
+        );
     });
 
-    //! test cryto2()
-    test('check cryto2()', async done => {
+    //* test cryto2()
+    test('check cryto2()', async () => {
         const { $U } = instance();
 
         const passwd = 'lemon';
         const $crypt = $U.crypto2(passwd);
         const $crypt2 = $U.crypto2('LM~1212@' + 'SES');
 
-        /* eslint-disable prettier/prettier */
         expect2(() => $crypt.encrypt(passwd)).toEqual('9YhXj09n6JPFSSwN0HaISCIR7UgdhrbgaFOffANb1QQoErpHNwtZ');
         expect2(() => $crypt.decrypt($crypt.encrypt(passwd))).toEqual(`${passwd}`);
         expect2(() => $crypt.decrypt('9YhXj09n6JPFSSwN0HaISCIR7UgdhrbgaFOffANb1QQoErpHNwtZ')).toEqual(`${passwd}`);
         expect2(() => $crypt2.decrypt($crypt.encrypt(passwd))).toEqual('400 INVALID PASSWD - invalid magic string!');
         expect2(() => $crypt2.decrypt($crypt2.encrypt(passwd))).toEqual(`${passwd}`);
-        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual('400 INVALID PASSWD - invalid magic string!');
-        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqK=')).toEqual('400 INVALID PASSWD - invalid magic string!');
-        /* eslint-enable prettier/prettier */
-
-        done();
+        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual(
+            '400 INVALID PASSWD - invalid magic string!',
+        );
+        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqK=')).toEqual(
+            '400 INVALID PASSWD - invalid magic string!',
+        );
     });
 
-    //! test diff()
-    test('check diff()', async done => {
+    //* test diff()
+    test('check diff()', async () => {
         const { $U } = instance();
 
         expect2(() => $U.diff(undefined, undefined)).toEqual([]);
@@ -139,12 +128,10 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $U.diff({ a: { b: 1, a: 0 } }, { a: { a: 0, b: 1 } })).toEqual([]);
         expect2(() => $U.diff({ a: [0] }, { a: [null] })).toEqual(['a']);
         expect2(() => $U.diff({ a: [0] }, { a: {} })).toEqual(['a']);
-
-        done();
     });
 
-    //! test Integer Parser
-    test('check N()', async done => {
+    //* test Integer Parser
+    test('check N()', async () => {
         const { $U } = instance();
 
         expect2(() => $U.isInteger(0)).toEqual(true);
@@ -158,12 +145,10 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $U.N('1', 2)).toEqual(1);
         expect2(() => $U.N('1.1', 2)).toEqual(1);
         expect2(() => $U.N('1,000', 2)).toEqual(1000);
-
-        done();
     });
 
-    //! test Float Parser
-    test('check F()', async done => {
+    //* test Float Parser
+    test('check F()', async () => {
         const { $U } = instance();
 
         expect2(() => $U.F('', 2)).toEqual(2);
@@ -179,12 +164,10 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $U.F('0.33333', 0)).toEqual(0.33333);
         expect2(() => $U.F('-0.33333', 0)).toEqual(-0.33333);
         expect2(() => $U.F('+0.33333', 0)).toEqual(0.33333);
-
-        done();
     });
 
-    //! test Float Parser w/ length
-    test('check FN()', async done => {
+    //* test Float Parser w/ length
+    test('check FN()', async () => {
         const { $U } = instance();
 
         expect2(() => $U.FN(0.0, -1)).toEqual('@len[-1] is out of range!');
@@ -239,12 +222,10 @@ describe(`core/utilities.ts`, () => {
 
         expect2(() => $U.F2('-1.66666666', 'floor')).toEqual(-1.67);
         expect2(() => $U.F3('-1.66666666', 'floor')).toEqual(-1.667);
-
-        done();
     });
 
-    //! test String Text
-    test('check S()', async done => {
+    //* test String Text
+    test('check S()', async () => {
         const { $U } = instance();
         const S = $U.S;
 
@@ -267,12 +248,10 @@ describe(`core/utilities.ts`, () => {
         expect2(() => S(msg, len - 3, 2)).toEqual(msg.substring(0, len - 3) + '...zz');
         expect2(() => S(msg, len - 3, 1)).toEqual(msg.substring(0, len - 3) + '...z');
         expect2(() => S(msg, len - 3, 0)).toEqual(msg.substring(0, len - 3) + '...');
-
-        done();
     });
 
-    //! test JWTHelper
-    test('check JWTHelper()', async done => {
+    //* test JWTHelper
+    test('check JWTHelper()', async () => {
         const { $U } = instance();
         const current = 1 ? 1614241198963 : $U.current_time_ms();
 
@@ -280,7 +259,7 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $U.ts(current)).toEqual('2021-02-25 17:19:58');
         const iat = Math.floor(current / 1000);
 
-        //! build jwt handler.
+        //* build jwt handler.
         const jwt = $U.jwt('#', current);
 
         const name = 'jwt-helper';
@@ -295,17 +274,17 @@ describe(`core/utilities.ts`, () => {
         expect2(() => jwt.verify(token)).toEqual({ name, iat });
         expect2(() => jwt.verify(token.replace(/0/g, '1')), 'name').toEqual('invalid signature');
 
-        //! build jwt2 w/ wrong pass
+        //* build jwt2 w/ wrong pass
         const jwt2 = $U.jwt('!', current);
         expect2(() => jwt2.decode(token)).toEqual({ name, iat });
         expect2(() => jwt2.verify(token)).toEqual('invalid signature');
 
-        //! test expired.
+        //* test expired.
         const token2 = jwt2.encode({ name, exp: iat + 1 });
         expect2(() => jwt2.decode(token2)).toEqual({ name, iat, exp: iat + 1 });
-        expect2(() => jwt2.verify(token2)).toEqual(`jwt expired`); //! due to real current-time.
+        expect2(() => jwt2.verify(token2)).toEqual(`jwt expired`); //* due to real current-time.
 
-        //! make jwt3 w/ current + 5sec
+        //* make jwt3 w/ current + 5sec
         const curr = $U.current_time_ms() + 5 * 1000;
         const jwt3 = $U.jwt('!', curr);
         const token3 = jwt3.encode({ name, exp: Math.floor((curr + 1000) / 1000) });
@@ -318,8 +297,6 @@ describe(`core/utilities.ts`, () => {
         expect2(() => jwt3.verify(token3)).toEqual({ ...expected3 });
 
         const jwt3A = $U.jwt('!', curr + 5000);
-        expect2(() => jwt3A.verify(token3)).toEqual(`jwt expired at ${$U.ts(expected3.exp * 1000)}`); //! due to real current-time.
-
-        done();
+        expect2(() => jwt3A.verify(token3)).toEqual(`jwt expired at ${$U.ts(expected3.exp * 1000)}`); //* due to real current-time.
     });
 });

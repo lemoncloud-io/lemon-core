@@ -25,7 +25,7 @@ import {
 } from './helpers';
 import $cores from '../cores/';
 
-//! create instance.
+//* create instance.
 export const instance = async (type: 'dummy' = 'dummy') => {
     const accountId = type == 'dummy' ? '796730245826' : null;
     const identityId = type == 'dummy' ? 'ap-northeast-2:dbd95fb4-1234-2345-4567-56e5bc95e444' : null;
@@ -40,7 +40,7 @@ export const instance = async (type: 'dummy' = 'dummy') => {
     expect2(() => signed.identity, 'accountId,identityId,lang').toEqual({ accountId, identityId, lang });
     expect2(() => unsigned.identity, 'accountId,identityId,lang').toEqual({ accountId: null, identityId: null, lang });
 
-    //! returns dummy data.
+    //* returns dummy data.
     return { $context: { signed, unsigned }, identityId };
 };
 
@@ -54,15 +54,24 @@ describe('utils', () => {
         expect2(() => params.map(v => v ?? 'N')).toEqual(['N', 'N', 0, 1, '', false, {}, [], '#', ' ', '1']);
         expect2(() => params.map(v => v || 'N')).toEqual(['N', 'N', 'N', 1, 'N', 'N', {}, [], '#', ' ', '1']);
 
-        /* eslint-disable prettier/prettier */
-        expect2(() => params.map(v => $T.S(v))).toEqual([ '', '', '0', '1', '', 'false', '[object Object]', '', '#', '', '1']);
-        expect2(() => params.map(v => $T.N(v))).toEqual([ 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1]);
-        /* eslint-enable prettier/prettier */
+        expect2(() => params.map(v => $T.S(v))).toEqual([
+            '',
+            '',
+            '0',
+            '1',
+            '',
+            'false',
+            '[object Object]',
+            '',
+            '#',
+            '',
+            '1',
+        ]);
+        expect2(() => params.map(v => $T.N(v))).toEqual([0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1]);
     });
 
-    //! test transformer
+    //* test transformer
     it('should pass helper of $T (transformer).', async () => {
-        /* eslint-disable prettier/prettier */
         expect2(() => $T.S(undefined)).toEqual('');
         expect2(() => $T.S(null)).toEqual('');
         expect2(() => $T.S(' a ')).toEqual('a');
@@ -76,22 +85,22 @@ describe('utils', () => {
         expect2(() => $T.N('1.234')).toEqual(1);
         expect2(() => $T.NN(0.2)).toEqual([0]);
         expect2(() => $T.NN('1.234')).toEqual([1]);
-        expect2(() => $T.NN('2,5,39,40,0')).toEqual([2,5,39,40,0]);
-        expect2(() => $T.NN([35,'49.9', '101', 0, 1])).toEqual([35, 49, 101, 0, 1]);
+        expect2(() => $T.NN('2,5,39,40,0')).toEqual([2, 5, 39, 40, 0]);
+        expect2(() => $T.NN([35, '49.9', '101', 0, 1])).toEqual([35, 49, 101, 0, 1]);
         expect2(() => $T.F('1.234')).toEqual(1.234);
         expect2(() => $T.FF(0.2)).toEqual([0.2]);
         expect2(() => $T.FF('1.234')).toEqual([1.234]);
-        expect2(() => $T.FF('2,5,39,40,0')).toEqual([2,5,39,40,0]);
-        expect2(() => $T.FF([35,'49.9', '101', 0, 1])).toEqual([35, 49.9, 101, 0, 1]);
+        expect2(() => $T.FF('2,5,39,40,0')).toEqual([2, 5, 39, 40, 0]);
+        expect2(() => $T.FF([35, '49.9', '101', 0, 1])).toEqual([35, 49.9, 101, 0, 1]);
         expect2(() => $T.F3(1.555555)).toEqual(1.556);
 
         expect2(() => $T.B('0')).toEqual(0);
         expect2(() => $T.B('1')).toEqual(1);
         expect2(() => $T.B('2')).toEqual(1);
-        expect2(() => new Date().getTimezoneOffset()).toEqual(-9 * 60);                                 //WARN! - can be different in env.
-        expect2(() => $U.ts(new Date(1591282800000))).toEqual('2020-06-05 00:00:00');                   // must be aware of time-zone.
-        expect2(() => $T.T('2020-06-05 00:00:00')).toEqual(new Date('2020-06-05 00:00:00').getTime());  // := 1591282800000
-        expect2(() => $T.T('2020-06-05')).toEqual(new Date('2020-06-05 12:00:00').getTime());           // := 1591282800000 + 12*60*60*1000
+        expect2(() => new Date().getTimezoneOffset()).toEqual(-9 * 60); //WARN! - can be different in env.
+        expect2(() => $U.ts(new Date(1591282800000))).toEqual('2020-06-05 00:00:00'); // must be aware of time-zone.
+        expect2(() => $T.T('2020-06-05 00:00:00')).toEqual(new Date('2020-06-05 00:00:00').getTime()); // := 1591282800000
+        expect2(() => $T.T('2020-06-05')).toEqual(new Date('2020-06-05 12:00:00').getTime()); // := 1591282800000 + 12*60*60*1000
         expect2(() => $T.T('0')).toEqual(0);
         expect2(() => $T.T('9999-99-99')).toEqual('@val[9999-99-99] is invalid!');
         expect2(() => $T.T('0000-00-00')).toEqual('@val[0000-00-00] is invalid!');
@@ -115,13 +124,11 @@ describe('utils', () => {
         expect2(() => $T.D('의미없다')).toBe('');
         expect2(() => $T.D(0)).toBe('');
         expect2(() => $T.D(null)).toBe('');
-        /* eslint-enable prettier/prettier */
 
         const exTextSample = 'hi, everybody. It is sample text. bye.';
         expect2(() => $T.EX(exTextSample, 'hi,', 'text')).toEqual(' everybody. It is sample ');
         expect2(() => $T.EX(exTextSample, '.', '.')).toEqual(' It is sample text');
 
-        /* eslint-disable prettier/prettier */
         const samples = {
             _: 2,
             __: [2],
@@ -148,10 +155,15 @@ describe('utils', () => {
         expect2(() => $T.simples(samples, true)).toEqual('.__[2] is invalid!');
         expect2(() => $T.simples({ ...samples, __: null }, true)).toEqual('.한글 is invalid format!');
         expect2(() => $T.simples({ ...samples, __: null, 한글: undefined }, true)).toEqual('.$ab is invalid format!');
-        expect2(() => $T.simples({ ...samples, __: null, 한글: undefined, $ab: undefined }, true)).toEqual('.i[10,12] is invalid!');
-        expect2(() => $T.simples({ ...samples, __: null, 한글: undefined, $ab: undefined, i: undefined }, true)).toEqual('.aBC[[object Object]] is invalid!');
-        expect2(() => $T.simples({ ...samples, __: null, 한글: undefined, $ab: undefined, i: undefined, aBC: undefined }, true)).toEqual({ ...expected, __: null });
-        /* eslint-enable prettier/prettier */
+        expect2(() => $T.simples({ ...samples, __: null, 한글: undefined, $ab: undefined }, true)).toEqual(
+            '.i[10,12] is invalid!',
+        );
+        expect2(() =>
+            $T.simples({ ...samples, __: null, 한글: undefined, $ab: undefined, i: undefined }, true),
+        ).toEqual('.aBC[[object Object]] is invalid!');
+        expect2(() =>
+            $T.simples({ ...samples, __: null, 한글: undefined, $ab: undefined, i: undefined, aBC: undefined }, true),
+        ).toEqual({ ...expected, __: null });
 
         expect2(() => $T.normal({ a: { a1: { a2: 'a2' } } })).toEqual({ a: { a1: { a2: 'a2' } } });
         expect2(() => $T.normal(samples)).toEqual({ ...samples, $ab: undefined, _: undefined, __: undefined });
@@ -178,7 +190,7 @@ describe('utils', () => {
         );
     });
 
-    //! test diff()
+    //* test diff()
     it('should pass $T.diff()', () => {
         expect2(() => $T.diff(null, null)).toEqual(null);
         expect2(() => $T.diff(null, 1)).toEqual(1);
@@ -217,38 +229,36 @@ describe('utils', () => {
         expect2(() => fx({ a: [{}] }, { a: [{}] })).toEqual({});
     });
 
-    //! test makeRandomCode()
+    //* test makeRandomCode()
     it('should pass makeRandomCode()', async () => {
-    /* eslint-disable prettier/prettier */
         const client = $T;
-        if (1){
-            expect2(() => client.makeRandomCode(1, 1)).toEqual({ min: 1,      max: 9,      val: 9 });
-            expect2(() => client.makeRandomCode(5, 1)).toEqual({ min: 10000,  max: 99999,  val: 99999 });
+        if (1) {
+            expect2(() => client.makeRandomCode(1, 1)).toEqual({ min: 1, max: 9, val: 9 });
+            expect2(() => client.makeRandomCode(5, 1)).toEqual({ min: 10000, max: 99999, val: 99999 });
             expect2(() => client.makeRandomCode(6, 1)).toEqual({ min: 100000, max: 999999, val: 999999 });
 
-            expect2(() => client.makeRandomCode(1, 0)).toEqual({ min: 1,      max: 9,      val: 1 });
-            expect2(() => client.makeRandomCode(5, 0)).toEqual({ min: 10000,  max: 99999,  val: 10000 });
+            expect2(() => client.makeRandomCode(1, 0)).toEqual({ min: 1, max: 9, val: 1 });
+            expect2(() => client.makeRandomCode(5, 0)).toEqual({ min: 10000, max: 99999, val: 10000 });
             expect2(() => client.makeRandomCode(6, 0)).toEqual({ min: 100000, max: 999999, val: 100000 });
 
             expect2(() => client.makeRandomCode(1, false).val).toEqual(9);
             expect2(() => client.makeRandomCode(5, false).val).toEqual(99999);
             expect2(() => client.makeRandomCode(6, false).val).toEqual(999999);
 
-            //! test len=5
+            //* test len=5
             expect2(() => client.makeRandomCode(5).val.toString().length).toEqual('17329'.length);
             expect2(/[1-9][0-9]{4}/.test(client.makeRandomCode(5).val.toString())).toEqual(true);
             expect2(/[1-9][0-9]{4}/.test(client.makeRandomCode(5).val.toString())).toEqual(true);
             expect2(/[1-9][0-9]{4}/.test(client.makeRandomCode(5).val.toString())).toEqual(true);
             expect2(/[1-9][0-9]{4}/.test(client.makeRandomCode(5).val.toString())).toEqual(true);
 
-            //! test len=6
+            //* test len=6
             expect2(() => client.makeRandomCode(6).val.toString().length).toEqual('173291'.length);
             expect2(/[1-9][0-9]{5}/.test(client.makeRandomCode(6).val.toString())).toEqual(true);
             expect2(/[1-9][0-9]{5}/.test(client.makeRandomCode(6).val.toString())).toEqual(true);
             expect2(/[1-9][0-9]{5}/.test(client.makeRandomCode(6).val.toString())).toEqual(true);
             expect2(/[1-9][0-9]{5}/.test(client.makeRandomCode(6).val.toString())).toEqual(true);
         }
-        /* eslint-enable prettier/prettier */
     });
 
     it('should pass $T.perf()', async () => {
@@ -332,7 +342,7 @@ describe('utils', () => {
     });
 
     it('should pass misc function()', async () => {
-        //! test if making target protocol-url
+        //* test if making target protocol-url
         const $prot1 = $protocol({}, '//self/hello/0');
 
         //NOTE - package dependent
@@ -361,14 +371,14 @@ describe('utils', () => {
         expect2(() => parseRange('[* TO *]')).toEqual(undefined);
     });
 
-    //! test of my_parrallel()
+    //* test of my_parrallel()
     it('should pass my_parrallel()', async () => {
         interface MyModel {
             id: string;
             error: string;
             data?: number;
         }
-        //! test with async function.
+        //* test with async function.
         const results = await my_parrallel(
             [
                 { id: '1', error: 'me' },
@@ -385,7 +395,7 @@ describe('utils', () => {
             { id: '2', error: null, data: 2 },
         ]);
 
-        //! test with normal function.
+        //* test with normal function.
         const results2 = await my_parrallel(
             [
                 { id: '1', error: 'me' },
@@ -411,7 +421,7 @@ describe('utils', () => {
             actionTime?: number;
         }
         const actionDelay = 100; // milliseconds
-        //! test with async function.
+        //* test with async function.
         const results = await my_sequence(
             [
                 { id: '1', error: null },
@@ -450,7 +460,7 @@ describe('utils', () => {
     it('should pass getIdentityId()', async () => {
         const { $context, identityId } = await instance();
 
-        //! check in `env/none.yml`
+        //* check in `env/none.yml`
         const LOCAL_ACCOUNT = 'my-local-iid';
         expect2(() => $U.env('LOCAL_ACCOUNT')).toEqual(LOCAL_ACCOUNT);
 
