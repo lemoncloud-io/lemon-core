@@ -47,7 +47,7 @@ describe('DummyController', () => {
     const name = 'controller';
 
     //* dummy storage provided by dummy controller.
-    it('should pass basic CRUD w/ dummy', async done => {
+    it('should pass basic CRUD w/ dummy', async () => {
         //* see `dummy-controller-data.yml`
         const { controller } = instance(type, name);
         //* check dummy data.
@@ -76,7 +76,7 @@ describe('DummyController', () => {
     });
 
     //* dummy contoller api.
-    it('should pass basic CRUD w/ dummy-controller', async done => {
+    it('should pass basic CRUD w/ dummy-controller', async () => {
         const { controller, app } = instance(type, name);
         expect2(() => controller.hello()).toEqual(`dummy-controller:${type}/${name}`);
 
@@ -120,7 +120,7 @@ describe('DummyController', () => {
     });
 
     //* dummy contoller api.
-    it('should pass asFuncName()', async done => {
+    it('should pass asFuncName()', async () => {
         const { controller } = instance(type, name);
         expect2(() => controller.hello()).toEqual(`dummy-controller:${type}/${name}`);
 
