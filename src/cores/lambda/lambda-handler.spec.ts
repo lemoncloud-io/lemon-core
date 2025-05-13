@@ -31,7 +31,7 @@ export const instance = () => {
     return { service };
 };
 
-//* main test body.
+//! main test body.
 describe('LambdaHandler', () => {
     //* test findService
     it('should pass findService()', async () => {

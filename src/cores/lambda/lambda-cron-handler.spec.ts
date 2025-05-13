@@ -25,25 +25,21 @@ export const instance = () => {
     return { lambda, service };
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('LambdaCronHandler', () => {
-    //! list in web-handler
-    it('should pass handler listener', async done => {
-        /* eslint-disable prettier/prettier */
+    //* list in web-handler
+    it('should pass handler listener', async () => {
         const { service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.cron.json');
-        event.cron.name = 'hello';      // override name.
+        event.cron.name = 'hello'; // override name.
         let data: any;
         service.addListener(async (id, param, body, context) => {
             data = { id, param, body, context };
-        })
+        });
         const res = await service.handle(event, null);
-        expect2(res).toEqual(undefined);
-        expect2(data, 'id').toEqual({ id:'!' })
-        expect2(data, 'param').toEqual({ param:{ name:'hello' } })
-        expect2(data, 'body,context').toEqual({ body:null, context:null })
-        /* eslint-enable prettier/prettier */
-        done();
+        expect2(() => res).toEqual(undefined);
+        expect2(() => data, 'id').toEqual({ id: '!' });
+        expect2(() => data, 'param').toEqual({ param: { name: 'hello' } });
+        expect2(() => data, 'body,context').toEqual({ body: null, context: null });
     });
 });
