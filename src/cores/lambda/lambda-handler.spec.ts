@@ -9,115 +9,129 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { expect2, GETERR$ } from '../../common/test-helper';
+import { loadJsonSync } from '../../tools/shared';
 import { LambdaHandler } from './lambda-handler';
 import { Handler } from 'aws-lambda';
 
+/**
+ * `LambdaHandlerLocal`
+ * - local test class for `LambdaHandler`
+ */
 class LambdaHandlerLocal extends LambdaHandler {
     public constructor() {
         super();
     }
 }
+
+/**
+ * factory function for `LambdaHandler`
+ */
 export const instance = () => {
-    const service = new LambdaHandlerLocal();
+    const service: LambdaHandler = new LambdaHandlerLocal();
     return { service };
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-//! main test body.
+//* main test body.
 describe('LambdaHandler', () => {
-    //! test callback
-    it('should pass success w/ callback', async done => {
-        /* eslint-disable prettier/prettier */
+    //* test findService
+    it('should pass findService()', async () => {
+        const { service } = instance();
+
+        //* call handler.
+        const _find = (name: string) => {
+            const event = loadJsonSync(`data/samples/events/sample.event.${name}.json`);
+            return service.findService(event);
+        };
+        expect2(() => _find('web')).toEqual('web');
+        expect2(() => _find('web.signed')).toEqual('web');
+        expect2(() => _find('sns')).toEqual('sns');
+        expect2(() => _find('sqs')).toEqual('sqs');
+
+        expect2(() => _find('wss-conn')).toEqual('wss');
+        expect2(() => _find('wss-echo')).toEqual('wss');
+
+        //TODO - fix this.
+        expect2(() => _find('elb')).toEqual('elb');
+    });
+
+    //* test callback
+    it('should pass success w/ callback', async () => {
         const { service } = instance();
         service.setHandler('web', (event, context, callback) => {
             return callback(null, { statusCode: 200, body: 'ok' });
-        })
-        const event: any = { requestContext:{}, pathParameters: null };
+        });
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
-        //! call handler.
+        //* call handler.
         const response = await service.handle(event, context).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         expect2(response, 'body').toEqual({ body: 'ok' });
-        /* eslint-enable prettier/prettier */
-        done();
     });
 
-    //! test async
-    it('should pass success w/ promised', async done => {
-        /* eslint-disable prettier/prettier */
+    //* test async
+    it('should pass success w/ promised', async () => {
         const { service } = instance();
         service.setHandler('web', async (): Promise<any> => {
-            return ({ statusCode: 200, body: 'ok' });
-        })
-        const event: any = { requestContext:{}, pathParameters: null };
+            return { statusCode: 200, body: 'ok' };
+        });
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
-        //! call handler.
+        //* call handler.
         const response = await service.handle(event, context).catch(GETERR$);
         expect2(response, 'statusCode').toEqual({ statusCode: 200 });
         expect2(response, 'body').toEqual({ body: 'ok' });
-        /* eslint-enable prettier/prettier */
-        done();
     });
 
-    //! test async error
-    it('should pass success w/ callback + error', async done => {
-        /* eslint-disable prettier/prettier */
+    //* test async error
+    it('should pass success w/ callback + error', async () => {
         const { service } = instance();
         service.setHandler('web', () => {
             throw new Error('404 NOT FOUND');
-        })
-        const event: any = { requestContext:{}, pathParameters: null };
+        });
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
-        //! call handler.
+        //* call handler.
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({ error:'404 NOT FOUND' });
-        /* eslint-enable prettier/prettier */
-        done();
+        expect2(response).toEqual({ error: '404 NOT FOUND' });
     });
 
-    //! test async error
-    it('should pass success w/ promised + error', async done => {
-        /* eslint-disable prettier/prettier */
+    //* test async error
+    it('should pass success w/ promised + error', async () => {
         const { service } = instance();
         service.setHandler('web', async (): Promise<any> => {
             throw new Error('404 NOT FOUND');
-        })
-        const event: any = { requestContext:{}, pathParameters: null };
+        });
+        const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
-        //! call handler.
+        //* call handler.
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({ error:'404 NOT FOUND' });
-        /* eslint-enable prettier/prettier */
-        done();
+        expect2(response).toEqual({ error: '404 NOT FOUND' });
     });
 
-    //! test class.method
-    it('should pass success w/ class.method type', async done => {
-        /* eslint-disable prettier/prettier */
+    //* test class.method
+    it('should pass success w/ class.method type', async () => {
         const { service } = instance();
 
         interface InnerA {
             hello: Handler;
         }
-        const $a = new class implements InnerA {
+        const $a = new (class implements InnerA {
             private name: string = 'inner-a';
             public hello: Handler = async (event, context) => {
                 const id = event.pathParameters && event.pathParameters.id;
-                return ({ statusCode: 200, body: `hi - ${id}/${this.name}` });
+                return { statusCode: 200, body: `hi - ${id}/${this.name}` };
             };
-        }
+        })();
         service.setHandler('web', $a.hello); // set class's method.
-        const event: any = { requestContext:{}, pathParameters: { id:'!' } };
+        const event: any = { requestContext: {}, pathParameters: { id: '!' } };
         const context: any = {};
 
-        //! call handler.
+        //* call handler.
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({  statusCode: 200, body: "hi - !/inner-a"});
-        /* eslint-enable prettier/prettier */
-        done();
+        expect2(response).toEqual({ statusCode: 200, body: 'hi - !/inner-a' });
     });
 });
