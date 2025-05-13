@@ -11,20 +11,22 @@
 const ENV_NAME = 'MY_S3_BUCKET';
 const DEF_BUCKET = 'lemon-hello-www';
 
-//! override environ.
+//* override environ.
 process.env = Object.assign(process.env, {
     TEMP_BUCKET: 'hello-bucket',
 });
 
-//! load $engine, and prepare dummy handler
+//* load $engine, and prepare dummy handler
 import { loadProfile } from '../../environ';
 import { expect2, GETERR } from '../../common/test-helper';
 import { AWSS3Service, Metadata, PutObjectResult } from './aws-s3-service';
 import { $rand, my_parrallel } from '../../helpers';
 
 const S3 = new AWSS3Service();
+
+//! main test body.
 describe(`test AWSS3Service`, () => {
-    //! use `env.PROFILE`
+    //* use `env.PROFILE`
     const PROFILE = loadProfile(process); // override process.env.
     PROFILE && console.info('! PROFILE=', PROFILE);
 
@@ -46,7 +48,7 @@ describe(`test AWSS3Service`, () => {
         expect(S3.bucket('my-bucket')).toEqual('my-bucket');
     });
 
-    //! test headObject()
+    //* test headObject()
     test('check headObject() function', async () => {
         if (!PROFILE) return;
 
@@ -60,7 +62,7 @@ describe(`test AWSS3Service`, () => {
         await S3.deleteObject(fileName);
     });
 
-    //! test putObject(), and getObject()
+    //* test putObject(), and getObject()
     test('check putObject() function', async () => {
         if (!PROFILE) return;
         const json = { hello: 'world', lemon: true, name: '한글!' };
@@ -200,7 +202,7 @@ describe(`test AWSS3Service`, () => {
         expect2(await S3.deleteObject(res.Key)).toEqual();
     });
 
-    //! test getDecodedObject()
+    //* test getDecodedObject()
     test('check getDecodedObject() function', async () => {
         if (!PROFILE) return;
         const fileName = 'sample.json';
