@@ -9,7 +9,6 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../../environ';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { GETERR, expect2 } from '../../common/test-helper';
 import { DynamoService, DynamoOption } from './dynamo-service';
 import { GeneralItem } from 'lemon-model';
@@ -49,7 +48,7 @@ describe('DynamoQueryService', () => {
         );
     });
 
-    //! dynamo query service.
+    //* dynamo query service.
     it('should pass basic query operations', async () => {
         const { dynamoQuery, options } = instance();
 
