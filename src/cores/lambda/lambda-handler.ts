@@ -65,7 +65,23 @@ export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
 export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
 export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
 
-export type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'dds' | 'cron' | 'cognito' | 'dynamo-stream' | 'notification';
+/**
+ *
+ */
+const $handlerTypes = {
+    web: 'web',
+    sns: 'sns',
+    sqs: 'sqs',
+    elb: 'elb',
+    wss: 'wss',
+    dds: 'dds',
+    cron: 'cron',
+    cognito: 'cognito',
+    'dynamo-stream': 'dynamo-stream',
+    notification: 'notification',
+};
+
+export type HandlerType = keyof typeof $handlerTypes;
 
 /**
  * class: `LambdaHandlerService`
@@ -173,6 +189,9 @@ export class LambdaHandler {
         } else if (event.requestContext && event.requestContext.eventType !== undefined) {
             //* via WEB-SOCKET from ApiGateway
             return 'wss';
+        } else if (event.requestContext?.elb && typeof event.requestContext.elb?.targetGroupArn === 'string') {
+            //* via TargetGroup from ELB(Elastic Load Balancer)
+            return 'elb';
         } else {
             if (event.cron) {
                 //* via CloudWatch's cron.

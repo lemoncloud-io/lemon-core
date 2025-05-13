@@ -77,7 +77,6 @@ describe('LambdaDynamoStreamHandler', () => {
         //* to check handlers were called
         let handlersCalled = { filter: false, onBeforeSync: false, onAfterSync: false };
 
-        ///////////////////////
         //STEP 1. update event.
         //* attach handlers.
         const filter: DynamoStreamFilter = (id, item, diff, prev) => {
@@ -128,7 +127,6 @@ describe('LambdaDynamoStreamHandler', () => {
         //* check all handlers were called
         expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: true });
 
-        ///////////////////////
         //STEP 2. delete event.
         event.Records[0].eventName = 'REMOVE';
         handlersCalled = { filter: false, onBeforeSync: false, onAfterSync: false };
