@@ -39,9 +39,14 @@ describe('LambdaHandler', () => {
 
         //* call handler.
         const _find = (name: string) => {
-            const event = loadJsonSync(`data/samples/events/sample.event.${name}.json`);
+            const event = loadJsonSync(`data/samples/events/sample.event.${name ?? '-'}.json`);
             return service.findService(event);
         };
+        expect2(() => _find('nothing')).toEqual();
+        expect2(() => _find(undefined)).toEqual();
+        expect2(() => _find(null)).toEqual();
+        expect2(() => _find('')).toEqual();
+
         expect2(() => _find('web')).toEqual('web');
         expect2(() => _find('web.signed')).toEqual('web');
         expect2(() => _find('sns')).toEqual('sns');
@@ -50,8 +55,10 @@ describe('LambdaHandler', () => {
         expect2(() => _find('wss-conn')).toEqual('wss');
         expect2(() => _find('wss-echo')).toEqual('wss');
 
-        //TODO - fix this.
         expect2(() => _find('elb')).toEqual('elb');
+        expect2(() => _find('cron')).toEqual('cron');
+        expect2(() => _find('cognito')).toEqual('cognito');
+        expect2(() => _find('dynamo-stream')).toEqual('dds');
     });
 
     //* test callback

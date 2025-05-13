@@ -171,7 +171,7 @@ export class LambdaHandler {
     }
 
     //* Find Service By Event
-    public findService = (event: any): HandlerType => {
+    public findService(event: any): HandlerType {
         const headers = (event && event.headers) || {};
         _log(NS, `> headers =`, $U.json(headers));
         //* check if AWS SNS Notification Subscription -> notification controller.
@@ -210,7 +210,7 @@ export class LambdaHandler {
                 if (ddb.length) return 'dds';
             }
         }
-    };
+    }
 
     /**
      * decode event to proper handler.
@@ -247,7 +247,7 @@ export class LambdaHandler {
             }
             //* raise error if not found.
             _inf(NS, `WARN! unknown[${type}].event =`, $U.json(event));
-            callback && callback(new Error(`400 UNKNOWN - service:${type}`));
+            callback && callback(new Error(`400 UNKNOWN EVENT - service:${type ?? ''}`));
         };
 
         //* call promised.
