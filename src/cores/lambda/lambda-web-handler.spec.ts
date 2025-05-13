@@ -510,7 +510,8 @@ describe('LambdaWEBHandler', () => {
         const { lambda, service: $web } = instance();
         const $pack = loadJsonSync('package.json');
         const event = loadJsonSync('data/samples/events/sample.event.web.json');
-        expect2(() => event?.headers, 'origin,referer,User-Agent').toEqual({
+        expect2(() => event?.headers, 'Authorization,origin,referer,User-Agent').toEqual({
+            Authorization: 'Bearer 12345678',
             origin: 'http://localhost:5004',
             referer: 'http://localhost:5004/',
             'User-Agent': 'HTTPie/1.0.2',
@@ -541,6 +542,7 @@ describe('LambdaWEBHandler', () => {
             clientIp: '221.149.250.0',
             userAgent: 'HTTPie/1.0.2',
             source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+            authorization: 'Bearer 12345678',
             origin: 'http://localhost:5004',
             referer: 'http://localhost:5004/',
         });

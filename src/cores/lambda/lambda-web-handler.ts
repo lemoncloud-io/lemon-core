@@ -405,7 +405,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             const referer = $tool.getHeader('referer');
             const origin = $tool.getHeader('origin');
             const userAgent = $tool.getHeader('user-agent');
-            return { identity, cookie, domain, referer, origin, userAgent };
+            const authorization = $tool.getHeader('authorization');
+            return { identity, cookie, domain, referer, origin, userAgent, authorization };
         };
 
         // STEP.3. prepare the final `next-context`.
