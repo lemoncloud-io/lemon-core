@@ -87,10 +87,10 @@ export class HttpStorageService<T extends StorageModel> implements StorageServic
             const val = cur[1];
             if (val !== undefined) {
                 const org = ($org as any)[key];
-                //! check type matched!
+                //* check type matched!
                 if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
                     throw new Error(`.${key} (${val}) should be number!`);
-                //! if not exists, update it.
+                //* if not exists, update it.
                 if (org === undefined) {
                     N[key] = val;
                 } else if (typeof val !== 'number') {

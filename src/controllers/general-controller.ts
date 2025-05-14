@@ -125,9 +125,9 @@ export class GeneralWEBController extends GeneralController {
      * decode func from self to base.
      */
     public decode(mode: NextMode, id: string, cmd: string) {
-        //! find handler from self
+        //* find handler from self
         const ret = super.decode(mode, id, cmd);
-        //! if not found, then find via base.
+        //* if not found, then find via base.
         if (!ret && this.base) {
             const handler = this.base.decode(mode, id, cmd);
             const builder =
@@ -146,13 +146,13 @@ export class GeneralWEBController extends GeneralController {
      * @param context   the requested NextContext
      */
     public asNextIdentityAccess = async (context: NextContext): Promise<NextIdentityAccess> => {
-        //! ignore if .identity is already populated.
+        //* ignore if .identity is already populated.
         if (context && context.identity) {
             const $old: NextIdentityAccess = context.identity as NextIdentityAccess;
             if ($old.Site !== undefined) return $old;
         }
 
-        //! call service via protocol
+        //* call service via protocol
         // const proto: ProtocolService = $cores.protocol.service;
         const proto: ProtocolService = $protocols.service;
         //TODO - use env to configure `lemon-accounts-api` service @200106
@@ -160,10 +160,10 @@ export class GeneralWEBController extends GeneralController {
         const result = await proto.execute(param);
         const res: NextIdentityAccess = result as NextIdentityAccess;
 
-        //! overwrite the origin context with this identity.
+        //* overwrite the origin context with this identity.
         if (context) context.identity = res;
 
-        //! returns;
+        //* returns;
         return res;
     };
 
@@ -203,7 +203,7 @@ export class GeneralWEBController extends GeneralController {
         const message = { type, id, state, service, param };
         if (endpoint === '#') return $U.json({ endpoint, subject, message });
         if (!endpoint) return `ignored`;
-        //! publish to sns endpoint.
+        //* publish to sns endpoint.
         return $aws.sns.publish(endpoint, subject, message).catch(GETERR);
     };
 }

@@ -51,9 +51,6 @@ export interface DynamoSimpleQueriable<T extends GeneralItem> {
     queryRange(pkey: string, from: number, to: number, limit?: number, last?: number): Promise<DynamoQueryResult<T>>;
 }
 
-/** ****************************************************************************************************************
- *  Service Main
- ** ****************************************************************************************************************/
 import Query from '../../lib/dynamo/query';
 import Serializer from '../../lib/dynamo/serializer';
 
@@ -107,7 +104,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         const { sortName } = this.options;
         const payload = this.buildQuery(pkey, from, to, limit, last, isDesc);
 
-        //! get instance of dynamodoc, and execute query().
+        //* get instance of dynamodoc, and execute query().
         const { dynamodoc } = DynamoService.instance();
         const res = await dynamodoc.query(payload).promise();
         if (res) {
@@ -121,7 +118,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
             _log(NS, `> query[${pkey}].count =`, count);
             _log(NS, `> query[${pkey}].scannedCount =`, scannedCount);
             _log(NS, `> query[${pkey}].lastKey =`, last);
-            //! prepare result-set
+            //* prepare result-set
             const result: DynamoQueryResult<T> = {
                 list: items as T[],
                 count,
@@ -130,7 +127,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
             return result;
         }
 
-        //! avoid null exception
+        //* avoid null exception
         return { list: [] };
     }
 
@@ -141,7 +138,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
     public buildQuery(pkey: string, from: number, to: number, limit?: number, last?: number, isDesc?: boolean) {
         _log(NS, `buildQuery(${pkey}, ${from}, ${to})...`);
 
-        //! load table information..
+        //* load table information..
         const { tableName, idName, sortName, idType, sortType } = this.options;
         const query = new Query(
             pkey,

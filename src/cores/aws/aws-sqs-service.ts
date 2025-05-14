@@ -3,8 +3,6 @@
  * - sqs service for AWS `SQS`.
  *
  *
- * //TODO - move to `lemon-core` shared lib.
- *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-09-27 initial version
  *
@@ -103,7 +101,7 @@ export class AWSSQSService implements SQSService {
      */
     public async sendMessage(data: any, attr?: SQSAttribute): Promise<string> {
         if (!data) throw new Error('@data(object) is required!');
-        //! prepare params.
+        //* prepare params.
         const asAttr = (param: any) =>
             Object.keys(param || {}).reduce((O: any, key: string) => {
                 const val = param[key];
@@ -138,7 +136,7 @@ export class AWSSQSService implements SQSService {
         size = $U.N(size, 0);
         if (!size) throw new Error('@size(number) is required!');
 
-        //! prepare param.
+        //* prepare param.
         const params: SQS.Types.ReceiveMessageRequest = {
             AttributeNames: ['SentTimestamp'],
             MaxNumberOfMessages: size,
@@ -149,12 +147,12 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        //! call api
+        //* call api
         const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.receiveMessage(params).promise();
         _log(NS, '> result =', $U.json(result));
 
-        //! transform list.
+        //* transform list.
         const list: SqsMessage[] = (result && result.Messages).map(_ => {
             const N: any = {};
             N.sent = _.Attributes.SentTimestamp;
@@ -172,7 +170,7 @@ export class AWSSQSService implements SQSService {
             return N;
         });
 
-        //! returns.
+        //* returns.
         return { list };
     }
 
@@ -183,14 +181,14 @@ export class AWSSQSService implements SQSService {
     public async deleteMessage(handle: string): Promise<void> {
         if (!handle) throw new Error('@handle(string) is required!');
 
-        //! prepare param
+        //* prepare param
         const params = {
             QueueUrl: this.endpoint(),
             ReceiptHandle: handle,
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        //! call delete.
+        //* call delete.
         const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.deleteMessage(params).promise();
         _log(NS, '> result =', $U.json(result));
@@ -209,7 +207,7 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        //! call delete.
+        //* call delete.
         const sqs = new AWS.SQS({ region: this.region() });
         const result = await sqs.getQueueAttributes(params).promise();
         _log(NS, '> result =', $U.json(result));
@@ -221,16 +219,13 @@ export class AWSSQSService implements SQSService {
             timeout: $U.N(attr.VisibilityTimeout, 0),
         };
 
-        //! returns finally.
+        //* returns finally.
         return stat;
     }
 }
 
-/** ****************************************************************************************************************
- *  Dummy SQS Service
- ** ****************************************************************************************************************/
 /**
- * class: MyDummySQSService
+ * class: `MyDummySQSService`
  * - simulated dummy `SQSService` which is identical to real-service.
  */
 export class MyDummySQSService implements SQSService {

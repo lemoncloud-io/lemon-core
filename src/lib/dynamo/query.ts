@@ -288,5 +288,5 @@ internals.formatAttributeValue = function (val: any) {
     return val;
 };
 
-//! export default.
+//* export default.
 export default Query;

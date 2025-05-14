@@ -251,5 +251,5 @@ serializer.deserializeItem = function (item: any) {
     return formatter(item);
 };
 
-//! export default
+//* export default
 export default serializer;

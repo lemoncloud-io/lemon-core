@@ -197,5 +197,5 @@ class Scan {
     };
 }
 
-//! export default.
+//* export default.
 export default Scan;

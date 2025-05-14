@@ -39,7 +39,7 @@ export class DummyController extends GeneralController {
     public constructor(type: string, name?: string, idName: string = 'id') {
         super(type);
         this._name = name || type;
-        //! prepare dynamo options.
+        //* prepare dynamo options.
         const tableName = `dummy-${this._name}`;
         const fileName = `dummy-${this._name}-data.yml`;
         this.service = new DummyDynamoService(fileName, { tableName, idName });
@@ -59,7 +59,7 @@ export class DummyController extends GeneralController {
         const fx = super.decode(mode, id, cmd);
         if (fx) return fx;
 
-        //! decode as `do_<mode>_<cmd?>` style.
+        //* decode as `do_<mode>_<cmd?>` style.
         const funcName = (cmd ? `do_${mode}_${cmd}` : `do_${mode}`).toLowerCase();
         const handler = (this as any)[funcName];
         return typeof handler == 'function' ? handler : null;

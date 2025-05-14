@@ -48,8 +48,8 @@ const buildCanonicalRequest = (method: string, path: string, queryParams: any, h
 const hashCanonicalRequest = (request: any) => hexEncode(hash(request));
 
 const buildCanonicalUri = (uri: string) => UriEncode(uri);
-//! code from: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
-//! '*' '+' '!' 같은 특수 문자가 들어갈 경우 인증 에러 발생할 수 있음.
+//* code from: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html
+//* '*' '+' '!' 같은 특수 문자가 들어갈 경우 인증 에러 발생할 수 있음.
 const UriEncode = (input: string, encodeSlash = false) => {
     const result = [];
     // const toHexUTF8 = (str: any) => {

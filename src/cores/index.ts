@@ -9,11 +9,11 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-//! export cores.
+//* export cores.
 export * from 'lemon-model';
 export * from './core-services';
 
-//! export by groups.
+//* export by groups.
 export * from './aws/';
 export * from './config/';
 export * from './lambda/';
@@ -24,11 +24,11 @@ export * from './elastic/';
 export * from './cache/';
 export * from './api/';
 
-//! import `default` with named.
+//* import `default` with named.
 import aws from './aws/';
 import config from './config/';
 import lambda from './lambda/';
 import protocol from './protocol/';
 
-//! export default.
+//* export default.
 export default { aws, config, lambda, protocol };

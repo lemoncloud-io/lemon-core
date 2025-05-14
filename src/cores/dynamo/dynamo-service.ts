@@ -42,13 +42,13 @@ export interface Updatable {
     [key: string]: GeneralItem['key'] | { setIndex: [number, string | number][] } | { removeIndex: number[] };
 }
 
-//! create(or get) instance.
+//* create(or get) instance.
 const instance = () => {
     const region = 'ap-northeast-2';
     return DynamoService.instance(region);
 };
 
-//! normalize dynamo properties.
+//* normalize dynamo properties.
 const normalize = (data: any): any => {
     if (data === '') return null;
     if (!data) return data;
@@ -127,7 +127,7 @@ export class DynamoService<T extends GeneralItem> {
             throw new Error(`invalid key-type:${type}`);
         };
         const StreamViewType = 'NEW_AND_OLD_IMAGES';
-        //! prepare payload.
+        //* prepare payload.
         const payload = {
             TableName: tableName,
             KeySchema: [
@@ -145,7 +145,7 @@ export class DynamoService<T extends GeneralItem> {
             ProvisionedThroughput: { ReadCapacityUnits, WriteCapacityUnits },
             StreamSpecification: { StreamEnabled, StreamViewType },
         };
-        //! set sort-key.
+        //* set sort-key.
         if (sortName) {
             payload.KeySchema.push({
                 AttributeName: sortName,
@@ -157,7 +157,7 @@ export class DynamoService<T extends GeneralItem> {
             });
         }
 
-        //! returns.
+        //* returns.
         return payload;
     }
 
@@ -186,7 +186,7 @@ export class DynamoService<T extends GeneralItem> {
         delete item[idName]; // clear the saved id.
         const node: T = Object.assign({ [idName]: id }, item); // copy
         const data = normalize(node);
-        //! prepare payload.
+        //* prepare payload.
         const payload = {
             TableName: tableName,
             Item: data,
@@ -204,7 +204,7 @@ export class DynamoService<T extends GeneralItem> {
         const { tableName, idName, sortName } = this.options;
         if (!id) throw new Error(`@id is required - prepareItemKey(${tableName}/${idName})`);
         // _log(NS, `prepareItemKey(${tableName}/${id}/${sort || ''})...`);
-        //! prepare payload.
+        //* prepare payload.
         const payload = {
             TableName: tableName,
             Key: {
@@ -235,15 +235,15 @@ export class DynamoService<T extends GeneralItem> {
         const Key = this.prepareItemKey(id, sort).Key;
         const norm = (_: string) => `${_}`.replace(/[.\\:\/$]/g, '_');
 
-        //! prepare payload.
+        //* prepare payload.
         let payload = Object.entries($update).reduce(
             (memo: any, [key, value]: any[]) => {
-                //! ignore if key
+                //* ignore if key
                 if (key === idName || key === sortName) return memo;
                 const key2 = norm(key);
                 value = normalize(value);
                 if (value && Array.isArray(value.setIndex)) {
-                    //! support set items in list
+                    //* support set items in list
                     value.setIndex.forEach(([idx, value]: [number, string | number], seq: number) => {
                         if (idx !== undefined && value !== undefined) {
                             memo.ExpressionAttributeNames[`#${key2}`] = key;
@@ -252,7 +252,7 @@ export class DynamoService<T extends GeneralItem> {
                         }
                     });
                 } else if (value && Array.isArray(value.removeIndex)) {
-                    //! support removing items from list
+                    //* support removing items from list
                     value.removeIndex.forEach((idx: number) => {
                         if (idx !== undefined) {
                             memo.ExpressionAttributeNames[`#${key2}`] = key2;
@@ -260,7 +260,7 @@ export class DynamoService<T extends GeneralItem> {
                         }
                     });
                 } else {
-                    //! prepare update-expression.
+                    //* prepare update-expression.
                     memo.ExpressionAttributeNames[`#${key2}`] = key;
                     memo.ExpressionAttributeValues[`:${key2}`] = value === '' ? null : value;
                     memo.UpdateExpression.SET.push(`#${key2} = :${key2}`);
@@ -278,9 +278,9 @@ export class DynamoService<T extends GeneralItem> {
                 ReturnValues: 'UPDATED_NEW',
             },
         );
-        //! prepare increment update.
+        //* prepare increment update.
         if ($increment) {
-            //! increment field.
+            //* increment field.
             payload = Object.entries($increment).reduce((memo: any, [key, value]) => {
                 const key2 = norm(key);
                 if (!Array.isArray(value)) {
@@ -300,7 +300,7 @@ export class DynamoService<T extends GeneralItem> {
                 return memo;
             }, payload);
         }
-        //! build final update expression.
+        //* build final update expression.
         payload.UpdateExpression = Object.keys(payload.UpdateExpression) // ['SET', 'REMOVE', 'ADD', 'DELETE']
             .map(actionName => {
                 const actions: string[] = payload.UpdateExpression[actionName];
@@ -416,8 +416,7 @@ export class DynamoService<T extends GeneralItem> {
             .promise()
             .then(res => {
                 _log(NS, '> deleteItem.res =', $U.json(res));
-                //TODO - improve the returned result
-                return null;
+                return null as any;
             })
             .catch((e: Error) => {
                 if (`${e.message}` == 'Requested resource not found') return {};

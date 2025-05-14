@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, do_parrallel } from '../../engine/';
+import { $U, _log, _inf, _err, do_parrallel } from '../../engine/';
 import { SNSEventRecord, SNSMessage } from 'aws-lambda';
 import { NextContext, NextHandler } from 'lemon-model';
 import { LambdaHandler, SNSHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
@@ -22,7 +22,7 @@ const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
  * - default SNS Handler w/ event-listeners.
  */
 export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
@@ -38,24 +38,24 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
         this.listeners.push(handler);
     }
 
-    //! for debugging. save last result
+    //* for debugging. save last result
     protected $lastResult: any = null;
 
     /**
      * Default SNS Handler.
      */
     public handle: SNSHandler = async (event): Promise<void> => {
-        //! for each records.
+        //* for each records.
         const records: SNSEventRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
         // _log(NS, '> event =', $U.json(event));
         const $doReportError = buildReportError(LambdaSNSHandler.REPORT_ERROR);
 
-        //! handle sqs record data.
+        //* handle sqs record data.
         const onSNSRecord = async (record: SNSEventRecord, index: number): Promise<string> => {
             _log(NS, `onSNSRecord(${(record && record.EventSource) || ''}, ${index})...`);
 
-            //! check if via protocol-service.
+            //* check if via protocol-service.
             const $msg: SNSMessage = record.Sns;
             const { Subject } = $msg;
             if (Subject == 'x-protocol-service') {
@@ -68,11 +68,11 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                         // _log(NS, `! res[${index}] =`, $U.json(body));
                         callback && _log(NS, `> callback[${index}] =`, callback); // ex) api://lemon-queue-api-dev/batch/test11/callback#2.2.1
                         context && _log(NS, `> context[${index}] =`, $U.json(context)); // ex) {"source":"express","domain":"localhost"}
-                        //! report call back.
+                        //* report call back.
                         const proto = callback ? $protocol.service.fromURL(context, callback, null, body || {}) : null;
                         proto && _log(NS, `> protocol[${index}] =`, $U.json(proto));
                         _log(NS, `> config.service =`, this.lambda.config && this.lambda.config.getService());
-                        //! check if service is in same..
+                        //* check if service is in same..
                         if (proto && this.lambda.config && proto.service == this.lambda.config.getService()) {
                             proto.context.depth = $U.N(proto.context.depth, 1) + 1;
                             proto.body = body;
@@ -82,14 +82,14 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                                 return body;
                             });
                         }
-                        //! call the remote service if callback.
+                        //* call the remote service if callback.
                         return proto ? $protocol.service.execute(proto) : body;
                     })
                     .catch(e => $doReportError(e, param.context, null, { protocol: param }));
                 _log(NS, `> sns[${index}].res =`, $U.json(result));
                 return typeof result == 'string' ? result : $U.json(result);
             } else {
-                //! retrieve message-attributes as `param`
+                //* retrieve message-attributes as `param`
                 const param = Object.keys($msg.MessageAttributes || {}).reduce(
                     (O: any, key: string) => {
                         const V = $msg.MessageAttributes[key];
@@ -99,7 +99,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                     },
                     { subject: Subject }, //NOTE! - should have 'subject' property.
                 );
-                //! load data as `body`
+                //* load data as `body`
                 const body =
                     typeof $msg.Message == 'string' && $msg.Message.startsWith('{') && $msg.Message.endsWith('}')
                         ? JSON.parse($msg.Message)
@@ -107,7 +107,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                 _log(NS, `> sns[${index}].param =`, $U.json(param));
                 _log(NS, `> sns[${index}].body =`, $U.json(body));
 
-                //! call all listeners in parrallel.
+                //* call all listeners in parrallel.
                 const asyncNext = (fn: NextHandler, j: number) =>
                     new Promise(resolve => {
                         resolve(fn('SNS', param, body, null));
@@ -117,14 +117,14 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
             }
         };
 
-        //! serialize each records.
+        //* serialize each records.
         this.$lastResult = await do_parrallel(
             records,
             (record, i) => onSNSRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
             5,
         );
 
-        //! returns.
+        //* returns.
         return;
     };
 }

@@ -39,7 +39,7 @@ import fs from 'fs';
 
 import * as requestIp from 'request-ip';
 
-//! helper to catch header value w/o case-sensitive
+//* helper to catch header value w/o case-sensitive
 export const buildHeaderGetter =
     (headers: any) =>
     (name: string): string => {
@@ -53,7 +53,7 @@ export const buildHeaderGetter =
         }, '');
     };
 
-//! create Server Instance.
+//* create Server Instance.
 //NOTE - avoid external reference of type.
 export const buildExpress = (
     $engine: LemonEngine,
@@ -65,11 +65,11 @@ export const buildExpress = (
     /** ****************************************************************************************************************
      *  Common Constants
      ** ****************************************************************************************************************/
-    //! re-use core modules.
+    //* re-use core modules.
     const $U = $engine.U;
     if (!$U) throw new Error('$U(utilities) is required!');
 
-    //! load common(log) functions
+    //* load common(log) functions
     const useEngineLog = !!1; //NOTE - turn off to print log in jest test.
     const _log = useEngineLog ? $engine.log : console.log;
     const _inf = useEngineLog ? $engine.inf : console.info;
@@ -86,7 +86,7 @@ export const buildExpress = (
     _inf(NS, `###### express[${NAME}@${$U.NS(VERS, 'cyan')}] ######`);
     IS_WSC && _inf(NS, `! IS_WSC=`, IS_WSC);
 
-    //! dynamic loading credentials by profile. (search PROFILE -> NAME)
+    //* dynamic loading credentials by profile. (search PROFILE -> NAME)
     (() => {
         //NOTE! - DO NOT CHANGE CONFIG IN LAMBDA ENV (USE ROLE CONFIG).
         const ALFN = $engine.environ('AWS_LAMBDA_FUNCTION_NAME', '') as string;
@@ -101,7 +101,7 @@ export const buildExpress = (
     /** ****************************************************************************************************************
      *  Initialize Express
      ** ****************************************************************************************************************/
-    //! create express app.
+    //* create express app.
     const app: any = express();
     const uploader = multer({ dest: '../tmp/' });
     const genRequestId =
@@ -116,7 +116,7 @@ export const buildExpress = (
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(cookieParser());
 
-    //! middle ware
+    //* middle ware
     const middle: RequestHandler = (req: any, res: any, next: any) => {
         // _log(NS, `! req =`, req);
         // _log(NS, `! header =`, req.headers);
@@ -128,7 +128,7 @@ export const buildExpress = (
         const sourceIp = clientIp || `${requestIp.getClientIp(req as any) || ''}`;
         const userAgent = getHeader('user-agent');
 
-        //! prepare event compartible with API-Gateway Event.
+        //* prepare event compartible with API-Gateway Event.
         const event = {
             path: req.path,
             queryStringParameters: req.query || {},
@@ -152,10 +152,10 @@ export const buildExpress = (
         };
         _log(NS, `! req-ctx =`, $U.json(event.requestContext));
 
-        //! prepare internal-context
+        //* prepare internal-context
         const context: NextContext = { source: 'express', domain: host };
 
-        //! catch cookie
+        //* catch cookie
         if (req.headers) {
             Object.keys(req.headers).forEach(_key => {
                 const val = req.headers[_key];
@@ -200,12 +200,12 @@ export const buildExpress = (
             res.status(statusCode).send(data.body);
         };
 
-        //! attach to req.
+        //* attach to req.
         req.$event = event;
-        req.$context = context; //! save the
+        req.$context = context; //* save the
         req.$callback = callback;
 
-        //! use json parser or multer.
+        //* use json parser or multer.
         const method = req.method || '';
         const ctype = getHeader('content-type');
         _log(NS, `! ${method} ${req.url} =`, ctype);
@@ -233,7 +233,7 @@ export const buildExpress = (
     /** ********************************************************************************************************************
      *  ROUTE SETTING
      ** *******************************************************************************************************************/
-    //! default app.
+    //* default app.
     app.get('', (req: any, res: any) => {
         //WARN! - must be matched with the `LambdaWEBHandler.handleProtocol()`.
         const $env = (process && process.env) || {};
@@ -255,12 +255,12 @@ export const buildExpress = (
         res.status(200).send(msgs.join('\n'));
     });
 
-    //! handler map.
+    //* handler map.
     if (true) {
-        //! route prefix
+        //* route prefix
         const ROUTE_PREFIX = `${(options && options.prefix) || ''}`;
 
-        //! handle request to handler.
+        //* handle request to handler.
         const next_middle =
             (type: string) =>
             (req: any): Promise<void> => {
@@ -276,7 +276,7 @@ export const buildExpress = (
                     });
             };
 
-        //! register automatically endpont.
+        //* register automatically endpont.
         const RESERVES = 'id,log,inf,err,extend,ts,dt,environ'.split(',');
         // support single char path.
         const isValidName = (name: string) => /^[a-z][a-z0-9\-_]*$/.test(name) && RESERVES.indexOf(name) < 0;
@@ -286,13 +286,13 @@ export const buildExpress = (
         const handlers = keys
             .filter(isValidName)
             .map(name => {
-                //! check if valid name && function.
+                //* check if valid name && function.
                 const main = $map[name];
                 const type = `${name}`.split('_').join('-'); // change '_' to '-'.
                 if (typeof main !== 'function')
                     throw new Error(`.${name} should be function handler. but type=` + typeof main);
 
-                //! route pattern with `/<type>/<id>/<cmd?>`
+                //* route pattern with `/<type>/<id>/<cmd?>`
                 app.get(`/${ROUTE_PREFIX}${type}`, middle, next_middle(type));
                 app.get(`/${ROUTE_PREFIX}${type}/:id`, middle, next_middle(type));
                 app.get(`/${ROUTE_PREFIX}${type}/:id/:cmd`, middle, next_middle(type));
@@ -317,9 +317,9 @@ export const buildExpress = (
         _inf(NS, '! express.handlers.len =', Object.keys(handlers).length);
     }
 
-    //! create server by port.
+    //* create server by port.
     const createServer = () => {
-        //! logging options.
+        //* logging options.
         const NS = $U.NS('main', 'cyan');
         const $pack = loadJsonSync('package.json');
         const name = $pack.name || 'LEMON API';
@@ -343,6 +343,6 @@ export const buildExpress = (
         return server;
     };
 
-    //! export
+    //* export
     return { express, app, createServer };
 };

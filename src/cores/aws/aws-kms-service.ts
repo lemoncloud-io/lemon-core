@@ -25,7 +25,7 @@ const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 type MySigningAlgorithm = SigningAlgorithmSpec;
 const ALIAS = `lemon-hello-api`; //NOTE - use env[KMS_KEY_ID] to overide.
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
-//! get aws client for KMS
+//* get aws client for KMS
 const instance = () => {
     const _region = region();
     const config = { region: _region };
@@ -134,7 +134,7 @@ export class AWSKMSService implements CoreKmsService {
                     ? Buffer.from(encryptedSecret, 'base64')
                     : encryptedSecret
                 : encryptedSecret;
-        //! api param.
+        //* api param.
         const params = { CiphertextBlob };
         const data: any = await this.instance().decrypt(params).promise();
         // _log(NS, '> data.type =', typeof data);
@@ -187,7 +187,7 @@ export class AWSKMSService implements CoreKmsService {
             .promise()
             .catch(e => {
                 _err(NS, `! err=`, e);
-                return null;
+                return null as any;
             });
         return result?.SignatureValid;
     };
@@ -221,7 +221,7 @@ export class AWSKMSService implements CoreKmsService {
     public async sample() {
         _inf(NS, 'sample()..');
 
-        //! check key-id.
+        //* check key-id.
         const message = `hello lemon!`;
         const KMS_KEY_ID = $engine.environ(AWSKMSService.ENV_KMS_KEY_ID, `alias/${ALIAS}`) as string;
         const keyId = this.keyId();

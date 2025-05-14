@@ -76,7 +76,7 @@ export class Utilities {
         this.name = `${NS}-utils`;
     }
 
-    //! some helper function.s
+    //* some helper function.s
     public get_env(name: string, def_val?: string): any {
         if (typeof this._$.environ === 'function') return this._$.environ(name, def_val);
 
@@ -98,11 +98,11 @@ export class Utilities {
         if (!name) throw new Error('param:name is required!');
         folder = folder || 'data';
 
-        //! calculate the target data file.
+        //* calculate the target data file.
         const fname = path.resolve(__dirname, `../${folder}/` + name + (name.endsWith('.yml') ? '' : '.yml'));
 
         this.log(NS, 'load file =', fname);
-        //! prepare promised.
+        //* prepare promised.
         const chain = new Promise(function (resolve, reject) {
             // Get document, or throw exception on error
             try {
@@ -119,7 +119,7 @@ export class Utilities {
         if (!name) throw new Error('param:name is required!');
         folder = folder || 'data';
 
-        //! calculate the target data file.
+        //* calculate the target data file.
         const fname = path.resolve(__dirname, `../${folder}/` + name + (name.endsWith('.yml') ? '' : '.yml'));
 
         // Get document, or throw exception on error
@@ -422,7 +422,7 @@ export class Utilities {
         }, node);
     }
 
-    //! remove underscore variables.
+    //* remove underscore variables.
     public updated(that: any, that2: any) {
         const updated = Object.keys(that2).reduce((self: any, key) => {
             if (that[key] !== that2[key]) {
@@ -656,14 +656,14 @@ export class Utilities {
         return hashFnv32a(data, true);
     }
 
-    //! start promise chain.
+    //* start promise chain.
     public promise(param: any) {
         return new Promise(function (resolve) {
             resolve(param);
         });
     }
 
-    //! promise in sequence.
+    //* promise in sequence.
     // example) promise_sequence([1,2,3], item => item+1);
     public promise_sequence(array: any, func: any) {
         let chain = this.promise(array.shift());
@@ -704,11 +704,11 @@ export class Utilities {
         Object.keys(param).forEach(key => {
             if (false) {
             }
-            //! 빈 파라미터의 값을 빈 문자열로 치환
+            //* 빈 파라미터의 값을 빈 문자열로 치환
             else if (param[key] === null) {
                 param[key] = '';
             }
-            //! 숫자로 된 문자열이 오면 숫자로 변환
+            //* 숫자로 된 문자열이 오면 숫자로 변환
             else if (/^[1-9][0-9]*$/.test(param[key])) {
                 param[key] = this.N(param[key]);
             }
@@ -749,7 +749,7 @@ export class Utilities {
             public encrypt = (val: string): string => {
                 val = val === undefined ? null : val;
                 // msg = msg && typeof msg == 'object' ? JSON_TAG+JSON.stringify(msg) : msg;
-                //! 어느 데이터 타입이든 저장하기 위해서, object로 만든다음, 암호화 시킨다.
+                //* 어느 데이터 타입이든 저장하기 위해서, object로 만든다음, 암호화 시킨다.
                 const msg = JSON.stringify({ alg: algorithm, val: val });
                 const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
                 // const key = Buffer.from(`${passwd || ''}`, 'utf8');
@@ -794,7 +794,7 @@ export class Utilities {
         return new (class {
             public encrypt = (val: string): string => {
                 val = val === undefined ? null : val;
-                //! use json string to support all data-type
+                //* use json string to support all data-type
                 const msg = JSON.stringify({ alg: algorithm, val: val });
                 const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
                 const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);

@@ -27,7 +27,7 @@ export class AWSModule implements EngineModule {
         if (this.engine) this.engine.register(this);
     }
 
-    //! create default kms-service with `env.ENV_KMS_KEY_ID`.
+    //* create default kms-service with `env.ENV_KMS_KEY_ID`.
     public kms: AWSKMSService = new AWSKMSService();
     public sns: AWSSNSService = new AWSSNSService();
     public sqs: AWSSQSService = new AWSSQSService();
@@ -39,5 +39,5 @@ export class AWSModule implements EngineModule {
     }
 }
 
-// //! create default instance, then export as default.
+//* create default instance, then export as default.
 export default new AWSModule($engine);

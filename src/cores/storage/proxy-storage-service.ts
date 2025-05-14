@@ -162,7 +162,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
         origin = origin || ({} as any);
         const FIELDS: string[] = this.FIELDS && this.FIELDS.length ? this.FIELDS : null;
 
-        //! call service.onBeforeSave().
+        //* call service.onBeforeSave().
         model = this.onBeforeSave(model, origin);
 
         //TODO - accept only primitive types of field @191228.
@@ -171,14 +171,14 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
         delete model.lock;
         delete model.next;
 
-        //! load the meta data...
+        //* load the meta data...
         const $meta = (() => {
             if (model.meta !== undefined && !model.meta) return {};
             const meta = model.meta || origin.meta || {}; // 만일, 파라미터에 meta 가 있다면, 클라이언트에서 직접 처리함.
             return meta && typeof meta == 'string' ? JSON.parse(meta) : meta;
         })();
 
-        //! move all fields to meta which is not defined in FIELDS.
+        //* move all fields to meta which is not defined in FIELDS.
         model = Object.keys(model).reduce((N: any, key) => {
             if (key.startsWith('_') || key.startsWith('$')) return N;
             if (key == 'createdAt' || key == 'updatedAt' || key == 'deletedAt') return N;
@@ -193,13 +193,13 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
         }, {});
         model.meta = Object.keys($meta).length ? $U.json($meta) : '';
 
-        //! handle for meta.
+        //* handle for meta.
         if (model.meta === '') model.meta = null;
         else if (typeof origin.meta == 'string' && model.meta == origin.meta) delete model.meta;
         else if (typeof origin.meta == 'object' && model.meta == $U.json(origin.meta)) delete model.meta;
         else if (!origin.meta && !model.meta) model.meta = origin.meta;
 
-        //! filter out only the updated fields.
+        //* filter out only the updated fields.
         const res = Object.keys(model).reduce((N: any, key) => {
             if (key.startsWith('_') || key.startsWith('$')) return N; // ignore.
             const org = (origin as any)[key];
@@ -221,11 +221,11 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
             return N;
         }, model);
 
-        //! if nothing to update, then returns null.
+        //* if nothing to update, then returns null.
         const keys = Object.keys(model).filter(_ => !_.startsWith('_') && !_.startsWith('$'));
         if (keys.length <= 0) return null;
 
-        //! returns the filtered node.
+        //* returns the filtered node.
         return res as T;
     }
 
@@ -265,7 +265,7 @@ export class GeneralModelFilter<T extends CoreModel<ModelType>, ModelType extend
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public onBeforeSave(model: T, origin?: T): T {
         //TODO - override this function.
-        //! conversion data-type.
+        //* conversion data-type.
         // if (model.count !== undefined) model.count = $U.N(model.count, 0);
         return model;
     }
@@ -419,7 +419,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                 nextInit = nextInit === undefined || nextInit === null ? ProxyStorageService.AUTO_SEQUENCE : nextInit;
                 const $upd: T = { next: nextInit } as T;
                 const $inc: T = { ...$key, createdAt, updatedAt } as T;
-                return this.storage.increment(_id, $upd, $inc); //! increment w/ update-set
+                return this.storage.increment(_id, $upd, $inc); //* increment w/ update-set
             }
             return res;
         };
@@ -488,7 +488,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             }
             throw e;
         });
-        //! make sure it has `_id`
+        //* make sure it has `_id`
         (model as any)[this.idName] = _id;
         const res = this.filters.afterRead(model);
         return res;
@@ -506,7 +506,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         if (destroy === undefined || destroy === true) return this.storage.delete(_id);
         const { createdAt, updatedAt, deletedAt } = this.asTime();
         const $up: CoreModel<ModelType> = { updatedAt, deletedAt };
-        const $org = await this.read(_id); //! it will make 404 if not found.
+        const $org = await this.read(_id); //* it will make 404 if not found.
         if (!$org.createdAt) $up.createdAt = createdAt;
         return this.update(_id, $up as T);
     }
@@ -520,14 +520,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param incrementals (optional) fields to increment
      */
     public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T) {
-        const $inc: T = { ...incrementals }; //! make copy.
+        const $inc: T = { ...incrementals }; //* make copy.
         const _id = this.asKey(type, id);
         // const $key = this.service.asKey$(type, id);
         const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, $inc);
         delete node2['_id'];
         const { updatedAt } = this.asTime();
         const model = await this.update(_id, { ...node2, updatedAt }, $inc);
-        //! make sure it has `_id`
+        //* make sure it has `_id`
         (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
@@ -542,7 +542,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         const _id = this.asKey(type, id);
         const { updatedAt } = this.asTime();
         const model = await this.increment(_id, { ...$inc }, { ...$up, updatedAt });
-        //! make sure it has `_id`
+        //* make sure it has `_id`
         (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
@@ -558,38 +558,38 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param $create   (optional) initial creation model if not found.
      */
     public async doSave(type: ModelType, id: string, node: T, $create?: T) {
-        //! read origin model w/o error.
+        //* read origin model w/o error.
         const $org: T = (await this.doRead(type, id, null).catch(e => {
             if (`${e.message}`.startsWith('404 NOT FOUND')) return null as T; // mark null to create later.
             throw e;
         })) as T;
 
-        //! if `$create` is undefined, create it with default $key.
+        //* if `$create` is undefined, create it with default $key.
         const _id = this.asKey(type, id);
         const model: T = { ...node }; // copy from param.
-        (model as any)[this.idName] = _id; //! make sure the internal id
+        (model as any)[this.idName] = _id; //* make sure the internal id
 
-        //! apply filter.
-        const $ups = this.filters.beforeSave(model, $org); //! `$org` should be null if create.
+        //* apply filter.
+        const $ups = this.filters.beforeSave(model, $org); //* `$org` should be null if create.
         _log(NS, `> ${type}[${id}].update =`, $U.json($ups));
 
-        //! if null, then nothing to update.
+        //* if null, then nothing to update.
         if (!$ups) {
             const res: T = { [this.idName]: _id } as any;
             return res;
         }
 
-        //! determine of create or update.
+        //* determine of create or update.
         const { createdAt, updatedAt } = this.asTime();
         if ($org) {
             const $save = { ...$ups, updatedAt };
             const res = await this.doUpdate(type, id, $save);
-            return this.filters.afterSave(res, $org); //! `$org` should be valid if update.
+            return this.filters.afterSave(res, $org); //* `$org` should be valid if update.
         } else {
             const $key: T = this.service.asKey$(type, id) as T;
             const $save = { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 };
             const res = await this.storage.save(_id, $save);
-            return this.filters.afterSave(res, null); //! `$org` should be null if create.
+            return this.filters.afterSave(res, null); //* `$org` should be null if create.
         }
     }
 
@@ -610,11 +610,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         if (typeof tick != 'number' || tick < 0) throw new Error(`@tick (${tick}) is not valid!`);
         if (typeof interval != 'number' || interval < 1) throw new Error(`@interval (${interval}) is not valid!`);
         const _id = this.asKey(type, id);
-        //! WARN! DO NOT MAKE ANY MODEL CREATION IN HERE.
+        //* WARN! DO NOT MAKE ANY MODEL CREATION IN HERE.
         // const $org = await this.storage.readOrCreate(_id, { lock: 0, ...$key } as any);
         // _log(NS, `> $org[${type}/${id}].lock =`, $org.lock);
         const thiz = this;
-        //! wait some time.
+        //* wait some time.
         const wait = async (timeout: number) =>
             new Promise(resolve => {
                 setTimeout(() => {
@@ -628,12 +628,12 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                 return $U.N($t2.lock, 1);
             });
         };
-        //! recursive to wait lock()
+        //* recursive to wait lock()
         const waitLock = async (_id: string, ttl: number, int: number): Promise<boolean> => {
-            //! try to check the current value.....
+            //* try to check the current value.....
             const lock = await incLock(_id, 0).then(n => {
                 if (n > 1) return n;
-                //! then, try to increment the lock
+                //* then, try to increment the lock
                 return incLock(_id, ttl > 0 ? 1 : 0);
             });
             _log(NS, `! waitLock(${_id}, ${ttl}). lock =`, lock);
@@ -674,14 +674,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public static makeStorageService<T>(table: string, fields?: string[], idName?: string): StorageService<T> {
         if (!table) throw new Error(`@table (table-name) is required!`);
         idName = idName === undefined ? '_id' : `${idName || ''}`;
-        //! clear the duplicated string
+        //* clear the duplicated string
         const clearDuplicated = (arr: string[]) =>
             arr.sort().reduce((L, val) => {
                 if (val && L.indexOf(val) < 0) L.push(val);
                 return L;
             }, []);
 
-        //! make internal storage-service by table
+        //* make internal storage-service by table
         if (table.endsWith('.yml')) {
             return new DummyStorageService<T>(table, table.split('.')[0], idName);
         } else {
@@ -909,7 +909,7 @@ export class ModelUtil {
         if (typeof thiz[popName] != 'undefined') throw new Error(`.[${popName}] is duplicated!`);
         thiz[popName] = function <T>(key: string, defValue?: T): T {
             if (!key) {
-                //! clear pop() if key is null.
+                //* clear pop() if key is null.
                 delete (this as any)[popName];
                 return this;
             } else {
@@ -990,7 +990,7 @@ export class UniqueFieldManager<T extends CoreModel<ModelType>, ModelType extend
             const $new: CoreModel<string> = { stereo: '#', meta: `${$creates.id || ''}`, [field]: value };
             const $map: T = await this.storage.readOrCreate(ID, $new as T);
             const rid = ($map && $map.meta) || $creates.id;
-            //! check if already saved, and id is differ.
+            //* check if already saved, and id is differ.
             if ($any['id'] && $any['id'] != rid) throw new Error(`@id (${rid}) is not same as (${$any['id']})`);
 
             // STEP.2 read the target node or create.
@@ -1006,7 +1006,7 @@ export class UniqueFieldManager<T extends CoreModel<ModelType>, ModelType extend
                 $map.meta = newId;
             }
 
-            //! returns.
+            //* returns.
             return model as T;
         }
     }

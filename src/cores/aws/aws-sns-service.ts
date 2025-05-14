@@ -9,9 +9,6 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-/** ****************************************************************************************************************
- *  Common Headers
- ** ****************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
 const NS = $U.NS('SNS', 'blue');
@@ -34,10 +31,9 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
     return `${target || val}`;
 };
 
-/** ****************************************************************************************************************
- *  Public Instance Exported.
- ** ****************************************************************************************************************/
-//! main service instance.
+/**
+ * main service instance.
+ */
 export class AWSSNSService implements CoreSnsService {
     /**
      * environ name of SNS KEY
@@ -70,7 +66,7 @@ export class AWSSNSService implements CoreSnsService {
         if (!target) throw new Error(`@target (or env.${AWSSNSService.ENV_SNS_ENDPOINT}) is required!`);
         if (target.startsWith('arn:aws:sns:')) return target;
         const REGION = region();
-        //! via hello-arn(see env.REPORT_ERROR_ARN), build arn.
+        //* via hello-arn(see env.REPORT_ERROR_ARN), build arn.
         try {
             const arn: string = getHelloArn(null, NS);
             if (arn && arn.startsWith('arn:aws:sns:')) {
@@ -105,7 +101,7 @@ export class AWSSNSService implements CoreSnsService {
                     resolve(data.User.Arn.split(':')[4]);
                 } else if (err) {
                     const msg = `${err.message || err}`;
-                    //! if non-User case. call STS().
+                    //* if non-User case. call STS().
                     if (msg == 'Must specify userName when calling with non-User credentials') {
                         const sts = new AWS.STS();
                         sts.getCallerIdentity({}, (err, data) => {
@@ -117,7 +113,7 @@ export class AWSSNSService implements CoreSnsService {
                         });
                         return;
                     }
-                    //! otherwise, call internal resource. (ECS, EC2)
+                    //* otherwise, call internal resource. (ECS, EC2)
                     _err(NS, '! err@1 =', err);
                     //NOTE! - below will be fail in lambda.
                     const metadata = new AWS.MetadataService();
@@ -149,7 +145,7 @@ export class AWSSNSService implements CoreSnsService {
             MessageStructure: 'json',
         };
         // _log(NS, '> params =', params);
-        //! call sns.publish()
+        //* call sns.publish()
         const region = arn.split(':')[3];
         if (!region) throw new Error(`@region is required. arn:${arn}`);
         const sns = new AWS.SNS({ region });
@@ -179,7 +175,7 @@ export class AWSSNSService implements CoreSnsService {
         _inf(NS, `reportError(${data}, target=${target || ''})...`);
         _err(NS, '> error =', e);
 
-        //! find out endpoint.
+        //* find out endpoint.
         target = environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
         const payload = this.asPayload(e, data);
 
@@ -198,7 +194,7 @@ export class AWSSNSService implements CoreSnsService {
             const m = (e && (e.message || e.statusMessage)) || e;
             return typeof m == 'object' ? $U.json(m) : `${m}`;
         };
-        //! prepare payload
+        //* prepare payload
         const e2: any = e;
         const base = data && typeof data == 'object' ? data : {};
         const message = data && typeof data == 'string' ? data : $message(e);
@@ -212,14 +208,14 @@ export class AWSSNSService implements CoreSnsService {
             errors,
         });
 
-        //! root of errors.
+        //* root of errors.
         const error0 = (errors && errors[0]) || undefined;
         if (error0) {
             payload.message = $message(payload.error);
             payload.error = error0 instanceof Error ? `${e.message}` : JSON.stringify(error0);
         }
 
-        //! returns payload for sns error
+        //* returns payload for sns error
         return payload;
     };
 }

@@ -18,10 +18,9 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-const NS = $U.NS('CFGS', 'red'); // NAMESPACE TO BE PRINTED.
-
 import { STAGE, CoreKmsService, CoreConfigService } from './../core-services';
 import { loadJsonSync } from '../../tools/shared';
+const NS = $U.NS('CFGS', 'red'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
 
@@ -80,7 +79,7 @@ export class MyConfigService implements ConfigService {
     protected $env: any;
     protected base: any;
 
-    //! external dependency
+    //* external dependency
     public kms: CoreKmsService;
 
     /**
@@ -118,7 +117,7 @@ export class MyConfigService implements ConfigService {
         return val === undefined ? undefined : `${val}`;
     }
 
-    //! loading service's package.json
+    //* loading service's package.json
     private _package: any = null;
     private loadPackage(): any {
         if (!this._package) {
@@ -162,18 +161,18 @@ export class MyConfigService implements ConfigService {
         const $env: any = base || process.env || {};
         this.$env = $env; // save as default environ.
 
-        //! check if encrypted like `*XX+XyXxX==` (must start with '*')
+        //* check if encrypted like `*XX+XyXxX==` (must start with '*')
         const isEncrypted = (val: any) => {
             return val && typeof val == 'string' && /^\*[A-Za-z0-9_\/=\+]+$/.test(val);
         };
 
-        //! convert to { key, val }
+        //* convert to { key, val }
         const filter: Filter<{ key: string; val: any }> = (key, val) => {
             return { key, val };
         };
         const list = marshal($env, filter);
 
-        //! decrypts if is encrypted.
+        //* decrypts if is encrypted.
         const list2 = await Promise.all(
             list.map(async ({ key, val }) => {
                 if (isEncrypted(val) && this.kms) {
@@ -190,7 +189,7 @@ export class MyConfigService implements ConfigService {
         );
         // _log(NS, `! list2 =`, list2);
 
-        //! convert envConfig value.
+        //* convert envConfig value.
         this.envConfig = list2.reduce((M: any, item) => {
             const { key, val } = item;
             if (key) M[key] = `${val}`; // convert all to string.
@@ -200,7 +199,7 @@ export class MyConfigService implements ConfigService {
         // _log(NS, '>> envOrigin=', this.$env);
         _inf(NS, '>> inited... config.len=', list2.length);
 
-        //! returns this.
+        //* returns this.
         return this;
     }
 }

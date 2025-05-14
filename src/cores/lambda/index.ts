@@ -12,7 +12,7 @@
 import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { ConfigModule } from '../config';
 
-//! export default
+//* export default
 export * from './lambda-handler';
 
 //* export core classes

@@ -19,7 +19,9 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 import AWS from 'aws-sdk';
 
-//! load json in sync.
+/**
+ * load json in sync.
+ */
 export const loadJsonSync = <T extends object = any>(name: string, def = {}): T => {
     name = !name.startsWith('./') ? `./${name}` : name;
     try {
@@ -31,7 +33,9 @@ export const loadJsonSync = <T extends object = any>(name: string, def = {}): T 
     }
 };
 
-//! dynamic loading credentials by profile. (search PROFILE -> NAME)
+/**
+ * dynamic loading credentials by profile. (search PROFILE -> NAME)
+ */
 export const asyncCredentials = async (profile: string) =>
     new Promise((resolve, reject) => {
         let credentials: any = null;
@@ -50,7 +54,9 @@ export const asyncCredentials = async (profile: string) =>
         }
     });
 
-//! dynamic loading credentials by profile. (search PROFILE -> NAME)
+/**
+ * dynamic loading credentials by profile. (search PROFILE -> NAME)
+ */
 export const credentials = (profile: string): string => {
     if (!profile) return '';
     // console.info('! credentials.profile =', profile);
@@ -60,12 +66,16 @@ export const credentials = (profile: string): string => {
     return `${profile}`;
 };
 
-//! return whether AWS credentials set
+/**
+ * return whether AWS credentials set
+ */
 export const hasCredentials = (): boolean => {
     return !!AWS.config.credentials;
 };
 
-//! load yml data via './data/<file>.yml'
+/**
+ * load yml data via './data/<file>.yml'
+ */
 export const loadDataYml = <T extends object = any>(file: string, folder?: string): T => {
     folder = folder || 'data';
     const path = `./${folder}/` + file + (file.endsWith('.yml') ? '' : '.yml');
@@ -76,7 +86,9 @@ export const loadDataYml = <T extends object = any>(file: string, folder?: strin
 interface AdaptiveParam<T> {
     (name: string, defval: T, argv?: string[]): T;
 }
-// get running parameter like -h api.
+/**
+ * get running parameter like -h api.
+ */
 export const getRunParam: AdaptiveParam<boolean | number | string | object> = (o, defval, argv?) => {
     // export function getRunParam<U extends boolean | number | string | object>(o: string, defval: U, argv?: string[]): U {
     // eslint-disable-next-line no-param-reassign

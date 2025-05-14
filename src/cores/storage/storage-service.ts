@@ -219,10 +219,10 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             const val = (model as any)[key];
             if (val !== undefined) {
                 const org = ($org as any)[key];
-                //! check type matched!
+                //* check type matched!
                 if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
                     throw new Error(`.${key} (${val}) should be number!`);
-                //! if not exists, update it.
+                //* if not exists, update it.
                 if (org === undefined && typeof val === 'number') N[key] = val;
                 else if (typeof val !== 'number' && !Array.isArray(val)) $U[key] = val;
                 else N[key] = val;
@@ -316,11 +316,11 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         return Object.assign({ [this.idName]: id }, item);
     }
 
-    private $locks: any = {}; //! only for lock.
+    private $locks: any = {}; //* only for lock.
     public async update(id: string, item: T, $inc?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
         if (!item) throw new Error('@item is required!');
-        //! atomic operation for `.lock`
+        //* atomic operation for `.lock`
         const lock = (() => {
             let lock = 0;
             if (item && typeof (item as any).lock == 'number') this.$locks[id] = lock = (item as any).lock;
@@ -353,7 +353,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
     public async increment(id: string, $inc: T, $upt?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
         if (!$inc && !$upt) throw new Error('@item is required!');
-        //! atomic operation for `.lock`
+        //* atomic operation for `.lock`
         const lock = (() => {
             let lock = 0;
             if ($upt && typeof ($upt as any).lock == 'number') this.$locks[id] = lock = ($upt as any).lock;

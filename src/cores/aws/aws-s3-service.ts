@@ -150,7 +150,9 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
     return `${target || val}`;
 };
 
-//! get aws client for S3
+/**
+ * get aws client for S3
+ */
 const instance = () => {
     const _region = region();
     const config = { region: _region };

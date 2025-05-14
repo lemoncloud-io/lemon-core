@@ -6,7 +6,7 @@
  * - override `process.env` before use(or import) this.
  *
  * ```js
- * //! import core engine like this.
+ * //* import core engine like this.
  * import { $engine, _log, _inf, _err, $U } from '../core/engine';
  * const NS = $U.NS(name, 'yellow');
  * _inf(NS, `! model[${name}] is ready..`);
@@ -26,7 +26,7 @@
 import { $engine, $U, _log, _inf, _err } from './index';
 import { NextContext } from 'lemon-model';
 
-//! import sub-modules.
+//* import sub-modules.
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
 import { loadJsonSync } from '../tools/shared';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
@@ -35,7 +35,7 @@ import * as $lambda from 'aws-lambda';
 type Context = $lambda.Context;
 type RequestContext = $lambda.APIGatewayEventRequestContext;
 
-//! create SNS Service
+//* create SNS Service
 const $sns = (arn: string): AWSSNSService => new AWSSNSService(arn);
 
 /**
@@ -47,7 +47,7 @@ const $sns = (arn: string): AWSSNSService => new AWSSNSService(arn);
 export const getHelloArn = (context?: Context | RequestContext | NextContext, NS?: string): string => {
     NS = NS || $U.NS('HELO');
 
-    //! use pre-defined env via `serverless.yml`
+    //* use pre-defined env via `serverless.yml`
     const arn = $engine.environ('REPORT_ERROR_ARN', '') as string;
     if (arn.startsWith('arn:aws:sns:')) return arn;
     if (!context) throw new Error(`@context (RequestContext) is required!`);
@@ -56,7 +56,7 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
         const $ctx: Context = context as Context;
         const $req: RequestContext = context as RequestContext;
         const $ncx: NextContext = context as NextContext;
-        //! build arn via context information.
+        //* build arn via context information.
         const invokedFunctionArn = `${$ctx.invokedFunctionArn || ''}`; // if called via lambda call ex: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-messages-api-prod-user'
         const accountId = `${$ncx.accountId || invokedFunctionArn.split(':')[4] || $req.accountId || ''}`;
         const region = invokedFunctionArn.split(':')[3] || `ap-northeast-2`;
@@ -78,7 +78,7 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
  * @param data          Optinal Data(body).
  */
 export const doReportError = async (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
-    //! ignore only if local express-run.
+    //* ignore only if local express-run.
     if (context && context.source === 'express') return '!ignore';
     const NS = $U.NS('RPTE');
     //TODO - optimize message extractor.
@@ -88,7 +88,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
     };
     _log(NS, `doReportError(${$message(e)})...`);
 
-    //! dispatch invoke conditins.
+    //* dispatch invoke conditins.
     try {
         const message = $message(e);
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
@@ -100,7 +100,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const identity = (context && context.identity) || {};
         const service = `api://${$pack.name || 'lemon-core'}/${name}-${stage}#${$pack.version || '0.0.0'}`;
 
-        //! prepare payload to publish.
+        //* prepare payload to publish.
         const payload = {
             service,
             message,
@@ -108,7 +108,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
             data,
         };
 
-        //! find target arn.
+        //* find target arn.
         const arn = getHelloArn(context, NS);
         _log(NS, `> report-error.arn =`, arn);
         return $sns(arn)
@@ -169,7 +169,7 @@ export const doReportCallback = async (data: CallbackData, service?: string, con
 export const doReportSlack = async (channel: string, body: SlackPostBody, context?: any): Promise<string> => {
     const NS = $U.NS('RPTS');
     _log(NS, `doReportSlack()...`);
-    //! dispatch invoke conditins.
+    //* dispatch invoke conditins.
     try {
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
@@ -180,7 +180,7 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
         const identity = (context && context.identity) || {};
         const param = {};
 
-        //! prepare payload to publish.
+        //* prepare payload to publish.
         const payload = {
             channel,
             service,
@@ -189,7 +189,7 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
             context: { stage, apiId, resourcePath, identity, domainPrefix },
         };
 
-        //! find target arn.
+        //* find target arn.
         const arn = getHelloArn(context, NS);
         _log(NS, `> report-slack.arn =`, arn);
         return $sns(arn)
@@ -218,14 +218,14 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
  */
 export const doReportMetric = async (ns: string, id: string, body: MetricPostBody, context?: any): Promise<string> => {
     const NS = $U.NS('RPTM');
-    //! validate parameters. (see `lemon-metrics-api`)
+    //* validate parameters. (see `lemon-metrics-api`)
     const reNs = /^[a-zA-Z][a-zA-Z0-9]+$/;
     const reId = /^[a-zA-Z0-9][a-zA-Z0-9_:\-]+$/;
     if (!reNs.test(ns)) throw new Error('Invalid text-format @ns:' + ns);
     if (!reId.test(id)) throw new Error('Invalid text-format @id:' + id);
 
     _log(NS, `doReportMetric(${ns},${id})...`);
-    //! dispatch invoke conditins.
+    //* dispatch invoke conditins.
     try {
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
@@ -236,7 +236,7 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
         const identity = (context && context.identity) || {};
         const param = { ns, id };
 
-        //! prepare payload: `POST /metrics/!/report`
+        //* prepare payload: `POST /metrics/!/report`
         const payload = {
             service,
             type: 'metrics',
@@ -248,7 +248,7 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
             context: { stage, apiId, resourcePath, identity, domainPrefix },
         };
 
-        //! find metric-arn via error-arn.
+        //* find metric-arn via error-arn.
         const target = 'lemon-metrics-sns';
         const arn0 = getHelloArn(context, NS);
         // eslint-disable-next-line prettier/prettier
@@ -275,15 +275,15 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
  ** ****************************************************************************************************************/
 export interface ParrallelParam<T> {
     list: T[];
-    //! call context.
+    //* call context.
     context?: any;
-    //! optional event
+    //* optional event
     event?: any;
-    //! optional message.
+    //* optional message.
     message?: string;
-    //! flag to report error
+    //* flag to report error
     reportError?: boolean;
-    //! flag to replace error to origin.
+    //* flag to replace error to origin.
     ignoreError?: boolean;
 }
 export interface ParrallelCallback<T, U> {
@@ -310,7 +310,7 @@ export const do_parrallel = <T, U>(
     size = size === undefined ? 10 : size;
     pos = pos === undefined ? 0 : pos;
     result = result === undefined ? [] : result;
-    //! annonymous method of callback
+    //* annonymous method of callback
     const safeCall = (n: T, i: number) => {
         try {
             return callback(n, i);
@@ -324,24 +324,24 @@ export const do_parrallel = <T, U>(
     const actions = list2.map((node, i): any => {
         const index = pos + i;
         try {
-            //! error proof.
+            //* error proof.
             const R = safeCall(node, index);
             if (R && typeof R == 'object' && R instanceof Promise) {
                 const R2: Promise<any> = R as Promise<any>; // avoid compile error.
                 return R2.catch(e => {
                     _err(`!ERR@1 node[${index}] =`, e);
-                    //! make sure error instance.
+                    //* make sure error instance.
                     return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
                 });
             }
             return R;
         } catch (e) {
             _err(`!ERR@2 node[${index}] =`, e);
-            //! make sure error instance.
+            //* make sure error instance.
             return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
         }
     });
-    //! do parrallel.
+    //* do parrallel.
     return Promise.all(actions)
         .then(res => {
             if (Array.isArray(param)) return res;
@@ -367,10 +367,10 @@ export const do_parrallel = <T, U>(
         });
 };
 
-//! default time-zone for this api. (Asia/Seoul - 9 hours)
+//* default time-zone for this api. (Asia/Seoul - 9 hours)
 export const DEFAULT_TIME_ZONE = 9;
 
-//! convert to date of input.
+//* convert to date of input.
 export const convDate = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT_TIME_ZONE);
 
 /**

@@ -23,11 +23,12 @@ import {
 } from './types';
 import { Utilities } from './utilities';
 import _ from 'lodash';
+
 //WARN! - ------------------------------------------------------
 //WARN! - DO NOT IMPORT ANY DEPENDENCY IN HERE EXCEPT TYPES.
 //WARN! - ------------------------------------------------------
 
-//! build environment getter
+//* build environment getter
 export const build_environ = (options: EngineOption) => (name: string, defVal: any) => {
     // as default, load from proces.env.
     const env = options.env || (process && process.env) || {};
@@ -148,14 +149,14 @@ class MyEngineModules implements EngineModules {
         if (!force && this.inited) return;
         // console.info(`! EngineModules.init()..`);
         this.inited = true;
-        //! setup init level per each module.
+        //* setup init level per each module.
         const mods = await Promise.all(
             this.mods.map(async mod => {
                 const level = await mod.initModule();
                 return { level, mod };
             }),
         );
-        //! build map by level => Module.
+        //* build map by level => Module.
         const maps: { [key: number]: EngineModule[] } = _.reduce(
             mods,
             (M: any, inf) => {
@@ -175,7 +176,7 @@ class MyEngineModules implements EngineModules {
             // console.error(`! mod[${mod.getModuleName()}].err =`, e);
             return `ERR[${mod.getModuleName()}] ${e.message}`;
         };
-        //! do serialize per each level.
+        //* do serialize per each level.
         const res = await do_serialize(levels, level =>
             Promise.all(
                 maps[level].map(
@@ -208,7 +209,7 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     scope = scope || {};
     options = options || {};
 
-    //! load configuration.
+    //* load configuration.
     const ROOT_NAME = options.name || 'lemon';
     const _environ = build_environ(options);
     const STAGE = _environ('STAGE', '');
@@ -216,7 +217,7 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     const TS = _environ('TS', '1') === '1'; // PRINT TIME-STAMP.
     const LC = _environ('LC', STAGE === 'local' || STAGE === 'express' ? '1' : '') === '1'; // COLORIZE LOG
 
-    //! common function for logging.
+    //* common function for logging.
     const silent = () => {};
     const $console: EngineConsole = {
         thiz: console,
@@ -230,7 +231,7 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     const _inf = build_inf($console);
     const _err = build_err($console);
 
-    //! create root instance to manage global objects.
+    //* create root instance to manage global objects.
     const createEngine = (): LemonEngine => {
         const $engine: LemonEngine = new (class extends MyEngineModules implements LemonEngine {
             public constructor() {
@@ -250,24 +251,24 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
                 _environ;
             public toString = () => `engine: ${ROOT_NAME}`;
         })();
-        //! start initialization only if making $engine.
+        //* start initialization only if making $engine.
         STAGE && _inf('#STAGE =', STAGE);
         _inf(`! engine[${ROOT_NAME}] service is ready!`);
         return $engine;
     };
 
-    //! reuse via scope or build new.
+    //* reuse via scope or build new.
     const $engine: LemonEngine = scope[ENGINE_KEY_IN_SCOPE] || createEngine(); //NOTE - reuse instance.
 
-    //! register as global instances.
+    //* register as global instances.
     scope._log = $engine.log || _log;
     scope._inf = $engine.inf || _inf;
     scope._err = $engine.err || _err;
     scope[ENGINE_KEY_IN_SCOPE] = $engine;
 
-    //! returns finally.
+    //* returns finally.
     return $engine;
 };
 
-//! export default.
+//* export default.
 export default buildEngine;

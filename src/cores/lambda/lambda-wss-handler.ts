@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, _log, _inf, _err, $U } from '../../engine/';
+import { $U, _log, _inf, _err } from '../../engine/';
 import { APIGatewayProxyResult } from 'aws-lambda';
 import { LambdaHandler, WSSHandler, LambdaSubHandler } from './lambda-handler';
 const NS = $U.NS('HWSS', 'yellow'); // NAMESPACE TO BE PRINTED.
@@ -49,7 +49,7 @@ export const failure = (body: any) => {
  * - default WSS Handler w/ event-listeners.
  */
 export class LambdaWSSHandler extends LambdaSubHandler<WSSHandler> {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
@@ -73,7 +73,7 @@ export class LambdaWSSHandler extends LambdaSubHandler<WSSHandler> {
      * ```
      */
     public handle: WSSHandler = async (event): Promise<any> => {
-        //! for each records.
+        //* for each records.
         _log(NS, `handle()...`);
         _log(NS, '> event =', $U.json(event));
 

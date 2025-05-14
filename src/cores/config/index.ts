@@ -20,7 +20,7 @@ export class ConfigModule implements EngineModule {
         if (this.engine) this.engine.register(this);
     }
 
-    //! create default services
+    //* create default services
     public config: MyConfigService = new MyConfigService();
 
     public getModuleName = () => 'config';
@@ -36,5 +36,5 @@ export class ConfigModule implements EngineModule {
     }
 }
 
-//! create default instance, then export as default.
+//* create default instance, then export as default.
 export default new ConfigModule();

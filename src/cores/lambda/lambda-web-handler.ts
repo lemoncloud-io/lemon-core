@@ -16,7 +16,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, doReportError } from '../../engine/';
+import { $U, _log, _inf, _err, doReportError } from '../../engine/';
 import {
     NextDecoder,
     NextHandler,
@@ -37,7 +37,7 @@ import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
-//! header definitions by environment.
+//* header definitions by environment.
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
 const HEADER_LEMON_IDENTITY = $U.env('HEADER_LEMON_IDENTITY', 'x-lemon-identity');
 const HEADER_COOKIE = $U.env('HEADER_COOKIE', 'cookie');

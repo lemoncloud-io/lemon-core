@@ -19,15 +19,15 @@ import request from 'request';
 /** ********************************************************************************************************************
  *  boot loading for global instance manager
  ** *******************************************************************************************************************/
-//! override envrionment.
+//* override envrionment.
 const $env = { TS: '1', LC: '1' };
 process.env = Object.assign(process.env, $env);
 
-//! - load engine after `process.env`
+//* - load engine after `process.env`
 import { $U, _log, _inf, _err } from './engine';
 import { loadJsonSync, getRunParam } from './tools/';
 
-//! - initial values.
+//* - initial values.
 const NS = $U.NS('EXEC', 'cyan');
 const $pack = loadJsonSync('package.json');
 
@@ -40,13 +40,13 @@ _log(NS, `###### exec[${NAME}@${$U.NS(VERS, 'cyan')}${PORT}] ######`);
 /** ********************************************************************************************************************
  *  main application
  ** *******************************************************************************************************************/
-//! do run http
+//* do run http
 const do_http = (options: any) => {
     if (!options || !options.uri) return Promise.reject(new Error('invalid options'));
     // const cookies = $cm.prepare(options.uri);
     options.headers = options.headers || {};
     // _log(NS, '! options =', options);
-    //! preven error `body:null` if json.
+    //* preven error `body:null` if json.
     if (options.json && !options.body) {
         delete options.body;
     }
@@ -81,7 +81,7 @@ const do_http = (options: any) => {
     });
 };
 
-//! prepare request(json) options
+//* prepare request(json) options
 const prepare_json = function (method: string, path: string, qs: any, body: any) {
     method = method || 'GET';
     if (!path) throw Error('path is required!');
@@ -98,7 +98,7 @@ const prepare_json = function (method: string, path: string, qs: any, body: any)
     return options;
 };
 
-//! wait some
+//* wait some
 const wait_sometime = (that: any, time: number) => {
     time = time || 1500;
     return new Promise((resolve, reject) => {
@@ -118,7 +118,7 @@ const wait_sometime = (that: any, time: number) => {
  * # example
  * $ node . -ep user -sid lemon -cmd test-self -opt 'force=1' -page 1 -max 2
  */
-//! batch-run
+//* batch-run
 const ENDPOINT = `http://localhost:${PORT}`;
 const METHOD = getRunParam('m', 'GET') as string;
 const EP = getRunParam('ep', '');
@@ -143,9 +143,9 @@ const [PAGE, MAX] = ((): number[] => {
 })();
 _log(NS, 'PAGE ~ MAX =', PAGE, '~', MAX);
 
-//! execute page by page.
+//* execute page by page.
 const run_batch = (that: any): Promise<any> => {
-    //! invoke http(json).
+    //* invoke http(json).
     const my_chain_run_page = (that: any) => {
         const page = $U.N(that.page, -1);
         _inf(NS, '#page := ', page);
@@ -169,7 +169,7 @@ const run_batch = (that: any): Promise<any> => {
             _.range && _log(NS, '! that[' + page + '].range =', _.range);
             _.list && _log(NS, '! that[' + page + '].list =', _.list); // if has list.
             _.list || _inf(NS, '!WARN res =', _); // if not list.
-            //! attach to that.
+            //* attach to that.
             if (_.map) that.map = _.map;
             if (_.default) that.default = _.default;
             if (_.layout) that.layout = _.layout;
@@ -201,7 +201,7 @@ const run_batch = (that: any): Promise<any> => {
         });
 };
 
-//! export.
+//* export.
 const run = () => {
     run_batch({ page: PAGE });
 };

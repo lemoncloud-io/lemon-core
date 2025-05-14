@@ -89,9 +89,6 @@ export interface DynamoSimpleScannable<T extends GeneralItem> {
     scan(limit?: number, last?: any, filter?: DynamoScanFilter): Promise<DynamoScanResult<T>>;
 }
 
-/** ****************************************************************************************************************
- *  Service Main
- ** ****************************************************************************************************************/
 import Scan from '../../lib/dynamo/scan';
 import Serializer from '../../lib/dynamo/serializer';
 
@@ -118,11 +115,11 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
     public async scan(limit?: number, last?: any, filter?: DynamoScanFilter): Promise<DynamoScanResult<T>> {
         _log(NS, `scan()...`);
 
-        //! build scan input payload
+        //* build scan input payload
         const payload = this.buildPayload(limit, last, filter);
         _log(NS, `> payload =`, $U.json(payload));
 
-        //! get instance of dynamodoc, and execute query().
+        //* get instance of dynamodoc, and execute query().
         const { dynamodoc } = DynamoService.instance();
         const res = await dynamodoc.scan(payload).promise();
         _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
@@ -137,7 +134,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         _log(NS, `> scan.scannedCount =`, scannedCount);
         _log(NS, `> scan.last =`, $lek);
 
-        //! return result-set
+        //* return result-set
         return {
             list: items as T[],
             count,

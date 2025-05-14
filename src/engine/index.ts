@@ -17,24 +17,24 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-//! create engine in global scope (WARN! should run top level)
+//* create engine in global scope (WARN! should run top level)
 import { buildEngine } from './builder';
 import { LemonEngine } from './types';
 export const $engine: LemonEngine = buildEngine(global, { env: process.env });
 
-//! re-use core modules.
+//* re-use core modules.
 export const $U = $engine.U;
 if (!$U) throw new Error('$U(utilities) is required!');
 
-//! export common(log) functions
+//* export common(log) functions
 export const _log = $engine.log;
 export const _inf = $engine.inf;
 export const _err = $engine.err;
 
-//! export sub-modules..
+//* export sub-modules..
 export * from './types';
 export * from './engine';
 export { buildEngine } from './builder';
 
-//! export default.
+//* export default.
 export default $engine;

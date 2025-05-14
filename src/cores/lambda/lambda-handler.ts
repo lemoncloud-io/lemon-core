@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, doReportError } from '../../engine/';
+import { $U, _log, _inf, _err, doReportError } from '../../engine/';
 import {
     Handler,
     Callback,
@@ -57,7 +57,7 @@ export type SQSEvent = AWSSQSEvent;
 export type WSSResult = any;
 export type ALBResult = AWSALBResult;
 
-//! define and export all types.
+//* define and export all types.
 export type MyHandler<TEvent = any, TResult = any> = (event: TEvent, context: NextContext) => Promise<TResult>;
 
 export type ALBHandler = MyHandler<ALBEvent, ALBResult>;

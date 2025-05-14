@@ -153,7 +153,7 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
      * create storage-service w/ fields list.
      */
     public makeStorageService<T extends Model>(type: ModelType, fields: string[], filter: CoreModelFilterable<T>) {
-        //! use proxy-storage-service for both dynamo-table and dummy-data.
+        //* use proxy-storage-service for both dynamo-table and dummy-data.
         const storage = new ProxyStorageService<T, ModelType>(this, this.tableName, fields, filter, this.idName);
         storage.setTimer(() => (this.current ? this.current : new Date().getTime()));
         return storage.makeTypedStorageService(type);
@@ -453,15 +453,15 @@ export class ManagerProxy<
         // OR, READ (or CREATE) from storage.
         const M = !$def ? await this.$mgr.retrieve(id).catch(NUL404) : await this.$mgr.prepare(id, $def, true);
         if (M === null) {
-            this._org[id] = null; //! null 로 저장해두고, 다음에 호출할때 에러 발생.
+            this._org[id] = null; //* null 로 저장해두고, 다음에 호출할때 에러 발생.
             if (throwable) throw new Error(err404);
             return null;
         }
         const M2 = this.normal(M);
-        this._org[id] = M2; //! 원본 저장.
-        // const M3 = { ...M2 }; //! 클론 생성.
-        const M3 = JSON.parse($U.json(M2)) as Model; //! deep clone.
-        this._new[id] = M3; //! 클론 저장.
+        this._org[id] = M2; //* 원본 저장.
+        // const M3 = { ...M2 }; //* 클론 생성.
+        const M3 = JSON.parse($U.json(M2)) as Model; //* deep clone.
+        this._new[id] = M3; //* 클론 저장.
         return M3;
     }
 
@@ -473,7 +473,7 @@ export class ManagerProxy<
         Object.keys(N || {}).reduce<Model>((M: Model, k): Model => {
             if (k.startsWith('_') || k.startsWith('$')) return M;
             const v = (N as any)[k];
-            //! `null` 은 DynamoDB에서 비어있는 문자임.
+            //* `null` 은 DynamoDB에서 비어있는 문자임.
             (M as any)[k] = v === null ? '' : v;
             return M;
         }, {} as any);
@@ -485,7 +485,7 @@ export class ManagerProxy<
      */
     public override = ($org: Model, model: Model) => {
         const fields = this.$mgr.FIELDS;
-        //! update(set) all properties.
+        //* update(set) all properties.
         Object.entries(model).forEach(([key, val]) => {
             if (!fields || fields.includes(key)) {
                 ($org as any)[key] = val;
@@ -515,7 +515,7 @@ export class ManagerProxy<
         }, {} as any as Model);
         const keys: string[] = Object.keys($inc);
         if (!keys.length) throw new Error(`@model (object) is empty to inc() - proxy/${this.$mgr.type}/id:${id}!`);
-        //! try to increment, and update the latest to both org and new.
+        //* try to increment, and update the latest to both org and new.
         const $res = await this.$mgr.storage.update(id, null, $inc);
         const $new = await this.get(id);
         const $org = this.org(id, true);
@@ -696,7 +696,7 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         if (val !== undefined && !force) return val;
         // STEP.2 fetch remotely, and save in cache.
         const { $identity } = await this.fetchIdentityAccess(identityId);
-        this._identity[identityId] = $identity ? $identity : null; //! mark as 'null' not to fetch futher
+        this._identity[identityId] = $identity ? $identity : null; //* mark as 'null' not to fetch futher
         return $identity;
     }
 
@@ -767,13 +767,13 @@ export class Elastic6Synchronizer {
     public constructor(elastic: Elastic6Service, dynamoOptions: DynamoOption | { tableName: string }) {
         if (!elastic) throw new Error(`@elastic (elastic-service) is required!`);
         if (!dynamoOptions) throw new Error(`@dynamoOptions (object) is required!`);
-        //! build dynamo-options as default.
+        //* build dynamo-options as default.
         const options: DynamoOption = {
             ...dynamoOptions,
             idName: (dynamoOptions as DynamoOption).idName || '_id', // id (global) of dynamo-table. should be `_id`.
         };
 
-        //! create sync-handler w/ this.
+        //* create sync-handler w/ this.
         const listener = LambdaDynamoStreamHandler.createSyncToElastic6<{ type?: string; stereo?: string }>(
             options,
             elastic,
@@ -783,7 +783,7 @@ export class Elastic6Synchronizer {
         );
         $cores.lambda.dynamos.addListener(listener); // register DynamoStream event listener
 
-        //! prepare default synchro
+        //* prepare default synchro
         this.synchronizerMap = new Map();
         this.defModelSynchronizer = new (class implements ModelSynchronizer {
             public filter(id: string, item: CoreModel<string>): boolean {

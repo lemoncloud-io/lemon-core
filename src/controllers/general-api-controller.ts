@@ -9,9 +9,6 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-/** ********************************************************************************************************************
- *  Common Headers
- ** ********************************************************************************************************************/
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../engine/';
 import { NextHandler, Elastic6SimpleQueriable } from 'lemon-model';
@@ -72,18 +69,18 @@ export class GeneralAPIController<
         _log(this.NS, `! listBase(${id})..`);
         param = param || {};
 
-        //! translate page + ipp => page & limit.
+        //* translate page + ipp => page & limit.
         const $page = $U.N(param.page, 0);
         const $limit = $U.N(param.limit, $U.N(param.ipp, 12)); // compartible for ipp
         const $param = { ...param, $page, $limit, page: undefined, ipp: undefined, limit: undefined }; // clear paging param.
         $param.$O = $param.$O || 'id.keyword'; // order by id
 
-        //! base filter masking.
+        //* base filter masking.
         if (param.type === undefined) $param.type = this.type();
         if (param.deletedAt === undefined) $param.deletedAt = 0;
-        if (this.unique && param.stereo === undefined) $param['!stereo'] = '#'; //! `.stereo` is not like '#'
+        if (this.unique && param.stereo === undefined) $param['!stereo'] = '#'; //* `.stereo` is not like '#'
 
-        //! call search.
+        //* call search.
         return this.search.searchSimple($param);
     };
 
@@ -104,7 +101,7 @@ export class GeneralAPIController<
         id = `${id || ''}`.trim();
         if (!id) throw new Error('@id (string) is required!');
         const $org = await this.storage.read(id);
-        //! if try to update 'unique-field', then update lookup.
+        //* if try to update 'unique-field', then update lookup.
         const field = this.unique ? this.unique.field : '';
         const $base: CoreModel<ModelType> =
             field && body[field] ? await this.unique.updateLookup($org, body[field]) : {};
@@ -120,12 +117,12 @@ export class GeneralAPIController<
         id = `${id || ''}`.trim();
         if (!id) throw new Error('@id (string) is required!');
         id = id == '0' ? '' : id; // clear id.
-        //! if try to update 'unique-field', then update lookup.
+        //* if try to update 'unique-field', then update lookup.
         const field = this.unique ? this.unique.field : '';
         const $base: CoreModel<ModelType> =
             field && body[field] ? await this.unique.updateLookup({ id, [field]: body[field] }) : {};
         id = id || $base.id;
-        //! if no id found, then try to make new one.
+        //* if no id found, then try to make new one.
         if (!id) {
             const $id = await this.storage.insert({ type: this.storage.type });
             const res = await this.storage.save($id.id, body);
@@ -143,14 +140,14 @@ export class GeneralAPIController<
         _log(this.NS, `! deleteBase(${id})..`);
         param = param || {};
         const destroy = $U.N(param.destroy, param.destroy === '' ? 1 : 0) ? true : false;
-        //! destroy for lookup-id (TBD - need to destory lookup-key really?)
+        //* destroy for lookup-id (TBD - need to destory lookup-key really?)
         const field = this.unique ? this.unique.field : '';
         if (destroy && this.unique) {
             const $org = await this.storage.read(id).catch(NUL404);
             const old = $org ? ($org as any)[field] : '';
             if (old) await this.storage.delete(this.unique.asLookupId(old), destroy);
         }
-        //! destroy key...
+        //* destroy key...
         return this.storage.delete(id, destroy);
     };
 }

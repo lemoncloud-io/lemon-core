@@ -47,8 +47,8 @@ export const $T = {
      */
     P: (text: string, max = 0) => {
         const msg = (typeof text === 'string' ? text : `${text || ''}`)
-            .replace(/<[^>]*>/g, ' ') //! remove html tag.
-            .replace(/[^a-zA-Z0-9가-힣ㅋ-ㅎㅏ-ㅣ\.\?]+/g, ' ') //! remove non-char.
+            .replace(/<[^>]*>/g, ' ') //* remove html tag.
+            .replace(/[^a-zA-Z0-9가-힣ㅋ-ㅎㅏ-ㅣ\.\?]+/g, ' ') //* remove non-char.
             .trim();
         const len = msg.length;
         return max && len > max ? msg.substring(0, max) + '...' : msg;
@@ -154,7 +154,7 @@ export const $T = {
      * @param val json object.
      */
     simples: (val: any, throws: boolean = false): SimpleSet => {
-        //! validate if simple-type (string | number | null | undefined)
+        //* validate if simple-type (string | number | null | undefined)
         const t = typeof val;
         if (val === undefined) return undefined;
         else if (val === null || val === '') return { _: null };
@@ -165,7 +165,7 @@ export const $T = {
             return keys.reduce((N: SimpleSet, k: string) => {
                 const v = val[k];
                 if (v === undefined) {
-                    //! NOP
+                    //* NOP
                 } else if (reName.test(k)) {
                     const t = typeof v;
                     if (v === null || v === '') N[k] = null;
@@ -236,7 +236,7 @@ export const $T = {
         Object.keys(N || {}).reduce<T>((M: T, k): T => {
             if (k.startsWith('_') || k.startsWith('$')) return M;
             const v = (N as any)[k];
-            //! `null` 은 DynamoDB에서 비어있는 문자임.
+            //* `null` 은 DynamoDB에서 비어있는 문자임.
             (M as any)[k] = v === null ? '' : v;
             return M;
         }, {} as any),
@@ -263,7 +263,7 @@ export const $T = {
                 const val = (B as any)[k];
                 if (onlyValid) {
                     if (val !== undefined && val !== null) {
-                        //! dynamo 에서는 null 과 '' 이 같음.
+                        //* dynamo 에서는 null 과 '' 이 같음.
                         if (org === null && val === '') {
                             // NOP - due to same value.
                         } else {
@@ -387,7 +387,7 @@ export const $protocol = (
         isProd?: boolean;
     },
 ) => {
-    //! for backward compartibility. shift arguments if 1st context is string.
+    //* for backward compartibility. shift arguments if 1st context is string.
     const ctx = typeof context === 'string' ? {} : context;
     service = typeof context === 'string' ? context : service;
     const param: any = typeof context === 'string' ? service : options?.param;
@@ -399,7 +399,7 @@ export const $protocol = (
     //TODO - `STAGE` is not changed from env.yml file @211215.
     // _inf(NS, 'NS =', $U.env('NS'), $engine.cores.config.config.get('NS'), process.env['NS']);
     // _inf(NS, 'stage =', $U.env('STAGE'), $engine.cores.config.config.get('STAGE'), process.env['STAGE']); //NOTE - STAGE is not changed.
-    //! prod용 lambda접근을 위한 환경 구성!!!!!
+    //* prod용 lambda접근을 위한 환경 구성!!!!!
     const $param = (p: any, b: any, x?: any) => {
         const protoParam = {
             ...$proto.fromURL(ctx, asTargetUrl(), p || param, b || body),
@@ -419,7 +419,7 @@ export const $protocol = (
         }
     };
 
-    //! find the target protocol-url from context.
+    //* find the target protocol-url from context.
     const asTargetUrl = (): string => {
         if (!service.startsWith('//')) throw new Error(`@service[${service}] (string) is invalid!`);
         if (service.startsWith('//self/')) {
@@ -433,7 +433,7 @@ export const $protocol = (
             return `api:${service}`;
         }
     };
-    //! execute via protocol-service.
+    //* execute via protocol-service.
     const execute = <T = any>(param?: any, body?: any, mode: string = 'POST'): Promise<T> =>
         $proto.execute($param(param, body, { mode }));
     // eslint-disable-next-line prettier/prettier
@@ -442,7 +442,7 @@ export const $protocol = (
     const notify = (param?: any, body?: any, mode: string = 'POST', callback?: string): Promise<string> =>
         $proto.notify($param(param, body, { mode }), $callback(callback));
 
-    //! returns instance.
+    //* returns instance.
     return {
         hello: () => `helper:protocol:${service || ''}`,
         asTargetUrl,
@@ -485,7 +485,7 @@ export const $slack = async (
         ts?: number;
     },
 ) => {
-    //! about current service.................
+    //* about current service.................
     const { service, version, stage } = $info();
     const name = `${service}#${version}` + (stage !== 'prod' ? `/${stage}` : '');
     return doReportSlack(
@@ -538,7 +538,7 @@ export const $event = (context: NextContext, defEndpoint: string = '') => {
 export function getIdentityId(context: NextContext): string | undefined {
     const identityId = (context?.identity as NextIdentityCognito)?.identityId;
     if (!identityId && context?.domain === 'localhost') {
-        //! use `env[LOCAL_ACCOUNT]` only if runs in local server.
+        //* use `env[LOCAL_ACCOUNT]` only if runs in local server.
         return $U.env('LOCAL_ACCOUNT', '');
     }
     return identityId;

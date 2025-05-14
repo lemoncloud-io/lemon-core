@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../../engine/';
+import { $U, _log, _inf, _err } from '../../engine/';
 import { NextContext, NextHandler } from 'lemon-model';
 import {
     LambdaHandler,
@@ -61,7 +61,7 @@ export type NotificationNextHandler = NextHandler<NotificationParam, string, Not
  * - default Notification Handler via SNS http/https subscription.
  */
 export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHandler> {
-    //! shared config.
+    //* shared config.
     public static REPORT_ERROR: boolean = LambdaHandler.REPORT_ERROR;
 
     /**
@@ -96,7 +96,7 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
         _log(NS, '! path =', event.path);
         const id = `${event.path}`;
         const { param, body } = this.packNotificationParamBody(event);
-        //! call all listeners in parrallel.
+        //* call all listeners in parrallel.
         const asyncNext = (fn: NextHandler, i: number) =>
             new Promise(resolve => {
                 resolve(fn(id, param, body, context));
@@ -118,13 +118,13 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
         const headers = (event && event.headers) || {};
         const reqContext: APIGatewayEventRequestContext = event && event.requestContext;
 
-        //! - extract original request infor.
+        //* - extract original request infor.
         const clientIp = reqContext && reqContext.identity && reqContext.identity.sourceIp;
         const requestId = reqContext && reqContext.requestId;
         const accountId = reqContext && reqContext.accountId;
         const domain = (reqContext && reqContext.domainName) || headers['Host'] || headers['host'];
 
-        //! save into headers and returns.
+        //* save into headers and returns.
         const context: NextContext = { clientIp, requestId, accountId, domain };
         return context;
     }
@@ -142,7 +142,7 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
         const method = ($ctx && $ctx.httpMethod) || event.httpMethod || '';
         if (method != 'POST') throw new Error(`.httpMethod (${method}) is not valid`);
 
-        //! parse message body.
+        //* parse message body.
         const hasRaw = headers['x-amz-sns-rawdelivery'] !== undefined ? true : false;
         const isRaw = headers['x-amz-sns-rawdelivery'] === 'true' ? true : false;
         const isBase64Encoded = event.isBase64Encoded;
@@ -158,10 +158,10 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
             }
             return { text };
         };
-        const data = json(event.body); //! body must be string formatted json.
+        const data = json(event.body); //* body must be string formatted json.
         _log(NS, `> data[${ctype}][${isBase64Encoded ? 'base64' : typeof event.body}] =`, $U.json(data));
 
-        //! prepare param via headers.
+        //* prepare param via headers.
         const param: NotificationParam = {
             snsMessageType: headers['x-amz-sns-message-type'],
             snsMessageId: headers['x-amz-sns-message-id'],
@@ -170,13 +170,13 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
         };
         const body: NotificationBody = hasRaw && isRaw ? { ...data } : { ...json(data.Message || '') };
 
-        //! parse message-attribute of SNS
+        //* parse message-attribute of SNS
         if (!isRaw) {
             if (param.snsMessageType == 'SubscriptionConfirmation') {
                 param.subscribeURL = data.SubscribeURL;
                 param.signature = data.Signature;
             } else if (data.MessageAttributes) {
-                //! retrieve message-attributes as `param`
+                //* retrieve message-attributes as `param`
                 const attrs = Object.keys(data.MessageAttributes).reduce((O: any, key: string) => {
                     const V = data.MessageAttributes[key];
                     if (!V) return O;
@@ -189,7 +189,7 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
             }
         }
 
-        //! returns...
+        //* returns...
         return { param, body };
     }
 }

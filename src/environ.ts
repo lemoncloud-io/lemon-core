@@ -57,7 +57,7 @@ export const loadEnviron = (process: any, options?: Options) => {
     const isLocal = STAGE === 'local';
     if (!isLocal) _log(`! PROFILE=${PROFILE} STAGE=${STAGE}`);
 
-    //! initialize environment via 'env.yml'
+    //* initialize environment via 'env.yml'
     return ($det => {
         const file = PROFILE;
         const path = `${ENV_PATH || './env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
@@ -68,20 +68,20 @@ export const loadEnviron = (process: any, options?: Options) => {
         const $new = Object.keys($src).reduce(($O: any, key: string) => {
             const val = $src[key];
             if (typeof val == 'string' && val.startsWith('!')) {
-                //! force to update environ.
+                //* force to update environ.
                 $O[key] = val.substring(1);
             } else if (typeof val == 'object' && Array.isArray(val)) {
-                //! join array with ', '.
+                //* join array with ', '.
                 $O[key] = val.join(', ');
             } else if ($det[key] === undefined) {
-                //! override only if undefined.
+                //* override only if undefined.
                 $O[key] = `${val}`; // as string.
             } else {
-                //! ignore!.
+                //* ignore!.
             }
             return $O;
         }, {});
-        //! make sure STAGE.
+        //* make sure STAGE.
         $new.STAGE = $new.STAGE || STAGE;
         return Object.assign($det, $new);
     })($env);
@@ -119,5 +119,5 @@ export const loadProfile = ($proc?: { env?: any }, $info?: (title: string, msg?:
     return credentials(PROFILE);
 };
 
-//! export default.
+//* export default.
 export default loadEnviron;

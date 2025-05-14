@@ -107,11 +107,11 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         const { indexName } = this.options;
         _log(NS, `- searchSimple(${indexName})....`);
         _log(NS, `> param =`, $U.json(param));
-        //! build query body.
+        //* build query body.
         const body = this.buildQueryBody(param);
-        //! search via client
+        //* search via client
         const res = await this.search(body);
-        //! convert to query-result.
+        //* convert to query-result.
         return this.asQueryResult(body, res);
     }
 
@@ -134,7 +134,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      */
     public asQueryResult(body: SearchBody, res: any): QueryResult<T> {
         const size = $U.N(body?.size, 10);
-        //! extract for result.
+        //* extract for result.
         const hits = res?.hits;
         if (typeof hits !== 'object') throw new Error(`.hits (object) is required - hists:${$U.json(hits)}`);
         const total = $U.N(typeof (hits.total as any)?.value === 'number' ? (hits.total as any)?.value : hits.total, 0); // since v7.x
@@ -143,7 +143,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             const id = N && N._id; // id of elastic-search
             const score = N && N._score; // search score.
             const source = N && N._source; // origin data
-            //! save as internal
+            //* save as internal
             source._id = source._id || id; // attach to internal-id
             source._score = score;
             // delete internal autocomplete data
@@ -250,7 +250,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             });
         }
 
-        //! finally, override list.
+        //* finally, override list.
         return { ...result, list };
     }
 
@@ -258,7 +258,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
      * build query parameter from search param.
      */
     public buildQueryBody = (param: SimpleSearchParam): SearchBody => {
-        //! parameters.
+        //* parameters.
         let $query = null;
         let $source: any = null;
         let $page = -1;
@@ -267,7 +267,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         let $O = ''; // OrderBy
         let $H = ''; // Highlight
 
-        //! build query.
+        //* build query.
         const queries = Object.keys(param).reduce((list: string[], key: string): string[] => {
             let val = param[key as keyof SimpleSearchParam];
             // ignore internal values.
@@ -293,7 +293,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     $query = JSON.parse(val);
                 } else if (typeof val === 'string') {
                     // might be query string.
-                    //! escape queries..
+                    //* escape queries..
                     // + - = && || > < ! ( ) { } [ ] ^ " ~ * ? : \ /
                     // val = val.replace(/([\(\)])/ig,'\\$1');	    //TODO - 이걸 무시하면, 중복 조건 검색에 문제가 생김, 하여 일단 안하는걸루. @180828.
                     list.push(`(${val})`);
@@ -338,7 +338,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                     }
                 });
             } else {
-                //! escape if there is ' ' except like '(a AND B)'
+                //* escape if there is ' ' except like '(a AND B)'
                 const escape_val = (val: any): string | string[] => {
                     if (typeof val === 'string' && val === '') {
                         return '"' + val + '"';
@@ -370,7 +370,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                 };
                 val = escape_val(val);
 
-                //! add to query-list.
+                //* add to query-list.
                 if (key.startsWith('!')) {
                     if (val) {
                         if (Array.isArray(val)) {
@@ -389,7 +389,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
                         $source.includes.push(key.substr(1));
                     }
                 } else if (val === undefined) {
-                    //! nop
+                    //* nop
                 } else if (val && Array.isArray(val)) {
                     // list.push('(' + val.map(val => `${key}:${val}`).join(' OR ') + ')');
                     list.push(`${key}:` + '(' + val.map((val: any) => `${escape_val(val)}`).join(' OR ') + ')');
@@ -400,12 +400,12 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             return list;
         }, []);
 
-        //! prepare returned body.
+        //* prepare returned body.
         const $body: SearchBody = $query
             ? $query
             : (queries.length && { query: { query_string: { query: queries.join(' AND ') } } }) || {}; // $query 이게 있으면 그냥 이걸 이용.
 
-        //! Aggregation.
+        //* Aggregation.
         if ($A) {
             // const $aggs = {
             // 	// "types_count" : { "value_count" : { "field" : "brand" } }
@@ -427,7 +427,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             $body['aggs'] = $aggs;
         }
 
-        //! OrderBy.
+        //* OrderBy.
         if ($O) {
             //see sorting: see https://www.elastic.co/guide/en/elasticsearch/reference/current/search-request-sort.html.
             const $sort = $O.split(',').reduce(($a, val) => {
@@ -452,7 +452,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             }
         }
 
-        //! Highlight.
+        //* Highlight.
         if ($H) {
             const $highlight = $H.split(',').reduce(($h: any, val: string) => {
                 val = ('' + val).trim();
@@ -465,7 +465,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             $body['highlight']['fields'] = $highlight;
         }
 
-        //! if valid limit, then paginating.
+        //* if valid limit, then paginating.
         if ($limit > -1) {
             $body.size = $limit;
             if ($page > -1) {
@@ -474,10 +474,10 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             }
         }
 
-        //! field projection with _source parameter.
+        //* field projection with _source parameter.
         if ($source !== null) $body._source = $source;
 
-        //! returns body.
+        //* returns body.
         return $body;
     };
 }
