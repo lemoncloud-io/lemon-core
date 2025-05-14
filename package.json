@@ -48,7 +48,7 @@
   "license": "MIT",
   "dependencies": {
     "@elastic/elasticsearch": "7.12",
-    "@types/aws-lambda": "^8.10.62",
+    "@types/aws-lambda": "^8.10.149",
     "@types/express": "^4.17.11",
     "@types/express-serve-static-core": "^4.17.19",
     "@types/ioredis": "^4.28.10",

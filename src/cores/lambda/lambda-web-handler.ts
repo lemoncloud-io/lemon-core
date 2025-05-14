@@ -372,7 +372,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * builder of tools for http-headers
      * - extracting header content, and parse.
      */
-    public tools = (headers: HttpHeaderSet): HttpHeaderTool => new MyHttpHeaderTool(this, headers);
+    public tools = (headers: HttpHeaderSet): HttpHeaderTool<APIGatewayEventRequestContext> =>
+        new MyHttpHeaderTool(headers);
 
     /**
      * pack the request context for Http request.
@@ -430,7 +431,7 @@ export interface HttpHeaderSet {
  * class: `HttpHeaderTool`
  * - parse header and extract identity.
  */
-export interface HttpHeaderTool {
+export interface HttpHeaderTool<RequestContext> {
     /** say hello */
     hello(): string;
     /**
@@ -463,24 +464,23 @@ export interface HttpHeaderTool {
      * @param $org the current request-context.
      * @param reqContext (optional) request-context from AWS lambda handler.
      */
-    prepareContext($org: NextContext, reqContext?: APIGatewayEventRequestContext): Promise<NextContext>;
+    prepareContext($org: NextContext, reqContext?: RequestContext): Promise<NextContext>;
 }
 
 /**
  * class: `MyHttpHeaderTool`
  * - basic implementation of HttpHeaderTool
  */
-export class MyHttpHeaderTool implements HttpHeaderTool {
-    protected handler: LambdaWEBHandler;
+export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestContext> {
     protected headers: HttpHeaderSet;
 
     /**
      * default constructor.
      * @param headers
      */
-    public constructor(handler: LambdaWEBHandler, headers: HttpHeaderSet) {
-        this.handler = handler;
-        this.headers = { ...headers };
+    public constructor(headers: HttpHeaderSet, options?: { isClone?: boolean }) {
+        const isClone = options?.isClone ?? true;
+        this.headers = isClone ? { ...headers } : headers;
     }
 
     public hello(): string {

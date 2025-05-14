@@ -19,6 +19,8 @@ import {
     DynamoDBStreamEvent,
     SNSEvent as AWSSNSEvent,
     SQSEvent as AWSSQSEvent,
+    ALBEvent as AWSALBEvent,
+    ALBResult as AWSALBResult,
 } from 'aws-lambda';
 import { NextContext } from 'lemon-model';
 import { ProtocolParam, CoreConfigService } from './../core-services';
@@ -49,13 +51,16 @@ export type WEBEvent = APIGatewayProxyEvent;
 export type WEBResult = APIGatewayProxyResult;
 export type WSSEvent = APIGatewayProxyEvent;
 export type DDSEvent = DynamoDBStreamEvent;
+export type ALBEvent = AWSALBEvent;
 export type SNSEvent = AWSSNSEvent;
 export type SQSEvent = AWSSQSEvent;
 export type WSSResult = any;
+export type ALBResult = AWSALBResult;
 
 //! define and export all types.
 export type MyHandler<TEvent = any, TResult = any> = (event: TEvent, context: NextContext) => Promise<TResult>;
 
+export type ALBHandler = MyHandler<ALBEvent, ALBResult>;
 export type WEBHandler = MyHandler<WEBEvent, WEBResult>;
 export type WSSHandler = MyHandler<WSSEvent, WSSResult>;
 export type SNSHandler = MyHandler<SNSEvent, void>;
@@ -69,10 +74,10 @@ export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
  *
  */
 const $handlerTypes = {
+    alb: 'alb',
     web: 'web',
     sns: 'sns',
     sqs: 'sqs',
-    elb: 'elb',
     wss: 'wss',
     dds: 'dds',
     cron: 'cron',
@@ -190,8 +195,8 @@ export class LambdaHandler {
             //* via WEB-SOCKET from ApiGateway
             return 'wss';
         } else if (event.requestContext?.elb && typeof event.requestContext.elb?.targetGroupArn === 'string') {
-            //* via TargetGroup from ELB(Elastic Load Balancer)
-            return 'elb';
+            //* via TargetGroup from ALB(Applicatin/Elastic Load Balancer)
+            return 'alb';
         } else {
             if (event.cron) {
                 //* via CloudWatch's cron.

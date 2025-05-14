@@ -15,7 +15,7 @@ import { ConfigModule } from '../config';
 //! export default
 export * from './lambda-handler';
 
-//! export core classes
+//* export core classes
 export { CoreWEBController, LambdaWEBHandler } from './lambda-web-handler';
 export { LambdaSNSHandler } from './lambda-sns-handler';
 export { LambdaSQSHandler } from './lambda-sqs-handler';
@@ -25,14 +25,14 @@ export { LambdaCognitoHandler } from './lambda-cognito-handler';
 export * from './lambda-dynamo-stream-handler';
 export * from './lambda-notification-handler';
 
-//! export by group
+//* export by group
 import * as $sns from './lambda-sns-handler';
 import * as $sqs from './lambda-sqs-handler';
 import * as $web from './lambda-web-handler';
 import * as $wss from './lambda-wss-handler';
 export { $sns, $sqs, $web, $wss };
 
-//! import default with named.
+//* import default with named.
 import { LambdaHandler, Context } from './lambda-handler';
 import { LambdaWEBHandler } from './lambda-web-handler';
 import { LambdaSNSHandler } from './lambda-sns-handler';
@@ -42,6 +42,7 @@ import { LambdaCronHandler } from './lambda-cron-handler';
 import { LambdaCognitoHandler } from './lambda-cognito-handler';
 import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
 import { LambdaNotificationHandler } from './lambda-notification-handler';
+import { LambdaALBHandler } from './lambda-alb-handler';
 
 /**
  * class: `LambdaModule`
@@ -53,7 +54,7 @@ export class LambdaModule implements EngineModule {
         this.engine = engine || $engine; // use input engine or global.
         if (this.engine) this.engine.register(this);
 
-        //! make default lambda-handler to initialize engine properly.
+        //* make default lambda-handler to initialize engine properly.
         const thiz = this;
         const lambda = new (class extends LambdaHandler {
             public async handle(event: any, context: Context): Promise<any> {
@@ -61,6 +62,7 @@ export class LambdaModule implements EngineModule {
             }
         })();
         this.lambda = lambda;
+        this.alb = new LambdaALBHandler(lambda, true);
         this.web = new LambdaWEBHandler(lambda, true);
         this.sns = new LambdaSNSHandler(lambda, true);
         this.sqs = new LambdaSQSHandler(lambda, true);
@@ -71,8 +73,9 @@ export class LambdaModule implements EngineModule {
         this.notification = new LambdaNotificationHandler(lambda, true);
     }
 
-    //! default services to export.
+    //* default services to export.
     public readonly lambda: LambdaHandler;
+    public readonly alb: LambdaALBHandler;
     public readonly web: LambdaWEBHandler;
     public readonly sns: LambdaSNSHandler;
     public readonly sqs: LambdaSQSHandler;
@@ -82,7 +85,7 @@ export class LambdaModule implements EngineModule {
     public readonly dynamos: LambdaDynamoStreamHandler;
     public readonly notification: LambdaNotificationHandler;
 
-    //! module setting.
+    //* module setting.
     public getModuleName = () => 'lambda';
     public async initModule(level?: number): Promise<number> {
         // it should wait until config-module is ready.
@@ -95,5 +98,5 @@ export class LambdaModule implements EngineModule {
     }
 }
 
-//! create default instance, then export as default.
+//* create default instance, then export as default.
 export default new LambdaModule();

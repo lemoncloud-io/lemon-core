@@ -55,7 +55,7 @@ describe('LambdaHandler', () => {
         expect2(() => _find('wss-conn')).toEqual('wss');
         expect2(() => _find('wss-echo')).toEqual('wss');
 
-        expect2(() => _find('elb')).toEqual('elb');
+        expect2(() => _find('alb')).toEqual('alb');
         expect2(() => _find('cron')).toEqual('cron');
         expect2(() => _find('cognito')).toEqual('cognito');
         expect2(() => _find('dynamo-stream')).toEqual('dds');
