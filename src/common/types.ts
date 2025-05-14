@@ -74,7 +74,8 @@ export interface SlackAttachment {
     footer?: string;
     footer_icon?: string;
     ts?: number;
-    fields?: { title: string; value: string; short?: boolean }[];
+    username?: string;
+    fields?: { title: string; value: string | number; short?: boolean }[];
     mrkdwn?: boolean;
     mrkdwn_in?: string[];
 }
