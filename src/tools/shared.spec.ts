@@ -10,7 +10,7 @@
  */
 import { loadJsonSync, getRunParam } from './';
 
-// Test Shared
+//! main test body.
 describe('Test tools/shared', () => {
     test('test loadJsonSync()', () => {
         const data1 = loadJsonSync('package.json');
@@ -28,20 +28,19 @@ describe('Test tools/shared', () => {
         expect($arg('name', 'lemon')).toBe('hello');
         expect($arg('nick', 'lemon')).toBe('lemon');
         expect($arg('flag', false)).toBe(true);
-        //! object type
+        //* object type
         expect($arg('name', ['a'])).toEqual(['hello']);
         expect($arg('name', null)).toEqual({ value: 'hello' });
         expect($arg('json', null)).toEqual({ a: 1 });
         expect($arg('arr', null)).toEqual([1]);
 
-        //! default with process.arg
+        //* default with process.arg
         expect(getRunParam('hello', 'none')).toEqual('none');
     });
 
-    test('test getRunParam() w/o process.argv', (done: any) => {
+    test('test getRunParam() w/o process.argv', async () => {
         process.argv = undefined;
-        //! default with process.arg
+        //* default with process.arg
         expect(getRunParam('hello', 'none')).toEqual('none');
-        done();
     });
 });

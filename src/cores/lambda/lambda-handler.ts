@@ -19,6 +19,8 @@ import {
     DynamoDBStreamEvent,
     SNSEvent as AWSSNSEvent,
     SQSEvent as AWSSQSEvent,
+    ALBEvent as AWSALBEvent,
+    ALBResult as AWSALBResult,
 } from 'aws-lambda';
 import { NextContext } from 'lemon-model';
 import { ProtocolParam, CoreConfigService } from './../core-services';
@@ -49,13 +51,16 @@ export type WEBEvent = APIGatewayProxyEvent;
 export type WEBResult = APIGatewayProxyResult;
 export type WSSEvent = APIGatewayProxyEvent;
 export type DDSEvent = DynamoDBStreamEvent;
+export type ALBEvent = AWSALBEvent;
 export type SNSEvent = AWSSNSEvent;
 export type SQSEvent = AWSSQSEvent;
 export type WSSResult = any;
+export type ALBResult = AWSALBResult;
 
 //! define and export all types.
 export type MyHandler<TEvent = any, TResult = any> = (event: TEvent, context: NextContext) => Promise<TResult>;
 
+export type ALBHandler = MyHandler<ALBEvent, ALBResult>;
 export type WEBHandler = MyHandler<WEBEvent, WEBResult>;
 export type WSSHandler = MyHandler<WSSEvent, WSSResult>;
 export type SNSHandler = MyHandler<SNSEvent, void>;
@@ -65,7 +70,23 @@ export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
 export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
 export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
 
-export type HandlerType = 'web' | 'sns' | 'sqs' | 'wss' | 'dds' | 'cron' | 'cognito' | 'dynamo-stream' | 'notification';
+/**
+ *
+ */
+const $handlerTypes = {
+    alb: 'alb',
+    web: 'web',
+    sns: 'sns',
+    sqs: 'sqs',
+    wss: 'wss',
+    dds: 'dds',
+    cron: 'cron',
+    cognito: 'cognito',
+    'dynamo-stream': 'dynamo-stream',
+    notification: 'notification',
+};
+
+export type HandlerType = keyof typeof $handlerTypes;
 
 /**
  * class: `LambdaHandlerService`
@@ -155,7 +176,7 @@ export class LambdaHandler {
     }
 
     //* Find Service By Event
-    public findService = (event: any): HandlerType => {
+    public findService(event: any): HandlerType {
         const headers = (event && event.headers) || {};
         _log(NS, `> headers =`, $U.json(headers));
         //* check if AWS SNS Notification Subscription -> notification controller.
@@ -173,6 +194,9 @@ export class LambdaHandler {
         } else if (event.requestContext && event.requestContext.eventType !== undefined) {
             //* via WEB-SOCKET from ApiGateway
             return 'wss';
+        } else if (event.requestContext?.elb && typeof event.requestContext.elb?.targetGroupArn === 'string') {
+            //* via TargetGroup from ALB(Applicatin/Elastic Load Balancer)
+            return 'alb';
         } else {
             if (event.cron) {
                 //* via CloudWatch's cron.
@@ -191,7 +215,7 @@ export class LambdaHandler {
                 if (ddb.length) return 'dds';
             }
         }
-    };
+    }
 
     /**
      * decode event to proper handler.
@@ -228,7 +252,7 @@ export class LambdaHandler {
             }
             //* raise error if not found.
             _inf(NS, `WARN! unknown[${type}].event =`, $U.json(event));
-            callback && callback(new Error(`400 UNKNOWN - service:${type}`));
+            callback && callback(new Error(`400 UNKNOWN EVENT - service:${type ?? ''}`));
         };
 
         //* call promised.

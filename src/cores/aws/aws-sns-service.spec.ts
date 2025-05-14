@@ -10,20 +10,21 @@
 const ENV_NAME = 'MY_SNS_ENDPOINT';
 const DEF_SNS = 'lemon-hello-sns';
 
-//! override environ.
+//* override environ.
 process.env = Object.assign(process.env, {
     [ENV_NAME]: 'arn:aws:sns:ap-northeast-2::hello',
 });
 
-//! load $engine, and prepare dummy handler
+//* load $engine, and prepare dummy handler
 import { AWSSNSService } from './aws-sns-service';
 import { credentials } from '../../tools/shared';
 import { environ } from '../../common/test-helper';
 
 const SNS = new AWSSNSService();
 
+//! main test body.
 describe(`test service/sns-service.js`, () => {
-    //! use `env.PROFILE`
+    //* use `env.PROFILE`
     const PROFILE = credentials(environ('ENV'));
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 

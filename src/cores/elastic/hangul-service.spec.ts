@@ -16,7 +16,6 @@ export const instance = () => {
     return { service: new HangulService() };
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('HangulService', () => {
     it('hello', async () => {

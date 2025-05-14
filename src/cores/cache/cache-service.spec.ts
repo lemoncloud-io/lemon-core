@@ -36,19 +36,17 @@ export async function isLocalCacheAvailable(type: 'memcached' | 'redis'): Promis
     });
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
-//! main test body.
+//* main test body.
 describe('DummyCacheService', () => {
-    it('hello', async done => {
+    it('hello', async () => {
         const { cache } = instance('dummy');
         expect2(() => cache instanceof CacheService).toBeTruthy();
         expect2(() => cache instanceof DummyCacheService).toBeTruthy();
         expect2(() => cache.hello()).toEqual('dummy-cache-service:node-cache:cache-service-test');
         await cache.close();
-        done();
     });
 
-    it('TTL conversion', async done => {
+    it('TTL conversion', async () => {
         // toTTL(): seconds -> seconds
         expect2(() => toTTL(10)).toBe(10);
         expect2(() => toTTL(10)).toBe(10);
@@ -69,11 +67,9 @@ describe('DummyCacheService', () => {
         expect2(() => fromTTL(null)).toBe(0);
         expect2(() => fromTTL(undefined)).toBe(0);
         expect2(() => fromTTL(3)).toBeGreaterThan(Date.now() + 2000); // 3 seconds from now
-
-        done();
     });
 
-    it('namespace', async done => {
+    it('namespace', async () => {
         const { cache: cacheA1 } = instance('dummy', 'NS-A');
         const { cache: cacheA2 } = instance('dummy', 'NS-A');
         const { cache: cacheB0 } = instance('dummy', 'NS-B');
@@ -125,10 +121,9 @@ describe('DummyCacheService', () => {
         await cacheA1.close();
         await cacheA2.close();
         await cacheB0.close();
-        done();
     });
 
-    it('set/get/exists/delete', async done => {
+    it('set/get/exists/delete', async () => {
         const { cache } = instance('dummy');
 
         // number
@@ -173,18 +168,24 @@ describe('DummyCacheService', () => {
         expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
 
         await cache.close();
-        done();
     });
 
-    it('setMulti/getMulti/deleteMulti', async done => {
+    it('setMulti/getMulti/deleteMulti', async () => {
         const { cache } = instance('dummy');
-        /* eslint-disable prettier/prettier */
 
         // pre-condition
         expect2(await cache.keys().catch(GETERR)).toEqual([]);
 
         // setMulti
-        expect2(await cache.setMulti([{ key: 1, val: 1 }, { key: 2, val: 2 }, { key: 3, val: 3 }]).catch(GETERR)).toEqual(true);
+        expect2(
+            await cache
+                .setMulti([
+                    { key: 1, val: 1 },
+                    { key: 2, val: 2 },
+                    { key: 3, val: 3 },
+                ])
+                .catch(GETERR),
+        ).toEqual(true);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
@@ -200,12 +201,10 @@ describe('DummyCacheService', () => {
         expect2(await cache.exists(2).catch(GETERR)).toEqual(false);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
-        /* eslint-enable prettier/prettier */
         await cache.close();
-        done();
     });
 
-    it('getAndSet/getAndDelete', async done => {
+    it('getAndSet/getAndDelete', async () => {
         const { cache } = instance('dummy');
 
         // pre-condition
@@ -221,12 +220,10 @@ describe('DummyCacheService', () => {
         expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
 
         await cache.close();
-        done();
     });
 
-    _it('TTL', async done => {
+    _it('TTL', async () => {
         const { cache } = instance('dummy');
-        /* eslint-disable prettier/prettier */
 
         // pre-condition
         expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
@@ -244,7 +241,15 @@ describe('DummyCacheService', () => {
         expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
 
         // set multiple keys with TTL
-        expect2(await cache.setMulti([{ key: 1, val: 1, timeout: { expireIn: 1 } }, { key: 2, val: 2 }, { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } }]).catch(GETERR)).toEqual(true);
+        expect2(
+            await cache
+                .setMulti([
+                    { key: 1, val: 1, timeout: { expireIn: 1 } },
+                    { key: 2, val: 2 },
+                    { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } },
+                ])
+                .catch(GETERR),
+        ).toEqual(true);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
         expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
@@ -267,24 +272,21 @@ describe('DummyCacheService', () => {
         await sleep(1000);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
-        /* eslint-enable prettier/prettier */
         await cache.close();
-        done();
     });
 });
 
 describe('CacheService - Memcached', () => {
-    it('hello', async done => {
+    it('hello', async () => {
         const { cache } = instance('memcached');
         expect2(() => cache instanceof CacheService).toBeTruthy();
         expect2(() => cache instanceof DummyCacheService).toBeFalsy();
         expect2(() => cache.hello()).toEqual('cache-service:memcached:cache-service-test');
         await cache.close();
-        done();
     });
 
-    it('set/get/exists/delete', async done => {
-        if (!(await isLocalCacheAvailable('memcached'))) return done();
+    it('set/get/exists/delete', async () => {
+        if (!(await isLocalCacheAvailable('memcached'))) return;
         const { cache } = instance('memcached', 'TC01');
 
         // setup test
@@ -332,19 +334,25 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
 
         await cache.close();
-        done();
     });
 
-    it('setMulti/getMulti/deleteMulti', async done => {
-        if (!(await isLocalCacheAvailable('memcached'))) return done();
+    it('setMulti/getMulti/deleteMulti', async () => {
+        if (!(await isLocalCacheAvailable('memcached'))) return;
         const { cache } = instance('memcached', 'TC02');
-        /* eslint-disable prettier/prettier */
 
         // setup test
         await cache.deleteMulti([1, 2, 3]);
 
         // setMulti
-        expect2(await cache.setMulti([{ key: 1, val: 1 }, { key: 2, val: 2 }, { key: 3, val: 3 }]).catch(GETERR)).toEqual(true);
+        expect2(
+            await cache
+                .setMulti([
+                    { key: 1, val: 1 },
+                    { key: 2, val: 2 },
+                    { key: 3, val: 3 },
+                ])
+                .catch(GETERR),
+        ).toEqual(true);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
@@ -360,13 +368,11 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.exists(2).catch(GETERR)).toEqual(false);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
-        /* eslint-enable prettier/prettier */
         await cache.close();
-        done();
     });
 
-    it('getAndSet/getAndDelete', async done => {
-        if (!(await isLocalCacheAvailable('memcached'))) return done();
+    it('getAndSet/getAndDelete', async () => {
+        if (!(await isLocalCacheAvailable('memcached'))) return;
         const { cache } = instance('memcached', 'TC03');
 
         // setup test
@@ -381,13 +387,11 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
 
         await cache.close();
-        done();
     });
 
-    _it('TTL', async done => {
-        if (!(await isLocalCacheAvailable('memcached'))) return done();
+    _it('TTL', async () => {
+        if (!(await isLocalCacheAvailable('memcached'))) return;
         const { cache } = instance('memcached', 'TC04');
-        /* eslint-disable prettier/prettier */
 
         // setup test
         await cache.deleteMulti([1, 2, 3]);
@@ -403,7 +407,15 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
 
         // set multiple keys with TTL
-        expect2(await cache.setMulti([{ key: 1, val: 1, timeout: { expireIn: 1 } }, { key: 2, val: 2 }, { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } }]).catch(GETERR)).toEqual(true);
+        expect2(
+            await cache
+                .setMulti([
+                    { key: 1, val: 1, timeout: { expireIn: 1 } },
+                    { key: 2, val: 2 },
+                    { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } },
+                ])
+                .catch(GETERR),
+        ).toEqual(true);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
         expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
@@ -426,24 +438,21 @@ describe('CacheService - Memcached', () => {
         await sleep(1000);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
-        /* eslint-enable prettier/prettier */
         await cache.close();
-        done();
     });
 });
 
 describe('CacheService - Redis', () => {
-    it('hello', async done => {
+    it('hello', async () => {
         const { cache } = instance('redis');
         expect2(() => cache instanceof CacheService).toBeTruthy();
         expect2(() => cache instanceof DummyCacheService).toBeFalsy();
         expect2(() => cache.hello()).toEqual('cache-service:redis:cache-service-test');
         await cache.close();
-        done();
     });
 
-    it('set/get/exists/delete', async done => {
-        if (!(await isLocalCacheAvailable('redis'))) return done();
+    it('set/get/exists/delete', async () => {
+        if (!(await isLocalCacheAvailable('redis'))) return;
         const { cache } = instance('redis', 'TC01');
 
         // setup test
@@ -491,19 +500,25 @@ describe('CacheService - Redis', () => {
         expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
 
         await cache.close();
-        done();
     });
 
-    it('setMulti/getMulti/deleteMulti', async done => {
-        if (!(await isLocalCacheAvailable('redis'))) return done();
+    it('setMulti/getMulti/deleteMulti', async () => {
+        if (!(await isLocalCacheAvailable('redis'))) return;
         const { cache } = instance('redis', 'TC02');
-        /* eslint-disable prettier/prettier */
 
         // setup test
         await cache.deleteMulti([1, 2, 3]);
 
         // setMulti
-        expect2(await cache.setMulti([{ key: 1, val: 1 }, { key: 2, val: 2 }, { key: 3, val: 3 }]).catch(GETERR)).toEqual(true);
+        expect2(
+            await cache
+                .setMulti([
+                    { key: 1, val: 1 },
+                    { key: 2, val: 2 },
+                    { key: 3, val: 3 },
+                ])
+                .catch(GETERR),
+        ).toEqual(true);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
@@ -519,13 +534,11 @@ describe('CacheService - Redis', () => {
         expect2(await cache.exists(2).catch(GETERR)).toEqual(false);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
-        /* eslint-enable prettier/prettier */
         await cache.close();
-        done();
     });
 
-    it('getAndSet/getAndDelete', async done => {
-        if (!(await isLocalCacheAvailable('redis'))) return done();
+    it('getAndSet/getAndDelete', async () => {
+        if (!(await isLocalCacheAvailable('redis'))) return;
         const { cache } = instance('redis', 'TC03');
 
         // setup test
@@ -540,13 +553,11 @@ describe('CacheService - Redis', () => {
         expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
 
         await cache.close();
-        done();
     });
 
-    _it('TTL', async done => {
-        if (!(await isLocalCacheAvailable('redis'))) return done();
+    _it('TTL', async () => {
+        if (!(await isLocalCacheAvailable('redis'))) return;
         const { cache } = instance('redis', 'TC04');
-        /* eslint-disable prettier/prettier */
 
         // setup test
         await cache.deleteMulti([1, 2, 3]);
@@ -562,7 +573,15 @@ describe('CacheService - Redis', () => {
         expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
 
         // set multiple keys with TTL
-        expect2(await cache.setMulti([{ key: 1, val: 1, timeout: { expireIn: 1 } }, { key: 2, val: 2 }, { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } }]).catch(GETERR)).toEqual(true);
+        expect2(
+            await cache
+                .setMulti([
+                    { key: 1, val: 1, timeout: { expireIn: 1 } },
+                    { key: 2, val: 2 },
+                    { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } },
+                ])
+                .catch(GETERR),
+        ).toEqual(true);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
         expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
@@ -585,8 +604,6 @@ describe('CacheService - Redis', () => {
         await sleep(1000);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
-        /* eslint-enable prettier/prettier */
         await cache.close();
-        done();
     });
 });

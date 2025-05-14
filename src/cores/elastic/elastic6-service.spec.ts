@@ -44,8 +44,8 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
 
     // const indexName = `test-v${version}`;
     indexName = indexName ?? `test-v${version}`;
-    const idName = '$id'; //! global unique id-name in same index.
-    const docType = '_doc'; //! must be `_doc`.
+    const idName = '$id'; //* global unique id-name in same index.
+    const docType = '_doc'; //* must be `_doc`.
     const autocompleteFields = useAutoComplete ? ['title', 'name'] : null;
     const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
 
@@ -1761,14 +1761,13 @@ export const doTest = async (service: Elastic6Service<any>) => {
     return `pass`;
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
-//! main test body.
+//* main test body.
 describe('Elastic6Service', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`
     PROFILE && console.info(`! PROFILE =`, PROFILE);
 
-    //! dummy storage service.
+    //* dummy storage service.
     it('should pass basic CRUD w/ dummy', async () => {
-        /* eslint-disable prettier/prettier */
         //* load dummy storage service.
         const { dummy } = instance();
 
@@ -1784,15 +1783,29 @@ describe('Elastic6Service', () => {
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
         expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), '$id,type').toEqual({ $id: 'A0', type: '' });
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: '' });
-        expect2(await dummy.updateItem('A0', { type: 'account' }).catch(GETERR)).toEqual({ id: 'A0', _version: 1, type: 'account' });
+        expect2(await dummy.updateItem('A0', { type: 'account' }).catch(GETERR)).toEqual({
+            id: 'A0',
+            _version: 1,
+            type: 'account',
+        });
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', _version: 1, type: 'account' });
-        expect2(await dummy.updateItem('A0', null, { stringArr : ['a'], numberArr: [1], count: 3 }).catch(GETERR)).toEqual({ id: 'A0', _version: 2 });
-        expect2(await dummy.updateItem('A0', null, { stringArr : ['b'], numberArr : [2], count: 1 }).catch(GETERR)).toEqual({ "_version": 3, "id": "A0" });
-        expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({"_version": 3, "count": 4, "id": "A0", "numberArr": [1, 2], "stringArr": ["a", "b"], "type": "account"});
-        /* eslint-enable prettier/prettier */
+        expect2(
+            await dummy.updateItem('A0', null, { stringArr: ['a'], numberArr: [1], count: 3 }).catch(GETERR),
+        ).toEqual({ id: 'A0', _version: 2 });
+        expect2(
+            await dummy.updateItem('A0', null, { stringArr: ['b'], numberArr: [2], count: 1 }).catch(GETERR),
+        ).toEqual({ _version: 3, id: 'A0' });
+        expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({
+            _version: 3,
+            count: 4,
+            id: 'A0',
+            numberArr: [1, 2],
+            stringArr: ['a', 'b'],
+            type: 'account',
+        });
     });
 
-    //! $ERROR parser
+    //* $ERROR parser
     it('should pass error handler($ERROR/es6.2)', async () => {
         const message = 'someting wrong';
         const err = new Error(message);
@@ -1883,7 +1896,7 @@ describe('Elastic6Service', () => {
         );
     });
 
-    //! $ERROR parser
+    //* $ERROR parser
     it('should pass error handler($ERROR/es7.1)', async () => {
         const message = 'someting wrong';
         const err = new Error(message);
@@ -1936,7 +1949,7 @@ describe('Elastic6Service', () => {
         });
     });
 
-    //! test with real server
+    //* test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
         jest.setTimeout(1200000);
@@ -1959,7 +1972,7 @@ describe('Elastic6Service', () => {
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
-    //! elastic storage service.
+    //* elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
         jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
@@ -1981,7 +1994,7 @@ describe('Elastic6Service', () => {
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
-    //! elastic storage service.
+    //* elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
         jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
@@ -2003,7 +2016,7 @@ describe('Elastic6Service', () => {
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
-    //! elastic storage service.
+    //* elastic storage service.
     it('should pass basic CRUD w/ real server(7.10)', async () => {
         jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
@@ -2025,7 +2038,7 @@ describe('Elastic6Service', () => {
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
-    //! elastic storage service.
+    //* elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.1)', async () => {
         jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
@@ -2047,7 +2060,7 @@ describe('Elastic6Service', () => {
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
-    //! elastic storage service.
+    //* elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
         jest.setTimeout(1200000);
         // if (!PROFILE) return; // ignore w/o profile
@@ -2069,7 +2082,7 @@ describe('Elastic6Service', () => {
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
-    //! elastic storage service.
+    //* elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
         jest.setTimeout(1200000);

@@ -1,0 +1,23 @@
+{
+    "!": "ELB(Elastic Load Balancing) Event Data (Health check) for Lambda Target-Group @250511",
+    "path": "/",
+    "httpMethod": "GET",
+    "queryStringParameters": {},
+    "headers": {
+        "accept": "*/*",
+        "accept-encoding": "gzip",
+        "host": "3.35.112.206",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36",
+        "x-amzn-trace-id": "Root=1-68230684-7263db34402daa83554cad73",
+        "x-forwarded-for": "185.242.226.116",
+        "x-forwarded-port": "80",
+        "x-forwarded-proto": "http"
+    },
+    "requestContext": {
+        "elb": {
+            "targetGroupArn": "arn:aws:elasticloadbalancing:ap-northeast-2:085403634746:targetgroup/lemon-hello-api/15a8fd88ea4f1fb5"
+        }
+    },
+    "body": "",
+    "isBase64Encoded": false
+}

@@ -81,7 +81,7 @@ export class BackendProxy extends AbstractProxy<ModelType, BackendService> {
     }
 }
 
-//! create service instance.
+//* create service instance.
 export const instance = (type: string = 'dummy') => {
     const current = new Date().getTime();
     const service = new BackendService(type == 'dummy' ? 'dummy-data.yml' : '');
@@ -94,12 +94,12 @@ describe('abstract-service', () => {
     const PROFILE = loadProfile(process); // override process.env.
     PROFILE && console.info('! PROFILE =', PROFILE);
 
-    //! basic function
+    //* basic function
     it('should pass basic function', async () => {
         const { service } = instance();
         expect2(() => service.hello()).toEqual('backend-service:TT/dummy-data.yml');
 
-        //! test filterFields()
+        //* test filterFields()
         const isKeys = true;
         if (isKeys) {
             expect2(() => filterFields(TEST_FIELDS).join(',')).toEqual(
@@ -114,10 +114,10 @@ describe('abstract-service', () => {
             console.warn('check ts-transformer-keys!');
         }
 
-        //! test CoreService()
+        //* test CoreService()
         expect2(() => service.dynamoOptions).toEqual({ idName: '_id', tableName: 'dummy-data.yml' });
 
-        //! test CoreManager();
+        //* test CoreManager();
         const { $test } = service;
         expect2(await $test.find('1')).toEqual(null);
         expect2(await $test.exists('1')).toEqual(false);
@@ -126,7 +126,7 @@ describe('abstract-service', () => {
         expect2(await $test.getMulti$(['1', '1'])).toEqual({ '1': { id: '1', error: '404 NOT FOUND - test:1' } });
     });
 
-    //! basic ManagerProxy()
+    //* basic ManagerProxy()
     it('should pass ManagerProxy()', async () => {
         const { service, current } = instance();
         expect2(() => service.hello()).toEqual('backend-service:TT/dummy-data.yml');
@@ -134,7 +134,7 @@ describe('abstract-service', () => {
         expect2(() => service.buildProxy(null).hello()).toEqual('manager-proxy:TT/dummy-data.yml');
         expect2(() => service.buildProxy({}).hello()).toEqual('manager-proxy:TT/dummy-data.yml');
 
-        //! build base model.
+        //* build base model.
         const _base = <T extends Model>(type: ModelType, N?: T): T => ({
             ns: 'TT',
             updatedAt: current,
@@ -144,7 +144,7 @@ describe('abstract-service', () => {
             ...N,
         });
 
-        //! get w/o default.
+        //* get w/o default.
         expect2(
             await service
                 .guardProxy({}, async proxy => {
@@ -179,7 +179,7 @@ describe('abstract-service', () => {
         ).toEqual(`Cannot set properties of null (setting 'name')`);
         expect2(await service.$test.find('a')).toEqual(null);
 
-        //! get w/ default.
+        //* get w/ default.
         expect2(
             await service
                 .guardProxy({}, async proxy => {
@@ -201,7 +201,7 @@ describe('abstract-service', () => {
         });
     });
 
-    //! check of `$ES6`
+    //* check of `$ES6`
     it('should pass $ES6', async () => {
         const { service, current } = instance();
 

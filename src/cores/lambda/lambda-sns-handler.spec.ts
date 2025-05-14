@@ -29,59 +29,50 @@ export const instance = () => {
     return { lambda, service, web };
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('LambdaSNSHandler', () => {
-    //! protocol param
-    it('should pass handle protocol with web (default)', async done => {
-        /* eslint-disable prettier/prettier */
+    //* protocol param
+    it('should pass handle protocol with web (default)', async () => {
         const { lambda, service, web } = instance();
         const event: any = loadJsonSync('data/samples/events/protocol.event.sns.json');
-        expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId:'7820a87c-f73c-5c88-b2be-fe250be6b564' });
+        expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId: '7820a87c-f73c-5c88-b2be-fe250be6b564' });
 
-        //! PRE-CONDITION
+        //* PRE-CONDITION
         expect2(() => web.result).toEqual(null);
         expect2(service.getLastResult()).toEqual(null);
 
-        //! RUN
+        //* RUN
         const res = await lambda.handle(event, null);
         expect2(res).toEqual(undefined);
 
-        //! POST-CONDITION.
+        //* POST-CONDITION.
         expect2(service.getLastResult()).toEqual(['404 NOT FOUND - GET /metrics/hello/test-protocol']);
         // expect2(service.getLastResult()).toEqual(['']);
         expect2(() => web.result).toEqual(null);
-
-        /* eslint-enable prettier/prettier */
-        done();
     });
 
-    //! protocol param
-    it('should pass handle protocol with web (hello)', async done => {
-        /* eslint-disable prettier/prettier */
+    //* protocol param
+    it('should pass handle protocol with web (hello)', async () => {
         const { lambda, service, web } = instance();
         const event: any = loadJsonSync('data/samples/events/protocol.event.sns.json');
-        expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId:'7820a87c-f73c-5c88-b2be-fe250be6b564' });
+        expect2(() => event.Records[0].Sns, 'MessageId').toEqual({ MessageId: '7820a87c-f73c-5c88-b2be-fe250be6b564' });
 
-        //! CHANGE PARAM
+        //* CHANGE PARAM
         const body = JSON.parse(event.Records[0].Sns.Message);
-        body.type = 'hello';                                // override to `hello` type.
+        body.type = 'hello'; // override to `hello` type.
         event.Records[0].Sns.Message = JSON.stringify(body);
 
-        //! PRE-CONDITION
+        //* PRE-CONDITION
         expect2(() => web.result).toEqual(null);
         expect2(service.getLastResult()).toEqual(null);
 
-        //! RUN
+        //* RUN
         const res = await lambda.handle(event, null);
         expect2(res).toEqual(undefined);
 
-        //! POST-CONDITION.
+        //* POST-CONDITION.
         const expected = { id: 'hello', cmd: 'test-protocol', hello: 'test-protocol hello' };
         expect2(service.getLastResult()).toEqual([$U.json(expected)]);
         expect2(() => web.result).toEqual({ ...expected });
-
-        /* eslint-enable prettier/prettier */
-        done();
     });
 });

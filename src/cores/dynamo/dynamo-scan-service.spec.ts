@@ -33,7 +33,6 @@ export const instance = () => {
     return { dynamo, dynamoScan, options };
 };
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////
 //! main test body.
 describe('DynamoScanService', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`

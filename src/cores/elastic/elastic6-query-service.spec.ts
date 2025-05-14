@@ -58,10 +58,10 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
             if (!PROFILE) return; // ignore w/o profile
             const { elastic, search, indexName } = instance(defaultVersion, `test-autocomplete-v${defaultVersion}`);
 
-            //! break if no live connection
+            //* break if no live connection
             if (!(await canPerformTest(elastic))) return;
 
-            //! make sure if index is ready.
+            //* make sure if index is ready.
             const $old = await elastic.findIndex(indexName);
             if (!$old)
                 expect2(await elastic.createIndex().catch(GETERR)).toEqual({ acknowledged: true, index: indexName });
@@ -98,10 +98,10 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
             if (!PROFILE) return; // ignore w/o profile
             const { elastic, search, indexName } = instance(defaultVersion, `test-quality-v${defaultVersion}`);
 
-            //! break if no live connection
+            //* break if no live connection
             if (!(await canPerformTest(elastic))) return;
 
-            //! make sure if index is ready.
+            //* make sure if index is ready.
             const $old = await elastic.findIndex(indexName);
             if ($old) {
                 expect2(await elastic.destroyIndex()).toEqual({ status: 200, acknowledged: true, index: indexName });
@@ -225,7 +225,7 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
     });
 };
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
-//! main test body with real server
+//* main test body with real server
 
 //* Elastic6QueryService tests
 //* it should pass basic CRUD w/ real server (6.2)

@@ -20,7 +20,7 @@ const safe = (f: () => unknown) => {
 };
 
 const $environ = (env?: { [key: string]: string }): any => {
-    //! convert all string.
+    //* convert all string.
     env =
         (env &&
             Object.keys(env).reduce((O: any, k) => {
@@ -33,6 +33,7 @@ const $environ = (env?: { [key: string]: string }): any => {
     return safe(() => loadEnviron(proc, opt));
 };
 
+//! main test body.
 describe(`test the 'environ.ts'`, () => {
     test('check basic environ()', () => {
         const $conf = $environ({ LS: '1', ENV: 'lemon', NODE_ENV: 'prod' });

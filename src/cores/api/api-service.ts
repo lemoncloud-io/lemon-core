@@ -155,7 +155,7 @@ export class APIService implements APIServiceClient {
             this.client = APIService.buildClient(this.type, this.endpoint, this.headers, null, proxy);
         } else {
             //* use default `env.BACKBONE_API` to detect proxy-server.
-            const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
+            const BACKBONE = $engine.environ('BACKBONE_API', '') as string;
             this.client = APIService.buildClient(this.type, this.endpoint, this.headers, BACKBONE);
         }
     }
@@ -166,16 +166,19 @@ export class APIService implements APIServiceClient {
     /**
      * helper to make http client
      *
-     * @param backbone  backbone address like 'http://localhost:8081'
+     * @param name      name of this client.
+     * @param endpoint  the final target url.
+     * @param headers   http headers
+     * @param backbone  backbone address if applicable (ex: 'http://localhost:8081')
      */
     public static buildClient(
-        type: string,
+        name: string,
         endpoint: string,
         headers?: APIHeaders,
         backbone?: string,
         proxy?: ApiHttpProxy,
     ): APIServiceClient {
-        _log(NS, `buildClient(${type || ''})...`);
+        _log(NS, `buildClient(${name || ''})...`);
         if (!endpoint) throw new Error('@endpoint (url) is required');
         const host = `${endpoint || ''}`.split('/')[2];
         //* if using backbone, need host+path for full-url. or need only `type` + `id/cmd` pair for direct http agent.
@@ -185,21 +188,21 @@ export class APIService implements APIServiceClient {
             proxy = proxy;
         } else if (backbone) {
             //* use web-proxy configuration.
-            const NAME = `WEB:${host}-${type || ''}`;
+            const NICK = `WEB:${host}-${name || ''}`;
             const encoder = (name: string, path: string) => encodeURIComponent(path);
             const relayHeaderKey = 'x-lemon-';
             const resultKey = 'result';
             //* use default backbone's web-proxy service.
-            proxy = createHttpWebProxy(NAME, `${backbone}/web`, headers, encoder, relayHeaderKey, resultKey);
+            proxy = createHttpWebProxy(NICK, `${backbone}/web`, headers, encoder, relayHeaderKey, resultKey);
         } else {
             //* use direct web request.. (only read `type` + `id/cmd` later)
-            const NAME = `API:${host}-${type || ''}`;
-            proxy = createHttpWebProxy(NAME, endpoint, headers, (n, s) => s, '');
+            const NICK = `API:${host}-${name || ''}`;
+            proxy = createHttpWebProxy(NICK, endpoint, headers, (n, s) => s, '');
         }
         /**
          * create internal client to translate of full url path with `host`+`path`
          */
-        return new APIService.ProxyServiceClient(proxy, base, type);
+        return new APIService.ProxyServiceClient(proxy, base, name);
     }
 
     /**
