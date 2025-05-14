@@ -13,7 +13,6 @@ import { $U, _log, _inf, _err } from '../../engine/';
 import { NextContext, NextHandler, NextIdentity } from 'lemon-model';
 import { LambdaHandler, ALBHandler, LambdaSubHandler, ALBEvent, ALBResult, Context } from './lambda-handler';
 import { buildResponse, HttpHeaderSet, HttpHeaderTool, MyHttpHeaderTool } from './lambda-web-handler';
-import { $T } from '../../helpers/helpers';
 import * as $lambda from 'aws-lambda';
 const NS = $U.NS('HCRN', 'yellow'); // NAMESPACE TO BE PRINTED.
 
@@ -30,7 +29,7 @@ export type ALBEventRequestContext = $lambda.ALBEventRequestContext;
  * ALB Http Header Tool
  */
 export class ALBHttpHeaderTool implements HttpHeaderTool<ALBEventRequestContext> {
-    protected tool: HttpHeaderTool<any>;
+    protected tool: MyHttpHeaderTool;
     public constructor(headers: HttpHeaderSet, options?: { isClone?: boolean }) {
         this.tool = new MyHttpHeaderTool(headers, options);
     }
@@ -57,6 +56,9 @@ export class ALBHttpHeaderTool implements HttpHeaderTool<ALBEventRequestContext>
         if (typeof reqContext?.elb?.targetGroupArn !== 'string')
             throw new Error(`.targetGroupArn is invalid - ${errScope}`);
         return { ...$org };
+    }
+    public onlyDefined<T extends object>(obj: T): T {
+        return this.tool.onlyDefined<T>(obj);
     }
 }
 
@@ -102,9 +104,11 @@ export class LambdaALBHandler extends LambdaSubHandler<ALBHandler> {
     public buildResponse(
         statusCode: number,
         body: any,
-        options?: { contentType?: string; origin?: string },
+        options?: { contentType?: string; origin?: string; credentials?: boolean },
     ): ALBResult {
-        return buildResponse(statusCode, body, options?.contentType, options?.origin);
+        const origin = options?.origin ?? null;
+        const credentials = options?.credentials ?? null;
+        return buildResponse(statusCode, body, { ...options, origin, credentials });
     }
 
     /**
@@ -112,7 +116,7 @@ export class LambdaALBHandler extends LambdaSubHandler<ALBHandler> {
      */
     public handle: ALBHandler = async (event, context): Promise<ALBResult> => {
         _log(NS, `handle()...`);
-        if (!this.handler) return this.buildResponse(404, '404 NOT FOUND - NO HANDLER');
+        if (!this.handler) return this.buildResponse(403, '403 NOT SUPPORTED - no handler for alb');
         const arn = event?.requestContext?.elb?.targetGroupArn;
         const $res = await this.handler(arn, this, event, context);
         return $res;
@@ -122,7 +126,7 @@ export class LambdaALBHandler extends LambdaSubHandler<ALBHandler> {
      * builder of tools for http-headers
      * - extracting header content, and parse.
      */
-    public tools = (event: ALBEvent): HttpHeaderTool<ALBEventRequestContext> => new ALBHttpHeaderTool(event?.headers);
+    public tools = (event: ALBEvent): ALBHttpHeaderTool => new ALBHttpHeaderTool(event?.headers);
 
     /**
      * pack the request context for Http request.
@@ -148,7 +152,15 @@ export class LambdaALBHandler extends LambdaSubHandler<ALBHandler> {
             const origin = $tool.getHeader('origin');
             const userAgent = $tool.getHeader('user-agent');
             const authorization = $tool.getHeader('authorization');
-            return $T.onlyDefined<NextContext>({ identity, cookie, domain, referer, origin, userAgent, authorization });
+            return $tool.onlyDefined<NextContext>({
+                identity,
+                cookie,
+                domain,
+                referer,
+                origin,
+                userAgent,
+                authorization,
+            });
         };
 
         // STEP.3. prepare the final `next-context`.

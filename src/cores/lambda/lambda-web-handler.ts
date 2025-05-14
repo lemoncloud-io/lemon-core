@@ -64,6 +64,14 @@ type ProxyResult = APIGatewayProxyResult;
 type ProxyResponser = () => ProxyResult;
 type ProxyChain = ProxyParams | ProxyResponser;
 
+/** returns only defined */
+const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
+    N && typeof N === 'object'
+        ? Object.entries(N).reduce<T>((N, [k, v]) => {
+              if (v !== undefined) N[k as keyof T] = v;
+              return N;
+          }, {} as T)
+        : ($def as T);
 /**
  * build http response body
  * - if body is string type, then content-type would be text/<some>.
@@ -75,33 +83,44 @@ type ProxyChain = ProxyParams | ProxyResponser;
  * @param origin (optional) the allow origin (default *)
  * @returns http response body
  */
-export const buildResponse = (statusCode: number, body: any, contentType?: string, origin?: string): ProxyResult => {
+export const buildResponse = (
+    statusCode: number,
+    body: any,
+    options?: { contentType?: string; origin?: string; credentials?: boolean },
+): ProxyResult => {
+    const contentType = options?.contentType;
+    const origin = options?.origin === undefined ? '*' : options?.origin;
+    const credentials = options?.credentials === undefined ? true : options?.credentials;
     const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
     const _isHtml = (body: string) =>
         body.startsWith('<!DOCTYPE html>') || (body.startsWith('<') && body.endsWith('>'));
-    contentType =
-        contentType ||
-        (typeof body === 'string'
+    const _type = () => {
+        if (contentType) return contentType;
+        return typeof body === 'string'
             ? _isHtml(body)
                 ? 'text/html; charset=utf-8'
                 : 'text/plain; charset=utf-8'
-            : 'application/json; charset=utf-8');
+            : 'application/json; charset=utf-8';
+    };
+    const headers = ['origin', HEADER_LEMON_LANGUAGE, HEADER_LEMON_IDENTITY].filter(s => !!s).join(', ');
     return {
         statusCode,
-        headers: {
-            'Content-Type': contentType,
-            'Access-Control-Allow-Origin': `${origin || '*'}`, // Required for CORS support to work
-            'Access-Control-Allow-Credentials': true, // Required for cookies, authorization headers with HTTPS
-            // eslint-disable-next-line prettier/prettier
-            'Access-Control-Allow-Headers': ['origin', HEADER_LEMON_LANGUAGE, HEADER_LEMON_IDENTITY].filter(s => !!s).join(', '), // custom headers
-        },
+        headers: onlyDefined({
+            'Content-Type': _type(),
+            // Required for CORS support to work
+            'Access-Control-Allow-Origin': origin === null ? undefined : `${origin || '*'}`,
+            // Required for cookies, authorization headers with HTTPS
+            'Access-Control-Allow-Credentials': credentials === null ? undefined : credentials,
+            // Required for CORS support as allowed headers.
+            'Access-Control-Allow-Headers': origin === null ? undefined : headers,
+        }),
         body: typeof body === 'string' ? body : JSON.stringify(body),
         isBase64Encoded,
     };
 };
 
 export const success = (body: any, contentType?: string, origin?: string) => {
-    return buildResponse(200, body, contentType, origin);
+    return buildResponse(200, body, { contentType, origin });
 };
 
 export const notfound = (body: any) => {
@@ -487,12 +506,15 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         return 'header-tool-by-default';
     }
 
+    /** expose `onlyDefined` */
+    public onlyDefined = onlyDefined;
+
     /**
      * get values by name
      * @param name case-insentive name of field
      */
     public getHeaders(name: string): string[] {
-        return Object.entries(this.headers).reduce<string[]>((L, [key, val]) => {
+        return Object.entries(this.headers || {}).reduce<string[]>((L, [key, val]) => {
             if (name === key || key.toLowerCase() === name) {
                 if (Array.isArray(val)) {
                     val.forEach(val => {

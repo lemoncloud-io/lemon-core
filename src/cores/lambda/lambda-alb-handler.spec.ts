@@ -9,7 +9,7 @@
  * @copyright (C) 2025 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { NextContext } from 'lemon-model';
-import { expect2 } from '../../common/test-helper';
+import { expect2, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { LambdaALBHandler } from './lambda-alb-handler';
 import { ALBEvent, LambdaHandler } from './lambda-handler';
@@ -32,6 +32,20 @@ describe('LambdaAlbHandler', () => {
     it('should pass handler listener', async () => {
         const { service, lambda } = instance();
         const event = loadJsonSync<ALBEvent>('data/samples/events/sample.event.alb.json');
+        expect2(() => service.hello()).toEqual('lambda-alb-handler');
+
+        //* handle directly from alb
+        if (1) {
+            const $res = await service.handle(event, null).catch(GETERR$);
+            expect2(() => $res).toEqual({
+                statusCode: 403,
+                headers: {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                },
+                body: '403 NOT SUPPORTED - no handler for alb',
+                isBase64Encoded: false,
+            });
+        }
 
         //* sample handler.
         service.setHandler(async (id, thiz, event, context) => {
@@ -55,9 +69,6 @@ describe('LambdaAlbHandler', () => {
             expect2(() => $res, '!body').toEqual({
                 statusCode: 200,
                 headers: {
-                    'Access-Control-Allow-Credentials': true,
-                    'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
-                    'Access-Control-Allow-Origin': '*',
                     'Content-Type': 'application/json; charset=utf-8',
                 },
                 isBase64Encoded: false,
@@ -76,9 +87,6 @@ describe('LambdaAlbHandler', () => {
             expect2(() => $res, '!body').toEqual({
                 statusCode: 200,
                 headers: {
-                    'Access-Control-Allow-Credentials': true,
-                    'Access-Control-Allow-Headers': 'origin, x-lemon-language, x-lemon-identity',
-                    'Access-Control-Allow-Origin': '*',
                     'Content-Type': 'application/json; charset=utf-8',
                 },
                 isBase64Encoded: false,

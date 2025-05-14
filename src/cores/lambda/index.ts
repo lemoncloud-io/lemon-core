@@ -20,6 +20,7 @@ export { CoreWEBController, LambdaWEBHandler } from './lambda-web-handler';
 export { LambdaSNSHandler } from './lambda-sns-handler';
 export { LambdaSQSHandler } from './lambda-sqs-handler';
 export { LambdaWSSHandler } from './lambda-wss-handler';
+export { LambdaALBHandler } from './lambda-alb-handler';
 export { CronNextHandler, CronParam } from './lambda-cron-handler';
 export { LambdaCognitoHandler } from './lambda-cognito-handler';
 export * from './lambda-dynamo-stream-handler';
@@ -34,6 +35,7 @@ export { $sns, $sqs, $web, $wss };
 
 //* import default with named.
 import { LambdaHandler, Context } from './lambda-handler';
+import { LambdaALBHandler } from './lambda-alb-handler';
 import { LambdaWEBHandler } from './lambda-web-handler';
 import { LambdaSNSHandler } from './lambda-sns-handler';
 import { LambdaSQSHandler } from './lambda-sqs-handler';
@@ -42,7 +44,6 @@ import { LambdaCronHandler } from './lambda-cron-handler';
 import { LambdaCognitoHandler } from './lambda-cognito-handler';
 import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
 import { LambdaNotificationHandler } from './lambda-notification-handler';
-import { LambdaALBHandler } from './lambda-alb-handler';
 
 /**
  * class: `LambdaModule`
