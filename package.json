@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",
     "!prepublishOnly": "npm test && npm run lint && npm run format",
-    "prepublishOnly": "npm test && npm run lint",
+    "@prepublishOnly": "npm test && npm run lint",
     "!plato": "----- analysis code complexity -----",
     "plato": "plato -r -d complexity dist"
   },
@@ -59,6 +59,7 @@
     "@aws-sdk/credential-providers": "^3.812.0",
     "@aws-sdk/lib-dynamodb": "^3.812.0",
     "@elastic/elasticsearch": "7.12",
+    "@types/aws-lambda": "^8.10.62",
     "@types/ioredis": "^4.28.10",
     "@types/jsonwebtoken": "^8.5.9",
     "async": "^3.2.4",
@@ -83,7 +84,6 @@
     "@smithy/types": "^4.3.0",
     "@smithy/util-stream": "^3.3.4",
     "@types/async": "^3.2.15",
-    "@types/aws-lambda": "^8.10.62",
     "@types/crypto-js": "^4.2.2",
     "@types/jest": "^27.4.1",
     "@types/js-yaml": "^3.12.5",
