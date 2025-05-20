@@ -35,6 +35,10 @@ export const loadJsonSync = <T extends object = any>(name: string, def = {}): T 
 
 /**
  * dynamic loading credentials by profile. (search PROFILE -> NAME)
+ *
+ * TODO -define the return type exactly.
+ *
+ * @returns {Promise<any>} - AWS credentials
  */
 export const asyncCredentials = async (profile: string) =>
     new Promise((resolve, reject) => {
@@ -48,6 +52,7 @@ export const asyncCredentials = async (profile: string) =>
         try {
             //WARN! - could not catch AWS.Error `Profile null not found` via callback.
             credentials = new AWS.SharedIniFileCredentials({ profile, callback });
+            //TODO - override the global config -> AWS 프로파일 로딩해서 DynamoDB 사용.
             AWS.config.credentials = credentials;
         } catch (e) {
             callback(e);
@@ -56,12 +61,15 @@ export const asyncCredentials = async (profile: string) =>
 
 /**
  * dynamic loading credentials by profile. (search PROFILE -> NAME)
+ *
+ * @deprecated use `asyncCredentials` instead.
  */
 export const credentials = (profile: string): string => {
     if (!profile) return '';
     // console.info('! credentials.profile =', profile);
     // WARN! - could not catch AWS.Error `Profile null not found` via callback.
     const credentials = new AWS.SharedIniFileCredentials({ profile });
+    //TODO - override the global config.
     AWS.config.credentials = credentials;
     return `${profile}`;
 };
