@@ -23,7 +23,7 @@
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",
     "!prepublishOnly": "npm test && npm run lint && npm run format",
-    "@prepublishOnly": "npm test && npm run lint",
+    "prepublishOnly": "npm test && npm run lint",
     "!plato": "----- analysis code complexity -----",
     "plato": "plato -r -d complexity dist"
   },
