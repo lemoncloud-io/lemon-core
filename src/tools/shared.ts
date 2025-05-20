@@ -17,7 +17,8 @@
  */
 import fs from 'fs';
 import yaml from 'js-yaml';
-import AWS from 'aws-sdk';
+import { fromIni } from '@aws-sdk/credential-providers';
+import { AwsCredentialIdentity } from '@aws-sdk/types';
 
 /**
  * load json in sync.
@@ -40,24 +41,10 @@ export const loadJsonSync = <T extends object = any>(name: string, def = {}): T 
  *
  * @returns {Promise<any>} - AWS credentials
  */
-export const asyncCredentials = async (profile: string) =>
-    new Promise((resolve, reject) => {
-        let credentials: any = null;
-        const callback = (e: Error, r?: any) => {
-            // e || console.error('! credentials.res :=', r);
-            // e && console.error('! credentials.err :=', e);
-            if (e) reject(e);
-            else resolve(r || credentials);
-        };
-        try {
-            //WARN! - could not catch AWS.Error `Profile null not found` via callback.
-            credentials = new AWS.SharedIniFileCredentials({ profile, callback });
-            //TODO - override the global config -> AWS 프로파일 로딩해서 DynamoDB 사용.
-            AWS.config.credentials = credentials;
-        } catch (e) {
-            callback(e);
-        }
-    });
+export const asyncCredentials = async (profile: string): Promise<AwsCredentialIdentity> => {
+    const provider = fromIni({ profile });
+    return provider();
+};
 
 /**
  * dynamic loading credentials by profile. (search PROFILE -> NAME)
@@ -66,6 +53,7 @@ export const asyncCredentials = async (profile: string) =>
  */
 export const credentials = (profile: string): string => {
     if (!profile) return '';
+    throw new Error('credentials is deprecated. use `asyncCredentials` instead.');
     // console.info('! credentials.profile =', profile);
     // WARN! - could not catch AWS.Error `Profile null not found` via callback.
     const credentials = new AWS.SharedIniFileCredentials({ profile });
