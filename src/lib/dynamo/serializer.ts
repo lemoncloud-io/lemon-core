@@ -14,7 +14,9 @@
 import _ from 'lodash';
 import * as utils from './utils';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const DocClient = require('aws-sdk/lib/dynamodb/document_client');
+// const DocClient = require('aws-sdk/lib/dynamodb/document_client');
+import { DynamoDB } from 'aws-sdk';
+const DocClient = DynamoDB.DocumentClient;
 
 const serializer = {} as any;
 

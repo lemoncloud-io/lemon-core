@@ -36,6 +36,7 @@ export const instance = () => {
 //! main test body.
 describe('DynamoScanService', () => {
     const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    PROFILE && console.info('! PROFILE =', PROFILE);
     const data: AccountItem[] = loadDataYml('dummy-dynamo-scan-data.yml').data;
     const dataMap = new Map<string, AccountItem>();
 
