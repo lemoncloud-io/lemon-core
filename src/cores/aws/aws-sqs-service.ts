@@ -11,8 +11,10 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
-
-import AWS, { SQS } from 'aws-sdk';
+// eslint-disable-next-line prettier/prettier
+import { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
+// eslint-disable-next-line prettier/prettier
+import { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessageCommandInput, GetQueueAttributesCommandInput } from '@aws-sdk/client-sqs';
 import { CoreServices } from '../core-services';
 
 /**
@@ -112,7 +114,7 @@ export class AWSSQSService implements SQSService {
                 };
                 return O;
             }, {});
-        const params: SQS.Types.SendMessageRequest = {
+        const params: SendMessageCommandInput = {
             // DelaySeconds: 10, //NOTE - use SQS's configuration.
             MessageAttributes: asAttr(attr),
             MessageBody: $U.json(data && typeof data == 'object' ? data : { data }),
@@ -120,8 +122,8 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.sendMessage(params).promise();
+        const sqs = new SQSClient({ region: this.region() });
+        const result = await sqs.send(new SendMessageCommand(params));
         _log(NS, '> result =', result);
         return (result && result.MessageId) || '';
     }
@@ -137,8 +139,8 @@ export class AWSSQSService implements SQSService {
         if (!size) throw new Error('@size(number) is required!');
 
         //* prepare param.
-        const params: SQS.Types.ReceiveMessageRequest = {
-            AttributeNames: ['SentTimestamp'],
+        const params: ReceiveMessageCommandInput = {
+            MessageSystemAttributeNames: ['SentTimestamp'],
             MaxNumberOfMessages: size,
             MessageAttributeNames: ['All'],
             QueueUrl: this.endpoint(),
@@ -148,8 +150,8 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call api
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.receiveMessage(params).promise();
+        const sqs = new SQSClient({ region: this.region() });
+        const result = await sqs.send(new ReceiveMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
 
         //* transform list.
@@ -182,15 +184,15 @@ export class AWSSQSService implements SQSService {
         if (!handle) throw new Error('@handle(string) is required!');
 
         //* prepare param
-        const params = {
+        const params: DeleteMessageCommandInput = {
             QueueUrl: this.endpoint(),
             ReceiptHandle: handle,
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.deleteMessage(params).promise();
+        const sqs = new SQSClient({ region: this.region() });
+        const result = await sqs.send(new DeleteMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
         return;
     }
@@ -201,15 +203,15 @@ export class AWSSQSService implements SQSService {
      * @param {*} TYPE
      */
     public async statistics(): Promise<SqsStatistics> {
-        const params = {
+        const params: GetQueueAttributesCommandInput = {
             QueueUrl: this.endpoint(),
             AttributeNames: ['All'],
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.getQueueAttributes(params).promise();
+        const sqs = new SQSClient({ region: this.region() });
+        const result = await sqs.send(new GetQueueAttributesCommand(params));
         _log(NS, '> result =', $U.json(result));
         const attr = result.Attributes || {};
         const stat: SqsStatistics = {
