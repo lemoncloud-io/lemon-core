@@ -53,6 +53,7 @@ export const asyncCredentials = async (profile: string): Promise<AwsCredentialId
  */
 export const credentials = (profile: string): string => {
     if (!profile) return '';
+    throw new Error('credentials is deprecated. use `asyncCredentials` instead.');
     // console.info('! credentials.profile =', profile);
     // WARN! - could not catch AWS.Error `Profile null not found` via callback.
     const credentials = new AWS.SharedIniFileCredentials({ profile });
