@@ -14,7 +14,11 @@
 import _ from 'lodash';
 import * as utils from './utils';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const DocClient = require('aws-sdk/lib/dynamodb/document_client');
+// const DocClient = require('aws-sdk/lib/dynamodb/document_client');
+
+//* for local testing. (use `npm install --save-dev aws-sdk@2.1354`)
+import AWS from 'aws-sdk';
+const DocClient = AWS.DynamoDB.DocumentClient;
 
 const serializer = {} as any;
 
