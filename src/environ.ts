@@ -96,7 +96,7 @@ export const loadProfile = (
     const profile = `${$env['NAME'] != 'none' ? $env['NAME'] || '' : ''}`;
     if (profile && $info) $info('! PROFILE =', profile);
     //TODO - use `lemon-devkit` to load credentials.
-    const $res: CrendentialForAWS = {} as any;
+    const $res: CrendentialForAWS = credentials(profile);
     return { ...$res, profile };
 };
 

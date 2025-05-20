@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../../environ';
-import { GETERR, expect2 } from '../../common/test-helper';
+import { GETERR, expect2, _it } from '../../common/test-helper';
 import { DynamoService, DynamoOption } from './dynamo-service';
 import { GeneralItem } from 'lemon-model';
 import { DynamoQueryService } from './dynamo-query-service';

@@ -8,7 +8,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { _log, _inf, $U } from '../../engine/';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
 import { ScanCommand } from '@aws-sdk/client-dynamodb';

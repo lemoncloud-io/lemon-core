@@ -8,8 +8,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2 } from '../..';
 import { loadProfile } from '../../environ';
+import { expect2, _it } from '../../common/test-helper';
 import { loadDataYml } from '../../tools';
 import { GeneralItem } from 'lemon-model';
 import { DynamoService, DynamoOption } from './dynamo-service';
