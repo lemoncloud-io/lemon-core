@@ -22,86 +22,17 @@
  *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import fs from 'fs';
-import * as yaml from 'js-yaml';
-import AWS from 'aws-sdk';
+import { AwsCredentialIdentity } from '@aws-sdk/types';
 
-interface Options {
-    ENV?: string;
-    STAGE?: string;
-    ENV_PATH?: string;
+export interface CrendentialForDev extends AwsCredentialIdentity {
+    /** the loaded profile name if applicable */
+    profile?: string;
 }
 
 /**
- * loader `<profile>.yml`
- *
- * **Determine Environ Target**
- * 1. ENV 로부터, 로딩할 `env.yml` 파일을 지정함.
- * 2. STAGE 로부터, `env.yml`내 로딩할 환경 그룹을 지정함.
- *
- * example:
- * `$ ENV=lemon STAGE=dev nodemon express.js --port 8081`
- *
- * @param process the main process instance.
- * @param options (optional) default option.
- */
-export const loadEnviron = (process: any, options?: Options) => {
-    options = options || {};
-    const { ENV, ENV_PATH } = options;
-    let { STAGE } = options;
-    const $env = (process && process.env) || {};
-    const QUIET = 0 ? 0 : $env['LS'] === '1'; // LOG SILENT - PRINT NO LOG MESSAGE
-    const PROFILE = ENV || $env['PROFILE'] || $env['ENV'] || 'none'; // Environment Profile Name.
-    STAGE = STAGE || $env['STAGE'] || $env['NODE_ENV'] || 'local'; // Global STAGE/NODE_ENV For selecting.
-    const _log = QUIET ? (...a: any) => {} : console.log;
-    const isLocal = STAGE === 'local';
-    if (!isLocal) _log(`! PROFILE=${PROFILE} STAGE=${STAGE}`);
-
-    //* initialize environment via 'env.yml'
-    return ($det => {
-        const file = PROFILE;
-        const path = `${ENV_PATH || './env'}/` + file + (file.endsWith('.yml') ? '' : '.yml');
-        if (!fs.existsSync(path)) throw new Error('FILE NOT FOUND:' + path);
-        if (!isLocal) _log(`! loading yml-file: "${path}"`);
-        const $doc: any = yaml.load(fs.readFileSync(path, 'utf8'));
-        const $src: any = ($doc && $doc[STAGE]) || {};
-        const $new = Object.keys($src).reduce(($O: any, key: string) => {
-            const val = $src[key];
-            if (typeof val == 'string' && val.startsWith('!')) {
-                //* force to update environ.
-                $O[key] = val.substring(1);
-            } else if (typeof val == 'object' && Array.isArray(val)) {
-                //* join array with ', '.
-                $O[key] = val.join(', ');
-            } else if ($det[key] === undefined) {
-                //* override only if undefined.
-                $O[key] = `${val}`; // as string.
-            } else {
-                //* ignore!.
-            }
-            return $O;
-        }, {});
-        //* make sure STAGE.
-        $new.STAGE = $new.STAGE || STAGE;
-        return Object.assign($det, $new);
-    })($env);
-};
-
-/**
- * dynamic loading credentials by profile. (search PROFILE -> NAME)
- * !WARN! - could not catch AWS.Error `Profile null not found` via callback.
- *
- * @param profile   profile name of AWS.
- */
-const credentials = (profile: string): string => {
-    if (!profile) return '';
-    const credentials = new AWS.SharedIniFileCredentials({ profile });
-    AWS.config.credentials = credentials;
-    return `${profile}`;
-};
-
-/**
  * load AWS credential profile via env.NAME
+ *
+ * NOTE! ONLY FOR development purpose.
  *
  * ```sh
  * # load AWS 'lemon' profile, and run test.
@@ -110,14 +41,25 @@ const credentials = (profile: string): string => {
  * @param $proc     process (default `global.process`)
  * @param $info     info logger (default `console.info`)
  */
-export const loadProfile = ($proc?: { env?: any }, $info?: (title: string, msg?: string) => void) => {
-    $proc = $proc === undefined ? process : $proc;
-    $info = $info === undefined ? console.info : $info;
-    const $env = loadEnviron($proc);
-    const PROFILE = `${$env['NAME'] != 'none' ? $env['NAME'] || '' : ''}`;
-    if (PROFILE && $info) $info('! PROFILE =', PROFILE);
-    return credentials(PROFILE);
+export const loadProfile = (
+    $proc?: { env?: any },
+    $info?: (title: string, msg?: string) => void,
+): CrendentialForDev => {
+    const $env = $proc?.env || process.env;
+    const profile = `${$env['NAME'] != 'none' ? $env['NAME'] || '' : ''}`;
+    if (profile && $info) $info('! PROFILE =', profile);
+    //TODO - use `lemon-devkit` to load credentials.
+    const $res: AwsCredentialIdentity = {} as any;
+    return { ...$res, profile };
 };
 
-//* export default.
-export default loadEnviron;
+/**
+ * dynamic loading credentials by profile. (search PROFILE -> NAME)
+ *
+ * @deprecated use `asyncCredentials` instead.
+ */
+export const credentials = (profile: string): CrendentialForDev => {
+    if (!profile) return;
+    throw new Error('WARN! credentials() is deprecated. use `asyncCredentials()` instead!');
+    //TODO - use `lemon-devkit` to load credentials.
+};

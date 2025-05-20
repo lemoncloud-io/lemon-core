@@ -292,7 +292,7 @@ describe('abstract-service', () => {
     //* check of createHttpSearchProxy()
     it('should pass $ES6.$X.createHttpSearchProxy()', async () => {
         //* ignore if not in 'lemon'
-        if (PROFILE !== 'lemon') {
+        if (PROFILE.profile !== 'lemon') {
             console.info(`! ignored by profile[${PROFILE}]`);
             return;
         }
@@ -300,7 +300,7 @@ describe('abstract-service', () => {
         // use `lemon-hello-api` in prod.
         const endpoint = `https://hg9errxv25.execute-api.ap-northeast-2.amazonaws.com/prod`;
         const $X = $ES6.$X;
-        const credentials = $X.loadCredentials(PROFILE);
+        const credentials = $X.loadCredentials(PROFILE.profile);
         const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
 
         // GET method test
@@ -322,7 +322,7 @@ describe('abstract-service', () => {
     //* check of _ES6
     it('should pass _ES6 factory', async () => {
         //* ignore if not in 'lemon'
-        if (PROFILE !== 'lemon') {
+        if (PROFILE.profile != 'lemon') {
             console.info(`! ignored by profile[${PROFILE}]`);
             return;
         }
@@ -330,7 +330,7 @@ describe('abstract-service', () => {
         // use `lemon-templates-api` in dev.
         const endpoint = `https://ag1qbtayhj.execute-api.ap-northeast-2.amazonaws.com/dev/search/echo/query`;
         const $X = $ES6.$X;
-        const credentials = $X.loadCredentials(PROFILE);
+        const credentials = $X.loadCredentials(PROFILE.profile);
         const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
 
         // GET method test

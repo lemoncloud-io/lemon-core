@@ -44,9 +44,10 @@ import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
+import { AwsCredentialIdentity } from '../tools/shared';
+import { credentials } from '../environ';
 import REQUEST from 'request';
 import queryString from 'query-string';
-import AWS from 'aws-sdk';
 import elasticsearch from '@elastic/elasticsearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -1134,9 +1135,12 @@ const $X = {
     /**
      * load the local credential
      * - throws if not found.
+     *
      * @param profile (optional) target profile (default use `loadProfile()`, '' use the default);
+     *
+     * @deprecated use `asyncCredentials()` instead.
      */
-    loadCredentials: (profile?: string): AWS.Credentials => {
+    loadCredentials: (profile?: string): AwsCredentialIdentity => {
         const errScope = `loadCredentials(${profile ?? ''})`;
         // determine the final profile parameter.
         const _profile = (name: string) => {
@@ -1145,9 +1149,10 @@ const $X = {
             return NAME && NAME !== 'none' ? NAME : null;
         };
         profile = _profile(profile);
-        const credentials = new AWS.SharedIniFileCredentials({ profile });
-        if (!credentials?.accessKeyId) throw new Error(`@profile[${profile ?? ''}] is invalid - ${errScope}`);
-        return credentials;
+        if (profile) throw new Error(`@profile[${profile ?? ''}] is not supported (need refactoring) - ${errScope}`);
+        const cred = credentials(profile);
+        if (!cred?.accessKeyId) throw new Error(`@profile[${profile ?? ''}] is invalid - ${errScope}`);
+        return cred;
     },
     /**
      * create http-web-proxy agent which using endpoint as proxy server.
@@ -1174,7 +1179,7 @@ const $X = {
             /** resultKey in response */
             resultKey?: string;
             /** credentials to load */
-            credentials?: AWS.Credentials;
+            credentials?: AwsCredentialIdentity;
             /** region */
             region?: string;
         },

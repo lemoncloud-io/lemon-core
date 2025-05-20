@@ -19,6 +19,7 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 import { fromIni } from '@aws-sdk/credential-providers';
 import { AwsCredentialIdentity } from '@aws-sdk/types';
+export { AwsCredentialIdentity };
 
 /**
  * load json in sync.
@@ -44,16 +45,6 @@ export const loadJsonSync = <T extends object = any>(name: string, def = {}): T 
 export const asyncCredentials = async (profile: string): Promise<AwsCredentialIdentity> => {
     const provider = fromIni({ profile });
     return provider();
-};
-
-/**
- * dynamic loading credentials by profile. (search PROFILE -> NAME)
- *
- * @deprecated use `asyncCredentials` instead.
- */
-export const credentials = (profile: string): string => {
-    if (!profile) return '';
-    throw new Error('WARN! credentials() is deprecated. use `asyncCredentials()` instead!');
 };
 
 /**
