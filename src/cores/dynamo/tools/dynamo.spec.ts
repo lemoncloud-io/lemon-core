@@ -28,10 +28,22 @@ describe('Dynamo/lib', () => {
     it('should pass serializer', async () => {
         expect2(() => 'hi').toEqual('hi');
 
+        expect2(() => ['a']).toEqual(['a']);
         expect2(() => Serializer.serializeAttribute('a', 'S')).toEqual('a');
+
+        expect2(() => Serializer.serializeAttribute('a')).toEqual('a');
+        expect2(() => Serializer.serializeAttribute('')).toEqual('');
+        expect2(() => Serializer.serializeAttribute(null)).toEqual(null);
+        expect2(() => Serializer.serializeAttribute(undefined)).toEqual(undefined);
+
+        //! WARN - `Received: serializes to the same string` => 뭔가 오브젝트가 다른듯.
+        // expect2(() => Serializer.serializeAttribute('a', 'SS')).toEqual(['a']);
+
         expect2(() => JSON.stringify(Serializer.serializeAttribute('a', 'SS'))).toEqual('["a"]');
 
         // expect2(() => AWSUtil.isBrowser()).toEqual();
         // expect2(() => AWSUtil.Buffer('')).toEqual();
+
+        //TODO - check `scan.buildRequest()`
     });
 });
