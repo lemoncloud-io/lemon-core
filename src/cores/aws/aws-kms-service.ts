@@ -17,8 +17,10 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
-import AWS, { KMS } from 'aws-sdk';
-import { SigningAlgorithmSpec } from 'aws-sdk/clients/kms';
+import { KMSClient, SignCommand, SigningAlgorithmSpec } from '@aws-sdk/client-kms';
+import { GetPublicKeyCommand, EncryptCommand, DecryptCommand, VerifyCommand } from '@aws-sdk/client-kms';
+// eslint-disable-next-line prettier/prettier
+import { EncryptCommandInput, DecryptCommandInput, GetPublicKeyCommandInput, SignCommandInput, VerifyCommandInput } from '@aws-sdk/client-kms';
 import { CoreKmsService } from '../core-services';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -29,7 +31,7 @@ const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as stri
 const instance = () => {
     const _region = region();
     const config = { region: _region };
-    return new AWS.KMS(config);
+    return new KMSClient(config);
 };
 
 /**
@@ -92,7 +94,7 @@ export class AWSKMSService implements CoreKmsService {
         return this._keyId;
     };
 
-    protected _instance: AWS.KMS;
+    protected _instance: KMSClient;
     /**
      * get KMS instance in stock
      */
@@ -110,13 +112,13 @@ export class AWSKMSService implements CoreKmsService {
         const keyId = this.keyId();
         _inf(NS, `encrypt(${keyId}, ${message.substring(0, 10)}...)..`);
         const KeyId = keyId;
-        const params = {
+        const params: EncryptCommandInput = {
             KeyId,
-            Plaintext: message,
+            Plaintext: Buffer.from(message),
         };
-        const result = await this.instance().encrypt(params).promise();
+        const result = await this.instance().send(new EncryptCommand(params));
         _log(NS, '> result =', result);
-        const ciphertext = result.CiphertextBlob ? result.CiphertextBlob.toString('base64') : message;
+        const ciphertext = result.CiphertextBlob ? Buffer.from(result.CiphertextBlob).toString('base64') : message;
         _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
         return ciphertext;
     };
@@ -135,8 +137,8 @@ export class AWSKMSService implements CoreKmsService {
                     : encryptedSecret
                 : encryptedSecret;
         //* api param.
-        const params = { CiphertextBlob };
-        const data: any = await this.instance().decrypt(params).promise();
+        const params: DecryptCommandInput = { CiphertextBlob: CiphertextBlob as Uint8Array };
+        const data: any = await this.instance().send(new DecryptCommand(params));
         // _log(NS, '> data.type =', typeof data);
         return data && data.Plaintext ? data.Plaintext.toString() : '';
     };
@@ -151,14 +153,15 @@ export class AWSKMSService implements CoreKmsService {
         if (!message || typeof message !== 'string') throw new Error(`@message[${message}] is invalid - kms.sign()`);
         const KeyId = this.keyId();
         _inf(NS, `sign(${KeyId}, ${message.substring(0, 10)}...)..`);
-        const params: KMS.Types.SignRequest = {
+
+        const params: SignCommandInput = {
             KeyId,
             Message: Buffer.from(message),
             SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
             MessageType: 'RAW',
         };
-        const result = await this.instance().sign(params).promise();
-        const signature = result.Signature.toString('base64');
+        const result = await this.instance().send(new SignCommand(params));
+        const signature = result.Signature ? Buffer.from(result.Signature).toString('base64') : '';
         if (forJwtSignature) return fromBase64(signature);
         return signature;
     };
@@ -175,7 +178,7 @@ export class AWSKMSService implements CoreKmsService {
         if (!signature) throw new Error(`@signature (string|Buffer) is required - kms.verify()`);
         const KeyId = this.keyId();
         _inf(NS, `verify(${KeyId}, ${message.substring(0, 10)}...)..`);
-        const params: KMS.Types.VerifyRequest = {
+        const params: VerifyCommandInput = {
             KeyId,
             Message: Buffer.from(message),
             SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
@@ -183,8 +186,7 @@ export class AWSKMSService implements CoreKmsService {
             Signature: typeof signature === 'string' ? Buffer.from(signature, 'base64') : signature,
         };
         const result = await this.instance()
-            .verify(params)
-            .promise()
+            .send(new VerifyCommand(params))
             .catch(e => {
                 _err(NS, `! err=`, e);
                 return null as any;
@@ -202,11 +204,11 @@ export class AWSKMSService implements CoreKmsService {
     public getPublicKey = async (encoding: BufferEncoding = 'base64') => {
         const KeyId = this.keyId();
         _inf(NS, `getPublicKey(${KeyId})..`);
-        const params: KMS.Types.GetPublicKeyRequest = {
+        const params: GetPublicKeyCommandInput = {
             KeyId,
         };
-        const result = await this.instance().getPublicKey(params).promise();
-        return result?.PublicKey.toString(encoding);
+        const result = await this.instance().send(new GetPublicKeyCommand(params));
+        return result?.PublicKey ? Buffer.from(result.PublicKey).toString(encoding) : '';
     };
 
     /**

@@ -13,7 +13,9 @@
 import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
 const NS = $U.NS('SNS', 'blue');
 
-import AWS from 'aws-sdk';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
+import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
+import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { CoreSnsService } from '../core-services';
 
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
@@ -95,34 +97,32 @@ export class AWSSNSService implements CoreSnsService {
      */
     public accountID = async (): Promise<string> => {
         return new Promise((resolve, reject) => {
-            const iam = new AWS.IAM();
-            iam.getUser({}, (err, data) => {
-                if (!err) {
-                    resolve(data.User.Arn.split(':')[4]);
-                } else if (err) {
+            const iam = new IAMClient();
+            iam.send(new GetUserCommand({}))
+                .then(data => {
+                    return data.User?.Arn.split(':')[4];
+                })
+                .catch(err => {
                     const msg = `${err.message || err}`;
-                    //* if non-User case. call STS().
-                    if (msg == 'Must specify userName when calling with non-User credentials') {
-                        const sts = new AWS.STS();
-                        sts.getCallerIdentity({}, (err, data) => {
-                            if (err) {
-                                reject(err);
-                            } else {
-                                resolve(data.Account);
-                            }
-                        });
-                        return;
+                    if (msg === 'Must specify userName when calling with non-User credentials') {
+                        const sts = new STSClient({});
+                        return sts
+                            .send(new GetCallerIdentityCommand({}))
+                            .then(data => data.Account)
+                            .catch(e => {
+                                throw e;
+                            });
                     }
                     //* otherwise, call internal resource. (ECS, EC2)
                     _err(NS, '! err@1 =', err);
                     //NOTE! - below will be fail in lambda.
-                    const metadata = new AWS.MetadataService();
-                    metadata.request('/latest/meta-data/iam/info/', (err, data) => {
-                        if (err) reject(err);
-                        else resolve(JSON.parse(data).InstanceProfileArn.split(':')[4]);
-                    });
-                }
-            });
+                    // MetadataService ia deprecated.
+                    // const metadata = new AWS.MetadataService();
+                    // metadata.request('/latest/meta-data/iam/info/', (err, data) => {
+                    //     if (err) reject(err);
+                    //     else resolve(JSON.parse(data).InstanceProfileArn.split(':')[4]);
+                    // });
+                });
         });
     };
 
@@ -148,10 +148,9 @@ export class AWSSNSService implements CoreSnsService {
         //* call sns.publish()
         const region = arn.split(':')[3];
         if (!region) throw new Error(`@region is required. arn:${arn}`);
-        const sns = new AWS.SNS({ region });
+        const sns = new SNSClient({ region });
         return sns
-            .publish(params)
-            .promise()
+            .send(new PublishCommand(params))
             .then(res => {
                 _log(NS, `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
                 return (res && res.MessageId) || '';

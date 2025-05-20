@@ -12,6 +12,7 @@
 import { _log, _inf, _err, $U } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
+import { QueryCommand } from '@aws-sdk/client-dynamodb';
 const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -106,7 +107,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
 
         //* get instance of dynamodoc, and execute query().
         const { dynamodoc } = DynamoService.instance();
-        const res = await dynamodoc.query(payload).promise();
+        const res = await dynamodoc.send(new QueryCommand(payload));
         if (res) {
             // _log(NS, `> query[${pkey}].res =`, $U.json(res)); // `startKey`
             const items: unknown[] = res.Items || [];

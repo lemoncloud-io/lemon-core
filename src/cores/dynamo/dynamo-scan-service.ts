@@ -11,6 +11,7 @@
 import { _log, _inf, $U } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
+import { ScanCommand } from '@aws-sdk/client-dynamodb';
 const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
 
 // ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
@@ -121,7 +122,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
 
         //* get instance of dynamodoc, and execute query().
         const { dynamodoc } = DynamoService.instance();
-        const res = await dynamodoc.scan(payload).promise();
+        const res = await dynamodoc.send(new ScanCommand(payload));
         _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
         res?.Items && _log(NS, `> scan[0] =`, $U.json(res?.Items?.[0]));
 

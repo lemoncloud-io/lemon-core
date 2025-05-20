@@ -14,7 +14,10 @@
 import { _log, _inf, _err, $U } from '../../engine/';
 import { GeneralItem, Incrementable } from 'lemon-model';
 import { loadDataYml } from '../../tools/';
-import AWS from 'aws-sdk';
+import { StreamViewType, KeySchemaElement } from '@aws-sdk/client-dynamodb';
+import { CreateTableCommand, DeleteTableCommand, DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBStreamsClient } from '@aws-sdk/client-dynamodb-streams';
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type KEY_TYPE = 'number' | 'string';
@@ -88,10 +91,10 @@ export class DynamoService<T extends GeneralItem> {
      */
     public static instance(region?: string) {
         region = `${region || 'ap-northeast-2'}`;
-        const config = { region };
-        const dynamo = new AWS.DynamoDB(config); // DynamoDB Main.
-        const dynamodoc = new AWS.DynamoDB.DocumentClient(config); // DynamoDB Document.
-        const dynamostr = new AWS.DynamoDBStreams(config); // DynamoDB Stream.
+        const config: DynamoDBClientConfig = { region };
+        const dynamo = new DynamoDBClient(config); // Low-level DynamoDB client
+        const dynamodoc = DynamoDBDocumentClient.from(dynamo); // High-level Document client
+        const dynamostr = new DynamoDBStreamsClient(config); // DynamoDB Streams client
         return { dynamo, dynamostr, dynamodoc };
     }
 
@@ -126,7 +129,6 @@ export class DynamoService<T extends GeneralItem> {
             }
             throw new Error(`invalid key-type:${type}`);
         };
-        const StreamViewType = 'NEW_AND_OLD_IMAGES';
         //* prepare payload.
         const payload = {
             TableName: tableName,
@@ -135,7 +137,7 @@ export class DynamoService<T extends GeneralItem> {
                     AttributeName: idName,
                     KeyType: 'HASH',
                 },
-            ],
+            ] as KeySchemaElement[],
             AttributeDefinitions: [
                 {
                     AttributeName: idName,
@@ -143,7 +145,7 @@ export class DynamoService<T extends GeneralItem> {
                 },
             ],
             ProvisionedThroughput: { ReadCapacityUnits, WriteCapacityUnits },
-            StreamSpecification: { StreamEnabled, StreamViewType },
+            StreamSpecification: { StreamEnabled, StreamViewType: StreamViewType.NEW_AND_OLD_IMAGES },
         };
         //* set sort-key.
         if (sortName) {
@@ -322,8 +324,7 @@ export class DynamoService<T extends GeneralItem> {
         _log(NS, `createTable(${ReadCapacityUnits}, ${WriteCapacityUnits})...`);
         const payload = this.prepareCreateTable(ReadCapacityUnits, WriteCapacityUnits);
         return instance()
-            .dynamo.createTable(payload)
-            .promise()
+            .dynamo.send(new CreateTableCommand(payload))
             .then(res => {
                 _log(NS, '> createTable.res =', res);
                 return res;
@@ -338,8 +339,7 @@ export class DynamoService<T extends GeneralItem> {
         _log(NS, `deleteTable()...`);
         const payload = this.prepareDeleteTable();
         return instance()
-            .dynamo.deleteTable(payload)
-            .promise()
+            .dynamo.send(new DeleteTableCommand(payload))
             .then(res => {
                 _log(NS, '> deleteTable.res =', res);
                 return res;
@@ -359,8 +359,7 @@ export class DynamoService<T extends GeneralItem> {
         const itemKey = this.prepareItemKey(id, sort);
         // _log(NS, `> pkey[${id}${sort ? '/' : ''}${sort || ''}] =`, $U.json(itemKey));
         return instance()
-            .dynamodoc.get(itemKey)
-            .promise()
+            .dynamodoc.send(new GetCommand(itemKey))
             .then(res => {
                 // _log(NS, '> readItem.res =', $U.json(res));
                 if (!res.Item) throw new Error(`404 NOT FOUND - ${idName}:${id}${sort ? '/' : ''}${sort || ''}`);
@@ -388,8 +387,7 @@ export class DynamoService<T extends GeneralItem> {
         const payload = this.prepareSaveItem(id, item);
         // _log(NS, '> payload :=', payload);
         return instance()
-            .dynamodoc.put(payload)
-            .promise()
+            .dynamodoc.send(new PutCommand(payload))
             .then(res => {
                 _log(NS, '> saveItem.res =', $U.json(res));
                 return payload.Item;
@@ -412,8 +410,7 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `deleteItem(${id})...`);
         const payload = this.prepareItemKey(id, sort);
         return instance()
-            .dynamodoc.delete(payload)
-            .promise()
+            .dynamodoc.send(new DeleteCommand(payload))
             .then(res => {
                 _log(NS, '> deleteItem.res =', $U.json(res));
                 return null as any;
@@ -443,8 +440,7 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `updateItem(${id})...`);
         const payload = this.prepareUpdateItem(id, sort, updates, increments);
         return instance()
-            .dynamodoc.update(payload)
-            .promise()
+            .dynamodoc.send(new UpdateCommand(payload))
             .then(res => {
                 _log(NS, `> updateItem[${id}].res =`, $U.json(res));
                 const attr: any = res.Attributes;
