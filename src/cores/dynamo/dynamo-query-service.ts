@@ -52,8 +52,8 @@ export interface DynamoSimpleQueriable<T extends GeneralItem> {
     queryRange(pkey: string, from: number, to: number, limit?: number, last?: number): Promise<DynamoQueryResult<T>>;
 }
 
-import Query from '../../lib/dynamo/query';
-import Serializer from '../../lib/dynamo/serializer';
+import Query from './tools/query';
+import Serializer from './tools/serializer';
 
 /**
  * class: `DynamoQueryService`
