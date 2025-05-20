@@ -89,8 +89,8 @@ export interface DynamoSimpleScannable<T extends GeneralItem> {
     scan(limit?: number, last?: any, filter?: DynamoScanFilter): Promise<DynamoScanResult<T>>;
 }
 
-import Scan from '../../lib/dynamo/scan';
-import Serializer from '../../lib/dynamo/serializer';
+import Scan from './tools/scan';
+import Serializer from './tools/serializer';
 
 /**
  * class: `DynamoScanService`

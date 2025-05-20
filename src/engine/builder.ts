@@ -22,7 +22,6 @@ import {
     ENGINE_KEY_IN_SCOPE,
 } from './types';
 import { Utilities } from './utilities';
-import _ from 'lodash';
 
 //WARN! - ------------------------------------------------------
 //WARN! - DO NOT IMPORT ANY DEPENDENCY IN HERE EXCEPT TYPES.
@@ -157,20 +156,18 @@ class MyEngineModules implements EngineModules {
             }),
         );
         //* build map by level => Module.
-        const maps: { [key: number]: EngineModule[] } = _.reduce(
-            mods,
-            (M: any, inf) => {
-                if (M[inf.level]) {
-                    M[inf.level].push(inf.mod);
-                } else {
-                    M[inf.level] = [inf.mod];
-                }
-                return M;
-            },
-            {},
-        );
-        // eslint-disable-next-line prettier/prettier
-        const levels: number[] = Object.keys(maps).map(_ => Number(_)).sort();
+        const maps = mods.reduce<{ [key: number]: EngineModule[] }>((M, N) => {
+            if (M[N.level]) {
+                M[N.level].push(N.mod);
+            } else {
+                M[N.level] = [N.mod];
+            }
+            return M;
+        }, {});
+
+        const levels = Object.keys(maps)
+            .map<number>(s => Number(s))
+            .sort();
         if (getLevels) return levels;
         const catchModError = (e: Error, mod: EngineModule) => {
             // console.error(`! mod[${mod.getModuleName()}].err =`, e);
