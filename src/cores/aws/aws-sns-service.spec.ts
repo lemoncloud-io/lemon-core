@@ -17,8 +17,8 @@ process.env = Object.assign(process.env, {
 
 //* load $engine, and prepare dummy handler
 import { AWSSNSService } from './aws-sns-service';
-import { credentials } from '../../tools/shared';
 import { environ } from '../../common/test-helper';
+import { credentials } from '../../environ';
 
 const SNS = new AWSSNSService();
 

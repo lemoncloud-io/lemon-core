@@ -7,11 +7,10 @@
  *
  * @copyright (C) lemoncloud.io 2024 - All Rights Reserved.
  */
-import { loadProfile } from '../../environ';
+import { loadProfile, asyncCredentials } from '../../environ';
 import { expect2, GETERR } from '../../common/test-helper';
 import { createSigV4Proxy } from '../../helpers/helpers';
 import { sigV4ClientConfig } from './sig-v4';
-import { asyncCredentials } from '../../tools/shared';
 
 //! api with `lemon-hello-api` in prod @lemon.
 const HOST = 'hg9errxv25.execute-api.ap-northeast-2.amazonaws.com';

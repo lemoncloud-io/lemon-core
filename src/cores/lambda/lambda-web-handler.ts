@@ -28,7 +28,7 @@ import {
 } from 'lemon-model';
 import { ProtocolParam } from './../core-services';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
-import { loadJsonSync } from '../../tools/shared';
+import { loadJsonSync } from '../../tools/';
 import { GETERR } from '../../common/test-helper';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';

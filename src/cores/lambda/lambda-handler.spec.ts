@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { expect2, GETERR$ } from '../../common/test-helper';
-import { loadJsonSync } from '../../tools/shared';
+import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from './lambda-handler';
 import { Handler } from 'aws-lambda';
 

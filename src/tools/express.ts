@@ -24,7 +24,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { LemonEngine } from '../engine/';
+import { LemonEngine } from '../engine/types';
 import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 
 /**
@@ -67,6 +67,6 @@ export const buildExpress = (
     const _factory = (options: any): ExpressFactory => {
         return null;
     };
-    const $facctory = _factory(options);
-    return $facctory($engine, $web, options);
+    const $factory = _factory(options);
+    return $factory($engine, $web, options);
 };

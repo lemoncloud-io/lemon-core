@@ -10,7 +10,7 @@
  */
 import { $U } from '../../engine';
 import { expect2 } from '../../common/test-helper';
-import { loadJsonSync } from '../../tools/shared';
+import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from './lambda-handler';
 import { LambdaSNSHandler } from './lambda-sns-handler';
 import * as $lambda from './lambda-handler.spec';

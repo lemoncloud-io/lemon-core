@@ -10,7 +10,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { credentials } from '../../tools/';
+import { credentials } from '../../environ';
 import { AWSSQSService, MyDummySQSService } from './aws-sqs-service';
 import { expect2, _it, environ } from '../../common/test-helper';
 
@@ -23,7 +23,7 @@ describe('AWSSQSService', () => {
     const ENDPOINTS: { [key: string]: string } = {
         lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-test-sqs',
     };
-    const ENDPOINT = ENDPOINTS[PROFILE];
+    const ENDPOINT = ENDPOINTS[PROFILE?.profile];
 
     const wait = async (timeout: number) =>
         new Promise((resolve, reject) => {

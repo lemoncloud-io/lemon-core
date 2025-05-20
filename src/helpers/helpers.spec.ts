@@ -9,7 +9,7 @@
  */
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
-import { loadJsonSync } from '../tools/shared';
+import { loadJsonSync } from '../tools/';
 import { expect2, waited } from '../common/test-helper';
 import {
     $protocol,

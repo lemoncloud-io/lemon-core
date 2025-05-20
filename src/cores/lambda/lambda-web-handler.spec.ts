@@ -11,12 +11,13 @@
 import { $U } from '../../engine/';
 import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
 import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
-import { loadJsonSync, credentials } from '../../tools/';
+import { loadJsonSync } from '../../tools/';
 import { ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
 import { NextIdentity } from '..';
+import { credentials } from '../../environ';
 
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
     public constructor(lambda: LambdaHandler) {

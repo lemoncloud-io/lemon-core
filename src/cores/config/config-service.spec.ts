@@ -9,10 +9,11 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $U } from '../../engine/';
-import { credentials, loadJsonSync } from '../../tools/';
+import { loadJsonSync } from '../../tools/';
 import { AWSKMSService } from './../aws/aws-kms-service';
 import { expect2, environ } from '../../common/test-helper';
 import { marshal, Filter, MyConfigService } from './config-service';
+import { credentials } from '../../environ';
 
 //! main test body.
 describe('ConfigService', () => {

@@ -44,8 +44,7 @@ import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
-import { AwsCredentialIdentity } from '../tools/shared';
-import { credentials } from '../environ';
+import { credentials, CrendentialForAWS } from '../environ';
 import REQUEST from 'request';
 import queryString from 'query-string';
 import elasticsearch from '@elastic/elasticsearch';
@@ -1140,7 +1139,7 @@ const $X = {
      *
      * @deprecated use `asyncCredentials()` instead.
      */
-    loadCredentials: (profile?: string): AwsCredentialIdentity => {
+    loadCredentials: (profile?: string): CrendentialForAWS => {
         const errScope = `loadCredentials(${profile ?? ''})`;
         // determine the final profile parameter.
         const _profile = (name: string) => {
@@ -1179,7 +1178,7 @@ const $X = {
             /** resultKey in response */
             resultKey?: string;
             /** credentials to load */
-            credentials?: AwsCredentialIdentity;
+            credentials?: CrendentialForAWS;
             /** region */
             region?: string;
         },

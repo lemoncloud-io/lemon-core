@@ -9,7 +9,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { expect2, GETERR, environ } from '../../common/test-helper';
-import { credentials } from '../../tools/';
+import { credentials } from '../../environ';
 import { NextContext } from 'lemon-model';
 import {
     MyProtocolService,
@@ -208,7 +208,7 @@ describe('ProtocolService', () => {
         expect2(service.transformEvent(uri, param), 'requestContext').toEqual({ requestContext });
 
         //* now verify with real lambda call.
-        if (PROFILE == 'lemon') {
+        if (PROFILE?.profile == 'lemon') {
             expect2(await service.execute(param).catch(GETERR)).toEqual(
                 'Function not found: arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api-dev-lambda',
             );
@@ -246,7 +246,7 @@ describe('ProtocolService', () => {
         expect2(service.transformEvent(uri, param), 'requestContext').toEqual({ requestContext });
 
         //* now verify with real lambda call.
-        if (PROFILE == 'comics') {
+        if (PROFILE?.profile == 'comics') {
             // expect2(await service.execute(param, config).catch(GETERR)).toEqual('@ns is required!');
             // expect2(await service.execute(param, config).catch(GETERR)).toEqual('@id is required!');
             expect2(await service.execute(param, config).catch(GETERR)).toEqual(
