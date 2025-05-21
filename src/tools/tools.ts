@@ -47,9 +47,9 @@ export const loadDataYml = <T extends object = any>(file: string, folder?: strin
 /**
  * dynamic loading credentials by profile. (search PROFILE -> NAME)
  *
- * @returns {Promise<any>} - AWS credentials
+ * @returns {Promise<CrendentialForAWS>} - AWS credentials
  */
-export const asyncCredentials = async (profile: string): Promise<CrendentialForAWS> => {
+export const asyncCredentials = async (profile?: string): Promise<CrendentialForAWS> => {
     const provider = fromIni({ profile });
     const $res = await provider();
     return { ...$res, profile };
