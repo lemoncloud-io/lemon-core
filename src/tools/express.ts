@@ -24,6 +24,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { GETERR } from '../common/test-helper';
 import { LemonEngine } from '../engine/types';
 import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 
@@ -52,21 +53,54 @@ export interface ExpressFactoryResult {
     createServer: (...args: any[]) => any;
 }
 
-//* create Server Instance.
-//NOTE - avoid external reference of type.
+/**
+ * type: `BuildExpressOptions`
+ * - options for `buildExpress()`
+ */
+export interface BuildExpressOptions {
+    /** run arguments */
+    argv?: string[];
+    /** prefix as ROUTE_PREFIX */
+    prefix?: string;
+    /** request-id generator */
+    genRequestId?: () => string;
+    /** (optional) loader of module */
+    loadModule?: <T = any>(mod: string) => T;
+}
+
+/**
+ * create Server Instance.
+ *
+ * @param $engine - LemonEngine by `buildEngine()`
+ * @param $web - LambdaWEBHandler in `$cores`
+ */
 export const buildExpress = (
     $engine: LemonEngine,
     $web: LambdaWEBHandler,
-    options?: { argv?: string[]; prefix?: string; genRequestId?: () => string },
-): { express: () => any; app: any; createServer: () => any } => {
+    options?: BuildExpressOptions,
+): ExpressFactoryResult => {
     const errScope = `buildExpress()`;
+    // STEP.0 validate parameters.
     if (!$engine) throw new Error(`$engine(LemonEngine) is required - ${errScope}`);
     if (!$web) throw new Error(`$web(LambdaWEBHandler) is required - ${errScope}`);
-    options = options || {};
 
-    const _factory = (options: any): ExpressFactory => {
-        return null;
+    // STEP.1 check the `lemon-devkit` module.
+    const _load = (mod: string) => {
+        if (options?.loadModule) return options.loadModule(mod);
+
+        try {
+            return require(mod);
+        } catch (e) {
+            $engine?.err?.(`! err =`, e);
+            const error = `${e?.message ?? GETERR(e)}`.toLowerCase();
+            if (error.includes('cannot find module')) return null;
+            throw e;
+        }
     };
-    const $factory = _factory(options);
-    return $factory($engine, $web, options);
+    const devkit = _load('lemon-devkit');
+    if (!devkit) throw new Error(`lemon-devkit(module) is required (npm i -D lemon-devkit) - ${errScope}`);
+
+    const _factory: ExpressFactory = devkit?.buildExpress;
+    if (!_factory) throw new Error(`@buildExpress (function) is required (invalid devkit) - ${errScope}`);
+    return _factory($engine, $web, options);
 };
