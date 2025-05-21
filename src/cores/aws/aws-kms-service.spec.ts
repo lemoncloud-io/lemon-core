@@ -10,7 +10,7 @@
  */
 import { expect2, environ, GETERR } from '../../common/test-helper';
 import { $U } from '../../engine';
-import { credentials } from '../../tools/';
+import { loadProfile } from '../../environ';
 import { AWSKMSService, fromBase64 } from './aws-kms-service';
 import { performance } from 'perf_hooks';
 
@@ -30,7 +30,7 @@ const $perf = () => {
 //! main test body.
 describe('AWSKMSService', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('ENV'));
+    const PROFILE = loadProfile(process); // override process.env.
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* test w/ aws-kms-service

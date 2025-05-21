@@ -12,7 +12,7 @@
 import { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
-import { ScanCommand } from '@aws-sdk/client-dynamodb';
+import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
 
 // ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)

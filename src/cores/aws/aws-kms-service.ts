@@ -130,17 +130,13 @@ export class AWSKMSService implements CoreKmsService {
      */
     public decrypt = async (encryptedSecret: string): Promise<string> => {
         _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
-        const CiphertextBlob =
-            typeof encryptedSecret == 'string'
-                ? isBase64(encryptedSecret)
-                    ? Buffer.from(encryptedSecret, 'base64')
-                    : encryptedSecret
-                : encryptedSecret;
+        const CiphertextBlob = Buffer.from(encryptedSecret, 'base64');
+
         //* api param.
         const params: DecryptCommandInput = { CiphertextBlob: CiphertextBlob as Uint8Array };
         const data: any = await this.instance().send(new DecryptCommand(params));
         // _log(NS, '> data.type =', typeof data);
-        return data && data.Plaintext ? data.Plaintext.toString() : '';
+        return data?.Plaintext ? Buffer.from(data.Plaintext).toString('utf-8') : '';
     };
 
     /**

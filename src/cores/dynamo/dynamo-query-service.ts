@@ -12,7 +12,7 @@
 import { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
-import { QueryCommand } from '@aws-sdk/client-dynamodb';
+import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
