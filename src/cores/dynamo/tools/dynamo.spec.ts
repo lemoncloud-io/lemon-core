@@ -8,9 +8,7 @@
  *
  * @copyright (C) 2025 LemonCloud Co Ltd. - All Rights Reserved.
  */
-
 import { expect2 } from '../../../common/test-helper';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 import { strToBin } from './utils';
 import Serializer from './serializer';
 
@@ -36,8 +34,8 @@ describe('Dynamo/lib', () => {
         expect2(() => Serializer.serializeAttribute(null)).toEqual(null);
         expect2(() => Serializer.serializeAttribute(undefined)).toEqual(undefined);
 
-        //! WARN - `Received: serializes to the same string` => 뭔가 오브젝트가 다른듯.
-        // expect2(() => Serializer.serializeAttribute('a', 'SS')).toEqual(['a']);
+        //! WARN - `Received: serializes to the same string` => need to check compartibility.
+        expect2(() => Serializer.serializeAttribute('a', 'SS')).toEqual(['a']);
 
         expect2(() => JSON.stringify(Serializer.serializeAttribute('a', 'SS'))).toEqual('["a"]');
 

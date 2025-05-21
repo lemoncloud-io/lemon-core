@@ -10,7 +10,6 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-
 import _ from 'lodash';
 import $async from 'async';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
