@@ -7,7 +7,7 @@ default_env: &default_env
   LC: 1                   # line-coloring
   TS: 1                   # time-stamp in line
   NS: TT                  # name-space to make primary key.
-  NAME: 'none'            # profile name.
+  NAME: ''                # aws profile name to load.
 
 #-----------------------------------
 # test configuration.

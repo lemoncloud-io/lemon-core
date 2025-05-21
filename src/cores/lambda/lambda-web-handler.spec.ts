@@ -8,16 +8,16 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../../environ';
 import { $U } from '../../engine/';
 import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
-import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
+import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
 import { NextIdentity } from '..';
-import { credentials } from '../../environ';
 
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {
     public constructor(lambda: LambdaHandler) {
@@ -84,8 +84,7 @@ class MyLemonWebController implements CoreWEBController {
 //! main test body.
 describe('LambdaWEBHandler', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('ENV'));
-    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+    const $PROFILE = loadProfile();
 
     //* basic function
     it('should pass basic functions', async () => {
@@ -112,6 +111,9 @@ describe('LambdaWEBHandler', () => {
 
     //* pass tools()
     it('should pass header tools', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { service } = instance();
 
         //* test `tools()` basic

@@ -10,20 +10,18 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { credentials } from '../../environ';
+import { loadProfile } from '../../environ';
+import { expect2, _it } from '../../common/test-helper';
 import { AWSSQSService, MyDummySQSService } from './aws-sqs-service';
-import { expect2, _it, environ } from '../../common/test-helper';
 
 //! main test body.
 describe('AWSSQSService', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('ENV'));
-    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+    const $PROFILE = loadProfile();
 
     const ENDPOINTS: { [key: string]: string } = {
         lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-test-sqs',
     };
-    const ENDPOINT = ENDPOINTS[PROFILE?.profile];
 
     const wait = async (timeout: number) =>
         new Promise((resolve, reject) => {
@@ -34,6 +32,10 @@ describe('AWSSQSService', () => {
 
     //* test basic of service.
     it('should pass basic AWSSQSService()', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+        const ENDPOINT = ENDPOINTS[PROFILE];
+
         // expect2(() => new AWSSQSService()).toEqual('env.SQS_ENDPOINT is required!');
         // expect2(() => new AWSSQSService()).toEqual('env.MY_SQS_ENDPOINT is required w/ stage:');
         expect2(() => new AWSSQSService(), '_endpoint,_region').toEqual({ _endpoint: '', _region: 'ap-northeast-2' });
@@ -88,6 +90,10 @@ describe('AWSSQSService', () => {
 
     //* test dummy of service.
     it('should pass dummy MyDummySQSService()', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+        const ENDPOINT = ENDPOINTS[PROFILE];
+
         const service = new MyDummySQSService(ENDPOINT);
         expect2(() => service.hello()).toEqual(`dummy-sqs-service:${ENDPOINT}`);
         expect2(() => service.sendMessage(null, null)).toEqual('@data(object) is required!');

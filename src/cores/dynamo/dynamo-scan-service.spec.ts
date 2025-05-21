@@ -35,14 +35,17 @@ export const instance = () => {
 
 //! main test body.
 describe('DynamoScanService', () => {
-    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
-    PROFILE && console.info('! PROFILE =', PROFILE);
+    const $PROFILE = loadProfile(); // use `env/<ENV>.yml`
+
     const data: AccountItem[] = loadDataYml('dummy-dynamo-scan-data.yml').data;
     const dataMap = new Map<string, AccountItem>();
     jest.setTimeout(100000);
 
     // Setup test
     beforeAll(async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { dynamo } = instance();
         if (!PROFILE) return;
 
@@ -63,6 +66,9 @@ describe('DynamoScanService', () => {
     });
 
     it('should pass basic scan operations', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { dynamoScan, options } = instance();
         expect2(dynamoScan.hello()).toEqual(`dynamo-scan-service:${options.tableName}`);
         if (!PROFILE) return;
@@ -91,6 +97,9 @@ describe('DynamoScanService', () => {
     });
 
     it('should pass scan w/ simple filter', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { dynamoScan, options } = instance();
         const useScan = !!PROFILE;
 
@@ -178,6 +187,9 @@ describe('DynamoScanService', () => {
     });
 
     it('should pass scan w/ complex filter', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { dynamoScan, options } = instance();
         const useScan = !!PROFILE;
 

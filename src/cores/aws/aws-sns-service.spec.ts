@@ -16,50 +16,46 @@ process.env = Object.assign(process.env, {
 });
 
 //* load $engine, and prepare dummy handler
+import { loadProfile } from '../../environ';
+import { expect2 } from '../../common/test-helper';
 import { AWSSNSService } from './aws-sns-service';
-import { environ } from '../../common/test-helper';
-import { credentials } from '../../environ';
 
 const SNS = new AWSSNSService();
 
 //! main test body.
 describe(`test service/sns-service.js`, () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('ENV'));
-    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+    const $PROFILE = loadProfile();
 
-    test('check name() function', async () => {
-        expect(SNS.name()).toEqual('SNS');
-    });
+    test('check basic function', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
-    test('check hello() function', async () => {
-        expect(SNS.hello()).toEqual('aws-sns-service:');
-    });
+        expect2(() => SNS.name()).toEqual('SNS');
+        expect2(() => SNS.hello()).toEqual('aws-sns-service:');
 
-    test('check endpoint() function', async () => {
-        expect(AWSSNSService.ENV_SNS_ENDPOINT).toEqual(ENV_NAME);
-        expect(AWSSNSService.DEF_SNS_ENDPOINT).toEqual(DEF_SNS);
+        expect2(AWSSNSService.ENV_SNS_ENDPOINT).toEqual(ENV_NAME);
+        expect2(AWSSNSService.DEF_SNS_ENDPOINT).toEqual(DEF_SNS);
         const a0 = await SNS.endpoint(ENV_NAME);
-        expect(a0).toEqual('arn:aws:sns:ap-northeast-2::hello');
+        expect2(a0).toEqual('arn:aws:sns:ap-northeast-2::hello');
         const a1 = await SNS.endpoint('arn:aws:sns:....');
-        expect(a1).toEqual('arn:aws:sns:....');
-    });
+        expect2(a1).toEqual('arn:aws:sns:....');
 
-    test('check asPayload() function', async () => {
+        //* test of asPyload()
         const e = new Error('test-error');
         const e2 = { statusMessage: 'test-status' };
         const e3 = 'test-message';
-        expect(SNS.asPayload(e, { type: 'error' }).error).toEqual('test-error');
-        expect(SNS.asPayload(e2, { type: 'error' })).toEqual({
+        expect2(() => SNS.asPayload(e, { type: 'error' }).error).toEqual('test-error');
+        expect2(() => SNS.asPayload(e2, { type: 'error' })).toEqual({
             error: '{"statusMessage":"test-status"}',
             message: 'test-status',
             type: 'error',
         });
-        expect(SNS.asPayload(e2, 'error')['stack-trace']).toEqual(undefined);
-        expect(SNS.asPayload(e2, 'error')).toEqual({
+        expect2(() => SNS.asPayload(e2, 'error')['stack-trace']).toEqual(undefined);
+        expect2(() => SNS.asPayload(e2, 'error')).toEqual({
             error: '{"statusMessage":"test-status"}',
             message: 'error',
         });
-        expect(SNS.asPayload(e3, 'error')).toEqual({ error: e3, message: 'error' });
+        expect2(() => SNS.asPayload(e3, 'error')).toEqual({ error: e3, message: 'error' });
     });
 });

@@ -8,8 +8,8 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { expect2, GETERR, environ } from '../../common/test-helper';
-import { credentials } from '../../environ';
+import { loadProfile } from '../../environ';
+import { expect2, GETERR } from '../../common/test-helper';
 import { NextContext } from 'lemon-model';
 import {
     MyProtocolService,
@@ -80,7 +80,7 @@ const asParam = (service: string, type?: string, base?: any): ProtocolParam => {
 //! main test body.
 describe('ProtocolService', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const $PROFILE = loadProfile();
 
     //* dummy service.
     it('should pass basic protocol', async () => {
@@ -184,6 +184,9 @@ describe('ProtocolService', () => {
 
     //* for each event protocol
     it('should pass transformEvent() of web.local', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { service, config } = instance();
         const id = 'abc';
         const param = asParam('', 'test', { id });
@@ -208,7 +211,7 @@ describe('ProtocolService', () => {
         expect2(service.transformEvent(uri, param), 'requestContext').toEqual({ requestContext });
 
         //* now verify with real lambda call.
-        if (PROFILE?.profile == 'lemon') {
+        if (PROFILE == 'lemon') {
             expect2(await service.execute(param).catch(GETERR)).toEqual(
                 'Function not found: arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api-dev-lambda',
             );
@@ -217,6 +220,9 @@ describe('ProtocolService', () => {
 
     //* for each event protocol
     it('should pass transformEvent() of web.dev', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { service, config } = instance({ STAGE: 'develop' });
         const context: NextContext = { requestId: 'xxxx', accountId: '0908' };
         const id = '0';
@@ -246,7 +252,7 @@ describe('ProtocolService', () => {
         expect2(service.transformEvent(uri, param), 'requestContext').toEqual({ requestContext });
 
         //* now verify with real lambda call.
-        if (PROFILE?.profile == 'comics') {
+        if (PROFILE == 'comics') {
             // expect2(await service.execute(param, config).catch(GETERR)).toEqual('@ns is required!');
             // expect2(await service.execute(param, config).catch(GETERR)).toEqual('@id is required!');
             expect2(await service.execute(param, config).catch(GETERR)).toEqual(
@@ -314,11 +320,11 @@ describe('ProtocolService', () => {
         expect2(
             () => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: 'a=b' }),
             'body',
-        ).toEqual('Unexpected token \'a\', "a=b" is not valid JSON');
+        ).toEqual('Unexpected token a in JSON at position 0');
         expect2(
             () => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: 'a%5Bb%5D=c' }),
             'body',
-        ).toEqual('Unexpected token \'a\', "a%5Bb%5D=c" is not valid JSON');
+        ).toEqual('Unexpected token a in JSON at position 0');
 
         const webhdr2 = {
             'content-type': 'application/x-www-form-urlencoded; charset=utf-8',

@@ -31,10 +31,13 @@ export const instance = () => {
 
 //! main test body.
 describe('DynamoQueryService', () => {
-    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    const $PROFILE = loadProfile(); // use `env/<ENV>.yml`
     const dataMap = new Map<string, MyModel>();
 
     beforeAll(async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { dynamo } = instance();
         if (!PROFILE) return;
 
@@ -50,6 +53,9 @@ describe('DynamoQueryService', () => {
 
     //* dynamo query service.
     it('should pass basic query operations', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { dynamoQuery, options } = instance();
         const useReal = !!PROFILE;
 
@@ -81,6 +87,9 @@ describe('DynamoQueryService', () => {
     });
 
     afterAll(async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { dynamo } = instance();
         if (!PROFILE) return;
         // Cleanup table
