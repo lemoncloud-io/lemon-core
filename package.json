@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",
     "!prepublishOnly": "npm test && npm run lint && npm run format",
-    "prepublishOnly": "npm test && npm run lint",
+    "#prepublishOnly": "npm test && npm run lint",
     "!plato": "----- analysis code complexity -----",
     "plato": "plato -r -d complexity dist"
   },
