@@ -112,6 +112,9 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
      */
     public hello = () => `dynamo-scan-service:${this.options.tableName}`;
 
+    /**
+     * scan by limit
+     */
     public async scan(limit?: number, last?: any, filter?: DynamoScanFilter): Promise<DynamoScanResult<T>> {
         _log(NS, `scan()...`);
 
@@ -142,7 +145,10 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         };
     }
 
-    private buildPayload(limit?: number, last?: any, filter?: DynamoScanFilter) {
+    /**
+     * build scan payload
+     */
+    public buildPayload(limit?: number, last?: any, filter?: DynamoScanFilter) {
         const { tableName, idName, sortName } = this.options;
         const scan = new Scan(
             { schema: { hashKey: idName, rangeKey: sortName }, tableName: () => tableName },

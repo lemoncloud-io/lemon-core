@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2 } from '../..';
+import { expect2, _it } from '../../common/test-helper';
 import { loadProfile } from '../../environ';
 import { loadDataYml } from '../../tools';
 import { GeneralItem } from 'lemon-model';
@@ -39,6 +39,7 @@ describe('DynamoScanService', () => {
     PROFILE && console.info('! PROFILE =', PROFILE);
     const data: AccountItem[] = loadDataYml('dummy-dynamo-scan-data.yml').data;
     const dataMap = new Map<string, AccountItem>();
+    jest.setTimeout(100000);
 
     // Setup test
     beforeAll(async () => {
@@ -91,7 +92,7 @@ describe('DynamoScanService', () => {
 
     it('should pass scan w/ simple filter', async () => {
         const { dynamoScan, options } = instance();
-        if (!PROFILE) return;
+        const useScan = !!PROFILE;
 
         let filter: DynamoScanFilter;
         let expectedCount;
@@ -102,7 +103,13 @@ describe('DynamoScanService', () => {
             { key: 'bank', comparator: '=', value: 'KB국민' },
         ];
         expectedCount = data.filter(item => item.bank === 'KB국민').length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        expect2(() => dynamoScan.buildPayload(-1, null, filter)).toEqual({
+            TableName: 'DynamoTest',
+            FilterExpression: '(#type = :type0 AND #bank = :bank0)',
+            ExpressionAttributeNames: { '#bank': 'bank', '#type': 'type' },
+            ExpressionAttributeValues: { ':bank0': 'KB국민', ':type0': 'bank_account' },
+        });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
 
         // 연락처가 없는(contact = null) 개수
         filter = [
@@ -110,7 +117,7 @@ describe('DynamoScanService', () => {
             { key: 'contact', comparator: '=', value: null },
         ];
         expectedCount = data.filter(item => item.contact === null).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
 
         // 연락처가 있는(contact != null) 개수
         filter = [
@@ -118,12 +125,12 @@ describe('DynamoScanService', () => {
             { not: { key: 'contact', comparator: '=', value: null } },
         ];
         expectedCount = data.filter(item => item.contact !== null).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
         filter = [
             { key: 'type', comparator: '=', value: 'bank_account' },
             { key: 'contact', comparator: '!=', value: null }, // 위의 필터와 동일한 표현식
         ];
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
 
         // 잔액이 100~300만원(balance BETWEEN 1000000 AND 3000000)인 개수
         filter = [
@@ -131,7 +138,7 @@ describe('DynamoScanService', () => {
             { key: 'balance', from: 1000000, to: 3000000 },
         ];
         expectedCount = data.filter(item => item.balance >= 1000000 && item.balance <= 3000000).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
 
         // note 필드가 존재하는(attribute_exists(note)) 개수
         filter = [
@@ -139,7 +146,7 @@ describe('DynamoScanService', () => {
             { key: 'note', exists: true },
         ];
         expectedCount = data.filter(item => 'note' in item).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
 
         // 성이 이씨인(begins_with(name, '이') 개수
         filter = [
@@ -147,12 +154,18 @@ describe('DynamoScanService', () => {
             { key: 'name', operator: 'begins_with', value: '이' },
         ];
         expectedCount = data.filter(item => item.name.startsWith('이')).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        expect2(() => dynamoScan.buildPayload(-1, null, filter)).toEqual({
+            TableName: 'DynamoTest',
+            FilterExpression: '(#type = :type0 AND begins_with(#name, :name0))',
+            ExpressionAttributeNames: { '#name': 'name', '#type': 'type' },
+            ExpressionAttributeValues: { ':name0': '이', ':type0': 'bank_account' },
+        });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
     });
 
     it('should pass scan w/ complex filter', async () => {
         const { dynamoScan, options } = instance();
-        if (!PROFILE) return;
+        const useScan = !!PROFILE;
 
         let filter: DynamoScanFilter;
         let expectedCount;
@@ -168,7 +181,7 @@ describe('DynamoScanService', () => {
             },
         ];
         expectedCount = data.filter(item => item.name.startsWith('신') || item.name.startsWith('정')).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
 
         // 성이 김씨가 아니고 잔액이 100~300만원인(NOT begins_with(name, '김') AND balance BETWEEN 1000000 AND 3000000) 개수
         filter = [
@@ -179,7 +192,7 @@ describe('DynamoScanService', () => {
         expectedCount = data.filter(
             item => !item.name.startsWith('김') && item.balance >= 1000000 && item.balance <= 3000000,
         ).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
 
         // 은행이 NH농협인 사람 중 연락처가 없거나 잔액이 50만원 이하인 개수
         filter = [
@@ -195,6 +208,25 @@ describe('DynamoScanService', () => {
         expectedCount = data.filter(
             item => item.bank === 'NH농협' && (item.contact != null || item.balance <= 500000),
         ).length;
-        expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
+
+        expect2(() => dynamoScan.buildPayload(-1, null, filter)).toEqual({
+            TableName: 'DynamoTest',
+            FilterExpression:
+                '(#type = :type0 AND #bank = :bank0 AND (NOT #contact = :contact0 OR #balance <= :balance0))',
+            ExpressionAttributeNames: {
+                '#balance': 'balance',
+                '#bank': 'bank',
+                '#contact': 'contact',
+                '#type': 'type',
+            },
+            ExpressionAttributeValues: {
+                ':balance0': 500000,
+                ':bank0': 'NH농협',
+                ':contact0': null,
+                ':type0': 'bank_account',
+            },
+        });
+
+        if (useScan) expect2(await dynamoScan.scan(-1, null, filter)).toMatchObject({ count: expectedCount });
     });
 });

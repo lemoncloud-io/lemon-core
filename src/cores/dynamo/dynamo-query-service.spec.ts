@@ -51,9 +51,9 @@ describe('DynamoQueryService', () => {
     //* dynamo query service.
     it('should pass basic query operations', async () => {
         const { dynamoQuery, options } = instance();
+        const useReal = !!PROFILE;
 
         expect2(dynamoQuery.hello()).toEqual(`dynamo-query-service:${options.tableName}`);
-        if (!PROFILE) return;
 
         //* check query builder
         expect2(() => dynamoQuery.buildQuery('00', -1, -1, undefined, null, undefined)).toEqual({
@@ -65,15 +65,17 @@ describe('DynamoQueryService', () => {
         });
 
         //* check of none
-        expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
+        if (useReal) {
+            expect2(await dynamoQuery.queryAll('00').catch(GETERR), 'list,count').toEqual({ list: [], count: 0 });
 
-        //* check by each item
-        for (const [id, item] of dataMap.entries())
-            expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
+            //* check by each item
+            for (const [id, item] of dataMap.entries())
+                expect2(await dynamoQuery.queryAll(id).catch(GETERR), 'list,count').toEqual({ list: [item], count: 1 });
 
-        //* check by range
-        for (const [id, item] of dataMap.entries())
-            expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
+            //* check by range
+            for (const [id, item] of dataMap.entries())
+                expect2(await dynamoQuery.queryRange(id, 0, 0, 1)).toEqual({ list: [item], count: 1, last: 0 });
+        }
 
         // TODO: Need to add sort key query test cases
     });
