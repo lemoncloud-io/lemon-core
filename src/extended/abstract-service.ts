@@ -1132,28 +1132,6 @@ const $X = {
         };
     },
     /**
-     * load the local credential
-     * - throws if not found.
-     *
-     * @param profile (optional) target profile (default use `loadProfile()`, '' use the default);
-     *
-     * @deprecated use `asyncCredentials()` instead.
-     */
-    loadCredentials: (profile?: string): CrendentialForAWS => {
-        const errScope = `loadCredentials(${profile ?? ''})`;
-        // determine the final profile parameter.
-        const _profile = (name: string) => {
-            if (typeof name === 'string') return name ? name : null;
-            const NAME = $U.env('NAME', '');
-            return NAME && NAME !== 'none' ? NAME : null;
-        };
-        profile = _profile(profile);
-        if (profile) throw new Error(`@profile[${profile ?? ''}] is not supported (need refactoring) - ${errScope}`);
-        const cred = credentials(profile);
-        if (!cred?.accessKeyId) throw new Error(`@profile[${profile ?? ''}] is invalid - ${errScope}`);
-        return cred;
-    },
-    /**
      * create http-web-proxy agent which using endpoint as proxy server.
      * - originally refer to `createHttpWebProxy()`
      *
@@ -1352,8 +1330,8 @@ export const _ES6 = (options?: {
     indexName?: string;
     /** flag to use search-proxy */
     useProxy?: boolean;
-    /** aws:profile to use in proxy */
-    profile?: string;
+    /** (optional) aws:credentials to sign request in proxy */
+    credentials?: CrendentialForAWS;
 }): Elastic6Instance => {
     // 0. load from env configuration.
     const endpoint = options?.endpoint ?? $U.env('ES6_ENDPOINT', '');
@@ -1374,7 +1352,6 @@ export const _ES6 = (options?: {
         return false;
     };
     const useProxy = options?.useProxy ?? _isProxy();
-    const profile = options?.profile;
 
     // prepare constructor parameters.
     const params: Elastic6ContructParams = {
@@ -1388,7 +1365,7 @@ export const _ES6 = (options?: {
 
     //* use proxy.
     if (useProxy) {
-        const credentials = $X.loadCredentials(profile);
+        const credentials = options?.credentials;
         const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
         return new Elastic6Proxy(params, proxy);
     }

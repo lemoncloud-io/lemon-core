@@ -7,7 +7,6 @@
  *
  * @copyright (C) lemoncloud.io 2024 - All Rights Reserved.
  */
-import { loadProfile } from '../../environ';
 import { asyncCredentials } from '../../tools/tools';
 import { expect2, GETERR } from '../../common/test-helper';
 import { createSigV4Proxy } from '../../helpers/helpers';
@@ -19,7 +18,7 @@ const STAGE = 'prod';
 const ENDPOINT = `https://${HOST}/${STAGE}`;
 
 const loadSigConfig = async (profile: string): Promise<sigV4ClientConfig> => {
-    const credentials = await asyncCredentials(profile);
+    const credentials = await asyncCredentials(profile).catch(() => null);
     if (!credentials?.accessKeyId || !credentials?.secretAccessKey) return null;
     const ACCESSKEY = credentials?.accessKeyId;
     const SECRETKEY = credentials?.secretAccessKey;
@@ -40,9 +39,6 @@ const instance = async (profile: string) => {
 
 //! main test body.
 describe('createHttpWebProxy w/Sig4', () => {
-    const PROFILE = loadProfile(process); // override process.env.
-    PROFILE && console.info(`! PROFILE =`, PROFILE);
-
     it('should pass API w/invalid AWS key', async () => {
         const proxy = await instance('lemon');
         if (!proxy) {

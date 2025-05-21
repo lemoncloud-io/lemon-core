@@ -22,6 +22,20 @@
  *
  * @copyright   (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { GETERR } from './common/test-helper';
+
+/**
+ * (internal) load module.
+ */
+const _load = <T = any>(mod: string): T => {
+    try {
+        return require(mod);
+    } catch (e) {
+        const error = `${e?.message ?? GETERR(e)}`.toLowerCase();
+        if (error.includes('cannot find module')) return null;
+        throw e;
+    }
+};
 
 /**
  * type: `CrendentialForAWS`
@@ -59,7 +73,7 @@ export interface EnvironmentSet {
 }
 
 /**
- * loader `<profile>.yml`
+ * (only for dev) loader `<profile>.yml`
  *
  * **Determine Environ Target**
  * 1. ENV 로부터, 로딩할 `env.yml` 파일을 지정함.
@@ -70,14 +84,20 @@ export interface EnvironmentSet {
  *
  * @param process the main process instance.
  * @param options (optional) default option.
+ *
+ * @deprecated use `loadEnviron()` from `lemon-devkit` instead.
  */
 export const loadEnviron = (process: any, options?: EnvironmentSet): EnvironmentSet => {
-    //TODO - use `lemon-devkit` to load environment from process.
-    return;
+    const errScope = 'loadEnviron()';
+    const devkit = _load('lemon-devkit');
+    if (!devkit?.loadEnviron)
+        throw new Error(`loadEnviron(function) is required (npm i -D lemon-devkit) - ${errScope}`);
+
+    return devkit.loadEnviron(process, options);
 };
 
 /**
- * load AWS credential profile via env.NAME
+ * (only for dev) load AWS credential profile via `env.NAME`
  *
  * NOTE! ONLY FOR development purpose.
  *
@@ -86,29 +106,27 @@ export const loadEnviron = (process: any, options?: EnvironmentSet): Environment
  * $ NAME=lemon npm run test
  * ````
  * @param $proc     process (default `global.process`)
- * @param $info     info logger (default `console.info`)
+ * @param options   (optional) parameters.
+ *
+ * @deprecated use `loadProfile()` from `lemon-devkit` instead.
  */
-export const loadProfile = (
-    $proc?: { env?: any },
-    $info?: (title: string, msg?: string) => void,
-): CrendentialForAWS => {
-    const $env = $proc?.env || process.env;
-    const profile = `${$env['NAME'] != 'none' ? $env['NAME'] || '' : ''}`;
-    if (profile && $info) $info('! PROFILE =', profile);
-    //TODO - use `lemon-devkit` to load credentials.
-    const $res: CrendentialForAWS = credentials(profile);
-    return { ...$res, profile };
+export const loadProfile = async ($proc?: { env?: any }, options?: any): Promise<string> => {
+    const errScope = 'loadProfile()';
+    const devkit = _load('lemon-devkit');
+    if (!devkit?.loadProfile)
+        throw new Error(`loadProfile(function) is required (npm i -D lemon-devkit) - ${errScope}`);
+    const $res = await devkit.loadProfile($proc, options);
+    return $res?.profile ?? '';
 };
 
 /**
- * dynamic loading credentials by profile. (search PROFILE -> NAME)
+ * (only for dev) dynamic loading credentials by profile. (search PROFILE -> NAME)
  *
  * @deprecated use `asyncCredentials` instead.
  */
 export const credentials = (profile: string): CrendentialForAWS => {
     if (!profile) return;
     throw new Error('WARN! credentials() is deprecated. use `asyncCredentials()` instead!');
-    //TODO - use `lemon-devkit` to load credentials.
 };
 
 //* export default.
