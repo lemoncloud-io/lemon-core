@@ -286,7 +286,7 @@ describe('abstract-service', () => {
 
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}]`);
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
@@ -319,7 +319,7 @@ describe('abstract-service', () => {
 
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}]`);
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
@@ -337,7 +337,7 @@ describe('abstract-service', () => {
             body: { body },
         });
 
-        const agent = _ES6({ endpoint });
+        const agent = _ES6({ endpoint, useProxy: true, credentials });
         expect2(await agent.search(body, param).catch(GETERR), '!context').toEqual({
             param,
             body: {
