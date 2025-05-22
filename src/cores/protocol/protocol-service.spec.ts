@@ -188,8 +188,7 @@ describe('ProtocolService', () => {
         if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
         const { service, config } = instance();
-        const id = 'abc';
-        const param = asParam('', 'test', { id });
+        const param = asParam('', 'test', { id: 'abc' });
         const uri = service.asProtocolURI('web', param, config);
         expect2(uri).toEqual('web://lemon-hello-api-dev-lambda/test/abc');
         expect2(service.transformEvent(uri, param), 'headers').toEqual({ headers: { 'x-protocol-context': '{}' } });
@@ -320,11 +319,11 @@ describe('ProtocolService', () => {
         expect2(
             () => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: 'a=b' }),
             'body',
-        ).toEqual('Unexpected token a in JSON at position 0');
+        ).toEqual('Unexpected token \'a\', "a=b" is not valid JSON');
         expect2(
             () => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: 'a%5Bb%5D=c' }),
             'body',
-        ).toEqual('Unexpected token a in JSON at position 0');
+        ).toEqual('Unexpected token \'a\', "a%5Bb%5D=c" is not valid JSON');
 
         const webhdr2 = {
             'content-type': 'application/x-www-form-urlencoded; charset=utf-8',

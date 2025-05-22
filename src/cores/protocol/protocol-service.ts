@@ -9,7 +9,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
+import $engine, { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
 import { NextMode, NextContext } from 'lemon-model';
 import {
     STAGE,
@@ -22,6 +22,7 @@ import {
 import { PublishCommand, PublishCommandInput, PublishCommandOutput, SNSClient } from '@aws-sdk/client-sns';
 import { SendMessageCommand, SendMessageCommandInput, SendMessageCommandOutput, SQSClient } from '@aws-sdk/client-sqs';
 import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } from '@aws-sdk/client-lambda';
+import { fromIni } from '@aws-sdk/credential-providers';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
@@ -340,7 +341,8 @@ export class MyProtocolService implements ProtocolService {
 
         //* call lambda.
         const region = 'ap-northeast-2'; //TODO - optimize of aws region....
-        const lambda = new LambdaClient({ region });
+        const profile = $engine.environ('NAME', 'none') as string;
+        const lambda = new LambdaClient({ region, credentials: fromIni({ profile }) });
         const response = await lambda
             .send(new InvokeCommand(params))
             .catch((e: Error) => {
@@ -402,7 +404,8 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const sns = new SNSClient({ region });
+        const profile = $engine.environ('NAME', 'none') as string;
+        const sns = new SNSClient({ region, credentials: fromIni({ profile }) });
         const res = await sns
             .send(new PublishCommand(params))
             .catch((e: Error) => {
@@ -450,7 +453,8 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
-        const sqs = new SQSClient({ region });
+        const profile = $engine.environ('NAME', 'none') as string;
+        const sqs = new SQSClient({ region, credentials: fromIni({ profile }) });
         const res = await sqs
             .send(new SendMessageCommand(params))
             .catch((e: Error) => {
@@ -499,7 +503,8 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const sns = new SNSClient({ region });
+        const profile = $engine.environ('NAME', 'none') as string;
+        const sns = new SNSClient({ region, credentials: fromIni({ profile }) });
         const res = await sns
             .send(new PublishCommand(params))
             .catch((e: Error) => {

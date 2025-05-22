@@ -16,9 +16,11 @@ const NS = $U.NS('SNS', 'blue');
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
+import { fromIni } from '@aws-sdk/credential-providers';
 import { CoreSnsService } from '../core-services';
 
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
+const profile = (): string => $engine.environ('NAME', 'none') as string;
 
 /**
  * use `target` as value or environment value.
@@ -97,7 +99,9 @@ export class AWSSNSService implements CoreSnsService {
      */
     public accountID = async (): Promise<string> => {
         return new Promise((resolve, reject) => {
-            const iam = new IAMClient();
+            const iam = new IAMClient({
+                credentials: fromIni({ profile: profile() }),
+            });
             iam.send(new GetUserCommand({}))
                 .then(data => {
                     return data.User?.Arn.split(':')[4];
@@ -105,7 +109,9 @@ export class AWSSNSService implements CoreSnsService {
                 .catch(err => {
                     const msg = `${err.message || err}`;
                     if (msg === 'Must specify userName when calling with non-User credentials') {
-                        const sts = new STSClient({});
+                        const sts = new STSClient({
+                            credentials: fromIni({ profile: profile() }),
+                        });
                         return sts
                             .send(new GetCallerIdentityCommand({}))
                             .then(data => data.Account)
@@ -148,7 +154,10 @@ export class AWSSNSService implements CoreSnsService {
         //* call sns.publish()
         const region = arn.split(':')[3];
         if (!region) throw new Error(`@region is required. arn:${arn}`);
-        const sns = new SNSClient({ region });
+        const sns = new SNSClient({
+            region,
+            credentials: fromIni({ profile: profile() }),
+        });
         return sns
             .send(new PublishCommand(params))
             .then(res => {

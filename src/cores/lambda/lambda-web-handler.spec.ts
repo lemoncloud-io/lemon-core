@@ -197,9 +197,11 @@ describe('LambdaWEBHandler', () => {
             const parse1 = (t: string) => $t.parseIdentityJWT(t, { current }).catch(GETERR);
             expect2(await parse1(null)).toEqual('@token (string) is required - but object');
             expect2(await parse1($enc.message + '.')).toEqual('@signature (string|Buffer) is required - kms.verify()');
-            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(`@signature[] is invalid - not be verified!`);
+            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(
+                `@signature[] is invalid - not be verified by iss:kms/${alias}!`,
+            );
             expect2(await parse1($enc.message + '.' + $enc.signature.replace('0', '1'))).toEqual(
-                `@signature[] is invalid - not be verified!`,
+                `@signature[] is invalid - not be verified by iss:kms/${alias}!`,
             );
             expect2(await parse1($enc.token + '.x')).toEqual(`@token[${$enc.token + '.x'}] is invalid format!`);
             expect2(await parse1($enc.token)).toEqual({

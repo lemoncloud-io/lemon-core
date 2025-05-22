@@ -22,15 +22,21 @@ import { GetPublicKeyCommand, EncryptCommand, DecryptCommand, VerifyCommand } fr
 // eslint-disable-next-line prettier/prettier
 import { EncryptCommandInput, DecryptCommandInput, GetPublicKeyCommandInput, SignCommandInput, VerifyCommandInput } from '@aws-sdk/client-kms';
 import { CoreKmsService } from '../core-services';
+import { fromIni } from '@aws-sdk/credential-providers';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
 type MySigningAlgorithm = SigningAlgorithmSpec;
 const ALIAS = `lemon-hello-api`; //NOTE - use env[KMS_KEY_ID] to overide.
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
-//* get aws client for KMS
+const profile = (): string => $engine.environ('NAME', 'none') as string;
+
 const instance = () => {
     const _region = region();
-    const config = { region: _region };
+    const _profile = profile();
+    const config = {
+        region: _region,
+        credentials: fromIni({ profile: _profile }),
+    };
     return new KMSClient(config);
 };
 

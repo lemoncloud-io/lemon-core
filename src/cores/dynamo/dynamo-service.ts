@@ -11,13 +11,15 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U, _log, _inf, _err } from '../../engine/';
+import $engine, { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem, Incrementable } from 'lemon-model';
 import { loadDataYml } from '../../tools/';
 import { StreamViewType, KeySchemaElement } from '@aws-sdk/client-dynamodb';
 import { CreateTableCommand, DeleteTableCommand, DynamoDBClient, DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBStreamsClient } from '@aws-sdk/client-dynamodb-streams';
+import { fromIni } from '@aws-sdk/credential-providers';
+
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type KEY_TYPE = 'number' | 'string';
@@ -91,7 +93,12 @@ export class DynamoService<T extends GeneralItem> {
      */
     public static instance(region?: string) {
         region = `${region || 'ap-northeast-2'}`;
-        const config: DynamoDBClientConfig = { region };
+        const profile = $engine.environ('NAME', 'none') as string;
+        const config: DynamoDBClientConfig = {
+            region,
+            credentials: fromIni({ profile }),
+        };
+
         const dynamo = new DynamoDBClient(config); // Low-level DynamoDB client
         const dynamodoc = DynamoDBDocumentClient.from(dynamo); // High-level Document client
         const dynamostr = new DynamoDBStreamsClient(config); // DynamoDB Streams client
