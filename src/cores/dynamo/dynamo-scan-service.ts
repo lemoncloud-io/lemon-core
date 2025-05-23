@@ -125,7 +125,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         _log(NS, `> payload =`, $U.json(payload));
 
         //* get instance of dynamodoc, and execute query().
-        const { dynamodoc } = DynamoService.instance();
+        const dynamodoc = await DynamoService.instance().dynamodoc();
         const res = await dynamodoc.send(new ScanCommand(payload));
         _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
         res?.Items && _log(NS, `> scan[0] =`, $U.json(res?.Items?.[0]));

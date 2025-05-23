@@ -19,6 +19,8 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 import { fromIni } from '@aws-sdk/credential-providers';
 import { CrendentialForAWS } from '../environ';
+import { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
+import $engine from '../engine';
 
 /**
  * load json in sync.
@@ -53,4 +55,16 @@ export const asyncCredentials = async (profile?: string): Promise<CrendentialFor
     const provider = fromIni({ profile });
     const $res = await provider();
     return { ...$res, profile };
+};
+
+/**
+ * load config for aws sdk
+ */
+export const awsConfig = (region?: string): DynamoDBClientConfig => {
+    const _region = `${region || 'ap-northeast-2'}`;
+    const _profile = $engine.environ('NAME', 'none') as string;
+    return {
+        region: _region,
+        credentials: fromIni({ profile: _profile }),
+    };
 };

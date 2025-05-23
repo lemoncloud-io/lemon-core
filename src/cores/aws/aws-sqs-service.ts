@@ -15,9 +15,8 @@ const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
 import { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
 // eslint-disable-next-line prettier/prettier
 import { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessageCommandInput, GetQueueAttributesCommandInput } from '@aws-sdk/client-sqs';
-import { fromIni } from '@aws-sdk/credential-providers';
 import { CoreServices } from '../core-services';
-
+import { awsConfig } from '../../tools';
 /**
  * interface: SQSService
  * - common interface type for `SQS`
@@ -71,7 +70,6 @@ export class AWSSQSService implements SQSService {
 
     protected _region: string;
     protected _endpoint: string;
-    protected _profile: string;
 
     /**
      * default constructor.
@@ -79,7 +77,6 @@ export class AWSSQSService implements SQSService {
     public constructor(endpoint?: string, region?: string, profile?: string) {
         region = region || ($engine.environ(AWSSQSService.SQS_REGION, 'ap-northeast-2') as string) || '';
         endpoint = endpoint || ($engine.environ(AWSSQSService.SQS_ENDPOINT, '') as string) || '';
-        profile = profile || ($engine.environ('NAME', 'none') as string) || '';
         // const stage = $engine.environ('STAGE', '') as string;
         // if (!endpoint && stage != 'local')
         //     throw new Error(`env.${AWSSQSService.SQS_ENDPOINT} is required w/ stage:${stage}`);
@@ -92,9 +89,6 @@ export class AWSSQSService implements SQSService {
     }
     public endpoint(): string {
         return this._endpoint;
-    }
-    public profile(): string {
-        return this._profile;
     }
 
     /**
@@ -129,10 +123,7 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        const sqs = new SQSClient({
-            region: this.region(),
-            credentials: fromIni({ profile: this.profile() }),
-        });
+        const sqs = new SQSClient(awsConfig(this.region()));
         const result = await sqs.send(new SendMessageCommand(params));
         _log(NS, '> result =', result);
         return (result && result.MessageId) || '';
@@ -160,10 +151,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call api
-        const sqs = new SQSClient({
-            region: this.region(),
-            credentials: fromIni({ profile: this.profile() }),
-        });
+        const sqs = new SQSClient(awsConfig(this.region()));
         const result = await sqs.send(new ReceiveMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
 
@@ -204,10 +192,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new SQSClient({
-            region: this.region(),
-            credentials: fromIni({ profile: this.profile() }),
-        });
+        const sqs = new SQSClient(awsConfig(this.region()));
         const result = await sqs.send(new DeleteMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
         return;
@@ -226,10 +211,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new SQSClient({
-            region: this.region(),
-            credentials: fromIni({ profile: this.profile() }),
-        });
+        const sqs = new SQSClient(awsConfig(this.region()));
         const result = await sqs.send(new GetQueueAttributesCommand(params));
         _log(NS, '> result =', $U.json(result));
         const attr = result.Attributes || {};

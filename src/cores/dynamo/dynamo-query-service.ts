@@ -106,7 +106,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         const payload = this.buildQuery(pkey, from, to, limit, last, isDesc);
 
         //* get instance of dynamodoc, and execute query().
-        const { dynamodoc } = DynamoService.instance();
+        const dynamodoc = await DynamoService.instance().dynamodoc();
         const res = await dynamodoc.send(new QueryCommand(payload));
         if (res) {
             // _log(NS, `> query[${pkey}].res =`, $U.json(res)); // `startKey`

@@ -22,10 +22,10 @@ import {
 import { PublishCommand, PublishCommandInput, PublishCommandOutput, SNSClient } from '@aws-sdk/client-sns';
 import { SendMessageCommand, SendMessageCommandInput, SendMessageCommandOutput, SQSClient } from '@aws-sdk/client-sqs';
 import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } from '@aws-sdk/client-lambda';
-import { fromIni } from '@aws-sdk/credential-providers';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
+import { awsConfig } from '../../tools';
 import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
@@ -341,8 +341,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call lambda.
         const region = 'ap-northeast-2'; //TODO - optimize of aws region....
-        const profile = $engine.environ('NAME', 'none') as string;
-        const lambda = new LambdaClient({ region, credentials: fromIni({ profile }) });
+        const lambda = new LambdaClient(awsConfig(region));
         const response = await lambda
             .send(new InvokeCommand(params))
             .catch((e: Error) => {
@@ -404,8 +403,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const profile = $engine.environ('NAME', 'none') as string;
-        const sns = new SNSClient({ region, credentials: fromIni({ profile }) });
+        const sns = new SNSClient(awsConfig(region));
         const res = await sns
             .send(new PublishCommand(params))
             .catch((e: Error) => {
@@ -453,8 +451,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
-        const profile = $engine.environ('NAME', 'none') as string;
-        const sqs = new SQSClient({ region, credentials: fromIni({ profile }) });
+        const sqs = new SQSClient(awsConfig(region));
         const res = await sqs
             .send(new SendMessageCommand(params))
             .catch((e: Error) => {
@@ -503,8 +500,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const profile = $engine.environ('NAME', 'none') as string;
-        const sns = new SNSClient({ region, credentials: fromIni({ profile }) });
+        const sns = new SNSClient(awsConfig(region));
         const res = await sns
             .send(new PublishCommand(params))
             .catch((e: Error) => {

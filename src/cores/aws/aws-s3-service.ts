@@ -21,14 +21,13 @@ import { GetObjectCommandOutput, S3Client, _Object } from '@aws-sdk/client-s3';
 import { HeadObjectCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, GetObjectTaggingCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 // eslint-disable-next-line prettier/prettier
 import { PutObjectCommandInput, ListObjectsV2CommandInput } from '@aws-sdk/client-s3';
-import { fromIni } from '@aws-sdk/credential-providers';
 import path from 'path';
 import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { GETERR } from '../../common/test-helper';
 import { Readable } from 'stream';
-
+import { awsConfig } from '../../tools';
 /** ****************************************************************************************************************
  *  Core Types.
  ** ****************************************************************************************************************/
@@ -140,7 +139,6 @@ export interface CoreS3Service extends CoreServices {
  *  Public Instance Exported.
  ** ****************************************************************************************************************/
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
-const profile = (): string => $engine.environ('NAME', 'none') as string;
 
 /**
  * use `target` as value or environment value.
@@ -159,13 +157,8 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
  * get aws client for S3
  */
 const instance = () => {
-    const _region = region();
-    const _profile = profile();
-    const config = {
-        region: _region,
-        credentials: fromIni({ profile: _profile }),
-    };
-    return new S3Client(config); // SQS Instance. shared one???
+    const cfg = awsConfig(region());
+    return new S3Client(cfg); // SQS Instance. shared one???
 };
 
 /**
