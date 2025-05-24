@@ -28,7 +28,7 @@ import {
 } from 'lemon-model';
 import { ProtocolParam } from './../core-services';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
-import { loadJsonSync } from '../../tools/';
+import { loadJsonSync, onlyDefined } from '../../tools/';
 import { GETERR } from '../../common/test-helper';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
@@ -64,14 +64,6 @@ type ProxyResult = APIGatewayProxyResult;
 type ProxyResponser = () => ProxyResult;
 type ProxyChain = ProxyParams | ProxyResponser;
 
-/** returns only defined */
-const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
-    N && typeof N === 'object'
-        ? Object.entries(N).reduce<T>((N, [k, v]) => {
-              if (v !== undefined) N[k as keyof T] = v;
-              return N;
-          }, {} as T)
-        : ($def as T);
 /**
  * build http response body
  * - if body is string type, then content-type would be text/<some>.

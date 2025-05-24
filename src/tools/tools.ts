@@ -19,8 +19,18 @@ import fs from 'fs';
 import yaml from 'js-yaml';
 import { fromIni } from '@aws-sdk/credential-providers';
 import { CrendentialForAWS } from '../environ';
-import { DynamoDBClientConfig } from '@aws-sdk/client-dynamodb';
-import $engine from '../engine';
+import { RuntimeConfigAwsCredentialIdentityProvider } from '@aws-sdk/types/dist-types/identity/AwsCredentialIdentity';
+// import $engine from '../engine'; #WARN! DO NOT LOAD $engine here due to global initialization.
+import { LemonEngine } from '../engine/types';
+
+/** returns only defined */
+export const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
+    N && typeof N === 'object'
+        ? Object.entries(N).reduce<T>((N, [k, v]) => {
+              if (v !== undefined) N[k as keyof T] = v;
+              return N;
+          }, {} as T)
+        : ($def as T);
 
 /**
  * load json in sync.
@@ -58,13 +68,66 @@ export const asyncCredentials = async (profile?: string): Promise<CrendentialFor
 };
 
 /**
- * load config for aws sdk
+ * type: `AwsConfigParams`
+ * - parameters for AWS config.
+ * - used for `awsConfig()`
  */
-export const awsConfig = (region?: string): DynamoDBClientConfig => {
-    const _region = `${region || 'ap-northeast-2'}`;
-    const _profile = $engine.environ('NAME', 'none') as string;
-    return {
-        region: _region,
-        credentials: fromIni({ profile: _profile }),
-    };
+export interface AwsConfigParams {
+    /** AWS region */
+    region?: string;
+    /** AWS profile */
+    profile?: string; // AWS profile
+    /** AWS credentials provider */
+    credentials?: RuntimeConfigAwsCredentialIdentityProvider;
+}
+
+/**
+ * load config for aws sdk
+ * - if `profile` is not defined, use `AWS_PROFILE` or `default`
+ * - if `region` is not defined, use `AWS_REGION` or `ap-northeast-2`
+ *
+ * ```
+ * # run with default profile
+ * $ npm run test:watch
+ *
+ * # run with `lemon` profile
+ * #npm run test:watch.lemon
+ */
+export const awsConfig = <T extends AwsConfigParams>(
+    $engine: LemonEngine,
+    /** params or region */
+    params?: T | string | (() => string),
+): T & { credentials?: RuntimeConfigAwsCredentialIdentityProvider } => {
+    const errScope = `awsConfig(${$engine?.id ?? ''})`;
+    const region: string =
+        params === undefined
+            ? 'ap-northeast-2'
+            : typeof params === 'string'
+            ? params
+            : typeof params === 'function'
+            ? params()
+            : params?.region;
+    const _conf: T = typeof params === 'object' ? params : null;
+    const profile = $engine?.environ('NAME', 'none') as string;
+    if (typeof profile !== 'string')
+        throw new Error(`@env.NAME[${typeof profile}] is invalid (check $engine) - ${errScope}`);
+
+    //* build defualt config.
+    const $conf = onlyDefined<T>({
+        profile: profile && profile !== 'none' ? profile : undefined,
+        region,
+        ..._conf,
+    });
+    if (typeof $conf.region === 'string' && !$conf.region)
+        throw new Error(`.region[${$conf.region}] is invalid (empty) - ${errScope}`);
+
+    //! load the credentials provider(async function).
+    const credentials: RuntimeConfigAwsCredentialIdentityProvider =
+        typeof ($conf as any).credentials === 'function'
+            ? ($conf as any).credentials
+            : $conf.profile
+            ? fromIni({ profile: $conf.profile })
+            : undefined;
+
+    return onlyDefined({ ...$conf, credentials });
 };

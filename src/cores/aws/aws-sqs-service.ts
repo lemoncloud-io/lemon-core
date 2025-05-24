@@ -123,7 +123,7 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        const sqs = new SQSClient(awsConfig(this.region()));
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new SendMessageCommand(params));
         _log(NS, '> result =', result);
         return (result && result.MessageId) || '';
@@ -151,7 +151,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call api
-        const sqs = new SQSClient(awsConfig(this.region()));
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new ReceiveMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
 
@@ -192,7 +192,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new SQSClient(awsConfig(this.region()));
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new DeleteMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
         return;
@@ -211,7 +211,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new SQSClient(awsConfig(this.region()));
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new GetQueueAttributesCommand(params));
         _log(NS, '> result =', $U.json(result));
         const attr = result.Attributes || {};

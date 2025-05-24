@@ -87,7 +87,7 @@ export interface EnvironmentSet {
  *
  * @deprecated use `loadEnviron()` from `lemon-devkit` instead.
  */
-export const loadEnviron = (process: any, options?: EnvironmentSet): EnvironmentSet => {
+export const loadEnviron = (process?: any, options?: EnvironmentSet): EnvironmentSet => {
     const errScope = 'loadEnviron()';
     const devkit = _load('lemon-devkit');
     if (!devkit?.loadEnviron)

@@ -157,7 +157,7 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
  * get aws client for S3
  */
 const instance = () => {
-    const cfg = awsConfig(region());
+    const cfg = awsConfig($engine, region());
     return new S3Client(cfg); // SQS Instance. shared one???
 };
 

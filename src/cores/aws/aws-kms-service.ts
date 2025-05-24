@@ -30,8 +30,7 @@ const ALIAS = `lemon-hello-api`; //NOTE - use env[KMS_KEY_ID] to overide.
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
 const instance = () => {
-    const _region = region();
-    const cfg = awsConfig(_region);
+    const cfg = awsConfig($engine, region());
     return new KMSClient(cfg);
 };
 

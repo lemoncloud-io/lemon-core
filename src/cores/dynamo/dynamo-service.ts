@@ -92,7 +92,7 @@ export class DynamoService<T extends GeneralItem> {
      */
     public static instance(region?: string) {
         region = `${region || 'ap-northeast-2'}`;
-        const cfg = awsConfig(region);
+        const cfg = awsConfig($engine, region);
         const dynamo = new DynamoDBClient(cfg); // Low-level DynamoDB client
         const $client = async (): Promise<DynamoDBDocumentClient> => {
             const credentials = await cfg.credentials;

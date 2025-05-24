@@ -10,14 +10,14 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
+import { $engine, $U, _log, _inf, _err, getHelloArn, LemonEngine } from '../../engine';
 const NS = $U.NS('SNS', 'blue');
 
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { CoreSnsService } from '../core-services';
-import { awsConfig } from '../../tools';
+import { awsConfig, AwsConfigParams } from '../../tools';
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
 /**
@@ -95,13 +95,13 @@ export class AWSSNSService implements CoreSnsService {
      *
      * refer: `https://stackoverflow.com/questions/35563270/finding-my-aws-account-id-using-javascript`
      */
-    public accountID = async (): Promise<string> => {
+    public accountID = async (engine?: LemonEngine, $cfg?: AwsConfigParams): Promise<string> => {
         return new Promise((resolve, reject) => {
-            const iam = new IAMClient();
-            const cfg = awsConfig();
+            const cfg = awsConfig(engine ?? $engine, $cfg);
+            const iam = new IAMClient(cfg);
             iam.send(new GetUserCommand({}))
                 .then(data => {
-                    return data.User?.Arn.split(':')[4];
+                    resolve(data.User?.Arn.split(':')[4]);
                 })
                 .catch(err => {
                     const msg = `${err.message || err}`;
@@ -109,10 +109,8 @@ export class AWSSNSService implements CoreSnsService {
                         const sts = new STSClient(cfg);
                         return sts
                             .send(new GetCallerIdentityCommand({}))
-                            .then(data => data.Account)
-                            .catch(e => {
-                                throw e;
-                            });
+                            .then(data => resolve(data?.Account))
+                            .catch(e => reject(e));
                     }
                     //* otherwise, call internal resource. (ECS, EC2)
                     _err(NS, '! err@1 =', err);
@@ -123,6 +121,8 @@ export class AWSSNSService implements CoreSnsService {
                     //     if (err) reject(err);
                     //     else resolve(JSON.parse(data).InstanceProfileArn.split(':')[4]);
                     // });
+                    _err(NS, '! err@2 =', err);
+                    reject(err);
                 });
         });
     };
@@ -149,7 +149,7 @@ export class AWSSNSService implements CoreSnsService {
         //* call sns.publish()
         const region = arn.split(':')[3];
         if (!region) throw new Error(`@region is required. arn:${arn}`);
-        const cfg = awsConfig(region);
+        const cfg = awsConfig($engine, region);
         const sns = new SNSClient(cfg);
         return sns
             .send(new PublishCommand(params))
