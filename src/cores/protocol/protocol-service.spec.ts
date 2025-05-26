@@ -8,8 +8,8 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { expect2, GETERR, environ } from '../../common/test-helper';
-import { credentials } from '../../tools/';
+import { loadProfile } from '../../environ';
+import { expect2, GETERR } from '../../common/test-helper';
 import { NextContext } from 'lemon-model';
 import {
     MyProtocolService,
@@ -80,7 +80,7 @@ const asParam = (service: string, type?: string, base?: any): ProtocolParam => {
 //! main test body.
 describe('ProtocolService', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('PROFILE'));
+    const $PROFILE = loadProfile();
 
     //* dummy service.
     it('should pass basic protocol', async () => {
@@ -184,9 +184,11 @@ describe('ProtocolService', () => {
 
     //* for each event protocol
     it('should pass transformEvent() of web.local', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { service, config } = instance();
-        const id = 'abc';
-        const param = asParam('', 'test', { id });
+        const param = asParam('', 'test', { id: 'abc' });
         const uri = service.asProtocolURI('web', param, config);
         expect2(uri).toEqual('web://lemon-hello-api-dev-lambda/test/abc');
         expect2(service.transformEvent(uri, param), 'headers').toEqual({ headers: { 'x-protocol-context': '{}' } });
@@ -217,6 +219,9 @@ describe('ProtocolService', () => {
 
     //* for each event protocol
     it('should pass transformEvent() of web.dev', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { service, config } = instance({ STAGE: 'develop' });
         const context: NextContext = { requestId: 'xxxx', accountId: '0908' };
         const id = '0';

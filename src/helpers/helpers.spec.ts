@@ -9,7 +9,7 @@
  */
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
-import { loadJsonSync } from '../tools/shared';
+import { loadJsonSync } from '../tools/';
 import { expect2, waited } from '../common/test-helper';
 import {
     $protocol,
@@ -282,7 +282,7 @@ describe('utils', () => {
         expect2(() => $T.parseMeta('{ "a": }')).toEqual({
             type: 'string',
             value: '{ "a": }',
-            error: 'Unexpected token } in JSON at position 7',
+            error: 'Unexpected token \'}\', "{ "a": }" is not valid JSON',
         });
         expect2(() => $T.parseMeta({ a: 123 })).toEqual({ a: 123 });
         expect2(() => $T.parseMeta(null)).toEqual(null);

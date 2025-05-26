@@ -10,11 +10,10 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-
 import _ from 'lodash';
 import $async from 'async';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const AWSUtil = require('aws-sdk/lib/util');
+// const AWSUtil = require('aws-sdk/lib/util');
 
 export const omitNulls = (data: any) => {
     return _.omitBy(data, function (value) {
@@ -128,20 +127,21 @@ export const omitPrimaryKeys = function (schema: any, params: any) {
     return _.omit(params, schema.hashKey, schema.rangeKey);
 };
 
-export const strToBin = function (value: any) {
+export const strToBin = function (value: any): Buffer {
     if (typeof value !== 'string') {
         const StrConversionError = 'Need to pass in string primitive to be converted to binary.';
         throw new Error(StrConversionError);
     }
 
-    if (AWSUtil.isBrowser()) {
-        const len = value.length;
-        const bin = new Uint8Array(new ArrayBuffer(len));
-        for (let i = 0; i < len; i++) {
-            bin[i] = value.charCodeAt(i);
-        }
-        return bin;
-    } else {
-        return AWSUtil.Buffer(value);
-    }
+    // if (AWSUtil.isBrowser()) {
+    //     const len = value.length;
+    //     const bin = new Uint8Array(new ArrayBuffer(len));
+    //     for (let i = 0; i < len; i++) {
+    //         bin[i] = value.charCodeAt(i);
+    //     }
+    //     return bin;
+    // } else {
+    //     return AWSUtil.Buffer(value);
+    // }
+    return Buffer.from(value);
 };

@@ -10,11 +10,10 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
 import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR, Elastic6Item } from './elastic6-service';
-import { ApiResponse } from '@elastic/elasticsearch';
+// import { ApiResponse } from '@elastic/elasticsearch';
 
 /**
  * default endpoints url.
@@ -1240,7 +1239,8 @@ export const bulkDummyData = async (service: Elastic6Service<any>, n = 2, t = 50
 
     // bulk operation
     const performBulkOperation = async (operations: any[]) => {
-        const bulkResponse: ApiResponse<BulkResponseBody, any> = await service.client
+        // const bulkResponse: ApiResponse<BulkResponseBody, any> = await service.client
+        const bulkResponse = await service.client
             .bulk({
                 body: operations,
             })
@@ -1760,12 +1760,9 @@ export const doTest = async (service: Elastic6Service<any>) => {
     // 모든 테스트가 성공하면 pass 반환
     return `pass`;
 };
-////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 //* main test body.
 describe('Elastic6Service', () => {
-    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
-    PROFILE && console.info(`! PROFILE =`, PROFILE);
-
     //* dummy storage service.
     it('should pass basic CRUD w/ dummy', async () => {
         //* load dummy storage service.

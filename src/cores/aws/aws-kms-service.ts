@@ -22,16 +22,16 @@ import { GetPublicKeyCommand, EncryptCommand, DecryptCommand, VerifyCommand } fr
 // eslint-disable-next-line prettier/prettier
 import { EncryptCommandInput, DecryptCommandInput, GetPublicKeyCommandInput, SignCommandInput, VerifyCommandInput } from '@aws-sdk/client-kms';
 import { CoreKmsService } from '../core-services';
+import { awsConfig } from '../../tools';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
 type MySigningAlgorithm = SigningAlgorithmSpec;
 const ALIAS = `lemon-hello-api`; //NOTE - use env[KMS_KEY_ID] to overide.
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
-//* get aws client for KMS
+
 const instance = () => {
-    const _region = region();
-    const config = { region: _region };
-    return new KMSClient(config);
+    const cfg = awsConfig($engine, region());
+    return new KMSClient(cfg);
 };
 
 /**
@@ -130,17 +130,13 @@ export class AWSKMSService implements CoreKmsService {
      */
     public decrypt = async (encryptedSecret: string): Promise<string> => {
         _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
-        const CiphertextBlob =
-            typeof encryptedSecret == 'string'
-                ? isBase64(encryptedSecret)
-                    ? Buffer.from(encryptedSecret, 'base64')
-                    : encryptedSecret
-                : encryptedSecret;
+        const CiphertextBlob = Buffer.from(encryptedSecret, 'base64');
+
         //* api param.
         const params: DecryptCommandInput = { CiphertextBlob: CiphertextBlob as Uint8Array };
         const data: any = await this.instance().send(new DecryptCommand(params));
         // _log(NS, '> data.type =', typeof data);
-        return data && data.Plaintext ? data.Plaintext.toString() : '';
+        return data?.Plaintext ? Buffer.from(data.Plaintext).toString('utf-8') : '';
     };
 
     /**

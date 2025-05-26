@@ -24,6 +24,7 @@ import {
     filterFields,
     ManagerProxy,
 } from './abstract-service';
+import { asyncCredentials } from '../tools';
 
 /**
  * type: `Model`
@@ -91,8 +92,8 @@ export const instance = (type: string = 'dummy') => {
 
 //! main test body.
 describe('abstract-service', () => {
-    const PROFILE = loadProfile(process); // override process.env.
-    PROFILE && console.info('! PROFILE =', PROFILE);
+    //* use like `const PROFILE = await $PROFILE` in each test.
+    const $PROFILE = loadProfile(process); // override process.env.
 
     //* basic function
     it('should pass basic function', async () => {
@@ -203,7 +204,8 @@ describe('abstract-service', () => {
 
     //* check of `$ES6`
     it('should pass $ES6', async () => {
-        const { service, current } = instance();
+        const PROFILE = await $PROFILE;
+        PROFILE && console.info('! PROFILE =', PROFILE);
 
         expect2(() => $ES6.hello()).toEqual('Elastic6Instance');
 
@@ -214,7 +216,7 @@ describe('abstract-service', () => {
         //* the search options.
         expect2(() => $ES6.options).toEqual(null);
 
-        const $X = ($ES6 as any).$X;
+        const $X = $ES6.$X;
         const describe = $X.describeEndpointUrl;
 
         expect2(() => describe(null, { errScope: 'test' })).toEqual('@url(string) is required - test');
@@ -275,32 +277,23 @@ describe('abstract-service', () => {
                 isProxy: false,
             });
         }
-
-        //* test of loadCredentials()
-        if (!PROFILE) {
-            expect2(() => $X.loadCredentials(), 'profile').toEqual({ profile: 'default' });
-            expect2(() => $X.loadCredentials(''), 'profile').toEqual({ profile: 'default' });
-            expect2(() => $X.loadCredentials('temp')).toEqual('@profile[temp] is invalid - loadCredentials(temp)');
-            expect2(() => $X.loadCredentials('lemon'), 'profile').toEqual({ profile: 'lemon' });
-
-            const cred = $X.loadCredentials('lemon');
-            expect2(() => [typeof cred?.accessKeyId, cred?.accessKeyId?.length].join(':')).toEqual('string:20');
-            expect2(() => [typeof cred?.secretAccessKey, cred?.secretAccessKey?.length].join(':')).toEqual('string:40');
-        }
     });
 
     //* check of createHttpSearchProxy()
     it('should pass $ES6.$X.createHttpSearchProxy()', async () => {
+        const PROFILE = await $PROFILE;
+        PROFILE && console.info('! PROFILE =', PROFILE);
+
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}]`);
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
         // use `lemon-hello-api` in prod.
         const endpoint = `https://hg9errxv25.execute-api.ap-northeast-2.amazonaws.com/prod`;
         const $X = $ES6.$X;
-        const credentials = $X.loadCredentials(PROFILE);
+        const credentials = await asyncCredentials(PROFILE);
         const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
 
         // GET method test
@@ -321,16 +314,19 @@ describe('abstract-service', () => {
 
     //* check of _ES6
     it('should pass _ES6 factory', async () => {
+        const PROFILE = await $PROFILE;
+        PROFILE && console.info('! PROFILE =', PROFILE);
+
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}]`);
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
         // use `lemon-templates-api` in dev.
         const endpoint = `https://ag1qbtayhj.execute-api.ap-northeast-2.amazonaws.com/dev/search/echo/query`;
         const $X = $ES6.$X;
-        const credentials = $X.loadCredentials(PROFILE);
+        const credentials = await asyncCredentials(PROFILE);
         const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
 
         // GET method test
@@ -341,7 +337,7 @@ describe('abstract-service', () => {
             body: { body },
         });
 
-        const agent = _ES6({ endpoint });
+        const agent = _ES6({ endpoint, useProxy: true, credentials });
         expect2(await agent.search(body, param).catch(GETERR), '!context').toEqual({
             param,
             body: {

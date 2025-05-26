@@ -28,7 +28,7 @@ import { NextContext } from 'lemon-model';
 
 //* import sub-modules.
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
-import { loadJsonSync } from '../tools/shared';
+import { loadJsonSync } from '../tools/';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
 
 import * as $lambda from 'aws-lambda';

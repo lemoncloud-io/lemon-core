@@ -8,10 +8,11 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../../environ';
 import { $U } from '../../engine/';
 import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
-import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
-import { loadJsonSync, credentials } from '../../tools/';
+import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
+import { loadJsonSync } from '../../tools/';
 import { ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
@@ -83,8 +84,7 @@ class MyLemonWebController implements CoreWEBController {
 //! main test body.
 describe('LambdaWEBHandler', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('ENV'));
-    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+    const $PROFILE = loadProfile();
 
     //* basic function
     it('should pass basic functions', async () => {
@@ -111,6 +111,9 @@ describe('LambdaWEBHandler', () => {
 
     //* pass tools()
     it('should pass header tools', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { service } = instance();
 
         //* test `tools()` basic
@@ -194,9 +197,11 @@ describe('LambdaWEBHandler', () => {
             const parse1 = (t: string) => $t.parseIdentityJWT(t, { current }).catch(GETERR);
             expect2(await parse1(null)).toEqual('@token (string) is required - but object');
             expect2(await parse1($enc.message + '.')).toEqual('@signature (string|Buffer) is required - kms.verify()');
-            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(`@signature[] is invalid - not be verified!`);
+            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(
+                `@signature[] is invalid - not be verified by iss:kms/${alias}!`,
+            );
             expect2(await parse1($enc.message + '.' + $enc.signature.replace('0', '1'))).toEqual(
-                `@signature[] is invalid - not be verified!`,
+                `@signature[] is invalid - not be verified by iss:kms/${alias}!`,
             );
             expect2(await parse1($enc.token + '.x')).toEqual(`@token[${$enc.token + '.x'}] is invalid format!`);
             expect2(await parse1($enc.token)).toEqual({

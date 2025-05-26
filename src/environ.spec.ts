@@ -1,72 +1,48 @@
 /**
  * `environ.spec.ts`
- * - test runnder for `environ.ts`
+ * - test runnder for `tools/environ.ts`
+ *
  *
  * @author      Steve <steve@lemoncloud.io>
- * @date        2019-08-08 initial unit test.
+ * @date        2025-05-20 initial unit test for environ.
  *
- * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
+ * @copyright (C) lemoncloud.io 2025 - All Rights Reserved.
  */
-import { expect2 } from './common/test-helper';
-import loadEnviron from './environ';
-
-const safe = (f: () => unknown) => {
-    try {
-        return f();
-    } catch (e) {
-        // console.error('! err =', e);
-        return e;
-    }
-};
-
-const $environ = (env?: { [key: string]: string }): any => {
-    //* convert all string.
-    env =
-        (env &&
-            Object.keys(env).reduce((O: any, k) => {
-                O[k] = `${env[k]}`;
-                return O;
-            }, {})) ||
-        env;
-    const proc = { env };
-    const opt = { ENV_PATH: 1 ? './env' : __dirname + '/../env' };
-    return safe(() => loadEnviron(proc, opt));
-};
+import loadEnviron, { credentials, loadProfile } from './environ';
+import { expect2, GETERR } from './common/test-helper';
 
 //! main test body.
-describe(`test the 'environ.ts'`, () => {
-    test('check basic environ()', () => {
-        const $conf = $environ({ LS: '1', ENV: 'lemon', NODE_ENV: 'prod' });
-        expect2(() => $conf, 'NAME').toEqual({ NAME: 'lemon' });
-        expect2(() => $conf, 'STAGE').toEqual({ STAGE: 'production' });
-        expect2(() => $conf, 'TS').toEqual({ TS: '0' });
+describe('environ', () => {
+    const ENV = process?.env?.ENV ?? '';
+
+    it(`should pass loadProfile(${ENV})`, async () => {
+        const PROFILE = await loadProfile().catch(GETERR);
+        PROFILE && console.info(`! PROFILE @environ =`, PROFILE);
+
+        if (!ENV) {
+            //* for `npm run test`
+            expect2(() => PROFILE).toEqual('');
+        } else {
+            //* for `npm run test.lemon`
+            expect2(() => PROFILE).toEqual(ENV);
+        }
     });
 
-    test('check file error', () => {
-        const $conf = $environ({ LS: '1', ENV: 'anony' });
-        expect2(() => $conf.message.split(':')[0]).toEqual('FILE NOT FOUND');
+    it(`should pass credentials(${ENV})`, async () => {
+        expect2(() => credentials(null)).toEqual();
+        expect2(() => credentials('')).toEqual();
+        expect2(() => credentials('lemon')).toEqual(
+            'WARN! credentials() is deprecated. use `asyncCredentials()` instead!',
+        );
     });
 
-    test('check default envion', () => {
-        const $conf = $environ(null);
-        expect2(() => $conf).toEqual({ LS: '0', LC: '1', NAME: 'none', STAGE: 'local', TS: '1', BACKBONE_API: '' });
-    });
-
-    test('check unknown envion.stage', () => {
-        const $conf = $environ({ LS: '1', ENV: 'lemon', STAGE: 'proxy' });
-        expect2(() => $conf.STAGE).toEqual('proxy');
-    });
-
-    test('check override', () => {
-        const $conf = $environ({ LS: '1', ENV: 'lemon', NAME: 'hello', STAGE: 'prod' });
-        expect2(() => $conf.NAME).toEqual('hello');
-        expect2(() => $conf.STAGE).toEqual('prod');
-    });
-
-    test('check override', () => {
-        const $conf = $environ({ LS: '1', ENV: 'lemon', NAME: 'hello', STAGE: 'local' });
-        expect2(() => $conf.NAME).toEqual('test-lemon');
-        expect2(() => $conf.STAGE).toEqual('local');
-        expect2(() => $conf.LIST).toEqual('a, b');
+    it(`should pass loadEnviron(${ENV})`, async () => {
+        //* check `env/<ENV>.yml`
+        const _load = (ENV?: string) => loadEnviron(null, { ENV });
+        expect2(() => _load(null), 'NAME').toEqual({ NAME: '' });
+        expect2(() => _load(''), 'NAME').toEqual({ NAME: '' });
+        expect2(() => _load('none'), 'NAME').toEqual({ NAME: '' });
+        expect2(() => _load('lemon'), 'NAME').toEqual({ NAME: 'test-lemon' });
+        expect2(() => _load('test'), 'NAME').toEqual('FILE NOT FOUND:./env/test.yml');
     });
 });

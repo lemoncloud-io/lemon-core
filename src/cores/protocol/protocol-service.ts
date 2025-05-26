@@ -9,7 +9,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
+import $engine, { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
 import { NextMode, NextContext } from 'lemon-model';
 import {
     STAGE,
@@ -25,6 +25,7 @@ import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } f
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
+import { awsConfig } from '../../tools';
 import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
@@ -340,7 +341,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call lambda.
         const region = 'ap-northeast-2'; //TODO - optimize of aws region....
-        const lambda = new LambdaClient({ region });
+        const lambda = new LambdaClient(awsConfig($engine, region));
         const response = await lambda
             .send(new InvokeCommand(params))
             .catch((e: Error) => {
@@ -402,7 +403,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const sns = new SNSClient({ region });
+        const sns = new SNSClient(awsConfig($engine, region));
         const res = await sns
             .send(new PublishCommand(params))
             .catch((e: Error) => {
@@ -450,7 +451,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
-        const sqs = new SQSClient({ region });
+        const sqs = new SQSClient(awsConfig($engine, region));
         const res = await sqs
             .send(new SendMessageCommand(params))
             .catch((e: Error) => {
@@ -499,7 +500,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const sns = new SNSClient({ region });
+        const sns = new SNSClient(awsConfig($engine, region));
         const res = await sns
             .send(new PublishCommand(params))
             .catch((e: Error) => {

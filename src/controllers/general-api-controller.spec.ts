@@ -7,7 +7,6 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import request from 'supertest';
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
 import { ProtocolParam, Elastic6QueryService } from '../cores';
 import { buildEngine } from '../engine';
@@ -16,6 +15,7 @@ import { expect2, GETERR } from '../common/test-helper';
 import { GeneralAPIController } from './general-api-controller';
 import { TypedStorageService } from '../cores/';
 import * as $proxy from '../cores/storage/proxy-storage-service.spec';
+import request from 'supertest';
 
 //* local `lambda-web-handler` to server dummy
 class LambdaWEBHandlerLocal extends LambdaWEBHandler {

@@ -27,18 +27,12 @@ const S3 = new AWSS3Service();
 //! main test body.
 describe(`test AWSS3Service`, () => {
     //* use `env.PROFILE`
-    const PROFILE = loadProfile(process); // override process.env.
-    PROFILE && console.info('! PROFILE=', PROFILE);
+    const $PROFILE = loadProfile(process); // override process.env.
 
-    test('check name() function', async () => {
+    test('check basic function', async () => {
         expect(S3.name()).toEqual('S3');
-    });
-
-    test('check hello() function', async () => {
         expect(S3.hello()).toEqual(`aws-s3-service:${S3.bucket()}`);
-    });
 
-    test('check bucket() function', async () => {
         expect(AWSS3Service.ENV_S3_NAME).toEqual(ENV_NAME);
         expect(AWSS3Service.DEF_S3_BUCKET).toEqual(DEF_BUCKET);
 
@@ -50,6 +44,9 @@ describe(`test AWSS3Service`, () => {
 
     //* test headObject()
     test('check headObject() function', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         if (!PROFILE) return;
 
         // if the objects not exists
@@ -64,6 +61,9 @@ describe(`test AWSS3Service`, () => {
 
     //* test putObject(), and getObject()
     test('check putObject() function', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         if (!PROFILE) return;
         const json = { hello: 'world', lemon: true, name: '한글!' };
         const body = JSON.stringify(json);
@@ -204,6 +204,9 @@ describe(`test AWSS3Service`, () => {
 
     //* test getDecodedObject()
     test('check getDecodedObject() function', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         if (!PROFILE) return;
         const fileName = 'sample.json';
         const data = { hello: 'world', lemon: true };

@@ -21,13 +21,13 @@ import { GetObjectCommandOutput, S3Client, _Object } from '@aws-sdk/client-s3';
 import { HeadObjectCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, GetObjectTaggingCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 // eslint-disable-next-line prettier/prettier
 import { PutObjectCommandInput, ListObjectsV2CommandInput } from '@aws-sdk/client-s3';
-import { StreamingBlobPayloadOutputTypes } from '@smithy/types';
 import path from 'path';
 import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
 import { GETERR } from '../../common/test-helper';
-
+import { Readable } from 'stream';
+import { awsConfig } from '../../tools';
 /** ****************************************************************************************************************
  *  Core Types.
  ** ****************************************************************************************************************/
@@ -96,7 +96,7 @@ export interface GetObjectResult {
     /**
      * Object data.
      */
-    Body?: StreamingBlobPayloadOutputTypes;
+    Body?: Buffer;
     /**
      * An ETag is an opaque identifier assigned by a web server to a specific version of a resource found at a URL.
      */
@@ -157,9 +157,8 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
  * get aws client for S3
  */
 const instance = () => {
-    const _region = region();
-    const config = { region: _region };
-    return new S3Client(config); // SQS Instance. shared one???
+    const cfg = awsConfig($engine, region());
+    return new S3Client(cfg); // SQS Instance. shared one???
 };
 
 /**
@@ -225,8 +224,8 @@ export class AWSS3Service implements CoreS3Service {
                 LastModified: $U.ts(data.LastModified),
             };
             return result;
-        } catch (e) {
-            if (e.statusCode == 404) return null;
+        } catch (e: any) {
+            if (e?.$metadata?.httpStatusCode === 404 || e.name === 'NotFound') return null;
             _err(NS, '! err=', e);
             throw e;
         }
@@ -311,7 +310,9 @@ export class AWSS3Service implements CoreS3Service {
             const data = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
             const { ContentType, ContentLength, Body, ETag, Metadata, TagCount } = data;
-            const result: GetObjectResult = { ContentType, ContentLength, Body, ETag, Metadata };
+            // convert stream to buffer for readable stream.
+            const buffer = Body && Body instanceof Readable ? await this.streamToBuffer(Body) : undefined;
+            const result: GetObjectResult = { ContentType, ContentLength, Body: buffer, ETag, Metadata };
             if (TagCount) result.TagCount = TagCount;
             return result;
         } catch (e) {
@@ -336,7 +337,9 @@ export class AWSS3Service implements CoreS3Service {
         try {
             const data: GetObjectCommandOutput = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
-            const content = data.Body.toString();
+            const buffer =
+                data.Body && data.Body instanceof Readable ? await this.streamToBuffer(data.Body) : undefined;
+            const content = buffer?.toString();
             return JSON.parse(content) as T;
         } catch (e) {
             _err(NS, '! err=', e);
@@ -470,6 +473,20 @@ export class AWSS3Service implements CoreS3Service {
 
         // returns.
         return result;
+    };
+
+    /**
+     * Convert a readable stream into a single Buffer.
+     * Required in AWS SDK v3, as S3.getObject() returns a stream instead of a Buffer.
+     *
+     * Used for JSON parsing in getDecodedObject() and getObject().
+     */
+    private streamToBuffer = async (stream: Readable): Promise<Buffer> => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+            chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+        }
+        return Buffer.concat(chunks);
     };
 }
 

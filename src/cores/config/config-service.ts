@@ -19,7 +19,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
 import { STAGE, CoreKmsService, CoreConfigService } from './../core-services';
-import { loadJsonSync } from '../../tools/shared';
+import { loadJsonSync } from '../../tools/';
 const NS = $U.NS('CFGS', 'red'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;

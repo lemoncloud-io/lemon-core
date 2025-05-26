@@ -9,10 +9,10 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../../engine/';
+import { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
-import { QueryCommand } from '@aws-sdk/client-dynamodb';
+import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 const NS = $U.NS('DYQR', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -106,7 +106,7 @@ export class DynamoQueryService<T extends GeneralItem> implements DynamoSimpleQu
         const payload = this.buildQuery(pkey, from, to, limit, last, isDesc);
 
         //* get instance of dynamodoc, and execute query().
-        const { dynamodoc } = DynamoService.instance();
+        const dynamodoc = await DynamoService.instance().dynamodoc();
         const res = await dynamodoc.send(new QueryCommand(payload));
         if (res) {
             // _log(NS, `> query[${pkey}].res =`, $U.json(res)); // `startKey`
