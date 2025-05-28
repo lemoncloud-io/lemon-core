@@ -282,7 +282,8 @@ describe('utils', () => {
         expect2(() => $T.parseMeta('{ "a": }')).toEqual({
             type: 'string',
             value: '{ "a": }',
-            error: 'Unexpected token \'}\', "{ "a": }" is not valid JSON',
+            error: 'Unexpected token \'}\', "{ "a": }" is not valid JSON', // for nodejs 22
+            // error: 'Unexpected token } in JSON at position 7', // for nodejs 18
         });
         expect2(() => $T.parseMeta({ a: 123 })).toEqual({ a: 123 });
         expect2(() => $T.parseMeta(null)).toEqual(null);
