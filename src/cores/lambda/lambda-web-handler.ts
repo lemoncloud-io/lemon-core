@@ -55,9 +55,17 @@ export interface CoreWEBController {
     decode: NextDecoder;
 }
 
-interface ProxyParams {
-    param: ProtocolParam;
+/**
+ * type: `ProxyParams`
+ * - parameters for proxy-chain.
+ */
+interface ProxyParams<T = any> {
+    /** original web event */
     event: WEBEvent;
+    /** protocol parameters */
+    param: ProtocolParam;
+    /** protocol parameters */
+    $ctx: NextContext<T>;
 }
 
 type ProxyResult = APIGatewayProxyResult;
@@ -141,13 +149,11 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
     }
 
     //* transform to protocol-context.
-    if (event && event.headers && !event.headers[HEADER_PROTOCOL_CONTEXT])
-        event.headers[HEADER_PROTOCOL_CONTEXT] = $ctx ? $U.json($ctx) : null;
-    const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
+    const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event, $ctx);
     _log(NS, '! protocol-param =', $U.json({ ...param, body: undefined })); // hide `.body` in log.
 
     //* returns object..
-    return { event, param };
+    return { event, param, $ctx };
 };
 
 /**

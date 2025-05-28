@@ -125,7 +125,7 @@ export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventPar
      * transform event data to param
      * @param event     the lambda compatible event data.
      */
-    transformToParam(event: TLambdaEvent): ProtocolParam;
+    transformToParam(event: TLambdaEvent, $ctx?: NextContext): ProtocolParam;
 }
 
 /**
