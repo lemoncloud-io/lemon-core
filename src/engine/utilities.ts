@@ -746,6 +746,7 @@ export class Utilities {
         algorithm = algorithm || 'aes-256-ctr';
         const MAGIC = 'LM!#';
         return new (class {
+            /** @deprecated since nodejs22 */
             public encrypt = (val: string): string => {
                 val = val === undefined ? null : val;
                 // msg = msg && typeof msg == 'object' ? JSON_TAG+JSON.stringify(msg) : msg;
@@ -754,10 +755,12 @@ export class Utilities {
                 const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
                 // const key = Buffer.from(`${passwd || ''}`, 'utf8');
                 const cipher = crypto.createCipher(algorithm, passwd);
+                // const cipher = crypto.createCipher(algorithm, passwd);
                 // const cipher = crypto.createCipheriv(algorithm, key, iv);
                 const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
                 return crypted.toString(1 ? 'base64' : 'utf8');
             };
+            /** @deprecated since nodejs22 */
             public decrypt = (msg: string): string => {
                 const buffer = Buffer.from(`${msg || ''}`, 'base64');
                 // const key = Buffer.from(`${passwd || ''}`, 'utf8');

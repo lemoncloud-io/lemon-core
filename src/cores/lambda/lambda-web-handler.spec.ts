@@ -549,7 +549,7 @@ describe('LambdaWEBHandler', () => {
             event.headers['x-protocol-context'] = '-';
             const $res = await lambda.handle(event, null).catch(GETERR$);
             expect2(() => $res, 'statusCode,error').toEqual({
-                error: '@context[-] is not valid JSON(Unexpected end of JSON input) - web.transformToParam(/hello/a_123_test)',
+                error: '@context[-] is not valid JSON - web.transformToParam(/hello/a_123_test)',
             });
         }
 

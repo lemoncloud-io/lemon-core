@@ -593,7 +593,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
                 if (c && typeof c == 'object') return c as NextContext;
             } catch (e) {
                 _log(NS, `> WARN! context[${ctx}] is not valid JSON.`, e);
-                throw new Error(`@context[${ctx}] is not valid JSON(${e.message || e}) - ${errScope}`);
+                throw new Error(`@context[${ctx}] is not valid JSON - ${errScope}`);
             }
             return null; // not valid context.
         };
