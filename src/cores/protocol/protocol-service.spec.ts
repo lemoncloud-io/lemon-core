@@ -197,7 +197,7 @@ describe('ProtocolService', () => {
             path: '/test/abc',
         });
         expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({
-            pathParameters: { id, cmd: '', type: 'test' },
+            pathParameters: { id: 'abc', cmd: '', type: 'test' },
         });
         const requestContext = {
             accountId: '',
@@ -223,18 +223,18 @@ describe('ProtocolService', () => {
         if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
         const { service, config } = instance({ STAGE: 'develop' });
-        const context: NextContext = { requestId: 'xxxx', accountId: '0908' };
+        const $ctx: NextContext = { requestId: 'xxxx', accountId: '0908' };
         const id = '0';
         const param = asParam('lemon-metrics-api', 'metrics', {
             id,
             param: { ns: 'TestTable', id: 'abc-123', type: 'TEST', ts: 1567052044463 },
-            context,
+            context: $ctx,
         });
         const uri = service.asProtocolURI('web', param, config);
         const path = '/metrics/0';
         expect2(uri).toEqual('web://0908@lemon-metrics-api-dev-lambda/metrics/0');
         expect2(service.transformEvent(uri, param), 'headers').toEqual({
-            headers: { 'x-protocol-context': JSON.stringify(context) },
+            headers: { 'x-protocol-context': JSON.stringify($ctx) },
         });
         expect2(service.transformEvent(uri, param), 'httpMethod,path').toEqual({ httpMethod: 'GET', path });
         expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({
@@ -263,115 +263,96 @@ describe('ProtocolService', () => {
 
         //* test with transformToParam()
         const event2 = service.transformEvent(uri, param) as APIGatewayProxyEvent;
-        const param2 = service.web.transformToParam(event2);
+        const param2 = service.web.transformToParam(event2, $ctx);
         expect2(param2, 'service,stage,type').toEqual({ service: '', stage: '', type: 'metrics' });
         expect2(param2, 'mode,id,cmd').toEqual({ mode: 'GET', id, cmd: '' });
         expect2(param2, 'param').toEqual({
             param: { ns: 'TestTable', id: 'abc-123', type: 'TEST', ts: 1567052044463 },
         });
         expect2(param2, 'body').toEqual({ body: null });
-        expect2(param2.context).toEqual(context);
+        expect2(param2.context).toEqual($ctx);
 
         //* test of body-data.
         const webhdr0 = { 'content-type': '', 'x-protocol-context': '' };
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body: '' }), 'body').toEqual({
+        const _transform = (e: any) => service.web.transformToParam(e, $ctx);
+        expect2(() => _transform({ ...event2, headers: { ...webhdr0 }, body: '' }), 'body').toEqual({
             body: '',
         });
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body: null }), 'body').toEqual(
-            { body: null },
-        );
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body: {} as any }),
-            'body',
-        ).toEqual({ body: {} });
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body: '{}' }), 'body').toEqual(
-            { body: {} },
-        );
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body: '[]' }), 'body').toEqual(
-            { body: [] },
-        );
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body: 'a=b' }),
-            'body',
-        ).toEqual({ body: 'a=b' });
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr0 }, body: 'a%5Bb%5D=c' }),
-            'body',
-        ).toEqual({ body: 'a%5Bb%5D=c' });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr0 }, body: null }), 'body').toEqual({ body: null });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr0 }, body: {} as any }), 'body').toEqual({
+            body: {},
+        });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr0 }, body: '{}' }), 'body').toEqual({ body: {} });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr0 }, body: '[]' }), 'body').toEqual({ body: [] });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr0 }, body: 'a=b' }), 'body').toEqual({ body: 'a=b' });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr0 }, body: 'a%5Bb%5D=c' }), 'body').toEqual({
+            body: 'a%5Bb%5D=c',
+        });
 
         const webhdr1 = { 'content-type': 'application/json', 'x-protocol-context': '' };
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: '' }), 'body').toEqual({
+        expect2(() => _transform({ ...event2, headers: { ...webhdr1 }, body: '' }), 'body').toEqual({
             body: '',
         });
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: null }), 'body').toEqual(
-            { body: null },
+        expect2(() => _transform({ ...event2, headers: { ...webhdr1 }, body: null }), 'body').toEqual({ body: null });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr1 }, body: {} as any }), 'body').toEqual({
+            body: {},
+        });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr1 }, body: '{}' }), 'body').toEqual({ body: {} });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr1 }, body: '[]' }), 'body').toEqual({ body: [] });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr1 }, body: 'a=b' }), 'body').toEqual(
+            '@body[a=b] is not valid JSON - web.transformToParam(/metrics/0)',
         );
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: {} as any }),
-            'body',
-        ).toEqual({ body: {} });
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: '{}' }), 'body').toEqual(
-            { body: {} },
+        expect2(() => _transform({ ...event2, headers: { ...webhdr1 }, body: 'a%5Bb%5D=c' }), 'body').toEqual(
+            '@body[a%5Bb%5D=c] is not valid JSON - web.transformToParam(/metrics/0)',
         );
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: '[]' }), 'body').toEqual(
-            { body: [] },
-        );
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: 'a=b' }),
-            'body',
-        ).toEqual('Unexpected token \'a\', "a=b" is not valid JSON');
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr1 }, body: 'a%5Bb%5D=c' }),
-            'body',
-        ).toEqual('Unexpected token \'a\', "a%5Bb%5D=c" is not valid JSON');
 
         const webhdr2 = {
             'content-type': 'application/x-www-form-urlencoded; charset=utf-8',
             'x-protocol-context': '',
         };
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: '' }), 'body').toEqual({
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: '' }), 'body').toEqual({
             body: '',
         });
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: null }), 'body').toEqual(
-            { body: null },
-        );
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: {} as any }),
-            'body',
-        ).toEqual({ body: {} });
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: '{}' }), 'body').toEqual(
-            { body: {} },
-        );
-        expect2(() => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: '[]' }), 'body').toEqual(
-            { body: [] },
-        );
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: 'a=b' }),
-            'body',
-        ).toEqual({ body: { a: 'b' } });
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: 'a%5B%5D=c' }),
-            'body',
-        ).toEqual({ body: { a: ['c'] } });
-        expect2(
-            () => service.web.transformToParam({ ...event2, headers: { ...webhdr2 }, body: 'a%5Bb%5D=c' }),
-            'body',
-        ).toEqual({ body: { a: { b: 'c' } } });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: null }), 'body').toEqual({ body: null });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: {} as any }), 'body').toEqual({
+            body: {},
+        });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: '{}' }), 'body').toEqual({ body: {} });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: '[]' }), 'body').toEqual({ body: [] });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: 'a=b' }), 'body').toEqual({
+            body: { a: 'b' },
+        });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: 'a%5B%5D=c' }), 'body').toEqual({
+            body: { a: ['c'] },
+        });
+        expect2(() => _transform({ ...event2, headers: { ...webhdr2 }, body: 'a%5Bb%5D=c' }), 'body').toEqual({
+            body: { a: { b: 'c' } },
+        });
 
         //* error exceptions
-        expect2(() => service.web.transformToParam({ ...event2, headers: null })).toEqual('.headers is required');
-        expect2(() => service.web.transformToParam({ ...event2, requestContext: null })).toEqual(
-            '.requestContext is required',
+        expect2(() => _transform({ ...event2, headers: null })).toEqual(
+            '.headers (object) is required - web.transformToParam(/metrics/0)',
         );
-        expect2(() => service.web.transformToParam({ ...event2, headers: {} })).toEqual(
-            '.headers[x-protocol-context] is required',
+        expect2(() => _transform({ ...event2, requestContext: null })).toEqual(
+            '.requestContext (object) is required - web.transformToParam(/metrics/0)',
         );
-        expect2(() =>
-            service.web.transformToParam({ ...event2, requestContext: { ...event2.requestContext, accountId: '' } }),
-        ).toEqual('400 INVALID CONTEXT - accountId:0908');
-        expect2(() =>
-            service.web.transformToParam({ ...event2, requestContext: { ...event2.requestContext, requestId: '' } }),
-        ).toEqual('400 INVALID CONTEXT - requestId:xxxx');
+        expect2(() => _transform({ ...event2, requestContext: { ...event2.requestContext, accountId: '' } })).toEqual(
+            '400 INVALID CONTEXT - accountId:0908 @web.transformToParam(/metrics/0)',
+        );
+        expect2(() => _transform({ ...event2, requestContext: { ...event2.requestContext, requestId: '' } })).toEqual(
+            '400 INVALID CONTEXT - requestId:xxxx @web.transformToParam(/metrics/0)',
+        );
+        expect2(() => _transform({ ...event2, headers: {} })).toEqual({
+            service: '',
+            type: 'metrics',
+            stage: '',
+            id: '0',
+            cmd: '',
+            mode: 'GET',
+            param: { ...param2?.param },
+            body: null,
+            context: { ...$ctx },
+        });
     });
 
     //* for each event protocol

@@ -34,6 +34,7 @@ const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * header name to exchange `next-context`
+ * ONLY for internal communication.
  */
 export const HEADER_PROTOCOL_CONTEXT = $U.env('HEADER_PROTOCOL_CONTEXT', 'x-protocol-context');
 
@@ -573,12 +574,31 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
      * transform event data to param
      * @param event     the lambda compartible event data.
      */
-    public transformToParam(event: APIGatewayProxyEvent): ProtocolParam {
-        if (!event) throw new Error('@event (API Event) is required!'); // avoid null exception.
+    public transformToParam(event: APIGatewayProxyEvent, context?: NextContext): ProtocolParam {
+        const errScope = `web.transformToParam(${event?.path ?? ''})`;
+        if (!event) throw new Error(`@event (API Event) is required - ${errScope}`); // avoid null exception.
         const headers = event.headers;
-        if (!headers) throw new Error('.headers is required');
+        if (!headers) throw new Error(`.headers (object) is required - ${errScope}`);
         const requestContext = event.requestContext;
-        if (!requestContext) throw new Error('.requestContext is required');
+        if (!requestContext) throw new Error(`.requestContext (object) is required - ${errScope}`);
+
+        /** load next-context */
+        const _context = (context: NextContext): NextContext => {
+            if (context) return context; // use given context.
+            const ctx = headers[HEADER_PROTOCOL_CONTEXT];
+            if (!ctx) return null; // no context.
+            if (typeof ctx !== 'string') throw new Error(`@context (NextContext) should be string - ${errScope}`);
+            try {
+                const c = JSON.parse(ctx);
+                if (c && typeof c == 'object') return c as NextContext;
+            } catch (e) {
+                _log(NS, `> WARN! context[${ctx}] is not valid JSON.`, e);
+                throw new Error(`@context[${ctx}] is not valid JSON(${e.message || e}) - ${errScope}`);
+            }
+            return null; // not valid context.
+        };
+        context = _context(context);
+        if (!context) throw new Error(`@context (NextContext) is required - ${errScope}`); // avoid null exception.
 
         //* extract part
         const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
@@ -591,20 +611,18 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             const isText = body && typeof body == 'string';
             const isJson = type.startsWith('application/json');
             const isForm = type.startsWith('application/x-www-form-urlencoded');
-            if (isText && isJson) return JSON.parse(body);
-            if (isText && body.startsWith('{') && body.endsWith('}')) return JSON.parse(body);
-            if (isText && body.startsWith('[') && body.endsWith(']')) return JSON.parse(body);
+            try {
+                if (isText && isJson) return JSON.parse(body);
+                if (isText && body.startsWith('{') && body.endsWith('}')) return JSON.parse(body);
+                if (isText && body.startsWith('[') && body.endsWith(']')) return JSON.parse(body);
+            } catch (e) {
+                throw new Error(`@body[${body}] is not valid JSON - ${errScope}`);
+            }
+
             // if (isText && isForm) return queryString.parse(body, { arrayFormat: 'bracket' });
             if (isText && isForm) return queryString.parse(body);
             return body;
         })(event.body, contType);
-
-        //* decode context (can be null)
-        if (typeof headers[HEADER_PROTOCOL_CONTEXT] === 'undefined')
-            throw new Error(`.headers[${HEADER_PROTOCOL_CONTEXT}] is required`);
-        const context: NextContext = headers[HEADER_PROTOCOL_CONTEXT]
-            ? JSON.parse(headers[HEADER_PROTOCOL_CONTEXT])
-            : null;
 
         //* determine execute mode.
         const service = '';
@@ -614,10 +632,10 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : (`${httpMethod}`.toUpperCase() as NextMode);
 
         //* validate values.
-        if (context && context.accountId && requestContext.accountId != context.accountId)
-            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId || ''}`);
-        if (context && context.requestId && requestContext.requestId != context.requestId)
-            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId || ''}`);
+        if (context?.accountId && requestContext.accountId != context.accountId)
+            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId ?? ''} @${errScope}`);
+        if (context?.requestId && requestContext.requestId != context.requestId)
+            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId ?? ''} @${errScope}`);
 
         //* pack as protocol-param.
         const res: ProtocolParam = { service, stage, type, mode, id: $path.id, cmd: $path.cmd, param, body, context };

@@ -175,6 +175,19 @@ export class LambdaHandler {
         if (key) this._map[key] = handler;
     }
 
+    /**
+     * get service lambda handler.
+     * @param type      name of type
+     */
+    public getHandler(type: HandlerType): LambdaHandlerService {
+        let key = `${type || ''}`.toLowerCase().trim();
+        key = key === 'dynamo-stream' ? 'dds' : key;
+        const handler = this._map[key];
+        //* must be `LambdaHandlerService`.
+        if (handler && typeof handler == 'object') return handler as LambdaHandlerService;
+        return null;
+    }
+
     //* Find Service By Event
     public findService(event: any): HandlerType {
         const headers = (event && event.headers) || {};
