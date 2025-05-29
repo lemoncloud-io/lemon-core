@@ -742,7 +742,7 @@ export class Utilities {
     /**
      * get crypto object.
      *
-     * @deprecated since nodejs22
+     * @deprecated since nodejs22, use `crypto2` instead.
      */
     public readonly crypto = (passwd: string, algorithm?: string) => {
         algorithm = algorithm || 'aes-256-ctr';
