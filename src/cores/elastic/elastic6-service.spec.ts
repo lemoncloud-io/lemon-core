@@ -253,13 +253,12 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
         return true;
     } catch (e) {
         if (GETERR(e).includes('ECONNREFUSED')) return false; // no connection.
+        if (GETERR(e).includes('Connection Error')) return false; // no connection.
         //* unable to access to elastic6 endpoint
         if (GETERR(e).endsWith('unknown error')) return false;
         //* index does not exist
         if (GETERR(e).startsWith('404 NOT FOUND')) return false;
-        // console.error('! err =', e);
 
-        //* rethrow
         throw e;
     }
 };
