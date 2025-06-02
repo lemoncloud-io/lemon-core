@@ -10,12 +10,14 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $engine, $U, _log, _inf, _err, getHelloArn } from '../../engine';
+import { $engine, $U, _log, _inf, _err, getHelloArn, LemonEngine } from '../../engine';
 const NS = $U.NS('SNS', 'blue');
 
-import AWS from 'aws-sdk';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
+import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
+import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { CoreSnsService } from '../core-services';
-
+import { awsConfig, AwsConfigParams } from '../../tools';
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
 /**
@@ -93,36 +95,35 @@ export class AWSSNSService implements CoreSnsService {
      *
      * refer: `https://stackoverflow.com/questions/35563270/finding-my-aws-account-id-using-javascript`
      */
-    public accountID = async (): Promise<string> => {
+    public accountID = async (engine?: LemonEngine, $cfg?: AwsConfigParams): Promise<string> => {
         return new Promise((resolve, reject) => {
-            const iam = new AWS.IAM();
-            iam.getUser({}, (err, data) => {
-                if (!err) {
-                    resolve(data.User.Arn.split(':')[4]);
-                } else if (err) {
+            const cfg = awsConfig(engine ?? $engine, $cfg);
+            const iam = new IAMClient(cfg);
+            iam.send(new GetUserCommand({}))
+                .then(data => {
+                    resolve(data.User?.Arn.split(':')[4]);
+                })
+                .catch(err => {
                     const msg = `${err.message || err}`;
-                    //* if non-User case. call STS().
-                    if (msg == 'Must specify userName when calling with non-User credentials') {
-                        const sts = new AWS.STS();
-                        sts.getCallerIdentity({}, (err, data) => {
-                            if (err) {
-                                reject(err);
-                            } else {
-                                resolve(data.Account);
-                            }
-                        });
-                        return;
+                    if (msg === 'Must specify userName when calling with non-User credentials') {
+                        const sts = new STSClient(cfg);
+                        return sts
+                            .send(new GetCallerIdentityCommand({}))
+                            .then(data => resolve(data?.Account))
+                            .catch(e => reject(e));
                     }
                     //* otherwise, call internal resource. (ECS, EC2)
                     _err(NS, '! err@1 =', err);
                     //NOTE! - below will be fail in lambda.
-                    const metadata = new AWS.MetadataService();
-                    metadata.request('/latest/meta-data/iam/info/', (err, data) => {
-                        if (err) reject(err);
-                        else resolve(JSON.parse(data).InstanceProfileArn.split(':')[4]);
-                    });
-                }
-            });
+                    // MetadataService ia deprecated.
+                    // const metadata = new AWS.MetadataService();
+                    // metadata.request('/latest/meta-data/iam/info/', (err, data) => {
+                    //     if (err) reject(err);
+                    //     else resolve(JSON.parse(data).InstanceProfileArn.split(':')[4]);
+                    // });
+                    _err(NS, '! err@2 =', err);
+                    reject(err);
+                });
         });
     };
 
@@ -148,10 +149,10 @@ export class AWSSNSService implements CoreSnsService {
         //* call sns.publish()
         const region = arn.split(':')[3];
         if (!region) throw new Error(`@region is required. arn:${arn}`);
-        const sns = new AWS.SNS({ region });
+        const cfg = awsConfig($engine, region);
+        const sns = new SNSClient(cfg);
         return sns
-            .publish(params)
-            .promise()
+            .send(new PublishCommand(params))
             .then(res => {
                 _log(NS, `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
                 return (res && res.MessageId) || '';

@@ -8,9 +8,11 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { _log, _inf, $U } from '../../engine/';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
+import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
 
 // ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
@@ -89,8 +91,8 @@ export interface DynamoSimpleScannable<T extends GeneralItem> {
     scan(limit?: number, last?: any, filter?: DynamoScanFilter): Promise<DynamoScanResult<T>>;
 }
 
-import Scan from '../../lib/dynamo/scan';
-import Serializer from '../../lib/dynamo/serializer';
+import Scan from './tools/scan';
+import Serializer from './tools/serializer';
 
 /**
  * class: `DynamoScanService`
@@ -112,6 +114,9 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
      */
     public hello = () => `dynamo-scan-service:${this.options.tableName}`;
 
+    /**
+     * scan by limit
+     */
     public async scan(limit?: number, last?: any, filter?: DynamoScanFilter): Promise<DynamoScanResult<T>> {
         _log(NS, `scan()...`);
 
@@ -120,8 +125,8 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         _log(NS, `> payload =`, $U.json(payload));
 
         //* get instance of dynamodoc, and execute query().
-        const { dynamodoc } = DynamoService.instance();
-        const res = await dynamodoc.scan(payload).promise();
+        const dynamodoc = await DynamoService.instance().dynamodoc();
+        const res = await dynamodoc.send(new ScanCommand(payload));
         _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
         res?.Items && _log(NS, `> scan[0] =`, $U.json(res?.Items?.[0]));
 
@@ -142,7 +147,10 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
         };
     }
 
-    private buildPayload(limit?: number, last?: any, filter?: DynamoScanFilter) {
+    /**
+     * build scan payload
+     */
+    public buildPayload(limit?: number, last?: any, filter?: DynamoScanFilter) {
         const { tableName, idName, sortName } = this.options;
         const scan = new Scan(
             { schema: { hashKey: idName, rangeKey: sortName }, tableName: () => tableName },

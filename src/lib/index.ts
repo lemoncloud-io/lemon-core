@@ -7,5 +7,4 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-// export * from './dynamo/'; //WARN - this dynamo is only for internal processing. so no need to export.
 export * from './dynamodb-value';

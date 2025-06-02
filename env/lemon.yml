@@ -7,7 +7,6 @@ default_env: &default_env
   LC: 1                   # line-coloring
   TS: 1                   # time-stamp in line
   NAME: 'lemon'           # profile name.
-  BACKBONE_API:  'http://localhost:8081' # use backbone tunneling.
 
 
 #-----------------------------------
@@ -15,7 +14,6 @@ default_env: &default_env
 test:
   <<: *default_env
   STAGE: 'test'
-  # NAME: 'melon'         # 'melon' will make error of 'CredentialsError: Missing credentials in config'
 
 #-----------------------------------
 # local development configuration.

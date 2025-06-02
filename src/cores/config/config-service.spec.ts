@@ -8,17 +8,17 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { loadProfile } from '../../environ';
+import { expect2 } from '../../common/test-helper';
 import { $U } from '../../engine/';
-import { credentials, loadJsonSync } from '../../tools/';
+import { loadJsonSync } from '../../tools/';
 import { AWSKMSService } from './../aws/aws-kms-service';
-import { expect2, environ } from '../../common/test-helper';
 import { marshal, Filter, MyConfigService } from './config-service';
 
 //! main test body.
 describe('ConfigService', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('ENV'));
-    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+    const $PROFILE = loadProfile();
 
     //* dummy storage service.
     it('should pass expect2 helper', async () => {
@@ -66,6 +66,8 @@ describe('ConfigService', () => {
 
     //* test config-service
     it('should pass config-service()', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
         if (!PROFILE) return;
 
         //NOTE - use `alias/lemon-hello-api` by default

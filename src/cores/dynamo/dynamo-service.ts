@@ -11,10 +11,14 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../../engine/';
+import $engine, { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem, Incrementable } from 'lemon-model';
-import { loadDataYml } from '../../tools/';
-import AWS from 'aws-sdk';
+import { awsConfig, loadDataYml } from '../../tools/';
+import { StreamViewType, KeySchemaElement } from '@aws-sdk/client-dynamodb';
+import { CreateTableCommand, DeleteTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBStreamsClient } from '@aws-sdk/client-dynamodb-streams';
+
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type KEY_TYPE = 'number' | 'string';
@@ -88,11 +92,15 @@ export class DynamoService<T extends GeneralItem> {
      */
     public static instance(region?: string) {
         region = `${region || 'ap-northeast-2'}`;
-        const config = { region };
-        const dynamo = new AWS.DynamoDB(config); // DynamoDB Main.
-        const dynamodoc = new AWS.DynamoDB.DocumentClient(config); // DynamoDB Document.
-        const dynamostr = new AWS.DynamoDBStreams(config); // DynamoDB Stream.
-        return { dynamo, dynamostr, dynamodoc };
+        const cfg = awsConfig($engine, region);
+        const dynamo = new DynamoDBClient(cfg); // Low-level DynamoDB client
+        const $client = async (): Promise<DynamoDBDocumentClient> => {
+            const credentials = await cfg.credentials;
+            const dynamo = new DynamoDBClient({ ...cfg, credentials }); // Low-level DynamoDB client
+            return DynamoDBDocumentClient.from(dynamo); // High-level Document client
+        };
+        const dynamostr = new DynamoDBStreamsClient(cfg); // DynamoDB Streams client
+        return { dynamo, dynamostr, dynamodoc: $client };
     }
 
     /**
@@ -126,7 +134,6 @@ export class DynamoService<T extends GeneralItem> {
             }
             throw new Error(`invalid key-type:${type}`);
         };
-        const StreamViewType = 'NEW_AND_OLD_IMAGES';
         //* prepare payload.
         const payload = {
             TableName: tableName,
@@ -135,7 +142,7 @@ export class DynamoService<T extends GeneralItem> {
                     AttributeName: idName,
                     KeyType: 'HASH',
                 },
-            ],
+            ] as KeySchemaElement[],
             AttributeDefinitions: [
                 {
                     AttributeName: idName,
@@ -143,7 +150,7 @@ export class DynamoService<T extends GeneralItem> {
                 },
             ],
             ProvisionedThroughput: { ReadCapacityUnits, WriteCapacityUnits },
-            StreamSpecification: { StreamEnabled, StreamViewType },
+            StreamSpecification: { StreamEnabled, StreamViewType: StreamViewType.NEW_AND_OLD_IMAGES },
         };
         //* set sort-key.
         if (sortName) {
@@ -322,8 +329,7 @@ export class DynamoService<T extends GeneralItem> {
         _log(NS, `createTable(${ReadCapacityUnits}, ${WriteCapacityUnits})...`);
         const payload = this.prepareCreateTable(ReadCapacityUnits, WriteCapacityUnits);
         return instance()
-            .dynamo.createTable(payload)
-            .promise()
+            .dynamo.send(new CreateTableCommand(payload))
             .then(res => {
                 _log(NS, '> createTable.res =', res);
                 return res;
@@ -338,8 +344,7 @@ export class DynamoService<T extends GeneralItem> {
         _log(NS, `deleteTable()...`);
         const payload = this.prepareDeleteTable();
         return instance()
-            .dynamo.deleteTable(payload)
-            .promise()
+            .dynamo.send(new DeleteTableCommand(payload))
             .then(res => {
                 _log(NS, '> deleteTable.res =', res);
                 return res;
@@ -358,9 +363,9 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `readItem(${id})...`);
         const itemKey = this.prepareItemKey(id, sort);
         // _log(NS, `> pkey[${id}${sort ? '/' : ''}${sort || ''}] =`, $U.json(itemKey));
-        return instance()
-            .dynamodoc.get(itemKey)
-            .promise()
+        const dynamodoc = await instance().dynamodoc();
+        return dynamodoc
+            .send(new GetCommand(itemKey))
             .then(res => {
                 // _log(NS, '> readItem.res =', $U.json(res));
                 if (!res.Item) throw new Error(`404 NOT FOUND - ${idName}:${id}${sort ? '/' : ''}${sort || ''}`);
@@ -387,9 +392,9 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `saveItem(${id})...`);
         const payload = this.prepareSaveItem(id, item);
         // _log(NS, '> payload :=', payload);
-        return instance()
-            .dynamodoc.put(payload)
-            .promise()
+        const dynamodoc = await DynamoService.instance().dynamodoc();
+        return dynamodoc
+            .send(new PutCommand(payload))
             .then(res => {
                 _log(NS, '> saveItem.res =', $U.json(res));
                 return payload.Item;
@@ -411,9 +416,9 @@ export class DynamoService<T extends GeneralItem> {
     public async deleteItem(id: string, sort?: string | number): Promise<T> {
         // _log(NS, `deleteItem(${id})...`);
         const payload = this.prepareItemKey(id, sort);
-        return instance()
-            .dynamodoc.delete(payload)
-            .promise()
+        const dynamodoc = await DynamoService.instance().dynamodoc();
+        return dynamodoc
+            .send(new DeleteCommand(payload))
             .then(res => {
                 _log(NS, '> deleteItem.res =', $U.json(res));
                 return null as any;
@@ -442,9 +447,9 @@ export class DynamoService<T extends GeneralItem> {
         const { idName } = this.options;
         // _log(NS, `updateItem(${id})...`);
         const payload = this.prepareUpdateItem(id, sort, updates, increments);
-        return instance()
-            .dynamodoc.update(payload)
-            .promise()
+        const dynamodoc = await DynamoService.instance().dynamodoc();
+        return dynamodoc
+            .send(new UpdateCommand(payload))
             .then(res => {
                 _log(NS, `> updateItem[${id}].res =`, $U.json(res));
                 const attr: any = res.Attributes;

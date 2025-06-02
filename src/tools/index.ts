@@ -10,4 +10,4 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 export * from './express';
-export * from './shared';
+export * from './tools';

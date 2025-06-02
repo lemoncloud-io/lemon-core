@@ -7,7 +7,6 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { loadProfile } from '../../environ';
 import $engine, { $U } from '../../engine';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
@@ -28,8 +27,6 @@ const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHt
 
 //! main test body.
 describe('APIService', () => {
-    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
-    PROFILE && console.info(`! PROFILE =`, PROFILE);
     jest.setTimeout(10000);
 
     //* via direct request.
@@ -179,7 +176,7 @@ describe('APIService', () => {
     //* via backbone's web-proxy.
     it('should pass API w/ backbone proxy', async () => {
         //* create proxy client.
-        const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
+        const BACKBONE = $engine.environ('BACKBONE_API', '') as string;
         const client: APIServiceClient = APIService.buildClient(TYPE, ENDPOINT, null, BACKBONE);
         const { service } = instance(client);
 
@@ -208,7 +205,7 @@ describe('APIService', () => {
     //* use envion
     it('should pass API w/ default env', async () => {
         //* create direct client.
-        const BACKBONE = $engine.environ('BACKBONE_API', 'http://localhost:8081') as string;
+        const BACKBONE = $engine.environ('BACKBONE_API', '') as string;
         BACKBONE && console.info(`> BACKBONE =`, BACKBONE);
         const { service } = instance();
         if (BACKBONE) {

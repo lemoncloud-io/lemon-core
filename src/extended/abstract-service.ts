@@ -44,9 +44,9 @@ import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
+import { credentials, CrendentialForAWS } from '../environ';
 import REQUEST from 'request';
 import queryString from 'query-string';
-import AWS from 'aws-sdk';
 import elasticsearch from '@elastic/elasticsearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
 
@@ -1132,24 +1132,6 @@ const $X = {
         };
     },
     /**
-     * load the local credential
-     * - throws if not found.
-     * @param profile (optional) target profile (default use `loadProfile()`, '' use the default);
-     */
-    loadCredentials: (profile?: string): AWS.Credentials => {
-        const errScope = `loadCredentials(${profile ?? ''})`;
-        // determine the final profile parameter.
-        const _profile = (name: string) => {
-            if (typeof name === 'string') return name ? name : null;
-            const NAME = $U.env('NAME', '');
-            return NAME && NAME !== 'none' ? NAME : null;
-        };
-        profile = _profile(profile);
-        const credentials = new AWS.SharedIniFileCredentials({ profile });
-        if (!credentials?.accessKeyId) throw new Error(`@profile[${profile ?? ''}] is invalid - ${errScope}`);
-        return credentials;
-    },
-    /**
      * create http-web-proxy agent which using endpoint as proxy server.
      * - originally refer to `createHttpWebProxy()`
      *
@@ -1174,7 +1156,7 @@ const $X = {
             /** resultKey in response */
             resultKey?: string;
             /** credentials to load */
-            credentials?: AWS.Credentials;
+            credentials?: CrendentialForAWS;
             /** region */
             region?: string;
         },
@@ -1348,8 +1330,8 @@ export const _ES6 = (options?: {
     indexName?: string;
     /** flag to use search-proxy */
     useProxy?: boolean;
-    /** aws:profile to use in proxy */
-    profile?: string;
+    /** (optional) aws:credentials to sign request in proxy */
+    credentials?: CrendentialForAWS;
 }): Elastic6Instance => {
     // 0. load from env configuration.
     const endpoint = options?.endpoint ?? $U.env('ES6_ENDPOINT', '');
@@ -1370,7 +1352,6 @@ export const _ES6 = (options?: {
         return false;
     };
     const useProxy = options?.useProxy ?? _isProxy();
-    const profile = options?.profile;
 
     // prepare constructor parameters.
     const params: Elastic6ContructParams = {
@@ -1384,7 +1365,7 @@ export const _ES6 = (options?: {
 
     //* use proxy.
     if (useProxy) {
-        const credentials = $X.loadCredentials(profile);
+        const credentials = options?.credentials;
         const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
         return new Elastic6Proxy(params, proxy);
     }

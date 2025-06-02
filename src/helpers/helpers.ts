@@ -17,6 +17,7 @@ import $engine, { $U, doReportSlack, do_parrallel } from '../engine/';
 import { GETERR } from '../common/test-helper';
 import { sigV4Client, sigV4ClientConfig } from '../extended/libs/sig-v4';
 import { performance } from 'perf_hooks';
+import { onlyDefined } from '../tools/tools';
 
 import REQUEST from 'request';
 import queryString from 'query-string';
@@ -336,13 +337,7 @@ export const $T = {
      * @param $def default if not valid object.
      * @returns cloned object
      */
-    onlyDefined: <T extends object>(N: T, $def: T = null): T =>
-        N && typeof N === 'object'
-            ? Object.entries(N).reduce<T>((N, [k, v]) => {
-                  if (v !== undefined) N[k as keyof T] = v;
-                  return N;
-              }, {} as T)
-            : ($def as T),
+    onlyDefined: onlyDefined,
 };
 
 /**

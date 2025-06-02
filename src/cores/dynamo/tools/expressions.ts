@@ -10,7 +10,6 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-
 import _ from 'lodash';
 import * as utils from './utils';
 import serializer from './serializer';

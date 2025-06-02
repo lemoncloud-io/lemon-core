@@ -9,7 +9,6 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import _ from 'lodash';
 
 /**
  * converts a ddb object into a js object
@@ -94,7 +93,7 @@ function toDDBValue(val: any) {
         return { BOOL: val };
     }
 
-    if (_.isArray(val)) {
+    if (typeof val === 'object' && Array.isArray(val)) {
         const result = new Array(val.length);
 
         for (let i = 0; i < result.length; i++) {

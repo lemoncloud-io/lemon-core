@@ -8,10 +8,11 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { loadProfile } from '../../environ';
 import { $U } from '../../engine/';
 import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
-import { expect2, GETERR, GETERR$, environ } from '../../common/test-helper';
-import { loadJsonSync, credentials } from '../../tools/';
+import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
+import { loadJsonSync } from '../../tools/';
 import { ProtocolParam } from './../core-services';
 import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
@@ -83,8 +84,7 @@ class MyLemonWebController implements CoreWEBController {
 //! main test body.
 describe('LambdaWEBHandler', () => {
     //* use `env.PROFILE`
-    const PROFILE = credentials(environ('ENV'));
-    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+    const $PROFILE = loadProfile();
 
     //* basic function
     it('should pass basic functions', async () => {
@@ -111,6 +111,9 @@ describe('LambdaWEBHandler', () => {
 
     //* pass tools()
     it('should pass header tools', async () => {
+        const PROFILE = await $PROFILE;
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         const { service } = instance();
 
         //* test `tools()` basic
@@ -194,9 +197,11 @@ describe('LambdaWEBHandler', () => {
             const parse1 = (t: string) => $t.parseIdentityJWT(t, { current }).catch(GETERR);
             expect2(await parse1(null)).toEqual('@token (string) is required - but object');
             expect2(await parse1($enc.message + '.')).toEqual('@signature (string|Buffer) is required - kms.verify()');
-            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(`@signature[] is invalid - not be verified!`);
+            expect2(await parse1($enc.message + '.' + 'xyz')).toEqual(
+                `@signature[] is invalid - not be verified by iss:kms/${alias}!`,
+            );
             expect2(await parse1($enc.message + '.' + $enc.signature.replace('0', '1'))).toEqual(
-                `@signature[] is invalid - not be verified!`,
+                `@signature[] is invalid - not be verified by iss:kms/${alias}!`,
             );
             expect2(await parse1($enc.token + '.x')).toEqual(`@token[${$enc.token + '.x'}] is invalid format!`);
             expect2(await parse1($enc.token)).toEqual({
@@ -223,13 +228,16 @@ describe('LambdaWEBHandler', () => {
 
     //* list in web-handler
     it('should pass success GET / via web', async () => {
-        const { service } = instance();
+        const { lambda, service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = '';
         event.pathParameters['id'] = id;
-        const res = await service.handle(event, null);
-        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body: $U.json({ hello: 'LIST' }) });
+        const $ctx = await lambda.getHandler('web').packContext(event, null);
+        const $res = await service.handle(event, $ctx);
+        expect2(() => $res, 'statusCode,body').toEqual({
+            statusCode: 200,
+            body: $U.json({ hello: 'LIST' }),
+        });
 
         //* service handlers
         expect2(Object.keys(service.getHandlerDecoders())).toEqual(['hello', 'lemon']); // must be maps
@@ -238,21 +246,21 @@ describe('LambdaWEBHandler', () => {
         //* GET `/lemon` controller
         event.resource = '/lemon/{id}';
         event.path = '/lemon';
-        expect2(await service.handle(event, null), 'body').toEqual({
+        expect2(await service.handle(event, $ctx), 'body').toEqual({
             body: $U.json({ mode: 'do-list', type: 'lemon', hello: 'my-lemon-web-controller:lemon' }),
         });
 
         //* GET `/lemon/123` controller
         event.path = '/lemon/123';
         event.pathParameters['id'] = '123';
-        expect2(await service.handle(event, null), 'body').toEqual({
+        expect2(await service.handle(event, $ctx), 'body').toEqual({
             body: $U.json({ mode: 'MY GET', id: '123', cmd: '', param: { ts: '1574150700000' }, body: null }),
         });
 
         //* PUT `/lemon` controller
         event.path = '/lemon';
         event.httpMethod = 'PUT';
-        expect2(await service.handle(event, null), 'body').toEqual({ body: '404 NOT FOUND - PUT /lemon/123' });
+        expect2(await service.handle(event, $ctx), 'body').toEqual({ body: '404 NOT FOUND - PUT /lemon/123' });
     });
 
     //* list via lambda-handler.
@@ -280,27 +288,29 @@ describe('LambdaWEBHandler', () => {
 
     //* GET /abc
     it('should pass success GET /abc', async () => {
-        const { service } = instance();
+        const { lambda, service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = 'abc';
         event.pathParameters['id'] = id;
-        const res = await service.handle(event, null);
-        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body: $U.json({ id, hello: `${id}` }) });
+        const $ctx = await lambda.getHandler('web').packContext(event, null);
+        const $res = await service.handle(event, $ctx);
+        expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2($res, 'body').toEqual({ body: $U.json({ id, hello: `${id}` }) });
     });
 
     //* GET /{id}/{cmd}
     it('should pass success GET /abc/hi', async () => {
-        const { service } = instance();
+        const { lambda, service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = 'abc';
         const cmd = 'hi';
         event.pathParameters['id'] = id;
         event.pathParameters['cmd'] = cmd;
-        const res = await service.handle(event, null);
-        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body: $U.json({ id, cmd, hello: `${cmd} ${id}` }) });
-        expect2(res, 'headers').toEqual({
+        const $ctx = await lambda.getHandler('web').packContext(event, null);
+        const $res = await service.handle(event, $ctx);
+        expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2($res, 'body').toEqual({ body: $U.json({ id, cmd, hello: `${cmd} ${id}` }) });
+        expect2($res, 'headers').toEqual({
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*',
@@ -312,7 +322,7 @@ describe('LambdaWEBHandler', () => {
 
     //* POST /{id}/{cmd}
     it('should pass success POST /abc/hi', async () => {
-        const { service } = instance();
+        const { lambda, service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         const id = 'abc';
         const cmd = 'hi';
@@ -321,10 +331,11 @@ describe('LambdaWEBHandler', () => {
         event.headers['origin'] = origin;
         event.pathParameters['id'] = id;
         event.pathParameters['cmd'] = cmd;
-        const res = await service.handle(event, null);
-        expect2(res, 'statusCode').toEqual({ statusCode: 200 });
-        expect2(res, 'body').toEqual({ body: $U.json({ id, cmd, hello: `${cmd} ${id}` }) });
-        expect2(res, 'headers').toEqual({
+        const $ctx = await lambda.getHandler('web').packContext(event, null);
+        const $res = await service.handle(event, $ctx);
+        expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2($res, 'body').toEqual({ body: $U.json({ id, cmd, hello: `${cmd} ${id}` }) });
+        expect2($res, 'headers').toEqual({
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': origin,
@@ -336,25 +347,27 @@ describe('LambdaWEBHandler', () => {
 
     //* POST / => 400
     it('should pass success POST / 400', async () => {
-        const { service } = instance();
+        const { lambda, service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         event.httpMethod = 'POST';
         event.pathParameters['id'] = '';
-        const res = await service.handle(event, null);
-        expect2(() => res, 'statusCode').toEqual({ statusCode: 400 });
-        expect2(() => res.headers, 'Content-Type').toEqual({ 'Content-Type': 'text/plain; charset=utf-8' });
-        expect2(() => res, 'body').toEqual({ body: '@id[] (string) is required!' });
+        const $ctx = await lambda.getHandler('web').packContext(event, null);
+        const $res = await service.handle(event, $ctx);
+        expect2(() => $res, 'statusCode').toEqual({ statusCode: 400 });
+        expect2(() => $res.headers, 'Content-Type').toEqual({ 'Content-Type': 'text/plain; charset=utf-8' });
+        expect2(() => $res, 'body').toEqual({ body: '@id[] (string) is required!' });
     });
 
     //* GET /0 => 404
     it('should pass success GET /0 404', async () => {
-        const { service } = instance();
+        const { lambda, service } = instance();
         const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
         event.pathParameters['id'] = '0';
-        const res = await service.handle(event, null);
-        expect2(() => res, 'statusCode').toEqual({ statusCode: 404 });
-        expect2(() => res.headers, 'Content-Type').toEqual({ 'Content-Type': 'text/plain; charset=utf-8' });
-        expect2(() => res, 'body').toEqual({ body: '404 NOT FOUND - id:0' });
+        const $ctx = await lambda.getHandler('web').packContext(event, null);
+        const $res = await service.handle(event, $ctx);
+        expect2(() => $res, 'statusCode').toEqual({ statusCode: 404 });
+        expect2(() => $res.headers, 'Content-Type').toEqual({ 'Content-Type': 'text/plain; charset=utf-8' });
+        expect2(() => $res, 'body').toEqual({ body: '404 NOT FOUND - id:0' });
     });
 
     //* GET /0 => 404
@@ -370,9 +383,9 @@ describe('LambdaWEBHandler', () => {
         //* use default cofnig.
         if (1) {
             const event = loadEventStock(id);
-            const response = await lambda.handle(event, null).catch(GETERR$);
-            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-            const result = JSON.parse(response.body);
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+            const result = JSON.parse($res.body);
             expect2(() => result, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
             expect2(() => result.context, 'identity').toEqual({
                 identity: {
@@ -392,9 +405,9 @@ describe('LambdaWEBHandler', () => {
             const event = loadEventStock(id);
             delete event.headers['Host'];
             event.headers['x-lemon-identity'] = $U.json({ sid: '', uid: 'guest' });
-            const response = await lambda.handle(event, null).catch(GETERR$);
-            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-            const body = JSON.parse(response.body);
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse($res.body);
             expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
             expect2(() => body.context, 'identity').toEqual({
                 identity: {
@@ -414,9 +427,9 @@ describe('LambdaWEBHandler', () => {
             const event = loadEventStock(id);
             delete event.headers['Host'];
             event.headers['x-lemon-identity'] = $U.json({ sid: null, uid: 'guest' });
-            const response = await lambda.handle(event, null).catch(GETERR$);
-            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-            const body = JSON.parse(response.body);
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse($res.body);
             expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
             expect2(() => body.context, 'identity').toEqual({
                 identity: {
@@ -436,9 +449,9 @@ describe('LambdaWEBHandler', () => {
             const event = loadEventStock(id);
             delete event.headers['Host'];
             event.headers['x-lemon-identity'] = $U.json({ sid: 'S', uid: 'guest' });
-            const response = await lambda.handle(event, null).catch(GETERR$);
-            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-            const body = JSON.parse(response.body);
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+            const body = JSON.parse($res.body);
             expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
             expect2(() => body.context, 'identity').toEqual({
                 identity: {
@@ -459,9 +472,9 @@ describe('LambdaWEBHandler', () => {
             delete event.headers['Host'];
             event.headers['x-lemon-identity'] = $U.json({ sid: 'S', lang: 'ko' });
             event.headers['x-lemon-language'] = ' ES '; //* should override `language`.
-            const response = await lambda.handle(event, null).catch(GETERR$);
-            expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-            const result = JSON.parse(response.body);
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2($res, 'statusCode').toEqual({ statusCode: 200 });
+            const result = JSON.parse($res.body);
             expect2(() => result, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
             expect2(() => result.context, 'identity').toEqual({
                 identity: {
@@ -519,13 +532,35 @@ describe('LambdaWEBHandler', () => {
             referer: 'http://localhost:5004/',
         });
 
+        //* pre-condition.
+        if (1) {
+            event.headers['x-protocol-context'] = null;
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
+        }
+        if (1) {
+            event.headers['x-protocol-context'] = {};
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2(() => $res, 'statusCode,error').toEqual({
+                error: '@context (NextContext) should be string - web.transformToParam(/hello/a_123_test)',
+            });
+        }
+        if (1) {
+            event.headers['x-protocol-context'] = '-';
+            const $res = await lambda.handle(event, null).catch(GETERR$);
+            expect2(() => $res, 'statusCode,error').toEqual({
+                error: '@context[-] is not valid JSON - web.transformToParam(/hello/a_123_test)',
+            });
+        }
+
         //* pack context by header
         event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
-        const response = await lambda.handle(event, null).catch(GETERR$);
-        expect2(response, 'statusCode').toEqual({ statusCode: 200 });
-        const body = JSON.parse(response.body);
+        const $res = await lambda.handle(event, null).catch(GETERR$);
+        expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
+
+        const body = JSON.parse($res.body);
         expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
         expect2(body.context, '').toEqual({ ...context });
     });
@@ -582,7 +617,6 @@ describe('LambdaWEBHandler', () => {
         };
 
         //* no pack context by header
-        // event.headers['x-protocol-context'] = $U.json(context);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
         const response: any = await service.handle(event, context).catch(GETERR$);

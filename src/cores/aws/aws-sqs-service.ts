@@ -11,10 +11,12 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
-
-import AWS, { SQS } from 'aws-sdk';
+// eslint-disable-next-line prettier/prettier
+import { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
+// eslint-disable-next-line prettier/prettier
+import { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessageCommandInput, GetQueueAttributesCommandInput } from '@aws-sdk/client-sqs';
 import { CoreServices } from '../core-services';
-
+import { awsConfig } from '../../tools';
 /**
  * interface: SQSService
  * - common interface type for `SQS`
@@ -72,7 +74,7 @@ export class AWSSQSService implements SQSService {
     /**
      * default constructor.
      */
-    public constructor(endpoint?: string, region?: string) {
+    public constructor(endpoint?: string, region?: string, profile?: string) {
         region = region || ($engine.environ(AWSSQSService.SQS_REGION, 'ap-northeast-2') as string) || '';
         endpoint = endpoint || ($engine.environ(AWSSQSService.SQS_ENDPOINT, '') as string) || '';
         // const stage = $engine.environ('STAGE', '') as string;
@@ -88,6 +90,7 @@ export class AWSSQSService implements SQSService {
     public endpoint(): string {
         return this._endpoint;
     }
+
     /**
      * hello
      */
@@ -100,7 +103,8 @@ export class AWSSQSService implements SQSService {
      * @param attr      attribute set.
      */
     public async sendMessage(data: any, attr?: SQSAttribute): Promise<string> {
-        if (!data) throw new Error('@data(object) is required!');
+        const errScope = `sqs.sendMessage()`;
+        if (!data) throw new Error(`@data(object) is required - ${errScope}`);
         //* prepare params.
         const asAttr = (param: any) =>
             Object.keys(param || {}).reduce((O: any, key: string) => {
@@ -112,7 +116,7 @@ export class AWSSQSService implements SQSService {
                 };
                 return O;
             }, {});
-        const params: SQS.Types.SendMessageRequest = {
+        const params: SendMessageCommandInput = {
             // DelaySeconds: 10, //NOTE - use SQS's configuration.
             MessageAttributes: asAttr(attr),
             MessageBody: $U.json(data && typeof data == 'object' ? data : { data }),
@@ -120,8 +124,8 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.sendMessage(params).promise();
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
+        const result = await sqs.send(new SendMessageCommand(params));
         _log(NS, '> result =', result);
         return (result && result.MessageId) || '';
     }
@@ -132,13 +136,14 @@ export class AWSSQSService implements SQSService {
      * @param size      (default 1) size of message
      */
     public async receiveMessage(size: number = 1): Promise<{ list: SqsMessage[] }> {
+        const errScope = `sqs.receiveMessage()`;
         size = size === undefined ? 1 : size;
         size = $U.N(size, 0);
-        if (!size) throw new Error('@size(number) is required!');
+        if (!size) throw new Error(`@size(number) is required - ${errScope}`);
 
         //* prepare param.
-        const params: SQS.Types.ReceiveMessageRequest = {
-            AttributeNames: ['SentTimestamp'],
+        const params: ReceiveMessageCommandInput = {
+            MessageSystemAttributeNames: ['SentTimestamp'],
             MaxNumberOfMessages: size,
             MessageAttributeNames: ['All'],
             QueueUrl: this.endpoint(),
@@ -148,8 +153,8 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call api
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.receiveMessage(params).promise();
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
+        const result = await sqs.send(new ReceiveMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
 
         //* transform list.
@@ -179,18 +184,19 @@ export class AWSSQSService implements SQSService {
      * @param handle        handle-id to delete.
      */
     public async deleteMessage(handle: string): Promise<void> {
-        if (!handle) throw new Error('@handle(string) is required!');
+        const errScope = `sqs.deleteMessage()`;
+        if (!handle) throw new Error(`@handle(string) is required - ${errScope}`);
 
         //* prepare param
-        const params = {
+        const params: DeleteMessageCommandInput = {
             QueueUrl: this.endpoint(),
             ReceiptHandle: handle,
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.deleteMessage(params).promise();
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
+        const result = await sqs.send(new DeleteMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
         return;
     }
@@ -201,15 +207,15 @@ export class AWSSQSService implements SQSService {
      * @param {*} TYPE
      */
     public async statistics(): Promise<SqsStatistics> {
-        const params = {
+        const params: GetQueueAttributesCommandInput = {
             QueueUrl: this.endpoint(),
             AttributeNames: ['All'],
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
-        const sqs = new AWS.SQS({ region: this.region() });
-        const result = await sqs.getQueueAttributes(params).promise();
+        const sqs = new SQSClient(awsConfig($engine, this.region()));
+        const result = await sqs.send(new GetQueueAttributesCommand(params));
         _log(NS, '> result =', $U.json(result));
         const attr = result.Attributes || {};
         const stat: SqsStatistics = {
@@ -240,11 +246,12 @@ export class MyDummySQSService implements SQSService {
     public hello = () => `dummy-sqs-service:${this.endpoint}`;
     public async sendMessage(data: any, attr?: SQSAttribute): Promise<string> {
         if (!data) throw new Error('@data(object) is required!');
+        const data2 = $U.json(data && typeof data == 'object' ? data : { data });
         const fn = (n: number): string => {
             const [S, s] = ['ff2cb2000000', `${n}`];
             return n > 0 ? `${S.substring(s.length)}${s}` : s.startsWith('-') ? `N${s.substring(1)}` : s;
         };
-        const payload: SqsMessage = { sent: new Date().getTime(), attr, data, id: '', handle: '' };
+        const payload: SqsMessage = { sent: new Date().getTime(), attr, data: data2, id: '', handle: '' };
         this.buffer.push(payload);
         const len = this.buffer.length;
         const id = `aabbccdd-dummy-sqs-b29b-${fn(len)}`;
@@ -265,6 +272,7 @@ export class MyDummySQSService implements SQSService {
             .filter((_data, index) => index < size)
             .map(data => {
                 const data2 = { ...data }; // copy
+                data2.data = JSON.parse(data.data);
                 data2.handle = `${data.id}`;
                 data.id = ''; // mark received.
                 return data2;

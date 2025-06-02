@@ -28,7 +28,7 @@ import {
 } from 'lemon-model';
 import { ProtocolParam } from './../core-services';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
-import { loadJsonSync } from '../../tools/shared';
+import { loadJsonSync, onlyDefined } from '../../tools/';
 import { GETERR } from '../../common/test-helper';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
@@ -55,23 +55,23 @@ export interface CoreWEBController {
     decode: NextDecoder;
 }
 
-interface ProxyParams {
-    param: ProtocolParam;
+/**
+ * type: `ProxyParams`
+ * - parameters for proxy-chain.
+ */
+interface ProxyParams<T = any> {
+    /** original web event */
     event: WEBEvent;
+    /** protocol parameters */
+    param: ProtocolParam;
+    /** protocol parameters */
+    $ctx: NextContext<T>;
 }
 
 type ProxyResult = APIGatewayProxyResult;
 type ProxyResponser = () => ProxyResult;
 type ProxyChain = ProxyParams | ProxyResponser;
 
-/** returns only defined */
-const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
-    N && typeof N === 'object'
-        ? Object.entries(N).reduce<T>((N, [k, v]) => {
-              if (v !== undefined) N[k as keyof T] = v;
-              return N;
-          }, {} as T)
-        : ($def as T);
 /**
  * build http response body
  * - if body is string type, then content-type would be text/<some>.
@@ -149,13 +149,11 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
     }
 
     //* transform to protocol-context.
-    if (event && event.headers && !event.headers[HEADER_PROTOCOL_CONTEXT])
-        event.headers[HEADER_PROTOCOL_CONTEXT] = $ctx ? $U.json($ctx) : null;
-    const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event);
+    const param: ProtocolParam = $protocol.service.asTransformer('web').transformToParam(event, $ctx);
     _log(NS, '! protocol-param =', $U.json({ ...param, body: undefined })); // hide `.body` in log.
 
     //* returns object..
-    return { event, param };
+    return { event, param, $ctx };
 };
 
 /**

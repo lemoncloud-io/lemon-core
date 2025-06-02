@@ -9,7 +9,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
+import $engine, { _log, _inf, _err, $U, doReportError, getHelloArn } from '../../engine/';
 import { NextMode, NextContext } from 'lemon-model';
 import {
     STAGE,
@@ -19,10 +19,13 @@ import {
     ProtocolBody,
     CallbackParam,
 } from './../core-services';
-import AWS, { Lambda, SQS, SNS } from 'aws-sdk';
+import { PublishCommand, PublishCommandInput, PublishCommandOutput, SNSClient } from '@aws-sdk/client-sns';
+import { SendMessageCommand, SendMessageCommandInput, SendMessageCommandOutput, SQSClient } from '@aws-sdk/client-sqs';
+import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } from '@aws-sdk/client-lambda';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
+import { awsConfig } from '../../tools';
 import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
@@ -31,6 +34,7 @@ const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
  * header name to exchange `next-context`
+ * ONLY for internal communication.
  */
 export const HEADER_PROTOCOL_CONTEXT = $U.env('HEADER_PROTOCOL_CONTEXT', 'x-protocol-context');
 
@@ -43,7 +47,7 @@ export type MyProtocolType = 'web' | 'sns' | 'sqs' | 'api';
 /**
  * type: MySNSEventParam
  */
-export type MySNSEventParam = AWS.SNS.Types.PublishInput;
+export type MySNSEventParam = PublishCommandInput;
 
 /**
  * type of ProtocolParam w/ callback
@@ -328,26 +332,25 @@ export class MyProtocolService implements ProtocolService {
         const payload = this.transformEvent(uri, param);
 
         //* prepare lambda payload.
-        const params: Lambda.Types.InvocationRequest = {
+        const params: InvocationRequest = {
             FunctionName: url.hostname,
-            Payload: payload ? $U.json(payload) : '',
-            ClientContext: null,
+            Payload: payload ? new TextEncoder().encode($U.json(payload)) : undefined,
+            ClientContext: undefined,
             // InvocationType: 'Event',
         };
         // _log(NS, `> params =`, $U.json(params));
 
         //* call lambda.
         const region = 'ap-northeast-2'; //TODO - optimize of aws region....
-        const lambda = new AWS.Lambda({ region });
+        const lambda = new LambdaClient(awsConfig($engine, region));
         const response = await lambda
-            .invoke(params)
-            .promise()
+            .send(new InvokeCommand(params))
             .catch((e: Error) => {
                 _err(NS, `! execute[${param.service || ''}].err =`, typeof e, e);
                 // return this.doReportError(e, param.context, null, { protocol: uri, param });
                 throw e;
             })
-            .then((data: Lambda.Types.InvocationResponse) => {
+            .then((data: InvokeCommandOutput) => {
                 _log(NS, `! execute[${param.service || ''}].res =`, $U.S(data, 320, 64, ' .... '));
                 const payload = data && data.Payload ? JSON.parse(`${data.Payload}`) : {};
                 const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
@@ -394,22 +397,21 @@ export class MyProtocolService implements ProtocolService {
         _inf(NS, `> uri[${service}] =`, uri);
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
-        const params: SNS.Types.PublishInput = this.sns.transformToEvent(uri, param, cbUrl);
+        const params: PublishCommandInput = this.sns.transformToEvent(uri, param, cbUrl);
         const arn = params.TopicArn; // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
         // _inf(NS, `> arn[${service}] =`, arn);
         _inf(NS, `> payload[${arn}] =`, $U.json(params));
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const sns = new AWS.SNS({ region });
+        const sns = new SNSClient(awsConfig($engine, region));
         const res = await sns
-            .publish(params)
-            .promise()
+            .send(new PublishCommand(params))
             .catch((e: Error) => {
                 _err(NS, `! notify[${param.service || ''}].err =`, typeof e, e);
                 return this.doReportError(e, param.context, null, { protocol: uri, param });
             })
-            .then((data: SNS.Types.PublishResponse) => {
+            .then((data: PublishCommandOutput) => {
                 _log(NS, `> res[${service}] =`, $U.json(data));
                 return data.MessageId;
             });
@@ -450,15 +452,14 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
-        const sqs = new AWS.SQS({ region });
+        const sqs = new SQSClient(awsConfig($engine, region));
         const res = await sqs
-            .sendMessage(params)
-            .promise()
+            .send(new SendMessageCommand(params))
             .catch((e: Error) => {
                 _err(NS, `! enqueue[${param.service || ''}].err =`, typeof e, e);
                 return this.doReportError(e, param.context, null, { protocol: uri, param });
             })
-            .then((data: SQS.Types.SendMessageResult) => {
+            .then((data: SendMessageCommandOutput) => {
                 _log(NS, `> res[${endpoint}] =`, $U.json(data));
                 return data.MessageId;
             });
@@ -484,7 +485,7 @@ export class MyProtocolService implements ProtocolService {
 
         const accountId = `${(context && context.accountId) || ''}`;
         const requestId = `${(context && context.requestId) || ''}`;
-        const params: SNS.Types.PublishInput = {
+        const params: PublishCommandInput = {
             TopicArn: arn,
             Subject: `x-protocol-service/broadcast`, //NOTE! - can be no 'Subject' if subscribed as HTTP SNS.
             Message: JSON.stringify({ default: $U.json(body) }), //NOTE! - only body data is required.
@@ -500,15 +501,14 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
-        const sns = new AWS.SNS({ region });
+        const sns = new SNSClient(awsConfig($engine, region));
         const res = await sns
-            .publish(params)
-            .promise()
+            .send(new PublishCommand(params))
             .catch((e: Error) => {
                 _err(NS, `! broadcast[${service || ''}].err =`, typeof e, e);
                 return this.doReportError(e, context, null, { endpoint, body });
             })
-            .then((data: SNS.Types.PublishResponse) => {
+            .then((data: PublishCommandOutput) => {
                 _log(NS, `> res[${service}] =`, $U.json(data));
                 return data.MessageId;
             });
@@ -574,12 +574,31 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
      * transform event data to param
      * @param event     the lambda compartible event data.
      */
-    public transformToParam(event: APIGatewayProxyEvent): ProtocolParam {
-        if (!event) throw new Error('@event (API Event) is required!'); // avoid null exception.
+    public transformToParam(event: APIGatewayProxyEvent, context?: NextContext): ProtocolParam {
+        const errScope = `web.transformToParam(${event?.path ?? ''})`;
+        if (!event) throw new Error(`@event (API Event) is required - ${errScope}`); // avoid null exception.
         const headers = event.headers;
-        if (!headers) throw new Error('.headers is required');
+        if (!headers) throw new Error(`.headers (object) is required - ${errScope}`);
         const requestContext = event.requestContext;
-        if (!requestContext) throw new Error('.requestContext is required');
+        if (!requestContext) throw new Error(`.requestContext (object) is required - ${errScope}`);
+
+        /** load next-context */
+        const _context = (context: NextContext): NextContext => {
+            if (context) return context; // use given context.
+            const ctx = headers[HEADER_PROTOCOL_CONTEXT];
+            if (!ctx) return null; // no context.
+            if (typeof ctx !== 'string') throw new Error(`@context (NextContext) should be string - ${errScope}`);
+            try {
+                const c = JSON.parse(ctx);
+                if (c && typeof c == 'object') return c as NextContext;
+            } catch (e) {
+                _log(NS, `> WARN! context[${ctx}] is not valid JSON.`, e);
+                throw new Error(`@context[${ctx}] is not valid JSON - ${errScope}`);
+            }
+            return null; // not valid context.
+        };
+        context = _context(context);
+        if (!context) throw new Error(`@context (NextContext) is required - ${errScope}`); // avoid null exception.
 
         //* extract part
         const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
@@ -592,20 +611,18 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             const isText = body && typeof body == 'string';
             const isJson = type.startsWith('application/json');
             const isForm = type.startsWith('application/x-www-form-urlencoded');
-            if (isText && isJson) return JSON.parse(body);
-            if (isText && body.startsWith('{') && body.endsWith('}')) return JSON.parse(body);
-            if (isText && body.startsWith('[') && body.endsWith(']')) return JSON.parse(body);
+            try {
+                if (isText && isJson) return JSON.parse(body);
+                if (isText && body.startsWith('{') && body.endsWith('}')) return JSON.parse(body);
+                if (isText && body.startsWith('[') && body.endsWith(']')) return JSON.parse(body);
+            } catch (e) {
+                throw new Error(`@body[${body}] is not valid JSON - ${errScope}`);
+            }
+
             // if (isText && isForm) return queryString.parse(body, { arrayFormat: 'bracket' });
             if (isText && isForm) return queryString.parse(body);
             return body;
         })(event.body, contType);
-
-        //* decode context (can be null)
-        if (typeof headers[HEADER_PROTOCOL_CONTEXT] === 'undefined')
-            throw new Error(`.headers[${HEADER_PROTOCOL_CONTEXT}] is required`);
-        const context: NextContext = headers[HEADER_PROTOCOL_CONTEXT]
-            ? JSON.parse(headers[HEADER_PROTOCOL_CONTEXT])
-            : null;
 
         //* determine execute mode.
         const service = '';
@@ -615,10 +632,10 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : (`${httpMethod}`.toUpperCase() as NextMode);
 
         //* validate values.
-        if (context && context.accountId && requestContext.accountId != context.accountId)
-            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId || ''}`);
-        if (context && context.requestId && requestContext.requestId != context.requestId)
-            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId || ''}`);
+        if (context?.accountId && requestContext.accountId != context.accountId)
+            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId ?? ''} @${errScope}`);
+        if (context?.requestId && requestContext.requestId != context.requestId)
+            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId ?? ''} @${errScope}`);
 
         //* pack as protocol-param.
         const res: ProtocolParam = { service, stage, type, mode, id: $path.id, cmd: $path.cmd, param, body, context };
@@ -703,7 +720,7 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
     }
 }
 
-type SQSEventParam = AWS.SQS.Types.SendMessageRequest;
+type SQSEventParam = SendMessageCommandInput;
 /**
  * class: `SQSProtocolTransformer`
  * - transformer for `SQS` Handler

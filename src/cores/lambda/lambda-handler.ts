@@ -15,12 +15,12 @@ import {
     Callback,
     APIGatewayProxyEvent,
     APIGatewayProxyResult,
-    CognitoUserPoolTriggerEvent,
     DynamoDBStreamEvent,
     SNSEvent as AWSSNSEvent,
     SQSEvent as AWSSQSEvent,
     ALBEvent as AWSALBEvent,
     ALBResult as AWSALBResult,
+    PreSignUpTriggerEvent,
 } from 'aws-lambda';
 import { NextContext } from 'lemon-model';
 import { ProtocolParam, CoreConfigService } from './../core-services';
@@ -66,7 +66,7 @@ export type WSSHandler = MyHandler<WSSEvent, WSSResult>;
 export type SNSHandler = MyHandler<SNSEvent, void>;
 export type SQSHandler = MyHandler<SQSEvent, void>;
 export type CronHandler = MyHandler<CronEvent, void>;
-export type CognitoHandler = MyHandler<CognitoUserPoolTriggerEvent>;
+export type CognitoHandler = MyHandler<PreSignUpTriggerEvent>;
 export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
 export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
 
@@ -173,6 +173,19 @@ export class LambdaHandler {
         key = key === 'dynamo-stream' ? 'dds' : key;
         // console.info(`! set-handler[${type}] =`, typeof handler);
         if (key) this._map[key] = handler;
+    }
+
+    /**
+     * get service lambda handler.
+     * @param type      name of type
+     */
+    public getHandler(type: HandlerType): LambdaHandlerService {
+        let key = `${type || ''}`.toLowerCase().trim();
+        key = key === 'dynamo-stream' ? 'dds' : key;
+        const handler = this._map[key];
+        //* must be `LambdaHandlerService`.
+        if (handler && typeof handler == 'object') return handler as LambdaHandlerService;
+        return null;
     }
 
     //* Find Service By Event

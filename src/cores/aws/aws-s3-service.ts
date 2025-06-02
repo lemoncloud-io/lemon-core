@@ -16,20 +16,23 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, $U, _log, _inf, _err } from '../../engine';
 const NS = $U.NS('S3', 'blue');
-
+import { GetObjectCommandOutput, S3Client, _Object } from '@aws-sdk/client-s3';
+// eslint-disable-next-line prettier/prettier
+import { HeadObjectCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, GetObjectTaggingCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+// eslint-disable-next-line prettier/prettier
+import { PutObjectCommandInput, ListObjectsV2CommandInput } from '@aws-sdk/client-s3';
 import path from 'path';
-import AWS from 'aws-sdk';
 import mime from 'mime-types';
 import { v4 } from 'uuid';
 import { CoreServices } from '../core-services';
-import { Body, GetObjectOutput } from 'aws-sdk/clients/s3';
 import { GETERR } from '../../common/test-helper';
-
+import { Readable } from 'stream';
+import { awsConfig } from '../../tools';
 /** ****************************************************************************************************************
  *  Core Types.
  ** ****************************************************************************************************************/
-export type Metadata = AWS.S3.Metadata;
-export type S3Object = AWS.S3.Object;
+export type Metadata = Record<string, string>;
+export type S3Object = _Object;
 
 export interface TagSet {
     [key: string]: string;
@@ -93,7 +96,7 @@ export interface GetObjectResult {
     /**
      * Object data.
      */
-    Body?: Body;
+    Body?: Buffer;
     /**
      * An ETag is an opaque identifier assigned by a web server to a specific version of a resource found at a URL.
      */
@@ -154,9 +157,8 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
  * get aws client for S3
  */
 const instance = () => {
-    const _region = region();
-    const config = { region: _region };
-    return new AWS.S3(config); // SQS Instance. shared one???
+    const cfg = awsConfig($engine, region());
+    return new S3Client(cfg); // SQS Instance. shared one???
 };
 
 /**
@@ -202,7 +204,7 @@ export class AWSS3Service implements CoreS3Service {
         // call s3.headObject.
         const s3 = instance();
         try {
-            const data = await s3.headObject(params).promise();
+            const data = await s3.send(new HeadObjectCommand(params));
             _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
             // const sample = {
             //     AcceptRanges: 'bytes',
@@ -222,8 +224,8 @@ export class AWSS3Service implements CoreS3Service {
                 LastModified: $U.ts(data.LastModified),
             };
             return result;
-        } catch (e) {
-            if (e.statusCode == 404) return null;
+        } catch (e: any) {
+            if (e?.$metadata?.httpStatusCode === 404 || e.name === 'NotFound') return null;
             _err(NS, '! err=', e);
             throw e;
         }
@@ -270,14 +272,15 @@ export class AWSS3Service implements CoreS3Service {
         // call s3.upload()
         const s3 = instance();
         try {
-            const data = await s3.upload(params).promise();
+            const data = await s3.send(new PutObjectCommand(params));
             delete (data as any).key; // NOTE: remove undeclared property 'key' returned from aws-sdk
-            _log(NS, `> data[${data.Bucket}].Location =`, $U.json(data.Location));
+            const location = `https://${params.Bucket}.s3.${region()}.amazonaws.com/${params.Key}`;
+            _log(NS, `> data[${params.Bucket}].Location =`, $U.json(location));
 
             const result: PutObjectResult = {
-                Bucket: data.Bucket,
-                Location: data.Location,
-                Key: data.Key,
+                Bucket: params.Bucket,
+                Location: location,
+                Key: params.Key,
                 ETag: data.ETag,
                 ContentType: params.ContentType,
                 ContentLength: params.ContentLength,
@@ -304,10 +307,12 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.getObject.
         const s3 = instance();
         try {
-            const data: GetObjectOutput = await s3.getObject(params).promise();
+            const data = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
             const { ContentType, ContentLength, Body, ETag, Metadata, TagCount } = data;
-            const result: GetObjectResult = { ContentType, ContentLength, Body, ETag, Metadata };
+            // convert stream to buffer for readable stream.
+            const buffer = Body && Body instanceof Readable ? await this.streamToBuffer(Body) : undefined;
+            const result: GetObjectResult = { ContentType, ContentLength, Body: buffer, ETag, Metadata };
             if (TagCount) result.TagCount = TagCount;
             return result;
         } catch (e) {
@@ -330,9 +335,11 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.getObject.
         const s3 = instance();
         try {
-            const data = await s3.getObject(params).promise();
+            const data: GetObjectCommandOutput = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
-            const content = data.Body.toString();
+            const buffer =
+                data.Body && data.Body instanceof Readable ? await this.streamToBuffer(data.Body) : undefined;
+            const content = buffer?.toString();
             return JSON.parse(content) as T;
         } catch (e) {
             _err(NS, '! err=', e);
@@ -353,7 +360,7 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.getObjectTagging.
         const s3 = instance();
         try {
-            const data = await s3.getObjectTagging(params).promise();
+            const data = await s3.send(new GetObjectTaggingCommand(params));
             _log(NS, `> data =`, $U.json(data));
             return data?.TagSet?.reduce<TagSet>((tagSet, tag) => {
                 const { Key, Value } = tag;
@@ -380,7 +387,7 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.deleteObject.
         const s3 = instance();
         try {
-            const data = await s3.deleteObject(params).promise();
+            const data = await s3.send(new DeleteObjectCommand(params));
             _log(NS, '> data =', $U.json(data));
         } catch (e) {
             _err(NS, '! err=', e);
@@ -415,7 +422,7 @@ export class AWSS3Service implements CoreS3Service {
 
         //* build the req-params.
         const Bucket = this.bucket();
-        const params: AWS.S3.ListObjectsV2Request = {
+        const params: ListObjectsV2CommandInput = {
             Bucket,
             Prefix,
             Delimiter,
@@ -431,7 +438,7 @@ export class AWSS3Service implements CoreS3Service {
             KeyCount: 0,
         };
         try {
-            const data = await s3.listObjectsV2(params).promise();
+            const data = await s3.send(new ListObjectsV2Command(params));
             //INFO! - minimize log output....
             _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
             _log(NS, '> data[0] =', $U.json(data?.Contents?.[0]));
@@ -447,9 +454,9 @@ export class AWSS3Service implements CoreS3Service {
             if (unlimited) {
                 while (result.IsTruncated) {
                     //* fetch next list.
-                    const res2 = await s3
-                        .listObjectsV2({ ...params, ContinuationToken: result.NextContinuationToken })
-                        .promise();
+                    const res2 = await s3.send(
+                        new ListObjectsV2Command({ ...params, ContinuationToken: result.NextContinuationToken }),
+                    );
 
                     //* update contents.
                     result.Contents = result.Contents.concat(0 ? res2.Contents.slice(1) : res2.Contents);
@@ -467,6 +474,20 @@ export class AWSS3Service implements CoreS3Service {
         // returns.
         return result;
     };
+
+    /**
+     * Convert a readable stream into a single Buffer.
+     * Required in AWS SDK v3, as S3.getObject() returns a stream instead of a Buffer.
+     *
+     * Used for JSON parsing in getDecodedObject() and getObject().
+     */
+    private streamToBuffer = async (stream: Readable): Promise<Buffer> => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+            chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+        }
+        return Buffer.concat(chunks);
+    };
 }
 
 /**
@@ -476,12 +497,12 @@ export class AWSS3Service implements CoreS3Service {
 class S3PutObjectRequestBuilder {
     // properties consisting S3.PutObjectRequest
     private readonly Body: Buffer;
-    private readonly Bucket: AWS.S3.PutObjectRequest['Bucket'];
-    private readonly ContentLength: AWS.S3.PutObjectRequest['ContentLength'];
-    private ContentType?: AWS.S3.PutObjectRequest['ContentType'];
-    private Key?: AWS.S3.PutObjectRequest['Key'];
-    private Metadata: AWS.S3.PutObjectRequest['Metadata'];
-    private Tagging?: AWS.S3.PutObjectRequest['Tagging'];
+    private readonly Bucket: PutObjectCommandInput['Bucket'];
+    private readonly ContentLength: PutObjectCommandInput['ContentLength'];
+    private ContentType?: PutObjectCommandInput['ContentType'];
+    private Key?: PutObjectCommandInput['Key'];
+    private Metadata: PutObjectCommandInput['Metadata'];
+    private Tagging?: PutObjectCommandInput['Tagging'];
 
     /**
      * constructor
@@ -535,7 +556,7 @@ class S3PutObjectRequestBuilder {
     /**
      * return PutObjectRequest object
      */
-    public asParams(): AWS.S3.PutObjectRequest {
+    public asParams(): PutObjectCommandInput {
         const { Body, Bucket, ContentLength, Metadata, Tagging } = this;
         let { ContentType, Key } = this;
 

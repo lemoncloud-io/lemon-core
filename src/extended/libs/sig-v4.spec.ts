@@ -7,9 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2024 - All Rights Reserved.
  */
-
-import AWS from 'aws-sdk';
-import { loadProfile } from '../../environ';
+import { asyncCredentials } from '../../tools/tools';
 import { expect2, GETERR } from '../../common/test-helper';
 import { createSigV4Proxy } from '../../helpers/helpers';
 import { sigV4ClientConfig } from './sig-v4';
@@ -19,8 +17,8 @@ const HOST = 'hg9errxv25.execute-api.ap-northeast-2.amazonaws.com';
 const STAGE = 'prod';
 const ENDPOINT = `https://${HOST}/${STAGE}`;
 
-const loadSigConfig = (profile: string): sigV4ClientConfig => {
-    const credentials = new AWS.SharedIniFileCredentials({ profile });
+const loadSigConfig = async (profile: string): Promise<sigV4ClientConfig> => {
+    const credentials = await asyncCredentials(profile).catch(() => null);
     if (!credentials?.accessKeyId || !credentials?.secretAccessKey) return null;
     const ACCESSKEY = credentials?.accessKeyId;
     const SECRETKEY = credentials?.secretAccessKey;
@@ -33,19 +31,16 @@ const loadSigConfig = (profile: string): sigV4ClientConfig => {
     };
 };
 
-const instance = (profile: string) => {
-    const sigConfig = loadSigConfig(profile);
+const instance = async (profile: string) => {
+    const sigConfig = await loadSigConfig(profile);
     const proxy = createSigV4Proxy('TestProxy', ENDPOINT, sigConfig);
     return proxy;
 };
 
 //! main test body.
 describe('createHttpWebProxy w/Sig4', () => {
-    const PROFILE = loadProfile(process); // override process.env.
-    PROFILE && console.info(`! PROFILE =`, PROFILE);
-
     it('should pass API w/invalid AWS key', async () => {
-        const proxy = instance('lemon');
+        const proxy = await instance('lemon');
         if (!proxy) {
             console.info('! SKIP TEST - invalid AWS key[lemon]');
             return;
@@ -69,7 +64,7 @@ describe('createHttpWebProxy w/Sig4', () => {
     });
 
     it('should pass API w/ unauthorized AWS key', async () => {
-        const proxy = instance('temp');
+        const proxy = await instance('temp');
         if (!proxy) {
             console.info('! SKIP TEST - invalid AWS key');
             return;

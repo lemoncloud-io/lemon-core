@@ -28,7 +28,8 @@ export const instance = () => {
 
 //! main test body.
 describe('DynamoService', () => {
-    const PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    const $PROFILE = loadProfile(); // use `env/<ENV>.yml`
+
     //* test prepareUpdateItem
     describe('UpdateExpression', () => {
         const { dummy } = instance();
@@ -183,12 +184,14 @@ describe('DynamoService', () => {
 
     //* real DynamoDB storage service.
     describe('DynamoService (real)', () => {
-        if (!PROFILE) return;
-
         const { service, tableName } = instance();
         const dataMap = new Map<string, MyModel>();
 
         beforeAll(async () => {
+            const PROFILE = await $PROFILE;
+            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+            if (!PROFILE) return;
+
             // Initialize data in the table
             const data: MyModel[] = loadDataYml('dummy-dynamo-data.yml').data;
             await data.map(async item => {
@@ -198,6 +201,10 @@ describe('DynamoService', () => {
         });
 
         it('should pass basic CRUD', async () => {
+            const PROFILE = await $PROFILE;
+            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+            if (!PROFILE) return;
+
             //* check dummy data.
             expect2(service.hello()).toEqual(`dynamo-service:${tableName}`);
             expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
@@ -223,6 +230,10 @@ describe('DynamoService', () => {
         });
 
         afterAll(async () => {
+            const PROFILE = await $PROFILE;
+            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+            if (!PROFILE) return;
+
             // Cleanup the table
             await Promise.all([...dataMap.keys()].map(id => service.deleteItem(id)));
         });
