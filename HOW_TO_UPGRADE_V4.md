@@ -52,8 +52,8 @@ $ nvm use 22
 
 * Add as a `devDependency`:
 
-  ```bash
-  npm install --save-dev lemon-devkit
+  ```sh
+  $ npm install --save-dev lemon-devkit
   ```
 
 ---
