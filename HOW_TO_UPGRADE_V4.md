@@ -97,6 +97,8 @@ $ nvm use 22
 * [ ] **Upgrade to Node.js 22**
 
   * Change `nvm` version, update `.nvmrc`
+  * When using Node.js 22, `npm run deploy` may fail due to module loading errors. 
+      For deployment, use Node.js 18 instead.
 * [ ] **Review AWS SDK v3 migration changes**
 
   * **Credentials**: Replace old `credentials` code with `asyncCredentials()`
