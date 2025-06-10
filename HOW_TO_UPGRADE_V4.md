@@ -17,7 +17,18 @@ $ nvm use 22
 
 * Update `.nvmrc` file to `22`
 
----
+> #### Note
+>
+> When running `npm run deploy` in a Node.js 22, you may encounter the following error:
+>
+> ```
+> Error [ERR_REQUIRE_ASYNC_MODULE]: require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --experimental-print-required-tla.
+> ```
+>
+> In this case:
+> * Set only the Lambda runtime (Node.js version) to 22 in your `serverless.yml`.
+> * Execute the deployment command (`npm run deploy`) in a **Node.js 18 (nvm 18)**.
+
 
 ### 2. AWS SDK: v2 to v3 Migration
 
