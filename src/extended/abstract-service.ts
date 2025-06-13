@@ -1146,7 +1146,8 @@ const $X = {
         };
         profile = _profile(profile);
         const credentials = new AWS.SharedIniFileCredentials({ profile });
-        if (!credentials?.accessKeyId) throw new Error(`@profile[${profile ?? ''}] is invalid - ${errScope}`);
+        if (!credentials?.accessKeyId)
+            throw new Error(`@profile[${profile ?? ''}] is invalid (no access-key) - ${errScope}`);
         return credentials;
     },
     /**
@@ -1229,7 +1230,11 @@ const $X = {
                 _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
 
                 // eslint-disable-next-line prettier/prettier
-                const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+                const query_string = _isNa($param)
+                    ? ''
+                    : typeof $param == 'object'
+                    ? queryString.stringify($param)
+                    : `${$param}`;
                 const url =
                     endpoint +
                     (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +

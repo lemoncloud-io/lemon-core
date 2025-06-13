@@ -280,7 +280,9 @@ describe('abstract-service', () => {
         if (!PROFILE) {
             expect2(() => $X.loadCredentials(), 'profile').toEqual({ profile: 'default' });
             expect2(() => $X.loadCredentials(''), 'profile').toEqual({ profile: 'default' });
-            expect2(() => $X.loadCredentials('temp')).toEqual('@profile[temp] is invalid - loadCredentials(temp)');
+            expect2(() => $X.loadCredentials('temp')).toEqual(
+                '@profile[temp] is invalid (no access-key) - loadCredentials(temp)',
+            );
             expect2(() => $X.loadCredentials('lemon'), 'profile').toEqual({ profile: 'lemon' });
 
             const cred = $X.loadCredentials('lemon');

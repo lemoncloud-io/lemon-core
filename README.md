@@ -2,7 +2,6 @@
 [![npm version](https://badge.fury.io/js/lemon-core.svg)](https://badge.fury.io/js/lemon-core)
 [![GitHub version](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core.svg)](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core)
 
-
 # lemon-core
 
 Lemon Core Bootloader for Serverless Micro-Service
@@ -13,7 +12,6 @@ Lemon Core Bootloader for Serverless Micro-Service
 
     ![](assets/2019-11-26-23-43-47.png)
 
-
 ## Architecture
 
 Basic MicroService Architecutre with `API` + `SNS` + `SQS`.
@@ -23,7 +21,6 @@ Basic MicroService Architecutre with `API` + `SNS` + `SQS`.
 - `NextContext`: initial requester's context with `identity`.
 
     ![](assets/lemon-core-ms-arch.png)
-
 
 ### Protocol Service
 
@@ -50,30 +47,28 @@ const queueId = await service.enqueue(protocol, callback, 30);
 1. install `lemon-core` module (>= 2.1.0).
 
 ```sh
-$ npm install lemon-core --save
+npm install lemon-core --save
 ```
 
 TODO - TBD in detail.
 
-
-
 ## Contribution
 
-Plz, request PR. 
+Plz, request PR.
 
 See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
-
 
 ## LICENSE
 
 [MIT](LICENSE) - (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
 
-
 ----------------
-# VERSION INFO #
+
+## VERSION INFO
 
 | Version   | Description
 |--         |--
+| 3.2.17    | improve `SearchBody` to support `knn` query (see `lemon-model@1.0.6`).
 | 3.2.16    | improve `ALBHandler` to support `elb` event.
 | 3.2.15    | improve `NextContext` to support `referer` and `origin` header.
 | 3.2.13    | improve `createSigV4Proxy()` to support the sig-v4 request to AWS.
@@ -133,4 +128,3 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 | 2.0.0     | improve `lemon-engine`, and support `typescript` fully.
 | 1.2.15    | improve `doReportError` with error message
 | 1.2.12    | support `doReportMetric()` for saving metric data.
-

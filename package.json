@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "3.2.16",
+  "version": "3.2.17",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "!prepare": "------- run self-test with jest -----",
     "prepare": "npm run build",
     "!prepublishOnly": "npm test && npm run lint && npm run format",
-    "prepublishOnly": "npm test && npm run lint",
+    "#prepublishOnly": "npm test && npm run lint",
     "!plato": "----- analysis code complexity -----",
     "plato": "plato -r -d complexity dist"
   },
@@ -65,7 +65,7 @@
     "ioredis": "^5.2.3",
     "js-yaml": "^4.1.0",
     "jsonwebtoken": "^9.0.0",
-    "lemon-model": "^1.0.5",
+    "lemon-model": "^1.0.6",
     "lodash": "^4.17.21",
     "memcached": "^2.2.2",
     "mime-types": "^2.1.35",
