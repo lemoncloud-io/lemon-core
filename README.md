@@ -10,6 +10,7 @@ Lemon Core Bootloader for Serverless Micro-Service
 - Support `multiple` event sources with single lambda function as below figure.
 - Fully support `typescript` types (80%).
 - Support Data Synchronization to `Elasticsearch` from `DynomoDB` via `DynamoStream`.
+- The way to migrate v3 to v4: SEE [HOW_TO_UPGRADE_V4](HOW_TO_UPGRADE_V4.md)
 
     ![](assets/2019-11-26-23-43-47.png)
 
