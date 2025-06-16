@@ -82,12 +82,25 @@ nvm use 22
 1. **Credential Management**
 
    * Replace legacy `credentials` approach with `asyncCredentials()` from `lemon-core`.
+
    * Example:
 
      ```ts
      import { asyncCredentials } from 'lemon-core';
      const credentials = await asyncCredentials(PROFILE);
      ```
+
+   * **\[Test Updates]**
+
+     * If you use `loadProfile(process)` to set up environment variables, move it **inside `it()` blocks** and `await` the call
+
+       ```ts
+       it('should initialize credentials', async () => {
+         const PROFILE = await loadProfile(process);
+         const credentials = await asyncCredentials(PROFILE);
+         expect(credentials).toBeDefined();
+       });
+       ```
 
 2. **Client Initialization**
 
@@ -103,6 +116,7 @@ nvm use 22
        return new SQSClient(awsConfig($engine, region));
      }
      ```
+
 
 ---
 
