@@ -10,7 +10,7 @@
  */
 import loadEnviron, { credentials } from '../environ'; //INFO! load environ first.
 import { expect2, GETERR } from '../common/test-helper';
-import { loadJsonSync, awsConfig, AwsConfigParams, onlyDefined } from './tools';
+import { loadJsonSync, awsConfig, AwsConfigParams, onlyDefined, isLambda } from './tools';
 import { fromIni } from '@aws-sdk/credential-providers';
 import $engine from '../engine';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
@@ -150,5 +150,39 @@ describe('Test tools/shared', () => {
             );
             expect2(await _sns(cfg6).catch(GETERR)).toEqual('085403634746');
         }
+    });
+
+    test('test isLambda()', () => {
+        // return false if not in Lambda environment.
+        const originalEnv = process.env.AWS_LAMBDA_FUNCTION_NAME;
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        expect2(() => isLambda()).toEqual(false);
+
+        // return true if in Lambda environment.
+        process.env.AWS_LAMBDA_FUNCTION_NAME = 'test-lambda-function';
+        expect2(() => isLambda()).toEqual(true);
+
+        // return false if empty string.
+        process.env.AWS_LAMBDA_FUNCTION_NAME = '';
+        expect2(() => isLambda()).toEqual(false);
+
+        // restore original environment.
+        if (originalEnv) process.env.AWS_LAMBDA_FUNCTION_NAME = originalEnv;
+        else delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+    });
+
+    test('test awsConfig() with Lambda environment', () => {
+        const originalEnv = process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+        // simulate Lambda environment.
+        process.env.AWS_LAMBDA_FUNCTION_NAME = 'test-lambda-function';
+
+        // credentials should be undefined in Lambda environment. (profile is 'none')
+        const config = awsConfig($engine, { region: 'ap-northeast-2' });
+        expect2(() => config.credentials).toEqual(undefined); // credentials should be undefined in Lambda environment.
+
+        // restore original environment.
+        if (originalEnv) process.env.AWS_LAMBDA_FUNCTION_NAME = originalEnv;
+        else delete process.env.AWS_LAMBDA_FUNCTION_NAME;
     });
 });
