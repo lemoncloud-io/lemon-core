@@ -28,7 +28,7 @@ import { LemonEngine } from '../engine/types';
  * @returns {boolean} - true if running in AWS Lambda environment
  */
 export const isLambda = (): boolean => {
-    return !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+    return !!process?.env?.AWS_LAMBDA_FUNCTION_NAME;
 };
 
 /** returns only defined */
