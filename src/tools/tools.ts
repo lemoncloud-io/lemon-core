@@ -23,6 +23,14 @@ import { RuntimeConfigAwsCredentialIdentityProvider } from '@aws-sdk/types/dist-
 // import $engine from '../engine'; #WARN! DO NOT LOAD $engine here due to global initialization.
 import { LemonEngine } from '../engine/types';
 
+/**
+ * Check if the current environment is AWS Lambda
+ * @returns {boolean} - true if running in AWS Lambda environment
+ */
+export const isLambda = (): boolean => {
+    return !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+};
+
 /** returns only defined */
 export const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
     N && typeof N === 'object'
@@ -108,7 +116,9 @@ export const awsConfig = <T extends AwsConfigParams>(
             ? params()
             : params?.region;
     const _conf: T = typeof params === 'object' ? params : null;
-    const profile = $engine?.environ('NAME', 'none') as string;
+
+    // If running in Lambda environment, set profile to 'none'
+    const profile = isLambda() ? 'none' : ($engine?.environ('NAME', 'none') as string);
     if (typeof profile !== 'string')
         throw new Error(`@env.NAME[${typeof profile}] is invalid (check $engine) - ${errScope}`);
 
