@@ -352,7 +352,7 @@ export class MyProtocolService implements ProtocolService {
             })
             .then((data: InvokeCommandOutput) => {
                 _log(NS, `! execute[${param.service || ''}].res =`, $U.S(data, 320, 64, ' .... '));
-                const payload = data && data.Payload ? JSON.parse(`${data.Payload}`) : {};
+                const payload = data && data?.Payload ? JSON.parse(Buffer.from(data.Payload).toString()) : {};
                 const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
                 _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
                 [200, 201].includes(statusCode) || _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(data)); // print whole data if not 200.

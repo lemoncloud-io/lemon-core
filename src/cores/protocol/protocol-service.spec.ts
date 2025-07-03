@@ -211,9 +211,13 @@ describe('ProtocolService', () => {
 
         //* now verify with real lambda call.
         if (PROFILE == 'lemon') {
-            expect2(await service.execute(param).catch(GETERR)).toEqual(
-                'Function not found: arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-hello-api-dev-lambda',
-            );
+            expect2(await service.execute(param).catch(GETERR)).toEqual('404 NOT FOUND - GET /test/abc');
+
+            const helloParam = asParam('', 'hello', { id: undefined });
+            expect2(await service.execute(helloParam).catch(GETERR)).toEqual({
+                list: [{ name: 'lemon' }, { name: 'cloud' }],
+                name: 'lemon',
+            });
         }
     });
 
