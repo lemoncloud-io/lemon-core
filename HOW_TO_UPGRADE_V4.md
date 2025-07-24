@@ -5,7 +5,7 @@
 ## 0. Update lemon-core Version
 
 ```sh
-npm install lemon-core --save
+npm install lemon-core@^4.0.5 --save
 ```
 
 ## 1. Upgrade Node.js Version
@@ -32,7 +32,22 @@ nvm use 22
         },
 ```
 
+* Update plugins in serverless.yml
+
+```diff
+  plugins:
+    - serverless-offline
+-   - serverless-offline
++   #WARN - failure in nodejs 22.x due to `serverless-offline` plugin @250627
++   # - serverless-offline
+    - serverless-aws-documentation
+    - serverless-prune-plugin
+    - serverless-plugin-log-retention
+```
+
 > ### Note
+>
+> If you **don’t modify the `plugins` section** in `serverless.yml`, you may encounter the following issues:
 >
 > When running `npm run deploy` in a Node.js 22, you may encounter the following error:
 >
@@ -90,17 +105,29 @@ nvm use 22
      const credentials = await asyncCredentials(PROFILE);
      ```
 
+   * **\[express.ts Updates]**
+
+    ```diff
+      //! dynamic loading credentials by profile. (search PROFILE -> NAME)
+      export const credentials = async (name?: string) => {
+          _log(NS, `credentials(${name})..`);
+          const NAME = name || ($engine.environ('NAME', '') as string);
+          const profile = $engine.environ('PROFILE', NAME) as string;
+    -      return $core.tools.credentials(profile);
+    +      return $core.tools.asyncCredentials(profile);
+      };
+    ```
+
    * **\[Test Updates]**
+      * If you use `loadProfile(process)` to set up environment variables, move it **inside `it()` blocks** and `await` the call
 
-     * If you use `loadProfile(process)` to set up environment variables, move it **inside `it()` blocks** and `await` the call
-
-       ```ts
-       it('should initialize credentials', async () => {
-         const PROFILE = await loadProfile(process);
-         const credentials = await asyncCredentials(PROFILE);
-         expect(credentials).toBeDefined();
-       });
-       ```
+      ```ts
+      it('should initialize credentials', async () => {
+        const PROFILE = await loadProfile(process);
+        const credentials = await asyncCredentials(PROFILE);
+        expect(credentials).toBeDefined();
+      });
+      ```
 
 2. **Client Initialization**
 
@@ -117,6 +144,15 @@ nvm use 22
      }
      ```
 
+---
+
+## 4. Update src/cores
+
+To update the src/cores directory in your project using the latest version from [lemon-templates-api](https://github.com/lemoncloud-io/lemon-templates-api), follow these steps:
+
+1. In your project: Delete the existing src/cores folder.
+2. From lemon-templates-api: Copy the entire src/cores directory.
+3. In your project: Paste the copied src/cores directory into the same path (src/cores).
 
 ---
 
@@ -126,13 +162,13 @@ nvm use 22
 * [ ] **Upgrade to Node.js 22**
   * Change `nvm` version, update `.nvmrc`
   * Change node.js runtime version of your profile, update `config.js`
-  * When using Node.js 22, `npm run deploy` may fail due to module loading errors.
-      For deployment, use Node.js 18 instead.
+  * Update plugins in serverless.yml
 * [ ] **Install lemon-devkit** (devDependency)
 * [ ] **Review AWS SDK v3 migration changes**
 
   * **Credentials**: Replace old `credentials` code with `asyncCredentials()`
   * **Client Initialization**: Use `awsConfig($engine, region)`
+* [ ] **Update src/cores**
 * [ ] **Review CI/CD environments**
 
   * Ensure Node.js 22 is set in `serverless.yml`, `Dockerfile`, etc.
