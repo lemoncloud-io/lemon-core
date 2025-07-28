@@ -281,17 +281,21 @@ export const $T = {
      * get $perf instance.
      * ```ts
      * const p = $T.perf()
-     * const took = p.took();
+     * ...
+     * const took = p.took(); // elapsed time in seconds
      */
     perf: () => {
         return new (class MyPerfmance {
+            /** the initial timestamp (msec) */
             public readonly t0: number;
+            /** constructor */
             public constructor(t0?: number) {
                 this.t0 = t0 || performance.now(); // start of processing
             }
+            /** get elapsed time (sec) */
             public took = () => {
                 const t1 = performance.now(); // start of processing
-                const took = Math.round((t1 - this.t0) / 100) / 10; // in sec.
+                const took = Math.round((t1 - this.t0) / 10) / 100; // in sec.
                 return took;
             };
         })();
