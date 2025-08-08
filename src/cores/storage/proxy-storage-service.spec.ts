@@ -92,7 +92,9 @@ export const instance = (table?: string, time?: number) => {
 
 //! main test body.
 describe('ProxyStorageService', () => {
-    const $PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
     jest.setTimeout(10000);
 
     //* test w/ service
@@ -132,9 +134,6 @@ describe('ProxyStorageService', () => {
 
     //* builder to test main service by type
     const build_test_scenario_by_type = (type: 'dummy' | 'dynamo') => async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         const { service, storage, current } = instance(type == 'dummy' ? 'dummy-account-data.yml' : 'TestCoreTable');
 
         //* check type of internal storage.

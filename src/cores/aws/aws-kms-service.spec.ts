@@ -30,13 +30,11 @@ const $perf = () => {
 //! main test body.
 describe('AWSKMSService', () => {
     //* use `env.PROFILE`
-    const $PROFILE = loadProfile(process); // override process.env.
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* test w/ aws-kms-service
     it('should pass aws-kms-service()', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         //NOTE - use `alias/lemon-hello-api` by default
         const keyId = 'alias/lemon-hello-api';
         const service = new AWSKMSService(keyId);
@@ -57,9 +55,6 @@ describe('AWSKMSService', () => {
 
     //* test of asymetric signing
     it('should pass asymetric signing(for JWT Token)', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         //* make KMS custom-key for this test.
         const alias = `lemon-identity-key`;
         const keyId = `alias/${alias}`;

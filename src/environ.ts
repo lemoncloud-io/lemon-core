@@ -107,19 +107,20 @@ export const loadEnviron = (process?: any, options?: EnvironmentSet): Environmen
  * ````
  * @param $proc     process (default `global.process`)
  * @param options   (optional) parameters.
- * @returns {Promise<string>} - loaded profile name.
+ * @returns {string} - profile name defiend as NAME in environ. (but, `none` is ignored)
  */
-export const loadProfile = async ($proc?: { env?: any }, options?: any): Promise<string> => {
+export const loadProfile = ($proc?: { env?: any }, options?: any): string => {
     const errScope = 'loadProfile()';
     const devkit = _load('lemon-devkit');
     if (!devkit?.loadProfile)
         throw new Error(`loadProfile(function) is required (npm i -D lemon-devkit) - ${errScope}`);
-    const $res = await devkit.loadProfile($proc, options).catch((e: Error) => {
+    try {
+        return devkit.loadProfile($proc, options);
+    } catch (e) {
         const error = `${e?.message ?? GETERR(e)}`.toLowerCase();
         if (error.includes('could not resolve credentials') && error.includes('[default]')) return '';
         throw e;
-    });
-    return $res?.profile ?? '';
+    }
 };
 
 /**
@@ -129,7 +130,7 @@ export const loadProfile = async ($proc?: { env?: any }, options?: any): Promise
  */
 export const credentials = (profile: string): CrendentialForAWS => {
     if (!profile) return;
-    throw new Error('WARN! credentials() is deprecated. use `asyncCredentials()` instead!');
+    throw new Error('WARN! credentials() is deprecated. use `asyncCredentials()` from lemon-devkit instead!');
 };
 
 //* export default.

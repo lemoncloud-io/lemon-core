@@ -8,7 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import loadEnviron, { credentials } from '../environ'; //INFO! load environ first.
+import loadEnviron from '../environ'; //INFO! load environ first.
 import { expect2, GETERR } from '../common/test-helper';
 import { loadJsonSync, awsConfig, AwsConfigParams, onlyDefined, isLambda } from './tools';
 import { fromIni } from '@aws-sdk/credential-providers';

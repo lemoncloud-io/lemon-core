@@ -28,7 +28,8 @@ export const instance = () => {
 
 //! main test body.
 describe('DynamoService', () => {
-    const $PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* test prepareUpdateItem
     describe('UpdateExpression', () => {
@@ -188,8 +189,6 @@ describe('DynamoService', () => {
         const dataMap = new Map<string, MyModel>();
 
         beforeAll(async () => {
-            const PROFILE = await $PROFILE;
-            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
             if (!PROFILE) return;
 
             // Initialize data in the table
@@ -201,8 +200,6 @@ describe('DynamoService', () => {
         });
 
         it('should pass basic CRUD', async () => {
-            const PROFILE = await $PROFILE;
-            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
             if (!PROFILE) return;
 
             //* check dummy data.
@@ -230,8 +227,6 @@ describe('DynamoService', () => {
         });
 
         afterAll(async () => {
-            const PROFILE = await $PROFILE;
-            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
             if (!PROFILE) return;
 
             // Cleanup the table

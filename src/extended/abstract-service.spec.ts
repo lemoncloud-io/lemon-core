@@ -93,7 +93,8 @@ export const instance = (type: string = 'dummy') => {
 //! main test body.
 describe('abstract-service', () => {
     //* use like `const PROFILE = await $PROFILE` in each test.
-    const $PROFILE = loadProfile(process); // override process.env.
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* basic function
     it('should pass basic function', async () => {
@@ -204,9 +205,6 @@ describe('abstract-service', () => {
 
     //* check of `$ES6`
     it('should pass $ES6', async () => {
-        const PROFILE = await $PROFILE;
-        PROFILE && console.info('! PROFILE =', PROFILE);
-
         expect2(() => $ES6.hello()).toEqual('Elastic6Instance');
 
         //* check environment
@@ -281,9 +279,6 @@ describe('abstract-service', () => {
 
     //* check of createHttpSearchProxy()
     it('should pass $ES6.$X.createHttpSearchProxy()', async () => {
-        const PROFILE = await $PROFILE;
-        PROFILE && console.info('! PROFILE =', PROFILE);
-
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
             console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
@@ -314,9 +309,6 @@ describe('abstract-service', () => {
 
     //* check of _ES6
     it('should pass _ES6 factory', async () => {
-        const PROFILE = await $PROFILE;
-        PROFILE && console.info('! PROFILE =', PROFILE);
-
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
             console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);

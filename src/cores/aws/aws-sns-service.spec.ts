@@ -25,12 +25,10 @@ const SNS = new AWSSNSService();
 //! main test body.
 describe(`test service/sns-service.js`, () => {
     //* use `env.PROFILE`
-    const $PROFILE = loadProfile();
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     test('check basic function', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         expect2(() => SNS.name()).toEqual('SNS');
         expect2(() => SNS.hello()).toEqual('aws-sns-service:');
 

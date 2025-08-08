@@ -20,7 +20,8 @@ interface AccountModel extends StorageModel {
 
 //! main test body.
 describe('StorageService', () => {
-    const $PROFILE = loadProfile(); // use `env/<ENV>.yml`
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* dummy storage service.
     it('should pass dummy storage-service', async () => {
@@ -195,9 +196,6 @@ describe('StorageService', () => {
 
     //* dynamo storage service. (should be equivalent with `dummy-storage-server`)
     it(`should pass dynamo(real) storage-service`, async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         //* load dynamo storage service.
         expect2(() => new DynamoStorageService<AccountModel>('', [], 'no')).toEqual(`@table (table-name) is required!`);
         const $dynamo = new DynamoStorageService<AccountModel>('TestTable', ['name', 'slot', 'balance'], 'no');
