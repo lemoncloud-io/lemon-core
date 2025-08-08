@@ -9,16 +9,15 @@
  * @copyright (C) lemoncloud.io 2025 - All Rights Reserved.
  */
 import loadEnviron, { credentials, loadProfile } from './environ';
-import { expect2, GETERR } from './common/test-helper';
+import { expect2 } from './common/test-helper';
 
 //! main test body.
 describe('environ', () => {
     const ENV = process?.env?.ENV ?? '';
+    const PROFILE = loadProfile();
+    PROFILE && console.info(`! PROFILE @environ =`, PROFILE);
 
     it(`should pass loadProfile(${ENV})`, async () => {
-        const PROFILE = await loadProfile().catch(GETERR);
-        PROFILE && console.info(`! PROFILE @environ =`, PROFILE);
-
         if (!ENV) {
             //* for `npm run test`
             expect2(() => PROFILE).toEqual('');
@@ -32,7 +31,7 @@ describe('environ', () => {
         expect2(() => credentials(null)).toEqual();
         expect2(() => credentials('')).toEqual();
         expect2(() => credentials('lemon')).toEqual(
-            'WARN! credentials() is deprecated. use `asyncCredentials()` instead!',
+            'WARN! credentials() is deprecated. use `asyncCredentials()` from lemon-devkit instead!',
         );
     });
 

@@ -17,7 +17,8 @@ import { AWSSQSService, MyDummySQSService } from './aws-sqs-service';
 //! main test body.
 describe('AWSSQSService', () => {
     //* use `env.PROFILE`
-    const $PROFILE = loadProfile();
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     const ENDPOINTS: { [key: string]: string } = {
         lemon: 'https://sqs.ap-northeast-2.amazonaws.com/085403634746/lemon-test-sqs',
@@ -33,8 +34,6 @@ describe('AWSSQSService', () => {
 
     //* test basic of service.
     it('should pass basic AWSSQSService()', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
         const ENDPOINT = ENDPOINTS[PROFILE];
 
         // expect2(() => new AWSSQSService()).toEqual('env.SQS_ENDPOINT is required!');
@@ -116,8 +115,6 @@ describe('AWSSQSService', () => {
 
     //* test dummy of service.
     it('should pass dummy MyDummySQSService()', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
         const ENDPOINT = ENDPOINTS[PROFILE];
 
         const service = new MyDummySQSService(ENDPOINT);

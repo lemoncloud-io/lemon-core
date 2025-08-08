@@ -80,7 +80,8 @@ const asParam = (service: string, type?: string, base?: any): ProtocolParam => {
 //! main test body.
 describe('ProtocolService', () => {
     //* use `env.PROFILE`
-    const $PROFILE = loadProfile();
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* dummy service.
     it('should pass basic protocol', async () => {
@@ -184,9 +185,6 @@ describe('ProtocolService', () => {
 
     //* for each event protocol
     it('should pass transformEvent() of web.local', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         const { service, config } = instance();
         const param = asParam('', 'test', { id: 'abc' });
         const uri = service.asProtocolURI('web', param, config);
@@ -223,9 +221,6 @@ describe('ProtocolService', () => {
 
     //* for each event protocol
     it('should pass transformEvent() of web.dev', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         const { service, config } = instance({ STAGE: 'develop' });
         const $ctx: NextContext = { requestId: 'xxxx', accountId: '0908' };
         const id = '0';

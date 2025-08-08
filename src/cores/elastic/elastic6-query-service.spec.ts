@@ -24,7 +24,9 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
     const defaultVersion: VERSIONS = instanceVersion ?? (['6.2', '6.8', '7.1', '7.2', '0'][3] as VERSIONS);
     const defaultIndexName = instanceIndexName ?? 'test-v4';
     describe(`Elastic6QueryService ${defaultVersion}`, () => {
-        const $PROFILE = loadProfile(); // use `env/<ENV>.yml`
+        const PROFILE = loadProfile(process); // override process.env.
+        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
+
         jest.setTimeout(120000);
 
         // service identity
@@ -54,8 +56,6 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
 
         // autocomplete search
         it(`should pass autocomplete search`, async () => {
-            const PROFILE = await $PROFILE;
-            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
             if (!PROFILE) return; // ignore w/o profile
             const { elastic, search, indexName } = instance(defaultVersion, `test-autocomplete-v${defaultVersion}`);
 
@@ -96,8 +96,6 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
 
         // search quality
         it(`should pass check search quality`, async () => {
-            const PROFILE = await $PROFILE;
-            if (PROFILE) console.info(`! PROFILE =`, PROFILE);
             if (!PROFILE) return; // ignore w/o profile
             const { elastic, search, indexName } = instance(defaultVersion, `test-quality-v${defaultVersion}`);
 

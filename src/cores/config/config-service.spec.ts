@@ -18,7 +18,8 @@ import { marshal, Filter, MyConfigService } from './config-service';
 //! main test body.
 describe('ConfigService', () => {
     //* use `env.PROFILE`
-    const $PROFILE = loadProfile();
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* dummy storage service.
     it('should pass expect2 helper', async () => {
@@ -66,8 +67,6 @@ describe('ConfigService', () => {
 
     //* test config-service
     it('should pass config-service()', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
         if (!PROFILE) return;
 
         //NOTE - use `alias/lemon-hello-api` by default

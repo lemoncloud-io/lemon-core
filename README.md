@@ -69,6 +69,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 4.0.6     | optimized `loadProfile()` as sync call.
 | 4.0.5     | improve `$protocol` w/ `lambda` invoke.
 | 4.0.0     | optimized with `nodejs22`.
 | 3.2.16    | improve `ALBHandler` to support `elb` event.

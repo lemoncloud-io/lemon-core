@@ -84,7 +84,8 @@ class MyLemonWebController implements CoreWEBController {
 //! main test body.
 describe('LambdaWEBHandler', () => {
     //* use `env.PROFILE`
-    const $PROFILE = loadProfile();
+    const PROFILE = loadProfile(process); // override process.env.
+    if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
     //* basic function
     it('should pass basic functions', async () => {
@@ -111,9 +112,6 @@ describe('LambdaWEBHandler', () => {
 
     //* pass tools()
     it('should pass header tools', async () => {
-        const PROFILE = await $PROFILE;
-        if (PROFILE) console.info(`! PROFILE =`, PROFILE);
-
         const { service } = instance();
 
         //* test `tools()` basic
