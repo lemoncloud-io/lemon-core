@@ -670,23 +670,25 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         },
     ): Promise<T> {
         const isVerify = params?.verify ?? true;
+        const errScope = `verifyJWT(http)`;
 
         //* it must be JWT Token. verify signature, and load.
-        if (typeof token !== 'string' || !token) throw new Error(`@token (string) is required - but ${typeof token}`);
+        if (typeof token !== 'string' || !token)
+            throw new Error(`@token (string) is required (but ${typeof token}) - ${errScope}`);
         // STEP.1 decode jwt, and extract { iss, iat, exp }
         const current = params?.current ?? $U.current_time_ms();
         const sections = token.split('.');
-        if (sections.length !== 3) throw new Error(`@token[${token}] is invalid format!`);
+        if (sections.length !== 3) throw new Error(`@token[${token}] is invalid (format) - ${errScope}`);
         const [header, payload, signature] = sections;
         const $jwt = $U.jwt();
         const data = $jwt.decode(token, { complete: false, json: true });
-        if (!data) throw new Error(`@token[${token}] is invalid - failed to decode!`);
+        if (!data) throw new Error(`@token[${token}] is invalid (failed to decode) - ${errScope}`);
         const { iss, iat, exp } = data;
 
         // STEP.1-1 validate parameters.
-        if (typeof iss !== 'string' && iss !== null) throw new Error(`.iss (string) is required!`);
-        if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required!`);
-        if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required!`);
+        if (typeof iss !== 'string' && iss !== null) throw new Error(`.iss (string) is required - ${errScope}`);
+        if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required - ${errScope}`);
+        if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required - ${errScope}`);
 
         // STEP.2 validate signature by KMS(iss).verify()
         //TODO - iss 에 인증제공자의 api 넣기 (ex: api/lemon-backend-dev?)
@@ -697,13 +699,19 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         } else if (typeof iss === 'string' && iss.startsWith('kms/')) {
             const alias = _alias(iss);
             const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
-            const verified = $kms ? await $kms.verify([header, payload].join('.'), signature) : false;
-            if (!verified) throw new Error(`@signature[] is invalid - not be verified by iss:${iss}!`);
-            if (!exp || exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid - expired!`);
+            const message = [header, payload].join('.');
+            const verified = $kms
+                ? await $kms.verify(message, signature, { throwable: true }).catch(e => {
+                      throw new Error(`@signature[] is invalid (kms: ${GETERR(e)}) - ${errScope}`);
+                  })
+                : false;
+            if (!verified) throw new Error(`@signature[] is invalid (failed to verify by iss:${iss}) - ${errScope}`);
+            if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
+            if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
             return data as T;
         }
         //* or throw
-        throw new Error(`@iss[${iss}] is invalid - unsupportable issuer!`);
+        throw new Error(`@iss[${iss}] is invalid (unsupportable issuer) - ${errScope}`);
     }
 
     /**

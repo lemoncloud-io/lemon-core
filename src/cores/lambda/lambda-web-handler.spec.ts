@@ -161,9 +161,11 @@ describe('LambdaWEBHandler', () => {
                 iat: 1652149353,
                 ...identity,
             });
-            expect2(await $t.parseIdentityJWT(null).catch(GETERR)).toEqual('@token (string) is required - but object');
+            expect2(await $t.parseIdentityJWT(null).catch(GETERR)).toEqual(
+                '@token (string) is required (but object) - verifyJWT(http)',
+            );
             expect2(await $t.parseIdentityJWT(`${expectedHead}.`).catch(GETERR)).toEqual(
-                '@iss[null] is invalid - unsupportable issuer!',
+                '@iss[null] is invalid (unsupportable issuer) - verifyJWT(http)',
             );
         }
 

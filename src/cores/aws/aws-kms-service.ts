@@ -23,6 +23,7 @@ import { GetPublicKeyCommand, EncryptCommand, DecryptCommand, VerifyCommand } fr
 import { EncryptCommandInput, DecryptCommandInput, GetPublicKeyCommandInput, SignCommandInput, VerifyCommandInput } from '@aws-sdk/client-kms';
 import { CoreKmsService } from '../core-services';
 import { awsConfig } from '../../tools';
+import { GETERR } from '../../common/test-helper';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
 type MySigningAlgorithm = SigningAlgorithmSpec;
@@ -169,9 +170,11 @@ export class AWSKMSService implements CoreKmsService {
      * @param {*} message any string
      * @param {*} signature signature of Buffer or string(in base64)
      */
-    public verify = async (message: string, signature: Buffer | string): Promise<boolean> => {
-        if (!message || typeof message !== 'string') throw new Error(`@message[${message}] is invalid - kms.verify()`);
-        if (!signature) throw new Error(`@signature (string|Buffer) is required - kms.verify()`);
+    public verify = async (message: string, signature: string, options?: { throwable?: boolean }): Promise<boolean> => {
+        const errScope = `kms.verify()`;
+        const throwable = options?.throwable ?? false;
+        if (!message || typeof message !== 'string') throw new Error(`@message[${message}] is invalid - ${errScope}`);
+        if (!signature) throw new Error(`@signature (string|Buffer) is required - ${errScope}`);
         const KeyId = this.keyId();
         _inf(NS, `verify(${KeyId}, ${message.substring(0, 10)}...)..`);
         const params: VerifyCommandInput = {
@@ -184,7 +187,8 @@ export class AWSKMSService implements CoreKmsService {
         const result = await this.instance()
             .send(new VerifyCommand(params))
             .catch(e => {
-                _err(NS, `! err=`, e);
+                if (throwable) throw e;
+                _err(NS, `! err =`, GETERR(e), e);
                 return null as any;
             });
         return result?.SignatureValid;
