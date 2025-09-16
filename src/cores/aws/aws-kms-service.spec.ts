@@ -66,7 +66,7 @@ describe('AWSKMSService', () => {
         //* break if no profile loaded.
         if (!PROFILE) return;
 
-        expect2(await service.sign(null).catch(GETERR)).toEqual('@message[null] is invalid - kms.sign()');
+        expect2(await service.sign(null as any).catch(GETERR)).toEqual('@message[null] is invalid - kms.sign()');
         expect2(await service.sign('').catch(GETERR)).toEqual('@message[] is invalid - kms.sign()');
         expect2(await service.sign(0 as any).catch(GETERR)).toEqual('@message[0] is invalid - kms.sign()');
 
@@ -81,7 +81,7 @@ describe('AWSKMSService', () => {
         if (1) {
             const signature = await service.sign(message, false);
             const perf = $perf();
-            const verified1 = await service.verify(message, Buffer.from(signature, 'base64'));
+            const verified1 = await service.verify(message, signature);
             expect2(() => verified1).toEqual(true);
             const verified2 = await service.verify(message, signature);
             expect2(() => verified2).toEqual(true);
