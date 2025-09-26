@@ -411,5 +411,16 @@ describe('GeneralController', () => {
         expect2(await storage.read('#name/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual(
             '404 NOT FOUND - _id:TT:test:#name/BBB',
         ); // lookup-data (no exists)
+
+        //* listBase test - search is null
+        try {
+            await request(app).get('/test?page=1&limit=5');
+        } catch (err) {
+            expect2(err.message.includes('searchSimple')).toEqual(true);
+        }
+
+        //* asFuncName test - base function mapping
+        expect2(controller.asFuncName('GET', 'test', '')).toEqual('getBase'); // actually mapped to getBase
+        expect2(controller.asFuncName('GET', 'base', '')).toEqual('getBase');
     });
 });

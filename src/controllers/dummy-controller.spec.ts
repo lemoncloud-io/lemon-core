@@ -138,5 +138,15 @@ describe('DummyController', () => {
         expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_');
         expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____');
         expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe');
+
+        // decode test
+        const decoded1 = controller.decode('GET', 'test', '');
+        expect2(typeof decoded1).toEqual('function');
+
+        const decoded2 = controller.decode('GET', 'test', 'custom');
+        expect2(decoded2).toEqual(null); // non-exist handler
+
+        const decoded3 = controller.decode('LIST', '', '');
+        expect2(typeof decoded3).toEqual('function'); // do_list handler exist
     });
 });
