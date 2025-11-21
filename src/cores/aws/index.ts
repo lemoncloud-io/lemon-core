@@ -15,10 +15,10 @@ import { AWSSNSService } from './aws-sns-service';
 import { AWSSQSService } from './aws-sqs-service';
 import { AWSS3Service } from './aws-s3-service';
 
-export { AWSKMSService } from './aws-kms-service';
-export { AWSSNSService } from './aws-sns-service';
-export { AWSSQSService } from './aws-sqs-service';
-export { AWSS3Service } from './aws-s3-service';
+export { AWSKMSService, MocksAWSKMSService } from './aws-kms-service';
+export { AWSSNSService, MocksAWSSNSService } from './aws-sns-service';
+export { AWSSQSService, MocksAWSSQSService } from './aws-sqs-service';
+export { AWSS3Service, MocksAWSS3Service } from './aws-s3-service';
 
 export class AWSModule implements EngineModule {
     private engine: LemonEngine;
