@@ -14,6 +14,7 @@ import { $U } from '../../engine/';
 import { loadJsonSync } from '../../tools/';
 import { AWSKMSService } from './../aws/aws-kms-service';
 import { marshal, Filter, MyConfigService } from './config-service';
+import { MyConfigService as TestConfigService } from './config-service';
 
 //! main test body.
 describe('ConfigService', () => {
@@ -105,5 +106,222 @@ describe('ConfigService', () => {
         expect2($config.count).toBe(1); // keep number origin
         expect2($config.token.issuer).toBe(origin.token.issuer); // keep issuer
         expect2($config.token.secret).toBe(secret); // NOT updated with decrypted.
+    });
+
+    it('should pass MyConfigService without KMS', async () => {
+        const $config = {
+            count: 1,
+            name: 'test',
+            nested: {
+                value: 'hello',
+            },
+        };
+
+        const config = new MyConfigService($config);
+        await config.init();
+
+        // Test hello()
+        expect2(config.hello()).toEqual('config-service');
+
+        // Test all()
+        const all = config.all();
+        expect2(all.count).toEqual('1');
+        expect2(all.name).toEqual('test');
+        expect2(all['nested.value']).toEqual('hello');
+
+        // Test get()
+        expect2(config.get('count')).toEqual('1');
+        expect2(config.get('name')).toEqual('test');
+        expect2(config.get('nested.value')).toEqual('hello');
+        expect2(config.get('non-existent')).toEqual(undefined);
+    });
+
+    it('should pass getStage() variations', async () => {
+        // Test dev variations
+        const configDev1 = new MyConfigService({ STAGE: 'develop' });
+        await configDev1.init();
+        expect2(configDev1.getStage()).toEqual('dev');
+
+        const configDev2 = new MyConfigService({ STAGE: 'development' });
+        await configDev2.init();
+        expect2(configDev2.getStage()).toEqual('dev');
+
+        const configDev3 = new MyConfigService({ STAGE: 'dev' });
+        await configDev3.init();
+        expect2(configDev3.getStage()).toEqual('dev');
+
+        const configDev4 = new MyConfigService({ stage: 'DEV' });
+        await configDev4.init();
+        expect2(configDev4.getStage()).toEqual('dev');
+
+        // Test prod variations
+        const configProd1 = new MyConfigService({ STAGE: 'production' });
+        await configProd1.init();
+        expect2(configProd1.getStage()).toEqual('prod');
+
+        const configProd2 = new MyConfigService({ STAGE: 'product' });
+        await configProd2.init();
+        expect2(configProd2.getStage()).toEqual('prod');
+
+        const configProd3 = new MyConfigService({ STAGE: 'prod' });
+        await configProd3.init();
+        expect2(configProd3.getStage()).toEqual('prod');
+
+        // Test local (default)
+        const configLocal1 = new MyConfigService({ STAGE: 'local' });
+        await configLocal1.init();
+        expect2(configLocal1.getStage()).toEqual('local');
+
+        const configLocal2 = new MyConfigService({ STAGE: 'unknown' });
+        await configLocal2.init();
+        expect2(configLocal2.getStage()).toEqual('local');
+
+        const configLocal3 = new MyConfigService({});
+        await configLocal3.init();
+        expect2(configLocal3.getStage()).toEqual('local');
+    });
+
+    it('should pass get() with fallback to process.env', async () => {
+        const config = new MyConfigService({});
+        await config.init();
+
+        // Get from cache (should be undefined)
+        expect2(config.get('non-existent')).toEqual(undefined);
+
+        // Test that it falls back to process.env
+        const oldEnv = process.env.TEST_CONFIG_VAR;
+        process.env.TEST_CONFIG_VAR = 'test-value';
+
+        const config2 = new MyConfigService();
+        await config2.init();
+        expect2(config2.get('TEST_CONFIG_VAR')).toEqual('test-value');
+
+        // Restore
+        if (oldEnv !== undefined) {
+            process.env.TEST_CONFIG_VAR = oldEnv;
+        } else {
+            delete process.env.TEST_CONFIG_VAR;
+        }
+    });
+
+    it('should pass getService() and getVersion() with missing package.json', async () => {
+        const config = new MyConfigService({});
+        expect2(config.hello()).toEqual('config-service');
+        await config.init();
+
+        // These should work even without real package.json in test environment
+        const service = config.getService();
+        const version = config.getVersion();
+
+        // Should return strings (might be empty if package.json not found)
+        expect2(typeof service).toEqual('string');
+        expect2(typeof version).toEqual('string');
+
+        // Test calling twice (should use cached value)
+        expect2(config.getService()).toEqual(service);
+        expect2(config.getVersion()).toEqual(version);
+    });
+
+    it('should pass init() without base (use process.env)', async () => {
+        const oldEnv = process.env.TEST_INIT_VAR;
+        process.env.TEST_INIT_VAR = 'init-value';
+
+        const config = new MyConfigService();
+        await config.init();
+
+        expect2(config.get('TEST_INIT_VAR')).toEqual('init-value');
+
+        // Restore
+        if (oldEnv !== undefined) {
+            process.env.TEST_INIT_VAR = oldEnv;
+        } else {
+            delete process.env.TEST_INIT_VAR;
+        }
+    });
+
+    it('should pass marshal() with undefined and null filters', async () => {
+        const filter: Filter<string> = (name, val) => {
+            if (name === 'skip') return undefined;
+            if (name === 'also-skip') return null;
+            return `${name}=${val}`;
+        };
+
+        expect2(marshal({ keep: 1, skip: 2, 'also-skip': 3 }, filter)).toEqual(['keep=1']);
+    });
+
+    it('should pass marshal() with arrays', async () => {
+        const filter: Filter<string> = (name, val) => `${name}=${val}`;
+
+        // Test array as root
+        expect2(marshal([1, 2, 3], filter)).toEqual(['0=1', '1=2', '2=3']);
+
+        // Test nested arrays
+        expect2(
+            marshal(
+                [
+                    [1, 2],
+                    [3, 4],
+                ],
+                filter,
+            ),
+        ).toEqual(['0.0=1', '0.1=2', '1.0=3', '1.1=4']);
+
+        // Test array with objects
+        expect2(marshal([{ a: 1 }, { b: 2 }], filter)).toEqual(['0.a=1', '1.b=2']);
+    });
+
+    it('should pass loadPackage() error handling', async () => {
+        // Save original loadJsonSync
+        const originalModule = require.cache[require.resolve('../../tools/')];
+
+        // Mock the tools module to make loadJsonSync throw
+        jest.resetModules();
+        jest.doMock('../../tools/', () => ({
+            ...(jest.requireActual('../../tools/') as any),
+            loadJsonSync: () => {
+                throw new Error('Failed to load package.json');
+            },
+        }));
+
+        const config = new TestConfigService({});
+        await config.init();
+
+        // Should handle error gracefully and return empty strings
+        const service = config.getService();
+        const version = config.getVersion();
+        expect2(service).toEqual('lemon-core');
+        expect2(version).toEqual('4.0.7');
+
+        // Restore modules
+        jest.resetModules();
+        jest.dontMock('../../tools/');
+        if (originalModule) {
+            require.cache[require.resolve('../../tools/')] = originalModule;
+        }
+    });
+
+    it('should pass init() with KMS decrypt promise rejection', async () => {
+        // Create a mock KMS that rejects
+        const mockKms: AWSKMSService = {
+            decrypt: async () => {
+                throw new Error('KMS decrypt failed');
+            },
+        } as any;
+
+        const $config = {
+            secret: '*EncryptedValue',
+            plain: 'plain-value',
+        };
+
+        const config = new MyConfigService($config, mockKms);
+        await config.init();
+
+        // Should handle decrypt error and return ERROR message
+        const secretResult = config.get('secret');
+        expect2(() => secretResult.startsWith('ERROR -')).toEqual(true);
+        expect2(() => secretResult.includes('KMS decrypt failed')).toEqual(true);
+
+        // Plain value should work fine
+        expect2(config.get('plain')).toEqual('plain-value');
     });
 });

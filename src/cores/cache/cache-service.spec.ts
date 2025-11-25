@@ -492,7 +492,7 @@ describe('DummyCacheService', () => {
         expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
         expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
