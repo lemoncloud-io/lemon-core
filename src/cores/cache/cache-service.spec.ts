@@ -7,9 +7,264 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import net from 'net';
-import { expect2, GETERR, _it } from '../..';
+import { expect2, GETERR } from '../..';
 import { CacheService, DummyCacheService, sleep, toTTL, fromTTL } from './cache-service';
+
+type MemcachedMockEntry = { val: any; exp: number; cas: string };
+type RedisMockEntry = { value: string; expireAt?: number };
+
+jest.mock('memcached', () => {
+    const store = new Map<string, MemcachedMockEntry>();
+    let casSeq = 0;
+    const now = () => Date.now();
+    const cloneEntry = (entry?: MemcachedMockEntry) => (entry ? { val: entry.val, exp: entry.exp } : undefined);
+    const readEntry = (key: string): MemcachedMockEntry | undefined => {
+        const entry = store.get(key);
+        if (!entry) return undefined;
+        if (entry.exp > 0 && entry.exp <= now()) {
+            store.delete(key);
+            return undefined;
+        }
+        return entry;
+    };
+    const respond = (fn: () => any, cb: (err: Error | null, res?: any) => void) => {
+        try {
+            cb(null, fn());
+        } catch (err) {
+            cb(err as Error);
+        }
+    };
+    class MockMemcached {
+        public constructor(private readonly endpoint: string = 'mock-memcached') {}
+
+        public get(key: string, cb: (err: Error | null, value?: any) => void) {
+            respond(() => cloneEntry(readEntry(key)), cb);
+        }
+
+        public gets(key: string, cb: (err: Error | null, value?: Record<string, any>) => void) {
+            respond(() => {
+                const entry = readEntry(key);
+                if (!entry) return undefined;
+                const payload: Record<string, any> = { cas: entry.cas };
+                payload[key] = { val: entry.val, exp: entry.exp };
+                return payload;
+            }, cb);
+        }
+
+        public getMulti(keys: string[], cb: (err: Error | null, map?: Record<string, any>) => void) {
+            respond(
+                () =>
+                    keys.reduce<Record<string, any>>((acc, key) => {
+                        const entry = readEntry(key);
+                        if (entry) acc[key] = { val: entry.val, exp: entry.exp };
+                        return acc;
+                    }, {}),
+                cb,
+            );
+        }
+
+        public set(
+            key: string,
+            entry: { val: any; exp: number },
+            _lifetime: number,
+            cb: (err: Error | null, success?: boolean) => void,
+        ) {
+            respond(() => {
+                const cas = `cas-${++casSeq}`;
+                store.set(key, { val: entry.val, exp: entry.exp, cas });
+                return true;
+            }, cb);
+        }
+
+        public cas(
+            key: string,
+            entry: { val: any; exp: number },
+            cas: string,
+            _lifetime: number,
+            cb: (err: Error | null, success?: boolean) => void,
+        ) {
+            respond(() => {
+                const current = readEntry(key);
+                if (!current || current.cas !== cas) return false;
+                const nextCas = `cas-${++casSeq}`;
+                store.set(key, { val: entry.val, exp: entry.exp, cas: nextCas });
+                return true;
+            }, cb);
+        }
+
+        public del(key: string, cb: (err: Error | null, success?: boolean) => void) {
+            respond(() => {
+                const existed = readEntry(key) !== undefined;
+                store.delete(key);
+                return existed;
+            }, cb);
+        }
+
+        public items(cb: (err: Error | null, stats?: Array<Record<string, any>>) => void) {
+            respond(() => {
+                if (store.size === 0) return [];
+                const slabId = '1';
+                const status: Record<string, any> = { server: this.endpoint };
+                status[slabId] = { number: store.size };
+                return [status];
+            }, cb);
+        }
+
+        public cachedump(
+            _server: string,
+            _slabId: number,
+            number: number,
+            cb: (err: Error | null, dump?: Array<{ key: string }>) => void,
+        ) {
+            respond(() => {
+                const limit = typeof number === 'number' && number > 0 ? number : store.size;
+                return Array.from(store.keys())
+                    .slice(0, limit)
+                    .map(key => ({ key }));
+            }, cb);
+        }
+
+        public end(): void {
+            /* no-op */
+        }
+    }
+
+    return { __esModule: true, default: MockMemcached };
+});
+
+jest.mock('ioredis', () => {
+    class MockIORedis {
+        private readonly store = new Map<string, RedisMockEntry>();
+        public constructor() {}
+
+        private read(key: string): RedisMockEntry | undefined {
+            const entry = this.store.get(key);
+            if (!entry) return undefined;
+            if (entry.expireAt && entry.expireAt <= Date.now()) {
+                this.store.delete(key);
+                return undefined;
+            }
+            return entry;
+        }
+
+        private write(key: string, value: string, expireAt?: number) {
+            this.store.set(key, { value, expireAt });
+        }
+
+        public async set(key: string, value: string, mode?: string, ttl?: number): Promise<string> {
+            if (mode === 'EX' && typeof ttl === 'number') {
+                this.write(key, value, Date.now() + ttl * 1000);
+            } else {
+                this.write(key, value);
+            }
+            return 'OK';
+        }
+
+        public async get(key: string): Promise<string | null> {
+            const entry = this.read(key);
+            return entry ? entry.value : null;
+        }
+
+        public multi(): MockRedisPipeline {
+            return new MockRedisPipeline(this);
+        }
+
+        public async mget(keys: string[]): Promise<Array<string | null>> {
+            return keys.map(key => {
+                const entry = this.read(key);
+                return entry ? entry.value : null;
+            });
+        }
+
+        public async getset(key: string, value: string): Promise<string | null> {
+            const previous = await this.get(key);
+            await this.set(key, value);
+            return previous;
+        }
+
+        public async incrbyfloat(key: string, increment: number): Promise<string> {
+            const current = parseFloat((await this.get(key)) ?? '0');
+            const next = current + increment;
+            await this.set(key, String(next));
+            return String(next);
+        }
+
+        public async keys(pattern: string): Promise<string[]> {
+            if (pattern !== '*') return [];
+            return Array.from(this.store.keys()).filter(key => this.read(key));
+        }
+
+        public async exists(key: string): Promise<number> {
+            return (await this.get(key)) === null ? 0 : 1;
+        }
+
+        public async del(key: string): Promise<number> {
+            const entry = this.read(key);
+            if (!entry) return 0;
+            this.store.delete(key);
+            return 1;
+        }
+
+        public async expire(key: string, ttl: number): Promise<number> {
+            const entry = this.read(key);
+            if (!entry) return 0;
+            entry.expireAt = Date.now() + ttl * 1000;
+            this.store.set(key, entry);
+            return 1;
+        }
+
+        public async persist(key: string): Promise<number> {
+            const entry = this.read(key);
+            if (!entry) return 0;
+            entry.expireAt = undefined;
+            this.store.set(key, entry);
+            return 1;
+        }
+
+        public async pttl(key: string): Promise<number> {
+            const entry = this.read(key);
+            if (!entry) return -2;
+            if (!entry.expireAt) return -1;
+            const remaining = entry.expireAt - Date.now();
+            return remaining >= 0 ? remaining : -2;
+        }
+
+        public async quit(): Promise<void> {
+            return;
+        }
+    }
+
+    class MockRedisPipeline {
+        private readonly tasks: Array<() => Promise<any>> = [];
+
+        public constructor(private readonly client: MockIORedis) {}
+
+        public set(key: string, value: string, mode?: string, ttl?: number): MockRedisPipeline {
+            this.tasks.push(() => this.client.set(key, value, mode, ttl));
+            return this;
+        }
+
+        public get(key: string): MockRedisPipeline {
+            this.tasks.push(() => this.client.get(key));
+            return this;
+        }
+
+        public del(key: string): MockRedisPipeline {
+            this.tasks.push(() => this.client.del(key));
+            return this;
+        }
+
+        public async exec(): Promise<Array<[null, any]>> {
+            const results: Array<[null, any]> = [];
+            for (const task of this.tasks) {
+                results.push([null, await task()]);
+            }
+            return results;
+        }
+    }
+
+    return { __esModule: true, default: MockIORedis };
+});
 
 export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'cache-service-test') => {
     if (type === 'dummy') {
@@ -18,23 +273,6 @@ export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'ca
         return { cache: CacheService.create({ type, ns, defTimeout: 0 }) }; // use local cache server
     }
 };
-
-export async function isLocalCacheAvailable(type: 'memcached' | 'redis'): Promise<boolean> {
-    const host = 'localhost';
-    const port = type == 'memcached' ? 11211 : 6379;
-
-    return new Promise(resolve => {
-        const socket = net.createConnection({ port, host });
-        socket.setTimeout(200);
-        socket
-            .on('connect', () => {
-                socket.destroy();
-                resolve(true);
-            })
-            .on('timeout', () => resolve(false))
-            .on('error', () => resolve(false));
-    });
-}
 
 //* main test body.
 describe('DummyCacheService', () => {
@@ -222,7 +460,7 @@ describe('DummyCacheService', () => {
         await cache.close();
     });
 
-    _it('TTL', async () => {
+    it('TTL', async () => {
         const { cache } = instance('dummy');
 
         // pre-condition
@@ -235,7 +473,7 @@ describe('DummyCacheService', () => {
         expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeUndefined(); // undefined if key expired
         expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
@@ -272,6 +510,95 @@ describe('DummyCacheService', () => {
         await sleep(1000);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
+        // NodeCacheBackend returns false when the key does not exist
+        expect2(await cache.setTimeout('dummy-missing', 1).catch(GETERR)).toEqual(false);
+
+        await cache.close();
+    });
+
+    it('increment', async () => {
+        const { cache } = instance('dummy');
+
+        // Initialize with number
+        expect2(await cache.set('counter', 10).catch(GETERR)).toEqual(true);
+
+        // Test increment
+        expect2(await cache.increment('counter', 1).catch(GETERR)).toEqual(11);
+        expect2(await cache.inc('counter', 5).catch(GETERR)).toEqual(16);
+        expect2(await cache.get('counter').catch(GETERR)).toEqual(16);
+
+        // Test decrement (negative increment)
+        expect2(await cache.increment('counter', -3).catch(GETERR)).toEqual(13);
+        expect2(await cache.get('counter').catch(GETERR)).toEqual(13);
+
+        // Test error: increment non-number value
+        expect2(await cache.set('non-number', 'string').catch(GETERR)).toEqual(true);
+        expect2(await cache.increment('non-number', 1).catch(GETERR)).toEqual(
+            '@key [cache-service-test::non-number] does not hold a number value.',
+        );
+
+        // Test error: missing key
+        expect2(await cache.increment('', 1).catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test error: undefined increment
+        expect2(await cache.increment('counter', undefined as any).catch(GETERR)).toEqual(
+            '@inc (number) cannot be undefined.',
+        );
+
+        await cache.close();
+    });
+
+    it('error cases', async () => {
+        const { cache } = instance('dummy');
+
+        // Test set with empty key
+        expect2(await cache.set('', 'value').catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test set with undefined value
+        expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
+
+        // Test get with empty key
+        expect2(await cache.get('').catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test delete with empty key
+        expect2(await cache.delete('').catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test setTimeout with empty key
+        expect2(await cache.setTimeout('', 100).catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test getTimeout with empty key
+        expect2(await cache.getTimeout('').catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test removeTimeout with empty key
+        expect2(await cache.removeTimeout('').catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test getAndSet with empty key
+        expect2(await cache.getAndSet('', 'value').catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test getAndSet with undefined value
+        expect2(await cache.getAndSet('key', undefined).catch(GETERR)).toEqual(
+            '@val (CacheValue) cannot be undefined.',
+        );
+
+        // Test getAndDelete with empty key
+        expect2(await cache.getAndDelete('').catch(GETERR)).toEqual('@key (CacheKey) is required.');
+
+        // Test setMulti with missing key
+        expect2(await cache.setMulti([{ key: '', val: 'value' }]).catch(GETERR)).toEqual(
+            '.key (CacheKey) is required (at @entries[0]).',
+        );
+
+        // Test setMulti with undefined value
+        expect2(await cache.setMulti([{ key: 'key', val: undefined }]).catch(GETERR)).toEqual(
+            '.val (CacheValue) cannot be undefined (at @entries[0]).',
+        );
+
+        // Test getMulti with empty key
+        expect2(await cache.getMulti(['']).catch(GETERR)).toEqual('@key (CacheKey) is required (at @keys[0]).');
+
+        // Test deleteMulti with empty key
+        expect2(await cache.deleteMulti(['']).catch(GETERR)).toEqual('@key (CacheKey) is required (at @keys[0]).');
+
         await cache.close();
     });
 });
@@ -286,7 +613,6 @@ describe('CacheService - Memcached', () => {
     });
 
     it('set/get/exists/delete', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
         const { cache } = instance('memcached', 'TC01');
 
         // setup test
@@ -337,7 +663,6 @@ describe('CacheService - Memcached', () => {
     });
 
     it('setMulti/getMulti/deleteMulti', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
         const { cache } = instance('memcached', 'TC02');
 
         // setup test
@@ -372,7 +697,6 @@ describe('CacheService - Memcached', () => {
     });
 
     it('getAndSet/getAndDelete', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
         const { cache } = instance('memcached', 'TC03');
 
         // setup test
@@ -389,8 +713,49 @@ describe('CacheService - Memcached', () => {
         await cache.close();
     });
 
-    _it('TTL', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
+    it('increment', async () => {
+        const { cache } = instance('memcached', 'TC03-INC');
+
+        // Initialize counter
+        expect2(await cache.set('counter', 10).catch(GETERR)).toEqual(true);
+
+        // Test increment
+        expect2(await cache.increment('counter', 1).catch(GETERR)).toEqual(11);
+        expect2(await cache.inc('counter', 5).catch(GETERR)).toEqual(16);
+        expect2(await cache.get('counter').catch(GETERR)).toEqual(16);
+
+        // Test decrement
+        expect2(await cache.increment('counter', -3).catch(GETERR)).toEqual(13);
+
+        // Test increment on non-existent key (should initialize)
+        await cache.delete('new-counter');
+        expect2(await cache.increment('new-counter', 5).catch(GETERR)).toEqual(5);
+        expect2(await cache.get('new-counter').catch(GETERR)).toEqual(5);
+
+        // Test error: increment non-number value
+        expect2(await cache.set('non-number', 'string').catch(GETERR)).toEqual(true);
+        expect2(await cache.increment('non-number', 1).catch(GETERR)).toEqual(
+            '.key [TC03-INC::non-number] has non-numeric value.',
+        );
+
+        await cache.close();
+    });
+
+    it('keys()', async () => {
+        const { cache } = instance('memcached', 'TC-KEYS');
+
+        expect2(await cache.keys()).toEqual([]);
+
+        expect2(await cache.set('mem-a', 'A').catch(GETERR)).toEqual(true);
+        expect2(await cache.set('mem-b', 'B').catch(GETERR)).toEqual(true);
+
+        const keys = await cache.keys();
+        expect2(keys.sort()).toEqual(['mem-a', 'mem-b']);
+
+        await cache.close();
+    });
+
+    it('TTL', async () => {
         const { cache } = instance('memcached', 'TC04');
 
         // setup test
@@ -452,7 +817,6 @@ describe('CacheService - Redis', () => {
     });
 
     it('set/get/exists/delete', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
         const { cache } = instance('redis', 'TC01');
 
         // setup test
@@ -503,7 +867,6 @@ describe('CacheService - Redis', () => {
     });
 
     it('setMulti/getMulti/deleteMulti', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
         const { cache } = instance('redis', 'TC02');
 
         // setup test
@@ -538,7 +901,6 @@ describe('CacheService - Redis', () => {
     });
 
     it('getAndSet/getAndDelete', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
         const { cache } = instance('redis', 'TC03');
 
         // setup test
@@ -555,8 +917,47 @@ describe('CacheService - Redis', () => {
         await cache.close();
     });
 
-    _it('TTL', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
+    it('increment', async () => {
+        const { cache } = instance('redis', 'TC03-INC');
+
+        // Initialize counter
+        expect2(await cache.set('counter', 10).catch(GETERR)).toEqual(true);
+
+        // Test increment
+        expect2(await cache.increment('counter', 1).catch(GETERR)).toEqual(11);
+        expect2(await cache.inc('counter', 5).catch(GETERR)).toEqual(16);
+        expect2(await cache.get('counter').catch(GETERR)).toEqual(16);
+
+        // Test decrement
+        expect2(await cache.increment('counter', -3).catch(GETERR)).toEqual(13);
+
+        // Test increment on non-existent key (Redis initializes to 0 + increment)
+        await cache.delete('new-counter');
+        expect2(await cache.increment('new-counter', 5).catch(GETERR)).toEqual(5);
+        expect2(await cache.get('new-counter').catch(GETERR)).toEqual(5);
+
+        // Test floating point increment
+        expect2(await cache.increment('counter', 0.5).catch(GETERR)).toEqual(13.5);
+        expect2(await cache.get('counter').catch(GETERR)).toEqual(13.5);
+
+        await cache.close();
+    });
+
+    it('keys()', async () => {
+        const { cache } = instance('redis', 'TC-KEYS');
+
+        expect2(await cache.keys()).toEqual([]);
+
+        expect2(await cache.set('redis-a', 'A').catch(GETERR)).toEqual(true);
+        expect2(await cache.set('redis-b', 'B').catch(GETERR)).toEqual(true);
+
+        const keys = await cache.keys();
+        expect2(keys.sort()).toEqual(['redis-a', 'redis-b']);
+
+        await cache.close();
+    });
+
+    it('TTL', async () => {
         const { cache } = instance('redis', 'TC04');
 
         // setup test
@@ -605,5 +1006,13 @@ describe('CacheService - Redis', () => {
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         await cache.close();
+    });
+});
+
+describe('CacheService - Factory', () => {
+    it('invalid type', async () => {
+        expect2(() => CacheService.create({ type: 'invalid' as any })).toEqual(
+            '@type [invalid] is invalid - CacheService.create()',
+        );
     });
 });
