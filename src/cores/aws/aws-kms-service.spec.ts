@@ -8,12 +8,13 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { GetPublicKeyCommand, VerifyCommand } from '@aws-sdk/client-kms';
+import { GetPublicKeyCommand, KMSClient, VerifyCommand } from '@aws-sdk/client-kms';
 import { expect2, GETERR } from '../../common/test-helper';
 import { $U, $engine } from '../../engine';
 import { loadProfile } from '../../environ';
 import { AWSKMSService, fromBase64, isBase64 } from './aws-kms-service';
 import { performance } from 'perf_hooks';
+import { AWSModule } from '.';
 
 const $perf = () => {
     return new (class MyPerfmance {
@@ -27,6 +28,223 @@ const $perf = () => {
         };
     })();
 };
+/*
+ * class: `MocksAWSKMSService`
+ * - use <mock>.json file in `./data/mocks/` instead of real AWS KMS request.
+ */
+/**
+ * AWS SNS Error types for realistic testing
+ */
+class AWSError extends Error {
+    public readonly name: string;
+    public readonly code: string;
+    public readonly Code: string;
+    public readonly Type: string;
+    public readonly statusCode: number;
+    public readonly $fault: string;
+    public readonly $metadata: {
+        httpStatusCode: number;
+        requestId: string;
+        extendedRequestId?: string;
+        cfId?: string;
+        attempts: number;
+        totalRetryDelay: number;
+    };
+    public readonly Key?: string;
+
+    constructor(code: string, message: string, statusCode: number = 400, key?: string) {
+        super(message);
+        this.name = code;
+        this.code = code;
+        this.Code = code;
+        this.Type = statusCode >= 400 && statusCode < 500 ? 'Sender' : 'Receiver';
+        this.statusCode = statusCode;
+        this.$fault = statusCode >= 400 && statusCode < 500 ? 'client' : 'server';
+        this.$metadata = {
+            httpStatusCode: statusCode,
+            requestId: Array.from({ length: 36 }, (_, i) =>
+                i === 8 || i === 13 || i === 18 || i === 23 ? '-' : Math.floor(Math.random() * 16).toString(16),
+            ).join(''),
+            attempts: 1,
+            totalRetryDelay: 0,
+        };
+        if (key) this.Key = key;
+    }
+}
+
+/**
+ * create AWS error instance.
+ * @param code - error code
+ * @param message - error message
+ * @param statusCode - error status code
+ * @param key - key for s3 error (optional)
+ * @returns AWS error instance
+ */
+export const mockAwsError = (code: string, message: string, statusCode: number = 400, key?: string): AWSError => {
+    return new AWSError(code, message, statusCode, key);
+};
+
+export class MocksAWSKMSService extends KMSClient {
+    public constructor() {
+        super();
+    }
+
+    public send = async (command: any) => {
+        const commandName = command.constructor.name;
+
+        // Mock responses based on command type - reflect actual parameters with realistic error checking
+        switch (commandName) {
+            case 'EncryptCommand': {
+                const { KeyId, Plaintext } = command.input;
+
+                // Validate input parameters like real AWS KMS
+                if (!Plaintext || (Buffer.isBuffer(Plaintext) && Plaintext.length === 0)) {
+                    throw mockAwsError('ValidationException', 'Plaintext must be provided and cannot be empty', 400);
+                }
+
+                const plaintextString = Buffer.isBuffer(Plaintext) ? Plaintext.toString() : String(Plaintext);
+
+                // Check plaintext size limit (AWS KMS limit is 4096 bytes)
+                if (Buffer.byteLength(plaintextString) > 4096) {
+                    throw mockAwsError('ValidationException', 'Plaintext must be no longer than 4096 bytes', 400);
+                }
+
+                // Simulate encryption by base64 encoding the plaintext with a prefix
+                const mockEncrypted = Buffer.from(`ENCRYPTED:${plaintextString}:${KeyId}`);
+                return {
+                    CiphertextBlob: mockEncrypted,
+                    KeyId: KeyId,
+                    EncryptionAlgorithm: 'SYMMETRIC_DEFAULT',
+                };
+            }
+            case 'DecryptCommand': {
+                const { CiphertextBlob } = command.input;
+
+                // Validate input parameters first
+                if (
+                    !CiphertextBlob ||
+                    (Buffer.isBuffer(CiphertextBlob) && CiphertextBlob.length === 0) ||
+                    (typeof CiphertextBlob === 'string' && CiphertextBlob === '')
+                ) {
+                    throw mockAwsError('ValidationException', 'CiphertextBlob must be provided', 400);
+                }
+
+                const ciphertextString = Buffer.isBuffer(CiphertextBlob)
+                    ? CiphertextBlob.toString()
+                    : String(CiphertextBlob);
+
+                // Extract KeyId from ciphertext for error checking
+                let keyIdFromCiphertext = 'unknown';
+                if (ciphertextString.startsWith('ENCRYPTED:')) {
+                    const parts = ciphertextString.split(':');
+                    if (parts.length >= 3) {
+                        keyIdFromCiphertext = parts[2];
+                    }
+                } else {
+                    // Invalid ciphertext format
+                    throw mockAwsError(
+                        'InvalidCiphertextException',
+                        'The ciphertext refers to a customer master key that does not exist, does not exist in this region, or you are not allowed to access.',
+                        400,
+                    );
+                }
+
+                // Simulate decryption by extracting original plaintext from mock format
+                let plaintext = 'mock-decrypted-data';
+                if (ciphertextString.startsWith('ENCRYPTED:')) {
+                    const parts = ciphertextString.split(':');
+                    if (parts.length >= 3) {
+                        plaintext = parts[1]; // Extract original plaintext
+                    }
+                }
+
+                return {
+                    Plaintext: Buffer.from(plaintext),
+                    KeyId: keyIdFromCiphertext,
+                    EncryptionAlgorithm: 'SYMMETRIC_DEFAULT',
+                };
+            }
+            case 'SignCommand': {
+                const { KeyId, Message, SigningAlgorithm, MessageType } = command.input;
+
+                const messageString = Buffer.isBuffer(Message) ? Message.toString() : String(Message);
+
+                // Validate signing algorithm
+                const validAlgorithms = [
+                    'RSASSA_PKCS1_V1_5_SHA_256',
+                    'RSASSA_PKCS1_V1_5_SHA_384',
+                    'RSASSA_PKCS1_V1_5_SHA_512',
+                    'RSASSA_PSS_SHA_256',
+                    'RSASSA_PSS_SHA_384',
+                    'RSASSA_PSS_SHA_512',
+                ];
+
+                if (SigningAlgorithm && !validAlgorithms.includes(SigningAlgorithm)) {
+                    throw mockAwsError('ValidationException', `Invalid signing algorithm: ${SigningAlgorithm}`, 400);
+                }
+
+                // Create deterministic signature based on message content
+                const mockSignature = Buffer.from(
+                    `SIGNATURE:${messageString}:${KeyId}:${SigningAlgorithm || 'RSASSA_PKCS1_V1_5_SHA_256'}`,
+                );
+                return {
+                    KeyId: KeyId,
+                    Signature: mockSignature,
+                    SigningAlgorithm: SigningAlgorithm || 'RSASSA_PKCS1_V1_5_SHA_256',
+                };
+            }
+            case 'VerifyCommand': {
+                const { KeyId, Message, Signature, SigningAlgorithm } = command.input;
+
+                // Validate input parameters
+                if (Signature === 'invalid-signature') {
+                    throw mockAwsError('ValidationException', 'Invalid signature', 400);
+                }
+                if (KeyId === 'invalid-key') {
+                    throw mockAwsError('ValidationException', 'Invalid key', 400);
+                }
+
+                const messageString = Buffer.isBuffer(Message) ? Message.toString() : String(Message);
+                const signatureString = Buffer.isBuffer(Signature) ? Signature.toString() : String(Signature);
+
+                // Verify by checking if signature matches expected format
+                const expectedSignature = `SIGNATURE:${messageString}:${KeyId}:${
+                    SigningAlgorithm || 'RSASSA_PKCS1_V1_5_SHA_256'
+                }`;
+                const isValid = signatureString === expectedSignature;
+
+                return {
+                    KeyId: KeyId,
+                    SignatureValid: isValid,
+                    SigningAlgorithm: SigningAlgorithm || 'RSASSA_PKCS1_V1_5_SHA_256',
+                };
+            }
+            case 'GetPublicKeyCommand': {
+                const { KeyId } = command.input;
+
+                // Validate KeyId parameter
+                if (!KeyId) {
+                    throw mockAwsError('ValidationException', 'KeyId must be provided', 400);
+                }
+
+                // Create deterministic public key based on KeyId
+                const mockPublicKey = Buffer.from(`PUBLIC_KEY:${KeyId}:RSA_2048`);
+                return {
+                    KeyId: KeyId,
+                    PublicKey: mockPublicKey,
+                    KeyUsage: 'SIGN_VERIFY',
+                    KeySpec: 'RSA_2048',
+                    SigningAlgorithms: ['RSASSA_PKCS1_V1_5_SHA_256'],
+                };
+            }
+            default:
+                return {
+                    Command: command,
+                    Mock: true,
+                };
+        }
+    };
+}
 
 //! main test body.
 describe('AWSKMSService', () => {
@@ -101,7 +319,6 @@ describe('AWSKMSService', () => {
     //* test utility functions
     it('should pass utility functions', async () => {
         //* test isBase64()
-        const { isBase64 } = await import('./aws-kms-service');
         expect2(() => isBase64('SGVsbG8gV29ybGQ=')).toEqual(true);
         expect2(() => isBase64('SGVsbG8gV29ybGQ')).toEqual(false); // missing padding
         expect2(() => isBase64('SGVsbG8gV29ybGQ=')).toEqual(true);
@@ -147,7 +364,8 @@ describe('AWSKMSService', () => {
     //* test mock service functionality with actual parameter reflection
     it('should pass mock service operations', async () => {
         const keyId = 'alias/test-key';
-        const service = new AWSKMSService(keyId, undefined, true); // use mock
+        const service = new AWSKMSService(keyId);
+        (service as any)._instance = new MocksAWSKMSService();
 
         //* test encrypt/decrypt with actual round-trip
         const message = 'hello world';
@@ -208,7 +426,8 @@ describe('AWSKMSService', () => {
     //* test error cases
     it('should pass error handling', async () => {
         const keyId = 'alias/test-key';
-        const service = new AWSKMSService(keyId, undefined, true); // use mock
+        const service = new AWSKMSService(keyId);
+        (service as any)._instance = new MocksAWSKMSService();
 
         //* test sign() with invalid parameters
         expect2(await service.sign(null as any).catch(GETERR)).toEqual('@message[null] is invalid - kms.sign()');
@@ -246,7 +465,8 @@ describe('AWSKMSService', () => {
 
         //* test with algorithm options
         const options = { algorithm: 'RSASSA_PSS_SHA_256' as any };
-        const service2 = new AWSKMSService('alias/test-with-options', options, true);
+        const service2 = new AWSKMSService('alias/test-with-options', options);
+        (service2 as any)._instance = new MocksAWSKMSService();
         expect2(() => service2.keyId()).toEqual('alias/test-with-options');
 
         // Test that algorithm option is actually used
@@ -260,15 +480,16 @@ describe('AWSKMSService', () => {
         const verified = await service2.verify(message, signature, { throwable: false });
         expect2(() => verified).toEqual(true);
 
-        //* test with mock flag
-        const service3 = new AWSKMSService('alias/test', undefined, true);
+        //* test with keyId only
+        const service3 = new AWSKMSService('alias/test');
         expect2(() => service3.keyId()).toEqual('alias/test');
     });
 
     //* test invalid ciphertext handling
     it('should pass invalid ciphertext handling', async () => {
         const keyId = 'alias/test-key';
-        const service = new AWSKMSService(keyId, undefined, true); // use mock
+        const service = new AWSKMSService(keyId);
+        (service as any)._instance = new MocksAWSKMSService();
 
         //* test decrypt with invalid ciphertext format
         expect2(await service.decrypt('invalid-ciphertext').catch(GETERR)).toEqual(
@@ -279,7 +500,8 @@ describe('AWSKMSService', () => {
     //* test AWS KMS validation errors
     it('should pass AWS KMS validation errors', async () => {
         const keyId = 'alias/test-key';
-        const service = new AWSKMSService(keyId, undefined, true);
+        const service = new AWSKMSService(keyId);
+        (service as any)._instance = new MocksAWSKMSService();
 
         //* test encrypt with empty plaintext
         expect2(await service.encrypt('').catch(GETERR)).toEqual('Plaintext must be provided and cannot be empty');
@@ -297,7 +519,8 @@ describe('AWSKMSService', () => {
         expect2(await service.sign('').catch(GETERR)).toEqual('@message[] is invalid - kms.sign()');
 
         //* test sign with invalid algorithm (through options)
-        const invalidAlgService = new AWSKMSService(keyId, { algorithm: 'INVALID_ALGORITHM' as any }, true);
+        const invalidAlgService = new AWSKMSService(keyId, { algorithm: 'INVALID_ALGORITHM' as any });
+        (invalidAlgService as any)._instance = new MocksAWSKMSService();
         expect2(await invalidAlgService.sign('test message').catch(GETERR)).toEqual(
             'Invalid signing algorithm: INVALID_ALGORITHM',
         );
@@ -308,7 +531,8 @@ describe('AWSKMSService', () => {
             '@signature (string|Buffer) is required - kms.verify()',
         );
 
-        const invalidKeyService = new AWSKMSService('invalid-key', undefined, true);
+        const invalidKeyService = new AWSKMSService('invalid-key');
+        (invalidKeyService as any)._instance = new MocksAWSKMSService();
         expect2(await invalidKeyService.verify('message', 'signature').catch(GETERR)).toEqual(undefined);
 
         //* test direct mock command validation
@@ -331,7 +555,8 @@ describe('AWSKMSService', () => {
     //* test verify with invalid signature
     it('should pass verify with invalid signature', async () => {
         const keyId = 'alias/test-key';
-        const service = new AWSKMSService(keyId, undefined, true);
+        const service = new AWSKMSService(keyId);
+        (service as any)._instance = new MocksAWSKMSService();
 
         //* test verify with completely wrong signature (should return false)
         const result = await service.verify('test message', 'invalid-signature', { throwable: false });
@@ -347,7 +572,7 @@ describe('AWSKMSService', () => {
     //* test real AWS instance creation (without mock)
     it('should pass real instance creation', async () => {
         const keyId = 'alias/test-key';
-        const service = new AWSKMSService(keyId, undefined, false); // don't use mock
+        const service = new AWSKMSService(keyId);
 
         //* test instance creation
         const instance = service.instance();
@@ -374,9 +599,7 @@ describe('AWSKMSService', () => {
         expect2(() => service2.keyId()).toEqual('alias/lemon-hello-api');
 
         //* restore original env
-        if (originalEnv) {
-            process.env.KMS_KEY_ID = originalEnv;
-        }
+        if (originalEnv) process.env.KMS_KEY_ID = originalEnv;
     });
 
     //* test utility functions coverage
@@ -388,23 +611,21 @@ describe('AWSKMSService', () => {
         process.env.REGION = 'us-west-2';
         // Region function is not exported, so we'll test it indirectly through instance creation
 
-        //* test instance function by creating non-mock service
-        const service = new AWSKMSService('alias/test', undefined, false);
+        //* test instance function by creating service
+        const service = new AWSKMSService('alias/test');
         const instance1 = service.instance();
         expect2(() => instance1).toBeDefined();
 
         //* restore original env
-        if (originalRegion) {
-            process.env.REGION = originalRegion;
-        } else {
-            delete process.env.REGION;
-        }
+        if (originalRegion) process.env.REGION = originalRegion;
+        else delete process.env.REGION;
     });
 
     //* test Buffer signature verification
     it('should pass Buffer signature verification', async () => {
         const keyId = 'alias/test-key';
-        const service = new AWSKMSService(keyId, undefined, true); // use mock
+        const service = new AWSKMSService(keyId);
+        (service as any)._instance = new MocksAWSKMSService();
 
         //* test verify with Buffer signature - create proper signature first
         const message = 'test message for buffer verification';
@@ -420,18 +641,11 @@ describe('AWSKMSService', () => {
         const verifiedWrong = await service.verify(message, wrongBufferSignature as any, { throwable: false });
         expect2(() => verifiedWrong).toEqual(false);
     });
+});
 
-    //* test MocksAWSKMSService default case
-    it('should pass MocksAWSKMSService default case', async () => {
-        const { MocksAWSKMSService } = await import('./aws-kms-service');
-        const mockService = new MocksAWSKMSService();
-
-        //* test unknown command (default case)
-        const unknownCommand = { constructor: { name: 'UnknownCommand' } };
-        const result = await mockService.send(unknownCommand as any);
-        expect2(() => result).toEqual({
-            Command: unknownCommand,
-            Mock: true,
-        });
+describe('index.ts test coverage', () => {
+    it('should pass index.ts test coverage', async () => {
+        const testModule = new AWSModule();
+        expect2(await testModule.initModule(undefined)).toEqual(1);
     });
 });

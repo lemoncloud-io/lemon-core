@@ -173,12 +173,6 @@ export class AWSS3Service implements CoreS3Service {
      * default `bucket` name
      */
     public static DEF_S3_BUCKET = 'lemon-hello-www';
-    public readonly isMock: boolean;
-    private _mockInstance?: MocksAWSS3Service;
-
-    public constructor(isMock?: boolean) {
-        this.isMock = isMock;
-    }
 
     /**
      * get name of this
@@ -196,14 +190,6 @@ export class AWSS3Service implements CoreS3Service {
     public bucket = (target?: string): string => environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
 
     /**
-     * get mock instance
-     */
-    public mockInstance() {
-        if (!this._mockInstance) this._mockInstance = new MocksAWSS3Service();
-        return this._mockInstance;
-    }
-
-    /**
      * retrieve metadata without returning the object
      *
      * @param {string} key
@@ -216,7 +202,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         // call s3.headObject.
-        const s3 = this.isMock ? this.mockInstance() : instance();
+        const s3 = instance();
         try {
             const data = await s3.send(new HeadObjectCommand(params));
             _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
@@ -284,7 +270,7 @@ export class AWSS3Service implements CoreS3Service {
         _log(NS, `> params.Tagging =`, params.Tagging);
 
         // call s3.upload()
-        const s3 = this.isMock ? this.mockInstance() : instance();
+        const s3 = instance();
         try {
             const data = await s3.send(new PutObjectCommand(params));
             delete (data as any).key; // NOTE: remove undeclared property 'key' returned from aws-sdk
@@ -319,7 +305,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.getObject.
-        const s3 = this.isMock ? this.mockInstance() : instance();
+        const s3 = instance();
         try {
             const data = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
@@ -347,7 +333,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.getObject.
-        const s3 = this.isMock ? this.mockInstance() : instance();
+        const s3 = instance();
         try {
             const data: GetObjectCommandOutput = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
@@ -372,7 +358,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.getObjectTagging.
-        const s3 = this.isMock ? this.mockInstance() : instance();
+        const s3 = instance();
         try {
             const data = await s3.send(new GetObjectTaggingCommand(params));
             _log(NS, `> data =`, $U.json(data));
@@ -399,7 +385,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.deleteObject.
-        const s3 = this.isMock ? this.mockInstance() : instance();
+        const s3 = instance();
         try {
             const data = await s3.send(new DeleteObjectCommand(params));
             _log(NS, '> data =', $U.json(data));
@@ -445,7 +431,7 @@ export class AWSS3Service implements CoreS3Service {
         if (nextToken) params.ContinuationToken = nextToken;
 
         //* call s3.listObjectsV2.
-        const s3 = this.isMock ? this.mockInstance() : instance();
+        const s3 = instance();
         const result: ListObjectResult = {
             Contents: null,
             MaxKeys,
@@ -595,217 +581,5 @@ class S3PutObjectRequestBuilder {
     private getContentType = (filename: string): string | undefined => {
         const extname = path.extname(filename);
         return mime.contentType(extname) || undefined;
-    };
-}
-
-/*
- * class: `MocksAWSS3Service`
- * - use <mock>.json file in `./data/mocks/` instead of real AWS S3 request.
- */
-/**
- * AWS S3 Error types for realistic testing
- */
-class AWSS3Error extends Error {
-    public readonly name: string;
-    public readonly code: string;
-    public readonly statusCode: number;
-    public readonly $metadata: { httpStatusCode: number };
-
-    constructor(code: string, message: string, statusCode: number = 400) {
-        super(message);
-        this.name = code === 'NoSuchKey' ? 'NoSuchKey' : code === 'NotFound' ? 'NotFound' : 'AWSS3Error';
-        this.code = code;
-        this.statusCode = statusCode;
-        this.$metadata = { httpStatusCode: statusCode };
-    }
-}
-
-export class MocksAWSS3Service extends S3Client {
-    private _storage: Map<string, { Body: Buffer; Metadata: Metadata; ContentType: string; Tags: TagSet }> = new Map();
-
-    public constructor(config?: any) {
-        super(config);
-    }
-
-    public send = async (command: any) => {
-        const commandName = command.constructor.name;
-
-        // Mock responses based on command type - reflect actual parameters with realistic error checking
-        switch (commandName) {
-            case 'HeadObjectCommand': {
-                const { Bucket, Key } = command.input;
-                if (Key === 'non-existent-key') {
-                    throw new AWSS3Error('NotFound', 'The specified key does not exist.', 404);
-                }
-                // Check if object exists in mock storage
-                const storageKey = `${Bucket}/${Key}`;
-                const stored = this._storage.get(storageKey);
-
-                if (!stored) {
-                    throw new AWSS3Error('NoSuchKey', 'The specified key does not exist.', 404);
-                }
-
-                return {
-                    ContentType: stored.ContentType,
-                    ContentLength: stored.Body.length,
-                    Metadata: stored.Metadata,
-                    ETag: `"${$U.md5(stored.Body, 'hex')}"`,
-                    LastModified: new Date(),
-                };
-            }
-            case 'GetObjectCommand': {
-                const { Bucket, Key } = command.input;
-
-                // Check if object exists in mock storage
-                const storageKey = `${Bucket}/${Key}`;
-                const stored = this._storage.get(storageKey);
-
-                if (!stored) {
-                    throw new AWSS3Error('NoSuchKey', 'The specified key does not exist.', 404);
-                }
-
-                // Create a readable stream from buffer to match AWS SDK behavior
-                const { Readable } = require('stream');
-                const bodyStream = new Readable();
-                bodyStream.push(stored.Body);
-                bodyStream.push(null); // end stream
-
-                return {
-                    Body: bodyStream,
-                    ContentType: stored.ContentType,
-                    ContentLength: stored.Body.length,
-                    Metadata: stored.Metadata,
-                    ETag: `"${$U.md5(stored.Body, 'hex')}"`,
-                    TagCount: stored.Tags ? Object.keys(stored.Tags).length : 0,
-                };
-            }
-            case 'PutObjectCommand': {
-                const { Bucket, Key, Body, ContentType, Metadata, Tagging } = command.input;
-
-                // Validate input parameters like real AWS S3
-                if (!Body || (Buffer.isBuffer(Body) && Body.length === 0)) {
-                    throw new AWSS3Error('MissingBody', 'Body must be provided and cannot be empty', 400);
-                }
-
-                const bodyBuffer = Buffer.isBuffer(Body) ? Body : Buffer.from(String(Body));
-                const contentType = ContentType || 'application/json; charset=utf-8';
-
-                // Parse tags from URLSearchParams format
-                const tags: TagSet = {};
-                if (Tagging) {
-                    const params = new URLSearchParams(Tagging);
-                    for (const [key, value] of params.entries()) {
-                        tags[key] = value;
-                    }
-                }
-
-                // Store object in mock storage
-                const storageKey = `${Bucket}/${Key}`;
-                this._storage.set(storageKey, {
-                    Body: bodyBuffer,
-                    Metadata: Metadata || {},
-                    ContentType: contentType,
-                    Tags: tags,
-                });
-
-                return {
-                    ETag: `"${$U.md5(bodyBuffer, 'hex')}"`,
-                };
-            }
-            case 'DeleteObjectCommand': {
-                const { Bucket, Key } = command.input;
-
-                // Validate input parameters
-                if (Key === 'non-existent-key') {
-                    throw new AWSS3Error('NoSuchKey', 'Key not found', 404);
-                }
-                // Simulate access denied error for specific test key
-                if (Key === 'test-key') {
-                    const error = new Error('Access Denied');
-                    (error as any).name = 'AccessDenied';
-                    (error as any).$metadata = { httpStatusCode: 403 };
-                    throw error;
-                }
-
-                // Remove from mock storage (S3 doesn't error if key doesn't exist)
-                const storageKey = `${Bucket}/${Key}`;
-                this._storage.delete(storageKey);
-
-                return {};
-            }
-            case 'ListObjectsV2Command': {
-                const { Bucket, Prefix, MaxKeys, ContinuationToken } = command.input;
-
-                const maxKeys = MaxKeys || 10;
-                const prefix = Prefix || '';
-
-                if (prefix === 'non-existent-prefix') {
-                    throw new AWSS3Error('NoSuchPrefix', 'The specified prefix does not exist.', 404);
-                }
-                // Simulate S3 error for specific test prefix
-                if (prefix === 'test/') {
-                    throw new Error('Simulated S3 error');
-                }
-
-                // Filter objects by bucket and prefix
-                const allObjects = Array.from(this._storage.entries())
-                    .filter(([key]) => {
-                        const bucketKeyIndex = key.indexOf('/');
-                        if (bucketKeyIndex === -1) return false;
-
-                        const objBucket = key.substring(0, bucketKeyIndex);
-                        const objKey = key.substring(bucketKeyIndex + 1);
-                        return objBucket === Bucket && objKey.startsWith(prefix);
-                    })
-                    .map(([key, stored]) => {
-                        const bucketKeyIndex = key.indexOf('/');
-                        const objKey = key.substring(bucketKeyIndex + 1);
-                        return {
-                            Key: objKey,
-                            Size: stored.Body.length,
-                            LastModified: new Date(),
-                            ETag: `"${$U.md5(stored.Body, 'hex')}"`,
-                        };
-                    })
-                    .sort((a, b) => a.Key.localeCompare(b.Key));
-
-                // Handle pagination
-                let startIndex = 0;
-                if (ContinuationToken) {
-                    const tokenIndex = allObjects.findIndex(obj => obj.Key > ContinuationToken);
-                    if (tokenIndex >= 0) startIndex = tokenIndex;
-                }
-
-                const contents = allObjects.slice(startIndex, startIndex + maxKeys);
-                const isTruncated = startIndex + maxKeys < allObjects.length;
-                const nextToken = isTruncated ? contents[contents.length - 1]?.Key : undefined;
-
-                return {
-                    Contents: contents,
-                    KeyCount: contents.length,
-                    MaxKeys: maxKeys,
-                    IsTruncated: isTruncated,
-                    NextContinuationToken: nextToken,
-                };
-            }
-            case 'GetObjectTaggingCommand': {
-                const { Bucket, Key } = command.input;
-
-                // Check if object exists in mock storage
-                const storageKey = `${Bucket}/${Key}`;
-                const stored = this._storage.get(storageKey);
-
-                if (!stored) {
-                    throw new AWSS3Error('NoSuchKey', 'The specified key does not exist.', 404);
-                }
-
-                // Convert TagSet format to AWS format
-                const tagSet = stored.Tags ? Object.entries(stored.Tags).map(([Key, Value]) => ({ Key, Value })) : [];
-
-                return {
-                    TagSet: tagSet,
-                };
-            }
-        }
     };
 }
