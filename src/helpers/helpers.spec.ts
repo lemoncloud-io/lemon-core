@@ -10,7 +10,7 @@
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
 import { loadJsonSync } from '../tools/';
-import { expect2, waited } from '../common/test-helper';
+import { expect2, waited, GETERR } from '../common/test-helper';
 import {
     $protocol,
     $rand,
@@ -22,8 +22,23 @@ import {
     parseRange,
     my_sequence,
     createSigV4Proxy,
+    $event,
+    $slack,
 } from './helpers';
 import $cores from '../cores/';
+import request from 'request';
+import * as EngineModule from '../engine';
+
+jest.mock('request', () => jest.fn());
+jest.mock('../engine', () => {
+    const actual = jest.requireActual('../engine');
+    return {
+        ...actual,
+        doReportSlack: jest.fn(),
+    };
+});
+const requestMock = request as unknown as jest.Mock;
+const coresAny = $cores as any;
 
 //* create instance.
 export const instance = async (type: 'dummy' = 'dummy') => {
@@ -80,6 +95,9 @@ describe('utils', () => {
         expect2(() => $T.SS(undefined)).toEqual([]);
         expect2(() => $T.SS(' a ')).toEqual(['a']);
         expect2(() => $T.SS([' a '])).toEqual(['a']);
+        expect2(() => $T.SS(42)).toEqual(['42']);
+        expect2(() => $T.NN(null, [9])).toEqual([9]);
+        expect2(() => $T.FF(undefined, [0.1])).toEqual([0.1]);
         expect2(() => $T.P(' a<b>b<em c=d>e</b>ㅋ ㅋ ^"}[&$%#*')).toEqual('a b e ㅋ ㅋ');
 
         expect2(() => $T.N('1.234')).toEqual(1);
@@ -97,6 +115,9 @@ describe('utils', () => {
         expect2(() => $T.B('0')).toEqual(0);
         expect2(() => $T.B('1')).toEqual(1);
         expect2(() => $T.B('2')).toEqual(1);
+        expect2(() => $T.B(null)).toEqual(0);
+        expect2(() => $T.B(true)).toEqual(1);
+        expect2(() => $T.B('true')).toEqual(1);
         expect2(() => new Date().getTimezoneOffset()).toEqual(-9 * 60); //WARN! - can be different in env.
         expect2(() => $U.ts(new Date(1591282800000))).toEqual('2020-06-05 00:00:00'); // must be aware of time-zone.
         expect2(() => $T.T('2020-06-05 00:00:00')).toEqual(new Date('2020-06-05 00:00:00').getTime()); // := 1591282800000
@@ -123,6 +144,8 @@ describe('utils', () => {
         expect2(() => $T.D('100')).toBe('');
         expect2(() => $T.D('의미없다')).toBe('');
         expect2(() => $T.D(0)).toBe('');
+        expect2(() => $T.DT('20210608')).toBe('2021-06-08');
+        expect2(() => $T.DT('', '1999-01-02')).toBe('1999-01-02');
         expect2(() => $T.D(null)).toBe('');
 
         const exTextSample = 'hi, everybody. It is sample text. bye.';
@@ -164,6 +187,12 @@ describe('utils', () => {
         expect2(() =>
             $T.simples({ ...samples, __: null, 한글: undefined, $ab: undefined, i: undefined, aBC: undefined }, true),
         ).toEqual({ ...expected, __: null });
+        expect2(() => $T.simples([1], true)).toEqual('@val[object] is invalid!');
+        expect2(() => $T.simples([1])).toEqual({});
+        expect2(() => $T.simples(undefined)).toEqual(undefined);
+        expect2(() => $T.simples(null)).toEqual({ _: null });
+        expect2(() => $T.simples('text')).toEqual({ _: 'text' });
+        expect2(() => $T.simples(42)).toEqual({ _: 42 });
 
         expect2(() => $T.normal({ a: { a1: { a2: 'a2' } } })).toEqual({ a: { a1: { a2: 'a2' } } });
         expect2(() => $T.normal(samples)).toEqual({ ...samples, $ab: undefined, _: undefined, __: undefined });
@@ -197,6 +226,7 @@ describe('utils', () => {
         expect2(() => $T.diff(null, 'A')).toEqual('A');
         expect2(() => $T.diff(null, {})).toEqual({});
         expect2(() => $T.diff(null, [])).toEqual([]);
+        expect2(() => $T.diff(1, 2)).toEqual(2);
 
         expect2(() => $T.diff(1, null)).toEqual(null);
         expect2(() => $T.diff('A', null)).toEqual(null);
@@ -539,5 +569,197 @@ describe('utils', () => {
         expect2(() => $T.merge(null, undefined)).toEqual(null);
 
         expect2(() => $T.merge({ a: 3, b: 2 }, { a: 2, b: null })).toEqual({ a: 2 });
+    });
+
+    describe('mocked helper utilities', () => {
+        const originalProtocolService = coresAny.protocol.service;
+
+        afterEach(() => {
+            coresAny.protocol.service = originalProtocolService;
+        });
+
+        it('should cover advanced $protocol flows', async () => {
+            const mockService = {
+                fromURL: jest.fn().mockReturnValue({ path: 'mocked' }),
+                myProtocolURI: jest.fn().mockReturnValue('api://mock@id#stage'),
+                execute: jest.fn().mockResolvedValue('EXEC'),
+                enqueue: jest.fn().mockResolvedValue('ENQ'),
+                notify: jest.fn().mockResolvedValue('NOTI'),
+            };
+            coresAny.protocol.service = mockService as any;
+
+            const proto = $protocol({}, '//self/demo', {
+                param: { foo: 'bar' },
+                body: { ping: 'pong' },
+                isProd: true,
+            });
+            expect2(() => proto.hello()).toEqual('helper:protocol://self/demo');
+            expect2(() => proto.asTargetUrl()).toEqual('api://id/demo');
+
+            await proto.execute({ a: 1 }, { b: 2 }, 'PUT');
+            expect(mockService.execute).toHaveBeenCalledWith(expect.objectContaining({ mode: 'PUT', stage: 'prod' }));
+
+            await proto.enqueue({ x: 1 }, { y: 2 }, 'POST', 'type/id/cmd?foo=bar', 5);
+            expect(mockService.enqueue).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    mode: 'POST',
+                }),
+                { type: 'type', id: 'id', cmd: 'cmd', param: { foo: 'bar' } },
+                5,
+            );
+
+            await proto.notify({ i: 1 }, { j: 2 }, 'GET', 'note/id/cmd');
+            expect(mockService.notify).toHaveBeenCalled();
+
+            const proto2 = $protocol('//outer/service');
+            expect2(() => proto2.asTargetUrl()).toEqual('api://outer/service');
+
+            const invalidProto = $protocol({}, 'invalid');
+            expect2(() => invalidProto.asTargetUrl()).toEqual('@service[invalid] (string) is invalid!');
+
+            expect2(() => $protocol(null as any, '//self/demo')).toEqual('@context (NextContext) is required!');
+            expect2(() => $protocol({}, undefined as any)).toEqual('@service (string) is required!');
+        });
+
+        it('should handle $slack payload building and errors', async () => {
+            const slackMock = EngineModule.doReportSlack as jest.Mock;
+            slackMock.mockResolvedValue('ok');
+            const svcSpy = jest.spyOn($cores.config.config, 'getService').mockReturnValue('svc');
+            const verSpy = jest.spyOn($cores.config.config, 'getVersion').mockReturnValue('1.0.0');
+            const stageSpy = jest.spyOn($cores.config.config, 'getStage').mockReturnValue('dev');
+
+            const res = await $slack('TITLE', { hi: 'there' }, 'PRE', {
+                channel: 'alert',
+                color: '#fff',
+                scope: 'scope',
+                footer: 'foot',
+                context: { identity: {} },
+                ts: 123,
+            });
+            expect2(res).toEqual('ok');
+            expect(slackMock).toHaveBeenCalledWith(
+                '!alert',
+                expect.objectContaining({
+                    attachments: expect.any(Array),
+                }),
+                { identity: {} },
+            );
+
+            slackMock.mockRejectedValueOnce(new Error('fail'));
+            const res2 = await $slack('TITLE', null, null);
+            expect2(res2).toEqual('#err:fail');
+
+            slackMock.mockReset();
+            svcSpy.mockRestore();
+            verSpy.mockRestore();
+            stageSpy.mockRestore();
+        });
+
+        it('should build $event publisher with env overrides', async () => {
+            const originalBroadcast = coresAny.protocol.service.broadcast;
+            const broadcastMock = jest.fn().mockResolvedValue('sent');
+            coresAny.protocol.service.broadcast = broadcastMock;
+
+            const originalEnv = process.env.EVENT_RELAY_SNS;
+            process.env.EVENT_RELAY_SNS = 'arn:aws:sns:region:acct:event';
+            const publisher = $event({ identity: {} } as any);
+            await publisher.publish({ hello: 'world' });
+            expect(broadcastMock).toHaveBeenCalledWith({ identity: {} }, 'arn:aws:sns:region:acct:event', {
+                hello: 'world',
+            });
+
+            delete process.env.EVENT_RELAY_SNS;
+            const fallbackPublisher = $event({}, 'arn:fallback');
+            await fallbackPublisher.publish({ sample: true });
+            expect(broadcastMock).toHaveBeenCalledWith({}, 'arn:fallback', { sample: true });
+
+            delete process.env.EVENT_RELAY_SNS;
+            expect2(() => $event({})).toEqual('env[EVENT_RELAY_SNS] is required - $event()');
+
+            process.env.EVENT_RELAY_SNS = originalEnv;
+            coresAny.protocol.service.broadcast = originalBroadcast;
+        });
+
+        describe('createSigV4Proxy mocked client', () => {
+            const RealDate = Date;
+            class MockDate extends Date {
+                public constructor(...args: any[]) {
+                    if (args.length === 0) {
+                        super(new Date('2024-05-06T07:08:09Z').getTime());
+                        return;
+                    }
+                    super(...(args as [any]));
+                }
+                public static now() {
+                    return new Date('2024-05-06T07:08:09Z').getTime();
+                }
+            }
+
+            beforeAll(() => {
+                (global as unknown as { Date: typeof Date }).Date = MockDate as any;
+            });
+            afterAll(() => {
+                (global as unknown as { Date: typeof Date }).Date = RealDate;
+            });
+            afterEach(() => {
+                requestMock.mockReset();
+            });
+
+            it('should handle signed proxy calls with various responses', async () => {
+                const proxy = createSigV4Proxy(
+                    'MockProxy',
+                    'https://api.mock.com/prod',
+                    {
+                        accessKey: 'AKIDMOCK',
+                        secretKey: 'SECRETKEYMOCK',
+                        host: 'api.mock.com',
+                    },
+                    {
+                        headers: { 'x-api-key': 'lemon' },
+                        relayHeaderKey: 'Relay-',
+                        resultKey: 'payload',
+                    },
+                );
+
+                requestMock.mockImplementationOnce((options: any, callback: (...args: any[]) => void) => {
+                    callback(null, { statusCode: 200, statusMessage: 'OK' }, JSON.stringify({ payload: { ok: true } }));
+                    return {};
+                });
+                expect2(await proxy.doProxy('GET', 'host value', 'cmd value', { team: 'alpha' })).toEqual({ ok: true });
+                expect2(requestMock.mock.calls[0][0].headers['Relay-x-api-key']).toEqual('lemon');
+
+                requestMock.mockImplementationOnce((options: any, callback: (...args: any[]) => void) => {
+                    callback(null, { statusCode: 200, statusMessage: 'OK' }, '["A","B"]');
+                    return {};
+                });
+                expect2(await proxy.doProxy('GET', 'array', 'case')).toEqual(['A', 'B']);
+
+                requestMock.mockImplementationOnce((options: any, callback: (...args: any[]) => void) => {
+                    callback(null, { statusCode: 200, statusMessage: 'OK' }, '{"invalid":}');
+                    return {};
+                });
+                expect2(await proxy.doProxy('GET', 'broken', 'json')).toEqual('{"invalid":}');
+
+                requestMock.mockImplementationOnce((options: any, callback: (...args: any[]) => void) => {
+                    callback(null, { statusCode: 404, statusMessage: 'Not Found' }, 'missing-id');
+                    return {};
+                });
+                expect2(await proxy.doProxy('GET', 'missing', 'id').catch(GETERR)).toEqual(
+                    '404 NOT FOUND - missing-id',
+                );
+
+                requestMock.mockImplementationOnce((options: any, callback: (...args: any[]) => void) => {
+                    callback(null, { statusCode: 500, statusMessage: 'Oops' }, 'failure');
+                    return {};
+                });
+                expect2(await proxy.doProxy('GET', 'error', 'case').catch(GETERR)).toEqual('500 Oops - failure');
+
+                requestMock.mockImplementationOnce((options: any, callback: (...args: any[]) => void) => {
+                    callback(new Error('network'), null, null);
+                    return {};
+                });
+                expect2(await proxy.doProxy('GET', 'network', 'case').catch(GETERR)).toEqual('network');
+            });
+        });
     });
 });
