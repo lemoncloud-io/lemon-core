@@ -42,4 +42,18 @@ describe('LambdaCronHandler', () => {
         expect2(() => data, 'param').toEqual({ param: { name: 'hello' } });
         expect2(() => data, 'body,context').toEqual({ body: null, context: null });
     });
+
+    //* Test constructor without register parameter
+    it('should handle constructor with register=false', async () => {
+        const { lambda } = instance();
+        // Test register=false branch - line 35
+        const service = new LambdaCronHandler(lambda, false);
+        const event: any = loadJsonSync('data/samples/events/sample.event.cron.json');
+        let called = false;
+        service.addListener(async () => {
+            called = true;
+        });
+        await service.handle(event, null);
+        expect2(() => called).toEqual(true);
+    });
 });

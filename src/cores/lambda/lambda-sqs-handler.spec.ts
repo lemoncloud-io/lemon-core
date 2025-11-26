@@ -75,4 +75,126 @@ describe('LambdaSQSHandler', () => {
         expect2(service.getLastResult()).toEqual([$U.json(expected)]);
         expect2(() => web.result).toEqual({ ...expected });
     });
+
+    //* Test non-protocol SQS message with listeners
+    it('should handle non-protocol SQS message with listeners', async () => {
+        const { lambda, service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.sqs.json');
+
+        //* Add listener for non-protocol messages
+        let receivedData: any;
+        service.addListener(async (id, param, body, context) => {
+            receivedData = { id, param, body, context };
+            return 'listener-result';
+        });
+
+        //* Run
+        const res = await lambda.handle(event, null);
+        expect2(res).toEqual(undefined);
+
+        //* Verify listener was called with correct data
+        expect2(() => receivedData.id).toEqual('SQS');
+        expect2(() => receivedData.param.cmd).toEqual('hi');
+        expect2(() => receivedData.param.id).toEqual('0');
+        expect2(() => receivedData.param.n).toEqual(1);
+        expect2(() => receivedData.body.hello).toEqual('lemon');
+        expect2(() => receivedData.context).toEqual(null);
+    });
+
+    //* Test protocol callback to same service
+    it('should handle protocol callback to same service', async () => {
+        const { lambda, service, web } = instance();
+        const event: any = loadJsonSync('data/samples/events/protocol.event.sqs.json');
+
+        //* Modify event to have callback to same service
+        const body = JSON.parse(event.Records[0].body);
+        body.type = 'hello';
+        body.cmd = 'test-callback';
+        body.id = 'result-id';
+        body.callback = 'api://lemon-hello-api/hello/result-id/test-callback';
+        event.Records[0].body = JSON.stringify(body);
+
+        //* Mock config to return same service name
+        const mockConfig = {
+            getService: () => 'lemon-hello-api',
+        };
+        lambda.config = mockConfig as any;
+
+        //* Run
+        const res = await lambda.handle(event, null);
+        expect2(res).toEqual(undefined);
+
+        //* Verify result
+        const result = service.getLastResult();
+        const expected = { id: 'result-id', cmd: 'test-callback', hello: 'test-callback result-id' };
+        expect2(() => result.length).toEqual(1);
+        expect2(() => JSON.parse(result[0])).toEqual(expected);
+    });
+
+    //* Test listener error handling in non-protocol SQS
+    it('should handle listener error in non-protocol SQS', async () => {
+        const { lambda, service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.sqs.json');
+
+        //* Add listener that throws error
+        service.addListener(async () => {
+            throw new Error('Test listener error');
+        });
+
+        //* Run
+        const res = await lambda.handle(event, null);
+        expect2(res).toEqual(undefined);
+
+        //* Verify error was handled
+        const result = service.getLastResult();
+        expect2(() => result[0]).toEqual('Test listener error');
+    });
+
+    //* Test non-JSON message body
+    it('should handle non-JSON SQS message', async () => {
+        const { lambda, service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.sqs.json');
+
+        //* Modify message to be non-JSON
+        event.Records[0].body = 'plain text message';
+
+        let receivedBody: any;
+        service.addListener(async (id, param, body) => {
+            receivedBody = body;
+            return 'ok';
+        });
+
+        //* Run
+        const res = await lambda.handle(event, null);
+        expect2(res).toEqual(undefined);
+
+        //* Verify body has data property
+        expect2(() => receivedBody.data).toEqual('plain text message');
+    });
+
+    //* Test message attributes with Number type
+    it('should handle SQS message attributes with Number type', async () => {
+        const { lambda, service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.sqs.json');
+
+        //* Modify message attributes to include Number type
+        event.Records[0].messageAttributes = {
+            count: { dataType: 'Number', stringValue: '42' },
+            name: { dataType: 'String', stringValue: 'test' },
+        };
+
+        let receivedParam: any;
+        service.addListener(async (id, param) => {
+            receivedParam = param;
+            return 'ok';
+        });
+
+        //* Run
+        const res = await lambda.handle(event, null);
+        expect2(res).toEqual(undefined);
+
+        //* Verify param has correct types
+        expect2(() => receivedParam.count).toEqual(42);
+        expect2(() => receivedParam.name).toEqual('test');
+    });
 });
