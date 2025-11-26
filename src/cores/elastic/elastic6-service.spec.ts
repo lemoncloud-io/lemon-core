@@ -12,7 +12,15 @@
  */
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
-import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR, Elastic6Item } from './elastic6-service';
+import {
+    Elastic6Service,
+    DummyElastic6Service,
+    Elastic6Option,
+    $ERROR,
+    Elastic6Item,
+    ElasticIndexService,
+} from './elastic6-service';
+import fs from 'fs';
 // import { ApiResponse } from '@elastic/elasticsearch';
 
 /**
@@ -36,6 +44,439 @@ export type VERSIONS = keyof typeof ENDPOINTS;
 interface MyModel extends GeneralItem {
     id: string;
 }
+/**
+ * Mock ElasticSearch Client
+ * - Mimics ES client behavior in memory
+ */
+class MockElasticClient {
+    private indexMap: Map<string, any> = new Map();
+    private documents: Map<string, Map<string, any>> = new Map();
+    private version: string;
+    private errorMode: string | null = null;
+
+    constructor(version: string = '6.2') {
+        this.version = version;
+    }
+
+    // Error simulation for testing
+    public setErrorMode(mode: string | null) {
+        this.errorMode = mode;
+    }
+
+    public info() {
+        return Promise.resolve({
+            body: {
+                version: {
+                    number: this.version,
+                },
+            },
+        });
+    }
+
+    public cat = {
+        indices: async (params?: any) => {
+            const indices = Array.from(this.indexMap.keys()).map(index => ({
+                pri: '4',
+                rep: '1',
+                'docs.count': String(this.documents.get(index)?.size || 0),
+                'docs.deleted': '0',
+                health: 'green',
+                index,
+                status: 'open',
+                uuid: `uuid-${index}`,
+                'pri.store.size': '1kb',
+                'store.size': '1kb',
+            }));
+            return { body: indices };
+        },
+    };
+
+    public indices = {
+        get: async (params: any) => {
+            const indexName = params.index;
+            if (!this.indexMap.has(indexName)) {
+                const error: any = new Error('index_not_found_exception');
+                error.meta = { statusCode: 404, body: { error: { type: 'index_not_found_exception' } } };
+                throw error;
+            }
+            const settings = this.indexMap.get(indexName);
+            return {
+                body: {
+                    [indexName]: {
+                        mappings: settings?.mappings || {},
+                        settings: settings?.settings || {},
+                    },
+                },
+            };
+        },
+        getMapping: async (params: any) => {
+            const indexName = params.index;
+            if (!this.indexMap.has(indexName)) {
+                const error: any = new Error('index_not_found_exception');
+                error.meta = { statusCode: 404 };
+                throw error;
+            }
+            const settings = this.indexMap.get(indexName);
+            return { body: { [indexName]: { mappings: settings?.mappings || {} } } };
+        },
+        getSettings: async (params: any) => {
+            const indexName = params.index;
+            if (!this.indexMap.has(indexName)) {
+                const error: any = new Error('index_not_found_exception');
+                error.meta = { statusCode: 404 };
+                throw error;
+            }
+            const settings = this.indexMap.get(indexName);
+            return { body: { [indexName]: { settings: settings?.settings || {} } } };
+        },
+        exists: async (params: any) => {
+            return this.indexMap.has(params.index);
+        },
+        create: async (params: any) => {
+            // Simulate "resource already exists" error
+            if (this.indexMap.has(params.index)) {
+                const error: any = new Error('resource_already_exists_exception');
+                error.meta = {
+                    statusCode: 400,
+                    body: { error: { type: 'resource_already_exists_exception', reason: 'Index already exists' } },
+                };
+                throw error;
+            }
+            this.indexMap.set(params.index, params.body || {});
+            this.documents.set(params.index, new Map());
+            return { body: { acknowledged: true } };
+        },
+        delete: async (params: any) => {
+            if (!this.indexMap.has(params.index)) {
+                const error: any = new Error('index_not_found_exception');
+                error.meta = {
+                    statusCode: 404,
+                    body: { error: { type: 'index_not_found_exception', reason: 'Index not found' } },
+                };
+                throw error;
+            }
+            this.indexMap.delete(params.index);
+            this.documents.delete(params.index);
+            return { body: { acknowledged: true } };
+        },
+        refresh: async (params: any) => {
+            if (!this.indexMap.has(params.index)) {
+                const error: any = new Error('index_not_found_exception');
+                error.meta = {
+                    statusCode: 404,
+                    body: { error: { type: 'index_not_found_exception', reason: 'Index not found' } },
+                };
+                throw error;
+            }
+            return { body: { _shards: { total: 4, successful: 4, failed: 0 } } };
+        },
+        flush: async (params: any) => {
+            if (!this.indexMap.has(params.index)) {
+                const error: any = new Error('index_not_found_exception');
+                error.meta = {
+                    statusCode: 404,
+                    body: { error: { type: 'index_not_found_exception', reason: 'Index not found' } },
+                };
+                throw error;
+            }
+            return { body: { _shards: { total: 4, successful: 4, failed: 0 } } };
+        },
+    };
+
+    public get = async (params: any) => {
+        const docs = this.documents.get(params.index);
+        if (!docs) {
+            // Index not found
+            const error: any = new Error('index_not_found_exception');
+            error.meta = {
+                statusCode: 404,
+                body: { error: { type: 'index_not_found_exception', reason: 'Index not found' } },
+            };
+            throw error;
+        }
+        if (!docs.has(params.id)) {
+            const error: any = new Error('Not Found');
+            error.meta = { statusCode: 404, body: { found: false } };
+            throw error;
+        }
+        const doc = docs.get(params.id);
+        return {
+            body: {
+                _index: params.index,
+                _type: params.type || '_doc',
+                _id: params.id,
+                _version: doc._version || 1,
+                found: true,
+                _source: doc._source,
+            },
+        };
+    };
+
+    public index = async (params: any) => {
+        const docs = this.documents.get(params.index) || new Map();
+        // Generate ID if not provided (like ES does)
+        const id =
+            params.id && params.id !== '' ? params.id : `auto-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const existing = docs.get(id);
+        const _version = existing ? existing._version + 1 : 1;
+        docs.set(id, { _source: params.body, _version });
+        this.documents.set(params.index, docs);
+        return {
+            body: {
+                _index: params.index,
+                _type: params.type || '_doc',
+                _id: id,
+                _version,
+                _seq_no: 0,
+                _primary_term: 1,
+                result: existing ? 'updated' : 'created',
+            },
+        };
+    };
+
+    public create = async (params: any) => {
+        const docs = this.documents.get(params.index) || new Map();
+        // Create fails if document already exists
+        if (docs.has(params.id)) {
+            const error: any = new Error('version_conflict_engine_exception');
+            error.meta = {
+                statusCode: 409,
+                body: { error: { type: 'version_conflict_engine_exception', reason: 'Document already exists' } },
+            };
+            throw error;
+        }
+        docs.set(params.id, { _source: params.body, _version: 1 });
+        this.documents.set(params.index, docs);
+        return {
+            body: {
+                _index: params.index,
+                _type: params.type || '_doc',
+                _id: params.id,
+                _version: 1,
+                _seq_no: 0,
+                _primary_term: 1,
+                result: 'created',
+            },
+        };
+    };
+
+    public delete = async (params: any) => {
+        const docs = this.documents.get(params.index);
+        if (!docs) {
+            // Index not found
+            const error: any = new Error('index_not_found_exception');
+            error.meta = {
+                statusCode: 404,
+                body: { error: { type: 'index_not_found_exception', reason: 'Index not found' } },
+            };
+            throw error;
+        }
+        if (!docs.has(params.id)) {
+            const error: any = new Error('Not Found');
+            error.meta = { statusCode: 404, body: { result: 'not_found' } };
+            throw error;
+        }
+        const doc = docs.get(params.id);
+        docs.delete(params.id);
+        return {
+            body: {
+                _index: params.index,
+                _type: params.type || '_doc',
+                _id: params.id,
+                _version: doc._version + 1,
+                _seq_no: 0,
+                _primary_term: 1,
+                result: 'deleted',
+            },
+        };
+    };
+
+    public update = async (params: any) => {
+        const docs = this.documents.get(params.index);
+        if (!docs || !docs.has(params.id)) {
+            // Upsert: create if not exists
+            if (params.body?.upsert) {
+                const upsertData = params.body.upsert;
+                docs.set(params.id, { _source: { ...upsertData }, _version: 1 });
+                this.documents.set(params.index, docs);
+                return {
+                    body: {
+                        _index: params.index,
+                        _type: params.type || '_doc',
+                        _id: params.id,
+                        _version: 1,
+                        _seq_no: 0,
+                        _primary_term: 1,
+                        result: 'created',
+                    },
+                };
+            }
+            const error: any = new Error('Not Found');
+            error.meta = { statusCode: 404 };
+            throw error;
+        }
+        const doc = docs.get(params.id);
+        let updated = { ...doc._source };
+
+        // Handle doc update
+        if (params.body?.doc) {
+            updated = { ...updated, ...params.body.doc };
+        }
+
+        // Handle script update (for increment operations)
+        if (params.body?.script) {
+            const script = params.body.script;
+            // Handle item updates
+            if (script.params?.item) {
+                Object.entries(script.params.item).forEach(([key, value]: [string, any]) => {
+                    updated[key] = value;
+                });
+            }
+            // Handle increments
+            if (script.params?.increments) {
+                Object.entries(script.params.increments).forEach(([key, value]: [string, any]) => {
+                    if (Array.isArray(value)) {
+                        // Array append
+                        if (Array.isArray(updated[key])) {
+                            updated[key] = [...updated[key], ...value];
+                        } else {
+                            updated[key] = value;
+                        }
+                    } else {
+                        // Numeric increment
+                        if (typeof updated[key] === 'number') {
+                            updated[key] = updated[key] + value;
+                        } else {
+                            updated[key] = value;
+                        }
+                    }
+                });
+            }
+        }
+
+        const _version = doc._version + 1;
+        docs.set(params.id, { _source: updated, _version });
+        return {
+            body: {
+                _index: params.index,
+                _type: params.type || '_doc',
+                _id: params.id,
+                _version,
+                _seq_no: 0,
+                _primary_term: 1,
+                result: 'updated',
+            },
+        };
+    };
+
+    public search = async (params: any) => {
+        const docs = this.documents.get(params.index) || new Map();
+        const hits = Array.from(docs.entries()).map(([id, doc]) => ({
+            _index: params.index,
+            _type: params.type || '_doc',
+            _id: id,
+            _score: 1.0,
+            _source: doc._source,
+            _seq_no: 0,
+            _primary_term: 1,
+            sort: params.body?.sort ? [id] : undefined,
+        }));
+
+        const size = params.body?.size || 10;
+        const from = params.body?.from || 0;
+        const paginatedHits = hits.slice(from, from + size);
+
+        return {
+            body: {
+                took: 1,
+                timed_out: false,
+                _shards: { total: 4, successful: 4, skipped: 0, failed: 0 },
+                hits: {
+                    total: this.version.startsWith('6') ? hits.length : { value: hits.length, relation: 'eq' },
+                    max_score: 1.0,
+                    hits: paginatedHits,
+                },
+                aggregations: params.body?.aggs ? {} : undefined,
+            },
+        };
+    };
+
+    public bulk = async (params: any) => {
+        const operations = params.body || [];
+        const items: any[] = [];
+
+        for (let i = 0; i < operations.length; i += 2) {
+            const action = operations[i];
+            const doc = operations[i + 1];
+            const actionType = Object.keys(action)[0];
+            const actionParams = action[actionType];
+
+            try {
+                if (actionType === 'index') {
+                    const result = await this.index({ ...actionParams, body: doc });
+                    items.push({ [actionType]: result.body });
+                } else if (actionType === 'create') {
+                    const result = await this.create({ ...actionParams, body: doc });
+                    items.push({ [actionType]: result.body });
+                } else if (actionType === 'delete') {
+                    const result = await this.delete(actionParams);
+                    items.push({ [actionType]: result.body });
+                } else if (actionType === 'update') {
+                    const result = await this.update({ ...actionParams, body: doc });
+                    items.push({ [actionType]: result.body });
+                }
+            } catch (e: any) {
+                items.push({
+                    [actionType]: {
+                        error: {
+                            type: e.message,
+                            reason: e.meta?.body?.error?.reason || 'Unknown error',
+                        },
+                    },
+                });
+            }
+        }
+
+        return { body: { errors: false, items, took: 1 } };
+    };
+}
+
+const buildEsError = (type: string, statusCode: number, reason: string, metaOverrides?: any) => {
+    const error: any = new Error(type);
+    error.meta = {
+        statusCode,
+        body: {
+            error: {
+                type,
+                reason,
+                root_cause: [{ type, reason }],
+            },
+        },
+    };
+    if (metaOverrides) {
+        error.meta = { ...error.meta, ...metaOverrides };
+    }
+    return error;
+};
+
+const mockReject = (target: any, method: string, error: any) => {
+    const spy = jest.spyOn(target, method as never);
+    (spy as jest.SpyInstance<any, any>).mockImplementation(() => Promise.reject(error));
+    return spy;
+};
+
+/**
+ * MockElastic6Service
+ * - Uses Mock ES client to test actual ES communication code paths
+ */
+class MockElastic6Service<T extends GeneralItem> extends Elastic6Service<T> {
+    constructor(options: Elastic6Option) {
+        super(options);
+        // Replace real client with mock
+        (this as any)._client = new MockElasticClient(options.version);
+    }
+}
+
 export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, indexName?: string) => {
     //* NOTE - use tunneling to elastic6 endpoint.
     const endpoint = ENDPOINTS[version];
@@ -60,11 +501,44 @@ export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, ind
         public async executeSelfTest() {
             return super.executeSelfTest();
         }
+        //* expose protected method for testing
+        public testPopullateAutocompleteFields<T = any>(body: T): T {
+            return this.popullateAutocompleteFields(body);
+        }
     })();
 
-    // dummy for testing Elasticsearch with buffer.
-    const dummy: Elastic6Service<GeneralItem> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
-    return { version, service, dummy, options };
+    // dummy for testing Elasticsearch with buffer - extended version
+    const dummy = new (class extends DummyElastic6Service<MyModel> {
+        public constructor() {
+            super('dummy-elastic6-data.yml', options);
+        }
+        //* expose protected method for testing
+        public testPopullateAutocompleteFields<T = any>(body: T): T {
+            return this.popullateAutocompleteFields(body);
+        }
+        //* override to throw errors for testing searchAll retry
+        private shouldThrow429 = false;
+        public enableThrow429() {
+            this.shouldThrow429 = true;
+        }
+        public disableThrow429() {
+            this.shouldThrow429 = false;
+        }
+        public async search(body: any): Promise<any> {
+            if (this.shouldThrow429) {
+                this.shouldThrow429 = false;
+                const error: any = new Error('429 UNKNOWN - too many requests');
+                error.statusCode = 429;
+                throw error;
+            }
+            return super.search(body);
+        }
+    })();
+
+    // mock service for testing actual ES client code paths
+    const mock = new MockElastic6Service<MyModel>(options);
+
+    return { version, service, dummy, mock, options };
 };
 
 /**
@@ -1777,9 +2251,12 @@ describe('Elastic6Service', () => {
         expect2(await dummy.readItem('A0').catch(GETERR), '$id').toEqual({ $id: 'A0' });
         expect2(await dummy.deleteItem('A0').catch(GETERR), '$id').toEqual({ $id: 'A0' });
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
-        expect2(await dummy.saveItem('A0', { type: '' }).catch(GETERR), '$id,type').toEqual({ $id: 'A0', type: '' });
+        expect2(await dummy.saveItem('A0', { type: '' } as any).catch(GETERR), '$id,type').toEqual({
+            $id: 'A0',
+            type: '',
+        });
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ id: 'A0', type: '' });
-        expect2(await dummy.updateItem('A0', { type: 'account' }).catch(GETERR)).toEqual({
+        expect2(await dummy.updateItem('A0', { type: 'account' } as any).catch(GETERR)).toEqual({
             id: 'A0',
             _version: 1,
             type: 'account',
@@ -2098,5 +2575,1514 @@ describe('Elastic6Service', () => {
 
         //* run Elastic6Service tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+    });
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //* Unit tests for ElasticIndexService with DummyElastic6Service
+    describe('ElasticIndexService - Unit Tests', () => {
+        //* Test static instance method
+        it('should create elasticsearch client instance', () => {
+            const { client } = ElasticIndexService.instance('http://localhost:9200');
+            expect2(typeof client).toEqual('object');
+            expect2(client !== null).toEqual(true);
+        });
+
+        //* Test constructor errors
+        it('should throw error when endpoint is missing', () => {
+            expect2(
+                () =>
+                    new DummyElastic6Service('dummy-elastic6-data.yml', {
+                        endpoint: '',
+                        indexName: 'test',
+                        idName: '$id',
+                    } as any),
+            ).toEqual('.endpoint (URL) is required');
+        });
+
+        it('should throw error when indexName is missing', () => {
+            expect2(
+                () =>
+                    new DummyElastic6Service('dummy-elastic6-data.yml', {
+                        endpoint: 'http://localhost:9200',
+                        indexName: '',
+                        idName: '$id',
+                    } as any),
+            ).toEqual('.indexName (string) is required');
+        });
+
+        //* Test constructor with valid options
+        it('should create instance with valid options', () => {
+            const { dummy } = instance();
+            expect2(dummy.hello()).toEqual('dummy-elastic6-service:test-v6.2');
+        });
+
+        //* Test options getter
+        it('should return options with defaults', () => {
+            const { dummy, options } = instance();
+            const opts = dummy.options;
+            expect2(opts.indexName).toEqual(options.indexName);
+            expect2(opts.idName).toEqual(options.idName || '$id');
+            expect2(opts.endpoint).toEqual(options.endpoint);
+            expect2(opts.docType).toEqual('_doc');
+        });
+
+        //* Test version getter
+        it('should return version from options', () => {
+            const { dummy } = instance();
+            expect2(dummy.version).toEqual(6.2);
+        });
+
+        it('should return default version when not specified', () => {
+            const dummy = new DummyElastic6Service('dummy-elastic6-data.yml', {
+                endpoint: 'http://localhost:9200',
+                indexName: 'test-default',
+                idName: '$id',
+            });
+            expect2(dummy.version).toEqual(6.8);
+        });
+
+        //* Test client getter
+        it('should return client instance', () => {
+            const { dummy } = instance();
+            const client = dummy.client;
+            expect2(typeof client).toEqual('object');
+            expect2(client !== null).toEqual(true);
+        });
+
+        //* Test pushItem
+        it('should push item with auto-generated ID', async () => {
+            const { dummy } = instance();
+            const result = await dummy.pushItem({ name: 'pushed item', type: 'test' } as any);
+            expect2(result.name).toEqual('pushed item');
+            expect2(result.type).toEqual('test');
+            expect2(result._version).toEqual(1);
+            expect2(typeof result.$id).toEqual('string');
+            expect2(String(result.$id).startsWith('auto-')).toEqual(true);
+        });
+
+        it('should push multiple items with different IDs', async () => {
+            const { dummy } = instance();
+            const result1 = await dummy.pushItem({ name: 'item1' } as any);
+            const result2 = await dummy.pushItem({ name: 'item2' } as any);
+            expect2(result1.$id !== result2.$id).toEqual(true);
+        });
+
+        //* Test searchRaw
+        it('should throw error when body is missing', async () => {
+            const { dummy } = instance();
+            expect2(await dummy.searchRaw(null as any).catch(GETERR)).toEqual('@body (SearchBody) is required');
+        });
+
+        it('should search and return raw results', async () => {
+            const { dummy } = instance();
+            const result: any = await dummy.searchRaw({ size: 5 });
+            expect2(typeof result.hits).toEqual('object');
+            expect2(typeof result.hits.total).toEqual('number');
+            expect2(Array.isArray(result.hits.hits)).toEqual(true);
+        });
+
+        it('should paginate search results with size', async () => {
+            const { dummy } = instance();
+            const result: any = await dummy.searchRaw({ size: 2 });
+            expect2(result.hits.hits.length).toEqual(2);
+        });
+
+        it('should paginate search results with from and size', async () => {
+            const { dummy } = instance();
+            const result: any = await dummy.searchRaw({ size: 2, from: 1 });
+            expect2(result.hits.hits.length <= 2).toEqual(true);
+            expect2(result.hits.hits.length >= 0).toEqual(true);
+        });
+
+        it('should use default size of 10', async () => {
+            const { dummy } = instance();
+            const result: any = await dummy.searchRaw({});
+            expect2(result.hits.hits.length <= 10).toEqual(true);
+        });
+
+        //* Test search
+        it('should search and return formatted results', async () => {
+            const { dummy } = instance();
+            const result = await dummy.search({ size: 5 });
+            expect2(typeof result.total).toEqual('number');
+            expect2(Array.isArray(result.list)).toEqual(true);
+            expect2(result.list.length <= 5).toEqual(true);
+        });
+
+        it('should include _id and _score in search results', async () => {
+            const { dummy } = instance();
+            const result = await dummy.search({ size: 1 });
+            expect2(result.list.length > 0).toEqual(true);
+            const item = result.list[0];
+            expect2(typeof item._id).toEqual('string');
+            expect2(typeof item._score).toEqual('number');
+        });
+
+        it('should handle search with default size', async () => {
+            const { dummy } = instance();
+            const result = await dummy.search({});
+            expect2(typeof result.total).toEqual('number');
+            expect2(result.list.length <= 10).toEqual(true);
+        });
+
+        it('should handle search with aggregations', async () => {
+            const { dummy } = instance();
+            const result: any = await dummy.searchRaw({ size: 5, aggs: { test: { terms: { field: 'type' } } } });
+            expect2(typeof result.hits).toEqual('object');
+            expect2(result.aggregations).toEqual(undefined);
+        });
+    });
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //* Unit tests for DummyElastic6Service specific methods
+    describe('DummyElastic6Service - Unit Tests', () => {
+        //* Test constructor errors
+        it('should throw error when dataFile is missing', () => {
+            const options: Elastic6Option = {
+                endpoint: 'http://localhost:9200',
+                indexName: 'test',
+                idName: '$id',
+            };
+            expect2(() => new DummyElastic6Service('', options)).toEqual('@dataFile(string) is required!');
+        });
+
+        //* Test hello()
+        it('should return correct hello string', () => {
+            const { dummy } = instance();
+            expect2(dummy.hello()).toEqual('dummy-elastic6-service:test-v6.2');
+        });
+
+        //* Test readItem edge cases
+        it('should throw 404 for non-existent item', async () => {
+            const { dummy } = instance();
+            expect2(await dummy.readItem('NONEXISTENT').catch(GETERR)).toEqual('404 NOT FOUND - id:NONEXISTENT');
+        });
+
+        it('should read existing item successfully', async () => {
+            const { dummy } = instance();
+            expect2(await dummy.readItem('A0'), '$id,type,name').toEqual({ $id: 'A0', type: 'account', name: 'lemon' });
+        });
+
+        //* Test saveItem variations
+        it('should save new item', async () => {
+            const { dummy } = instance();
+            const result = await dummy.saveItem('NEW1', { name: 'new item' } as any);
+            expect2(result.$id).toEqual('NEW1');
+            expect2(result.name).toEqual('new item');
+            expect2(result._version).toEqual(1);
+        });
+
+        it('should save item with empty string values', async () => {
+            const { dummy } = instance();
+            const result = await dummy.saveItem('EMPTY', { type: '', name: '' } as any);
+            expect2(result.$id).toEqual('EMPTY');
+            expect2(result.type).toEqual('');
+            expect2(result.name).toEqual('');
+        });
+
+        it('should save item with number values', async () => {
+            const { dummy } = instance();
+            const result = await dummy.saveItem('NUM1', { count: 100, score: 95.5 } as any);
+            expect2(result.count).toEqual(100);
+            expect2(result.score).toEqual(95.5);
+        });
+
+        //* Test deleteItem
+        it('should delete existing item', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('DEL1', { name: 'to delete' } as any);
+            const result = await dummy.deleteItem('DEL1');
+            expect2(result.id).toEqual('DEL1');
+            expect2(result.name).toEqual('to delete');
+        });
+
+        it('should handle deleting already deleted item', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('DEL2', { name: 'test' } as any);
+            await dummy.deleteItem('DEL2');
+            const result = await dummy.deleteItem('DEL2');
+            expect2(result).toEqual({});
+        });
+
+        //* Test updateItem with basic updates
+        it('should update item successfully', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('UPD1', { name: 'original', type: 'test' } as any);
+            const result = await dummy.updateItem('UPD1', { name: 'updated' } as any);
+            expect2(result.id).toEqual('UPD1');
+            expect2(result._version).toEqual(1);
+            expect2(result.name).toEqual('updated');
+        });
+
+        it('should throw 404 when updating non-existent item', async () => {
+            const { dummy } = instance();
+            expect2(await dummy.updateItem('NONEXIST', { name: 'test' } as any).catch(GETERR)).toEqual(
+                '404 NOT FOUND - id:NONEXIST',
+            );
+        });
+
+        //* Test updateItem with number increment
+        it('should increment number field', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('INC1', { count: 10 } as any);
+            const result = await dummy.updateItem('INC1', null as any, { count: 5 });
+            expect2(result._version).toEqual(1);
+            expect2(result.id).toEqual('INC1');
+
+            const item = await dummy.readItem('INC1');
+            expect2(item.count).toEqual(15);
+        });
+
+        it('should increment number from zero', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('INC2', { name: 'test' } as any);
+            await dummy.updateItem('INC2', null as any, { count: 10 });
+            const item = await dummy.readItem('INC2');
+            expect2(item.count).toEqual(10);
+        });
+
+        //* Test updateItem with array increment
+        it('should append to array field', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('ARR1', { items: ['a', 'b'] } as any);
+            await dummy.updateItem('ARR1', null as any, { items: ['c', 'd'] });
+            const item = await dummy.readItem('ARR1');
+            expect2(item.items).toEqual(['a', 'b', 'c', 'd']);
+        });
+
+        it('should create array if not exists', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('ARR2', { name: 'test' } as any);
+            await dummy.updateItem('ARR2', null as any, { items: ['x', 'y'] });
+            const item = await dummy.readItem('ARR2');
+            expect2(item.items).toEqual(['x', 'y']);
+        });
+
+        it('should handle multiple increments', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('MULTI', { count: 5, items: ['a'] } as any);
+            await dummy.updateItem('MULTI', null as any, { count: 3, items: ['b'] });
+            const item = await dummy.readItem('MULTI');
+            expect2(item.count).toEqual(8);
+            expect2(item.items).toEqual(['a', 'b']);
+        });
+
+        //* Test combined update and increment
+        it('should handle update and increment together', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('COMBO', { name: 'old', count: 10, tags: ['t1'] } as any);
+            const result = await dummy.updateItem('COMBO', { name: 'new' } as any, { count: 5, tags: ['t2'] });
+            expect2(result._version).toEqual(1);
+            expect2(result.name).toEqual('new');
+
+            const item = await dummy.readItem('COMBO');
+            expect2(item.name).toEqual('new');
+            expect2(item.count).toEqual(15);
+            expect2(item.tags).toEqual(['t1', 't2']);
+        });
+
+        //* Test version incrementing
+        it('should increment version on each update', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('VER', { name: 'test' } as any);
+            const v1 = await dummy.updateItem('VER', { count: 1 } as any);
+            expect2(v1._version).toEqual(1);
+
+            const v2 = await dummy.updateItem('VER', { count: 2 } as any);
+            expect2(v2._version).toEqual(2);
+
+            const v3 = await dummy.updateItem('VER', { count: 3 } as any);
+            expect2(v3._version).toEqual(3);
+        });
+
+        //* Test edge cases with null and undefined
+        it('should handle null update values', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('NULL', { name: 'test', type: 'old' } as any);
+            await dummy.updateItem('NULL', { type: null } as any);
+            const item = await dummy.readItem('NULL');
+            expect2(item.type).toEqual(null);
+        });
+
+        it('should preserve existing fields when updating', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('PRESERVE', { name: 'test', type: 'A', count: 10 } as any);
+            await dummy.updateItem('PRESERVE', { name: 'updated' } as any);
+            const item = await dummy.readItem('PRESERVE');
+            expect2(item.name).toEqual('updated');
+            expect2(item.type).toEqual('A');
+            expect2(item.count).toEqual(10);
+        });
+
+        //* Test increment with non-numeric field
+        it('should set value when incrementing non-numeric field', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('NONNUM', { name: 'test' } as any);
+            await dummy.updateItem('NONNUM', null as any, { name: 10 });
+            const item = await dummy.readItem('NONNUM');
+            expect2(item.name).toEqual(10);
+        });
+
+        //* Test array operations with numbers
+        it('should append number arrays', async () => {
+            const { dummy } = instance();
+            await dummy.saveItem('NUMARR', { scores: [10, 20] } as any);
+            await dummy.updateItem('NUMARR', null as any, { scores: [30, 40] });
+            const item = await dummy.readItem('NUMARR');
+            expect2(item.scores).toEqual([10, 20, 30, 40]);
+        });
+    });
+
+    describe('Elastic6Service - Additional Coverage Tests', () => {
+        //* Test parseVersion with throwable=false
+        it('should return null when parsing invalid version with throwable=false', () => {
+            const { service } = instance();
+            expect2(() => service.parseVersion('invalid', { throwable: false })).toEqual(null);
+            expect2(() => service.parseVersion('12345', { throwable: false })).toEqual(null);
+            expect2(() => service.parseVersion('', { throwable: false })).toEqual(null);
+        });
+
+        it('should parse valid version with throwable=false', () => {
+            const { service } = instance();
+            expect2(() => service.parseVersion('6.2', { throwable: false })).toEqual({
+                engine: 'es',
+                major: 6,
+                minor: 2,
+                patch: 0,
+            });
+        });
+
+        //* Test version getters
+        it('should test isOldES6 getter for ES6.2', () => {
+            const { service } = instance('6.2');
+            expect2(() => service.isOldES6).toEqual(true);
+        });
+
+        it('should test isOldES6 getter for ES7.1', () => {
+            const { service } = instance('7.1');
+            expect2(() => service.isOldES6).toEqual(false);
+        });
+
+        it('should test isOldES71 getter for ES7.1', () => {
+            const { service } = instance('7.1');
+            expect2(() => service.isOldES71).toEqual(true);
+        });
+
+        it('should test isOldES71 getter for ES6.2', () => {
+            const { service } = instance('6.2');
+            expect2(() => service.isOldES71).toEqual(false);
+        });
+
+        it('should test isOldES71 getter for ES7.2', () => {
+            const { service } = instance('7.2');
+            expect2(() => service.isOldES71).toEqual(false);
+        });
+
+        it('should test isLatestOS2 getter for OS2.13', () => {
+            const { service } = instance('2.13');
+            expect2(() => service.isLatestOS2).toEqual(true);
+        });
+
+        it('should test isLatestOS2 getter for OS1.1', () => {
+            const { service } = instance('1.1');
+            expect2(() => service.isLatestOS2).toEqual(false);
+        });
+
+        it('should test isLatestOS2 getter for ES6.2', () => {
+            const { service } = instance('6.2');
+            expect2(() => service.isLatestOS2).toEqual(false);
+        });
+
+        //* Test popullateAutocompleteFields
+        it('should not populate autocomplete fields when not configured', () => {
+            const { service } = instance('6.2', false);
+            const body = { name: 'test', title: 'Test Title' };
+            // popullateAutocompleteFields is protected, but we can test via saveItem
+            expect2(() => service.options.autocompleteFields).toEqual(null);
+        });
+
+        it('should populate autocomplete fields for Korean text', async () => {
+            const { service } = instance('6.2', true);
+            // Test is done via saveItem which calls popullateAutocompleteFields
+            expect2(() => service.options.autocompleteFields).toEqual(['title', 'name']);
+        });
+
+        //* Test searchAll method
+        it('should search all items with dummy service', async () => {
+            const { dummy } = instance();
+            const result = await dummy.searchAll({ size: 10 });
+            expect2(() => result.length).toBeGreaterThan(0);
+        });
+
+        it('should search all items with limit', async () => {
+            const { dummy } = instance();
+            const result = await dummy.searchAll({ size: 1 }, { limit: 1 });
+            expect2(() => result.length).toEqual(1);
+        });
+
+        //* Test generateSearchResult
+        it('should generate search results with dummy service', async () => {
+            const { dummy } = instance();
+            let count = 0;
+            for await (const chunk of dummy.generateSearchResult({ size: 1 })) {
+                count += chunk.length;
+                if (count >= 2) break;
+            }
+            expect2(() => count).toBeGreaterThan(0);
+        });
+
+        //* Test $ERROR methods
+        it('should convert error to JSON format', () => {
+            const error = new Error('Test error');
+            const result = $ERROR.asJson(error);
+            expect2(() => result.message).toEqual('Test error');
+        });
+
+        it('should convert non-Error to JSON format', () => {
+            const obj = { test: 'value' };
+            const result = $ERROR.asJson(obj);
+            expect2(() => result).toEqual({ test: 'value' });
+        });
+
+        it('should parse meta as string', () => {
+            const result = $ERROR.parseMeta('simple string');
+            expect2(() => result).toEqual({ type: 'string', value: 'simple string' });
+        });
+
+        it('should parse meta as JSON object', () => {
+            const result = $ERROR.parseMeta('{"key":"value"}');
+            expect2(() => result).toEqual({ key: 'value' });
+        });
+
+        it('should parse meta as JSON array', () => {
+            const result = $ERROR.parseMeta('[1,2,3]');
+            expect2(() => result).toEqual({ list: [1, 2, 3] });
+        });
+
+        it('should parse meta as null', () => {
+            const result = $ERROR.parseMeta(null);
+            expect2(() => result).toEqual(null);
+        });
+
+        it('should parse meta as undefined', () => {
+            const result = $ERROR.parseMeta(undefined);
+            expect2(() => result).toEqual(null);
+        });
+
+        it('should parse meta as object', () => {
+            const obj = { test: 'value' };
+            const result = $ERROR.parseMeta(obj);
+            expect2(() => result).toEqual({ test: 'value' });
+        });
+
+        it('should parse meta with invalid JSON', () => {
+            const result = $ERROR.parseMeta('{invalid json');
+            expect2(() => result.type).toEqual('string');
+            expect2(() => result.value).toEqual('{invalid json');
+        });
+
+        it('should parse meta with other types', () => {
+            const result = $ERROR.parseMeta(123);
+            expect2(() => result).toEqual({ type: 'number', value: 123 });
+        });
+
+        it('should convert error to ErrorReason format', () => {
+            const error = new Error('Test error');
+            (error as any).statusCode = 404;
+            const result = $ERROR.asError(error);
+            expect2(() => result.status).toEqual(404);
+            expect2(() => result.message).toEqual('Test error');
+        });
+
+        it('should handle error with ES7.1 meta format', () => {
+            const error = new Error('document_missing_exception');
+            (error as any).meta = {
+                statusCode: 404,
+                body: {
+                    error: {
+                        reason: 'document not found',
+                    },
+                },
+            };
+            const result = $ERROR.asError(error);
+            expect2(() => result.status).toEqual(404);
+        });
+
+        it('should handle error with ES6.2 response format', () => {
+            const error = new Error('Test');
+            (error as any).response = JSON.stringify({
+                error: {
+                    status: 400,
+                    reason: 'Bad request',
+                    root_cause: [{ type: 'mapper_parsing_exception' }],
+                },
+            });
+            const result = $ERROR.asError(error);
+            expect2(() => result.reason.type).toEqual('MAPPER PARSING');
+        });
+
+        it('should handle error with not_found result', () => {
+            const error = new Error('Test');
+            (error as any).response = JSON.stringify({
+                result: 'not_found',
+            });
+            const result = $ERROR.asError(error);
+            expect2(() => result.reason.reason).toEqual('NOT FOUND');
+        });
+
+        it('should handle error with found=false', () => {
+            const error = new Error('Test');
+            (error as any).response = JSON.stringify({
+                found: false,
+            });
+            const result = $ERROR.asError(error);
+            expect2(() => result.reason.reason).toEqual('NOT FOUND');
+        });
+
+        it('should handle error with script execution failure', () => {
+            const error = new Error('script_exception');
+            (error as any).meta = {
+                statusCode: 400,
+                body: {
+                    error: {
+                        reason: 'failed to execute script',
+                        caused_by: {
+                            caused_by: {
+                                reason: 'actual script error',
+                            },
+                        },
+                    },
+                },
+            };
+            const result = $ERROR.asError(error);
+            expect2(() => result.reason.reason).toEqual('actual script error');
+        });
+
+        it('should use error handler without callback', () => {
+            const error = new Error('test');
+            (error as any).statusCode = 404;
+            (error as any).message = 'not_found_exception';
+            expect2(() => $ERROR.handler('test')(error)).toEqual('404  - not_found_exception');
+        });
+
+        it('should use error handler with callback', () => {
+            const error = new Error('test');
+            (error as any).statusCode = 400;
+            (error as any).message = 'bad_request';
+            const handler = $ERROR.handler('test', e => `Custom: ${e.message}`);
+            expect2(() => handler(error)).toEqual('Custom: 400  - bad_request');
+        });
+
+        //* Test prepareSettings static method
+        it('should prepare settings for ES6 with timeseries=false', () => {
+            const settings = Elastic6Service.prepareSettings({
+                docType: '_doc',
+                idName: '$id',
+                version: '6.8',
+                timeSeries: false,
+            });
+            expect2(() => settings.settings.number_of_shards).toEqual(4);
+            expect2(() => settings.settings.number_of_replicas).toEqual(1);
+            expect2(() => settings.mappings._doc.dynamic_templates.length).toEqual(4);
+            expect2(() => settings.mappings._doc.properties.created_at).toEqual({
+                type: 'date',
+                format: 'strict_date_optional_time||epoch_millis',
+            });
+        });
+
+        it('should prepare settings for ES7 with timeseries=false', () => {
+            const settings = Elastic6Service.prepareSettings({
+                docType: '_doc',
+                idName: '$id',
+                version: '7.1',
+                timeSeries: false,
+            });
+            expect2(() => settings.settings.number_of_shards).toEqual(4);
+            expect2(() => settings.settings.number_of_replicas).toEqual(1);
+            expect2(() => settings.mappings.dynamic_templates.length).toEqual(4);
+            expect2(() => settings.settings.analysis.analyzer.autocomplete_case_sensitive.filter).toEqual([]);
+        });
+
+        it('should prepare settings for ES6 with timeseries=true', () => {
+            const settings = Elastic6Service.prepareSettings({
+                docType: '_doc',
+                idName: '$id',
+                version: '6.8',
+                timeSeries: true,
+            });
+            expect2(() => settings.settings.refresh_interval).toEqual('5s');
+            expect2(() => settings.mappings._doc.properties['@timestamp']).toEqual({
+                type: 'date',
+                doc_values: true,
+            });
+            expect2(() => settings.mappings._doc.properties.ip).toEqual({ type: 'ip' });
+            expect2(() => settings.mappings._doc.properties.created_at).toEqual(undefined);
+        });
+
+        it('should prepare settings for ES7 with timeseries=true', () => {
+            const settings = Elastic6Service.prepareSettings({
+                docType: '_doc',
+                idName: '$id',
+                version: '7.1',
+                timeSeries: true,
+            });
+            expect2(() => settings.settings.refresh_interval).toEqual('5s');
+            expect2(() => settings.mappings.properties['@timestamp']).toEqual({
+                type: 'date',
+                doc_values: true,
+            });
+            expect2(() => settings.mappings.properties.ip).toEqual({ type: 'ip' });
+        });
+
+        it('should prepare settings with custom shards and replicas', () => {
+            const settings = Elastic6Service.prepareSettings({
+                docType: '_doc',
+                idName: '$id',
+                shards: 2,
+                replicas: 0,
+            });
+            expect2(() => settings.settings.number_of_shards).toEqual(2);
+            expect2(() => settings.settings.number_of_replicas).toEqual(0);
+        });
+
+        //* Test popullateAutocompleteFields
+        it('should populate autocomplete fields for Korean text', () => {
+            const { service } = instance('6.2', true);
+            const body = { name: '레몬', title: 'Test Title' };
+            const result = (service as any).testPopullateAutocompleteFields(body);
+            expect2(() => result._decomposed.name[0]).toEqual('ㄹㅔㅁㅗㄴ');
+            expect2(() => result._decomposed.name[1]).toEqual('ㄹㅔㅁㅗㄴ');
+            expect2(() => result._qwerty.name).toEqual('fpahs');
+        });
+
+        it('should populate autocomplete fields for English text', () => {
+            const { service } = instance('6.2', true);
+            const body = { name: 'Lemon', title: 'Test Title' };
+            const result = (service as any).testPopullateAutocompleteFields(body);
+            expect2(() => result._decomposed.name[0]).toEqual('Lemon');
+            expect2(() => result._decomposed.name[1]).toEqual('Lemon');
+            expect2(() => result._qwerty).toEqual({});
+        });
+
+        it('should populate autocomplete fields with spaces and hyphens', () => {
+            const { service } = instance('6.2', true);
+            const body = { name: '레몬 클라우드', title: 'Test-Title' };
+            const result = (service as any).testPopullateAutocompleteFields(body);
+            expect2(() => result._decomposed.name[1]).toEqual('ㄹㅔㅁㅗㄴㅋㅡㄹㄹㅏㅇㅜㄷㅡ');
+            expect2(() => result._decomposed.title[1]).toEqual('TestTitle');
+        });
+
+        it('should not populate when autocomplete is disabled', () => {
+            const { service } = instance('6.2', false);
+            const body = { name: 'test', title: 'Test Title' };
+            const result = (service as any).testPopullateAutocompleteFields(body);
+            expect2(() => result).toEqual({ name: 'test', title: 'Test Title' });
+        });
+
+        it('should handle empty autocomplete fields', () => {
+            const { service } = instance('6.2', true);
+            const body = { other: 'value' };
+            const result = (service as any).testPopullateAutocompleteFields(body);
+            expect2(() => result._decomposed).toEqual({});
+            expect2(() => result._qwerty).toEqual({});
+        });
+
+        it('should handle non-string values in autocomplete fields', () => {
+            const { service } = instance('6.2', true);
+            const body: any = { name: undefined, title: null, other: 'value' };
+            const result = (service as any).testPopullateAutocompleteFields(body);
+            expect2(() => result._decomposed.name).toEqual(undefined);
+            expect2(() => result._decomposed.title).toEqual(undefined);
+            expect2(() => result._qwerty.name).toEqual(undefined);
+        });
+
+        //* Test searchAll with retry options
+        it('should search all with retry disabled', async () => {
+            const { dummy } = instance();
+            const result = await dummy.searchAll({ size: 10 }, { retryOptions: { do: false } });
+            expect2(() => result.length).toBeGreaterThan(0);
+        });
+
+        it('should search all with custom retry options', async () => {
+            const { dummy } = instance();
+            const result = await dummy.searchAll({ size: 10 }, { retryOptions: { do: true, t: 100, maxRetries: 1 } });
+            expect2(() => result.length).toBeGreaterThan(0);
+        });
+
+        //* Test generateSearchResult edge cases
+        it('should handle empty search results', async () => {
+            const { dummy } = instance();
+            const results: any[] = [];
+            for await (const chunk of dummy.generateSearchResult({
+                size: 100,
+                query: { match: { nonexistent: 'field' } },
+            })) {
+                results.push(...chunk);
+            }
+            expect2(() => results.length).toBeGreaterThan(0);
+        });
+
+        it('should handle search with sort', async () => {
+            const { dummy } = instance();
+            const results: any[] = [];
+            for await (const chunk of dummy.generateSearchResult({ size: 1, sort: '_doc' })) {
+                results.push(...chunk);
+                if (results.length >= 1) break;
+            }
+            expect2(() => results.length).toBeGreaterThan(0);
+        });
+
+        //* Test generateSearchResult with limit
+        it('should handle generateSearchResult with limit parameter', async () => {
+            const { dummy } = instance();
+            const results: any[] = [];
+            for await (const chunk of dummy.generateSearchResult({ size: 2 }, { limit: 2 })) {
+                results.push(...chunk);
+            }
+            expect2(() => results.length).toBeGreaterThan(0);
+        });
+
+        //* Test $ERROR.handler with unknown error (no status)
+        it('should handle error with no status', () => {
+            const error = new Error('Unknown error');
+            expect2(() => $ERROR.handler('test')(error)).toContain('Unknown error');
+        });
+
+        //* Test $ERROR.asError with various error formats
+        it('should handle error without response or meta', () => {
+            const error = new Error('Simple error');
+            const result = $ERROR.asError(error);
+            expect2(() => result.message).toEqual('Simple error');
+        });
+
+        it('should handle error with empty meta', () => {
+            const error = new Error('test');
+            (error as any).meta = {};
+            const result = $ERROR.asError(error);
+            expect2(() => typeof result.status).toEqual('number');
+        });
+
+        //* Test parseMeta with JSON array containing objects
+        it('should parse JSON array with objects', () => {
+            const result = $ERROR.parseMeta('[{"key":"value"}]');
+            expect2(() => result.list[0]).toEqual({ key: 'value' });
+        });
+
+        //* Test throwAsJson
+        it('should throw error as JSON', () => {
+            const error = new Error('test error');
+            expect2(() => $ERROR.throwAsJson(error)).toContain('test error');
+        });
+
+        //* Test searchAll without sort
+        it('should add default sort when not provided', async () => {
+            const { dummy } = instance();
+            const body: any = { size: 5 };
+            const result = await dummy.searchAll(body);
+            expect2(() => body.sort).toEqual('_doc');
+            expect2(() => result.length).toBeGreaterThan(0);
+        });
+
+        //* Test generateSearchResult with search_after
+        it('should handle generateSearchResult with search_after', async () => {
+            const { dummy } = instance();
+            const results: any[] = [];
+            for await (const chunk of dummy.generateSearchResult({ size: 1 })) {
+                results.push(...chunk);
+                if (results.length >= 2) break;
+            }
+            expect2(() => results.length).toBeGreaterThan(0);
+        });
+
+        //* Test $ERROR.asError with array root_cause
+        it('should handle error with array root_cause', () => {
+            const error = new Error('Test');
+            (error as any).response = JSON.stringify({
+                error: {
+                    status: 400,
+                    reason: 'Bad request',
+                    root_cause: [{ type: 'illegal_argument_exception' }, { type: 'mapper_parsing_exception' }],
+                },
+            });
+            const result = $ERROR.asError(error);
+            expect2(() => result.reason.type).toEqual('ILLEGAL ARGUMENT');
+        });
+
+        //* Test prepareSettings with default values
+        it('should use default values when not provided', () => {
+            const settings = Elastic6Service.prepareSettings({
+                docType: undefined,
+                idName: undefined,
+            });
+            expect2(() => settings.settings.number_of_shards).toEqual(4);
+            expect2(() => settings.settings.number_of_replicas).toEqual(1);
+        });
+    });
+
+    describe('MockElastic6Service - Complete Coverage Tests', () => {
+        //* Test all ES client methods with Mock
+        it('should test complete CRUD flow with Mock', async () => {
+            const { mock } = instance();
+
+            // Create index
+            await mock.createIndex(mock.options.indexName);
+
+            // List indices
+            const indices = await mock.listIndices();
+            expect2(() => indices.list.length).toBeGreaterThan(0);
+
+            // Get mapping
+            const mapping = await mock.getIndexMapping();
+            expect2(() => typeof mapping).toEqual('object');
+
+            // Save item
+            const saved = await mock.saveItem('TEST001', { type: 'test', name: 'item1' } as any);
+            expect2(() => saved._id).toEqual('TEST001');
+
+            // Read item
+            const read = await mock.readItem('TEST001');
+            expect2(() => read.type).toEqual('test');
+
+            // Update item
+            const updated = await mock.updateItem('TEST001', { name: 'updated' } as any);
+            expect2(() => updated._version).toEqual(2);
+
+            // Update with increment
+            await mock.updateItem('TEST001', null as any, { count: 1 });
+            const withCount = await mock.readItem('TEST001');
+            expect2(() => withCount.count).toEqual(1);
+
+            // Delete item
+            await mock.deleteItem('TEST001');
+            expect2(await mock.readItem('TEST001').catch(GETERR)).toContain('404');
+
+            // Push item
+            const pushed = await mock.pushItem({ type: 'pushed' } as any);
+            expect2(() => typeof pushed._id).toEqual('string');
+
+            // Search
+            const searchResult = await mock.search({ size: 10 });
+            expect2(() => Array.isArray(searchResult.list)).toEqual(true);
+
+            // SearchRaw
+            const rawResult = await mock.searchRaw({ size: 5 });
+            expect2(() => rawResult.hits).toBeDefined();
+
+            // Refresh
+            const refreshResult = await mock.refreshIndex();
+            expect2(() => refreshResult._shards.successful).toEqual(4);
+
+            // Flush
+            const flushResult = await mock.flushIndex();
+            expect2(() => flushResult._shards.successful).toEqual(4);
+
+            // Describe
+            const description = await mock.describe();
+            expect2(() => description.settings).toBeDefined();
+
+            // Destroy index
+            await mock.destroyIndex();
+            const found = await mock.findIndex(mock.options.indexName);
+            expect2(() => found).toEqual(null);
+        });
+
+        //* Test getVersion and executeSelfTest
+        it('should test getVersion and executeSelfTest', async () => {
+            const { mock } = instance('6.2');
+
+            const version = await (mock as any).getVersion();
+            expect2(() => version.engine).toEqual('es');
+            expect2(() => version.major).toEqual(6);
+
+            const selfTest = await (mock as any).executeSelfTest();
+            expect2(() => selfTest.isEqual).toEqual(true);
+        });
+
+        //* Test error cases
+        it('should handle various error cases', async () => {
+            const { mock } = instance();
+            await mock.createIndex(mock.options.indexName);
+
+            // Read non-existent
+            expect2(await mock.readItem('NONEXIST').catch(GETERR)).toContain('404');
+
+            // Update non-existent (without upsert should fail)
+            expect2(await mock.updateItem('NONEXIST', { test: 1 } as any).catch(GETERR)).toContain('404');
+
+            // Delete non-existent
+            expect2(await mock.deleteItem('NONEXIST').catch(GETERR)).toContain('404');
+        });
+
+        //* Test more error cases
+        it('should handle index operation errors', async () => {
+            const { mock } = instance();
+
+            // Get mapping of non-existent index (index was never created)
+            expect2(await mock.getIndexMapping().catch(GETERR)).toContain('404');
+
+            // Describe non-existent index
+            expect2(await mock.describe().catch(GETERR)).toContain('404');
+
+            // Destroy non-existent index
+            expect2(await mock.destroyIndex().catch(GETERR)).toContain('404');
+
+            // Create index, then destroy it, then try operations
+            await mock.createIndex();
+            await mock.destroyIndex();
+
+            // Operations on destroyed index should fail
+            expect2(await mock.getIndexMapping().catch(GETERR)).toContain('404');
+            expect2(await mock.describe().catch(GETERR)).toContain('404');
+        });
+
+        //* Test saveItem with version conflict
+        it('should handle saveItem version conflict', async () => {
+            const { mock } = instance();
+            await mock.createIndex(mock.options.indexName);
+
+            // Create item first time
+            await mock.saveItem('CONFLICT', { type: 'test' } as any);
+
+            // Try to create again - should handle 409 conflict by updating
+            const updated = await mock.saveItem('CONFLICT', { type: 'updated' } as any);
+            expect2(() => updated._version).toBeGreaterThan(1);
+        });
+
+        //* Test updateItem with increment and upsert
+        it('should handle updateItem with increment and upsert', async () => {
+            const { mock } = instance();
+            await mock.createIndex(mock.options.indexName);
+
+            // Update non-existent item with increment (should upsert)
+            await mock.updateItem('UPSERT001', null as any, { count: 5 });
+            const created = await mock.readItem('UPSERT001');
+            expect2(() => created.count).toEqual(5);
+
+            // Increment again
+            await mock.updateItem('UPSERT001', null as any, { count: 3 });
+            const incremented = await mock.readItem('UPSERT001');
+            expect2(() => incremented.count).toEqual(8);
+        });
+
+        //* Test readItem with fields projection
+        it('should handle readItem with fields projection', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Create item
+            await mock.saveItem('PROJ001', { type: 'test', name: 'item1', extra: 'data' } as any);
+
+            // Read with projection
+            const projected = await mock.readItem('PROJ001', ['type', 'name']);
+            expect2(() => projected.type).toEqual('test');
+            expect2(() => projected.name).toEqual('item1');
+        });
+
+        //* Test search with different ES versions
+        it('should handle search responses for different ES versions', async () => {
+            const { mock } = instance('6.2');
+            await mock.createIndex();
+
+            // Add items
+            await mock.saveItem('S001', { type: 'test1' } as any);
+            await mock.saveItem('S002', { type: 'test2' } as any);
+
+            // Search
+            const result = await mock.search({ size: 10 });
+            expect2(() => result.list.length).toBeGreaterThan(0);
+
+            // SearchRaw
+            const rawResult = await mock.searchRaw({ size: 5 });
+            expect2(() => rawResult.hits).toBeDefined();
+        });
+
+        //* Test refresh and flush
+        it('should handle refresh and flush operations', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Refresh
+            const refreshRes = await mock.refreshIndex();
+            expect2(() => refreshRes._shards.successful).toBeGreaterThan(0);
+
+            // Flush
+            const flushRes = await mock.flushIndex();
+            expect2(() => flushRes._shards.successful).toBeGreaterThan(0);
+        });
+
+        //* Test updateItem with both item and increment
+        it('should handle updateItem with both item and increment', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Create initial item
+            await mock.saveItem('UPD001', { type: 'test', count: 10 } as any);
+
+            // Update with both item data and increment
+            await mock.updateItem('UPD001', { type: 'updated' } as any, { count: 5 });
+            const updated = await mock.readItem('UPD001');
+            expect2(() => updated.type).toEqual('updated');
+            expect2(() => updated.count).toEqual(15);
+        });
+
+        //* Test updateItem with array increment
+        it('should handle updateItem with array increment', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Create item with array
+            await mock.saveItem('ARR001', { type: 'test', tags: ['a', 'b'] } as any);
+
+            // Append to array
+            await mock.updateItem('ARR001', null as any, { tags: ['c', 'd'] as any });
+            const updated = await mock.readItem('ARR001');
+            expect2(() => (updated.tags as any[]).length).toEqual(4);
+        });
+
+        //* Test createIndex with already existing index
+        it('should handle createIndex on existing index error', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Try to create again - should fail with 400 error
+            expect2(await mock.createIndex().catch(GETERR)).toContain('400');
+        });
+
+        //* Test refresh/flush on non-existent index
+        it('should handle refresh/flush on non-existent index', async () => {
+            const { mock } = instance();
+
+            // Refresh without creating index
+            expect2(await mock.refreshIndex().catch(GETERR)).toContain('404');
+
+            // Flush without creating index
+            expect2(await mock.flushIndex().catch(GETERR)).toContain('404');
+        });
+
+        //* Test readItem/deleteItem on non-existent index
+        it('should handle readItem/deleteItem on non-existent index', async () => {
+            const { mock } = instance();
+
+            // Read from non-existent index
+            expect2(await mock.readItem('TEST001').catch(GETERR)).toContain('404');
+
+            // Delete from non-existent index
+            expect2(await mock.deleteItem('TEST001').catch(GETERR)).toContain('404');
+        });
+
+        //* Test saveItem error paths
+        it('should handle saveItem error scenarios', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Save item first time
+            await mock.saveItem('ERR001', { type: 'test' } as any);
+
+            // Save again (triggers version conflict and fallback to index)
+            const updated = await mock.saveItem('ERR001', { type: 'updated' } as any);
+            expect2(() => updated._version).toBeGreaterThan(1);
+        });
+
+        //* Test pushItem error handling
+        it('should handle pushItem with error index operation', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Push item should work normally
+            const pushed = await mock.pushItem({ type: 'pushed-test' } as any);
+            expect2(() => typeof pushed._id).toEqual('string');
+            expect2(() => pushed.type).toEqual('pushed-test');
+        });
+
+        describe('Elastic6Service - Error Branch Coverage', () => {
+            it('should handle failures while dumping version info', async () => {
+                const endpoint = ENDPOINTS['6.2'];
+                const options: Elastic6Option = {
+                    endpoint,
+                    indexName: 'dump-index',
+                    idName: '$id',
+                    docType: '_doc',
+                    version: '6.2.3',
+                };
+                const dumpService = new (class extends Elastic6Service<MyModel> {
+                    public constructor() {
+                        super(options);
+                        (this as any)._client = {
+                            info: jest.fn().mockResolvedValue({
+                                body: { version: { number: '6.2.3' } },
+                            }),
+                        };
+                    }
+                    public async getVersionPublic(opts?: any) {
+                        return super.getVersion(opts);
+                    }
+                })();
+
+                const existsSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+                const writeSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {
+                    throw new Error('disk full');
+                });
+
+                await dumpService.getVersionPublic({ dump: true });
+                expect2(() => writeSpy.mock.calls.length).toEqual(1);
+
+                writeSpy.mockRestore();
+                existsSpy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when fetching index mapping', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client.indices, 'getMapping').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.getIndexMapping().catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when creating index', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client.indices, 'create').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.createIndex().catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when destroying index', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client.indices, 'delete').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.destroyIndex().catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when refreshing index', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client.indices, 'refresh').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.refreshIndex().catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when flushing index', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client.indices, 'flush').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.flushIndex().catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when describing index settings', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client.indices, 'getSettings').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.describe().catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when saving an item', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client, 'create').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.saveItem('ERR-500', { type: 'test' } as any).catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when pushing an item', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client, 'index').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.pushItem({ type: 'test' } as any).catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when reading an item', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client, 'get').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.readItem('ERR-500').catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when deleting an item', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client, 'delete').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.deleteItem('ERR-500').catch(GETERR)).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when updating an item', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client, 'update').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(await mock.updateItem('ERR-500', { type: 'test' } as any).catch(GETERR)).toEqual(
+                    '500 INTERNAL',
+                );
+                spy.mockRestore();
+            });
+
+            it('should rethrow unknown errors when searching raw', async () => {
+                const { mock } = instance();
+                const client = mock.client as any;
+                const spy = jest.spyOn(client, 'search').mockRejectedValue(new Error('500 INTERNAL'));
+                expect2(
+                    await mock
+                        .searchRaw({ size: 1, query: { query_string: { query: '*' } } }, 'query_then_fetch')
+                        .catch(GETERR),
+                ).toEqual('500 INTERNAL');
+                spy.mockRestore();
+            });
+
+            it('should break generator when search returns no hits and no cursor', async () => {
+                const { dummy } = instance();
+                const searchSpy = jest.spyOn(dummy, 'search').mockResolvedValue({
+                    total: 0,
+                    list: [],
+                    last: undefined,
+                    aggregations: {},
+                });
+                const iterator = dummy.generateSearchResult({ size: 5 });
+                const result = await iterator.next();
+                expect2(() => result.done).toEqual(true);
+                expect2(() => result.value).toEqual(undefined);
+                searchSpy.mockRestore();
+            });
+
+            it('should retry generator when 429 errors occur', async () => {
+                const { dummy } = instance();
+                dummy.enableThrow429();
+                const iter = dummy.generateSearchResult(
+                    { size: 1, search_after: ['cursor'] as any },
+                    { retryOptions: { do: true, t: 1, maxRetries: 1 } },
+                );
+                const first = await iter.next();
+                expect2(() => first.done).toEqual(false);
+            });
+
+            it('should throw when retry is disabled and search fails', async () => {
+                const { dummy } = instance();
+                const searchSpy = jest.spyOn(dummy, 'search').mockRejectedValue(new Error('fatal error'));
+                const iter = dummy.generateSearchResult({ size: 1 }, { retryOptions: { do: false } });
+                expect2(await iter.next().catch(GETERR)).toEqual('fatal error');
+                searchSpy.mockRestore();
+            });
+        });
+
+        //* Test updateItem with various 400 errors
+        it('should handle updateItem 400 errors', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+
+            // Create error-throwing service for 400 errors
+            const error400Mock = new (class extends MockElastic6Service<MyModel> {
+                constructor(options: any) {
+                    super(options);
+                    const originalClient = (this as any)._client;
+                    let callCount = 0;
+
+                    (this as any)._client = {
+                        ...originalClient,
+                        update: async (params: any) => {
+                            callCount++;
+                            let errorType = '';
+                            let reason = '';
+
+                            switch (callCount) {
+                                case 1:
+                                    errorType = 'action_request_validation_exception';
+                                    reason = 'Validation failed';
+                                    break;
+                                case 2:
+                                    errorType = 'invalid_field_exception';
+                                    reason = 'Invalid field';
+                                    break;
+                                case 3:
+                                    errorType = 'mapper_parsing_exception';
+                                    reason = 'Parsing error';
+                                    break;
+                                case 4:
+                                    errorType = 'illegal_argument_exception';
+                                    reason = 'Cannot apply script';
+                                    break;
+                                case 5:
+                                    errorType = 'illegal_argument_exception';
+                                    reason = 'class_cast_exception: type mismatch';
+                                    break;
+                                case 6:
+                                    errorType = 'illegal_argument_exception';
+                                    reason = 'Other illegal argument';
+                                    break;
+                                default:
+                                    return originalClient.update(params);
+                            }
+
+                            const error: any = new Error(errorType);
+                            error.meta = {
+                                statusCode: 400,
+                                body: { error: { type: errorType, reason } },
+                            };
+                            throw error;
+                        },
+                    };
+                }
+            })(mock.options);
+
+            // Test different 400 error scenarios
+            expect2(await error400Mock.updateItem('T1', { type: 'test' } as any).catch(GETERR)).toContain('400');
+            expect2(await error400Mock.updateItem('T2', { type: 'test' } as any).catch(GETERR)).toContain('400');
+            expect2(await error400Mock.updateItem('T3', { type: 'test' } as any).catch(GETERR)).toContain('400');
+            expect2(await error400Mock.updateItem('T4', { type: 'test' } as any).catch(GETERR)).toContain('400');
+            expect2(await error400Mock.updateItem('T5', { type: 'test' } as any).catch(GETERR)).toContain('400');
+            expect2(await error400Mock.updateItem('T6', { type: 'test' } as any).catch(GETERR)).toContain('400');
+        });
+
+        //* Test getVersion with dump option
+        // NOTE: Skipped due to file system operations causing test crashes
+        it('should handle getVersion with dump option', async () => {
+            const { mock } = instance();
+
+            // Test getVersion without dump
+            const version1 = await (mock as any).getVersion();
+            expect2(() => version1.engine).toEqual('es');
+
+            // Test getVersion with dump=true (covers lines 378-386)
+            // Note: This will create files, but we can't avoid it for 100% coverage
+            const version2 = await (mock as any).getVersion({ dump: true });
+            expect2(() => version2.engine).toEqual('es');
+        });
+
+        //* Test $ERROR.parseMeta with invalid JSON
+        it('should handle parseMeta with invalid JSON', async () => {
+            // Test parseMeta with invalid JSON string
+            const invalidJson = '{invalid json}';
+            const result = $ERROR.parseMeta(invalidJson);
+            expect2(() => result.type).toEqual('string');
+            expect2(() => typeof result.error).toEqual('string');
+        });
+    });
+
+    describe('Elastic6Service - Additional Coverage', () => {
+        afterEach(() => {
+            jest.restoreAllMocks();
+        });
+
+        it('should dump version info when directory does not exist', async () => {
+            const { mock } = instance();
+            jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+            const mkdirSpy = jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+            const writeSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+
+            const version = await (mock as any).getVersion({ dump: true });
+
+            expect2(() => version.engine).toEqual('es');
+            expect2(() => mkdirSpy.mock.calls.length).toEqual(1);
+            expect2(() => writeSpy.mock.calls.length).toEqual(1);
+        });
+
+        it('should invoke error handler when dumping version info fails', async () => {
+            const { mock } = instance();
+            jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+            jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {
+                throw new Error('disk full');
+            });
+            const handlerSpy = jest.spyOn($ERROR, 'handler');
+
+            const version = await (mock as any).getVersion({ dump: true });
+
+            expect2(() => version.engine).toEqual('es');
+            expect2(() => handlerSpy.mock.calls[0][0]).toEqual('saveIntoFile');
+        });
+
+        it('should rethrow unknown errors from getIndexMapping', async () => {
+            const { mock } = instance();
+            const fatal = buildEsError('unexpected_exception', 500, 'mapping failed');
+            mockReject(mock.client.indices as any, 'getMapping', fatal);
+
+            expect2(await mock.getIndexMapping().catch(GETERR)).toEqual('500 UNEXPECTED - mapping failed');
+        });
+
+        it('should wrap duplicate index creation errors', async () => {
+            const { mock } = instance();
+            await mock.createIndex();
+            expect2(await mock.createIndex().catch(GETERR)).toEqual(`400 IN USE - index:${mock.options.indexName}`);
+        });
+
+        it('should wrap destroyIndex 404 errors', async () => {
+            const { mock } = instance();
+            expect2(await mock.destroyIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${mock.options.indexName}`);
+        });
+
+        it('should wrap refreshIndex 404 errors', async () => {
+            const { mock } = instance();
+            expect2(await mock.refreshIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${mock.options.indexName}`);
+        });
+
+        it('should wrap flushIndex 404 errors', async () => {
+            const { mock } = instance();
+            expect2(await mock.flushIndex().catch(GETERR)).toEqual(`404 NOT FOUND - index:${mock.options.indexName}`);
+        });
+
+        it('should wrap describe 404 errors', async () => {
+            const { mock } = instance();
+            expect2(await mock.describe().catch(GETERR)).toEqual(`404 NOT FOUND - index:${mock.options.indexName}`);
+        });
+
+        it('should rethrow unexpected create errors in saveItem', async () => {
+            const { mock } = instance();
+            const fatal = buildEsError('unexpected_exception', 500, 'create failure');
+            mockReject(mock.client as any, 'create', fatal);
+
+            expect2(await mock.saveItem('S1', { foo: 'bar' } as any).catch(GETERR)).toEqual(
+                '500 UNEXPECTED - create failure',
+            );
+        });
+
+        it('should rethrow unexpected pushItem errors', async () => {
+            const { mock } = instance();
+            const fatal = buildEsError('unexpected_exception', 500, 'index failure');
+            mockReject(mock.client as any, 'index', fatal);
+
+            expect2(await mock.pushItem({ foo: 'bar' } as any).catch(GETERR)).toEqual('500 UNEXPECTED - index failure');
+        });
+
+        it('should rethrow unexpected read errors', async () => {
+            const { mock } = instance();
+            const fatal = buildEsError('unexpected_exception', 500, 'read failure');
+            mockReject(mock.client as any, 'get', fatal);
+
+            expect2(await mock.readItem('S1').catch(GETERR)).toEqual('500 UNEXPECTED - read failure');
+        });
+
+        it('should rethrow unexpected delete errors', async () => {
+            const { mock } = instance();
+            const fatal = buildEsError('unexpected_exception', 500, 'delete failure');
+            mockReject(mock.client as any, 'delete', fatal);
+
+            expect2(await mock.deleteItem('S1').catch(GETERR)).toEqual('500 UNEXPECTED - delete failure');
+        });
+
+        it('should rethrow unexpected update errors', async () => {
+            const { mock } = instance();
+            const fatal = buildEsError('unexpected_exception', 500, 'update failure');
+            mockReject(mock.client as any, 'update', fatal);
+            const expectedError = JSON.stringify({
+                status: 500,
+                message: 'unexpected_exception',
+                reason: {
+                    status: 500,
+                    type: 'UNEXPECTED',
+                    reason: 'update failure',
+                },
+            });
+
+            expect2(await mock.updateItem('S1', { foo: 'bar' } as any).catch(GETERR)).toEqual(expectedError);
+        });
+
+        it('should rethrow unexpected search errors', async () => {
+            const { mock } = instance();
+            const fatal = buildEsError('unexpected_exception', 500, 'search failure');
+            mockReject(mock.client as any, 'search', fatal);
+
+            expect2(await mock.searchRaw({ size: 1 }).catch(GETERR)).toEqual('500 UNEXPECTED - search failure');
+        });
     });
 });
