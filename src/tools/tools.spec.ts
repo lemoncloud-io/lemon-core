@@ -10,7 +10,17 @@
  */
 import loadEnviron from '../environ'; //INFO! load environ first.
 import { expect2, GETERR } from '../common/test-helper';
-import { loadJsonSync, awsConfig, AwsConfigParams, onlyDefined, isLambda } from './tools';
+import {
+    asyncCredentials,
+    awsConfig,
+    AwsConfigParams,
+    isLambda,
+    loadDataYml,
+    loadJsonSync,
+    onlyDefined,
+} from './tools';
+import { LemonEngine } from '../engine/types';
+import yaml from 'js-yaml';
 import { fromIni } from '@aws-sdk/credential-providers';
 import $engine from '../engine';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
@@ -184,5 +194,118 @@ describe('Test tools/shared', () => {
         // restore original environment.
         if (originalEnv) process.env.AWS_LAMBDA_FUNCTION_NAME = originalEnv;
         else delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+    });
+});
+
+jest.mock('@aws-sdk/credential-providers', () => ({
+    fromIni: jest.fn(),
+}));
+
+const fromIniMock = fromIni as unknown as jest.Mock;
+
+const createEngine = (name: any = 'lemon'): LemonEngine =>
+    ({
+        id: 'engine',
+        environ: jest.fn(() => name),
+    } as any);
+
+describe('tools/helpers', () => {
+    const originalLambda = process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        fromIniMock.mockImplementation(({ profile }) => {
+            return jest.fn().mockResolvedValue({
+                accessKeyId: `AK-${profile || 'default'}`,
+                secretAccessKey: `SK-${profile || 'default'}`,
+                sessionToken: `ST-${profile || 'default'}`,
+            });
+        });
+    });
+
+    afterAll(() => {
+        if (originalLambda) process.env.AWS_LAMBDA_FUNCTION_NAME = originalLambda;
+        else delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+    });
+
+    it('should load json file synchronously', () => {
+        const pkg = loadJsonSync('package.json');
+
+        expect(pkg?.name).toEqual('lemon-core');
+    });
+
+    it('should fallback when json file is missing', () => {
+        const fallback = { ok: true } as any;
+        expect2(() => loadJsonSync('./missing.json', fallback)).toEqual({
+            ok: true,
+            error: "ENOENT: no such file or directory, open './missing.json'",
+        });
+    });
+
+    it('should throw when yaml data file is absent', () => {
+        expect2(() => loadDataYml('missing')).toEqual('404 NOT FOUND - data-file:./data/missing.yml');
+    });
+
+    it('should detect lambda environment via isLambda()', () => {
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        expect2(() => isLambda()).toEqual(false);
+        process.env.AWS_LAMBDA_FUNCTION_NAME = 'lambda';
+        expect2(() => isLambda()).toEqual(true);
+        process.env.AWS_LAMBDA_FUNCTION_NAME = '';
+        expect2(() => isLambda()).toEqual(false);
+    });
+
+    it('should return only defined properties', () => {
+        expect2(() => onlyDefined({ a: 1, b: undefined } as any)).toEqual({ a: 1 });
+        expect2(() => onlyDefined(null, { fallback: true } as any)).toEqual({ fallback: true });
+    });
+
+    it('should resolve async credentials using profile', async () => {
+        const creds = await asyncCredentials('dev');
+        expect2(() => creds.accessKeyId).toEqual('AK-dev');
+        expect2(() => creds.profile).toEqual('dev');
+    });
+
+    it('should build aws config with default parameters', () => {
+        const cfg = awsConfig(createEngine('lemon'));
+        expect2(() => cfg.region).toEqual('ap-northeast-2');
+        expect2(() => cfg.profile).toEqual('lemon');
+        expect2(() => typeof cfg.credentials).toEqual('function');
+    });
+
+    it('should throw on empty region string', () => {
+        expect2(() => awsConfig(createEngine('lemon'), '')).toEqual('.region[] is invalid (empty) - awsConfig(engine)');
+    });
+
+    it('should accept region from string or function', () => {
+        const stringCfg = awsConfig(createEngine('lemon'), 'us-east-1');
+        expect2(() => stringCfg.region).toEqual('us-east-1');
+        expect2(() => stringCfg.profile).toEqual('lemon');
+        expect2(() => typeof stringCfg.credentials).toEqual('function');
+        const cfg = awsConfig(createEngine('lemon'), () => 'eu-central-1');
+        expect2(() => cfg.region).toEqual('eu-central-1');
+    });
+
+    it('should merge custom params and keep provided credentials', async () => {
+        const customCredentials = jest.fn().mockResolvedValue({ accessKeyId: 'CUSTOM' });
+        const cfg = awsConfig(createEngine('lemon'), { region: 'us-west-2', credentials: customCredentials });
+        expect2(() => cfg.region).toEqual('us-west-2');
+        expect2(() => cfg.credentials).toEqual(customCredentials);
+    });
+
+    it('should fallback when NAME is undefined or lambda', () => {
+        const cfgNone = awsConfig(createEngine('none'));
+        expect2(() => cfgNone.profile).toEqual(undefined);
+        process.env.AWS_LAMBDA_FUNCTION_NAME = 'lambda';
+        const cfgLambda = awsConfig(createEngine('lemon'), { region: 'ap-northeast-2' });
+        expect2(() => (cfgLambda as any).profile).toEqual(undefined);
+        expect2(() => cfgLambda.credentials).toEqual(undefined);
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+    });
+
+    it('should throw when NAME is not a string', () => {
+        const engine = createEngine(123 as any);
+        expect2(() => awsConfig(engine)).toEqual('@env.NAME[number] is invalid (check $engine) - awsConfig(engine)');
     });
 });

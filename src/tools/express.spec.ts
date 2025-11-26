@@ -1,6 +1,6 @@
 /**
  * `tools/express.spec.ts`
- * - test runnder for `tools/express.ts`
+d * - test runner for `tools/express.ts`
  *
  *
  * @author      Steve <steve@lemoncloud.io>
@@ -16,6 +16,26 @@ import { buildExpress, BuildExpressOptions } from './express';
 import { loadJsonSync } from './tools';
 import $cores, { NextDecoder, NextHandler } from '../cores/index';
 import request from 'supertest';
+
+const createEngine = () =>
+    ({
+        err: jest.fn(),
+        inf: jest.fn(),
+        log: jest.fn(),
+    } as any);
+
+const createWeb = () =>
+    ({
+        setHandler: jest.fn(),
+    } as any);
+
+const mockDevkitFactory = () => ({
+    buildExpress: jest.fn(() => ({
+        express: () => 'express-app',
+        app: { name: 'mock-app' },
+        createServer: jest.fn(),
+    })),
+});
 
 /**
  * local test instance
@@ -98,5 +118,87 @@ describe('express', () => {
         const res: any = await request(app).get('/');
         expect2(() => res.status).toEqual(200);
         expect2(() => res.text.split('\n')[0]).toEqual(`lemon-core/${$pack.version}`);
+    });
+});
+
+describe('express', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('should validate required parameters', () => {
+        const options: BuildExpressOptions = {
+            loadModule: (() => mockDevkitFactory()) as any,
+        };
+        expect2(() => buildExpress(null as any, null as any, options)).toEqual(
+            '$engine(LemonEngine) is required - buildExpress()',
+        );
+        expect2(() => buildExpress({} as any, null as any, options)).toEqual(
+            '$web(LambdaWEBHandler) is required - buildExpress()',
+        );
+    });
+
+    it('should throw when devkit module is missing', () => {
+        const options: BuildExpressOptions = {
+            loadModule: () => {
+                const err = new Error('lemon-devkit(module) is required (npm i -D lemon-devkit) - buildExpress()');
+                throw err;
+            },
+        };
+        expect2(() => buildExpress(createEngine(), createWeb(), options)).toEqual(
+            'lemon-devkit(module) is required (npm i -D lemon-devkit) - buildExpress()',
+        );
+    });
+
+    it('should rethrow unexpected module error', () => {
+        const options: BuildExpressOptions = {
+            loadModule: () => {
+                throw new Error('unknown failure');
+            },
+        };
+        expect2(() => buildExpress(createEngine(), createWeb(), options)).toEqual('unknown failure');
+    });
+
+    it('should throw when devkit factory is missing', () => {
+        const options: BuildExpressOptions = {
+            loadModule: () => ({} as any),
+        };
+        expect2(() => buildExpress(createEngine(), createWeb(), options)).toEqual(
+            '@buildExpress (function) is required (invalid devkit) - buildExpress()',
+        );
+    });
+
+    it('should throw when loadModule returns null', () => {
+        const options: BuildExpressOptions = {
+            loadModule: ((): any => null) as any,
+        };
+        expect2(() => buildExpress(createEngine(), createWeb(), options)).toEqual(
+            'lemon-devkit(module) is required (npm i -D lemon-devkit) - buildExpress()',
+        );
+    });
+
+    it('should propagate custom loadModule errors', () => {
+        const options: BuildExpressOptions = {
+            loadModule: () => {
+                throw new Error('loadModule(lemon-devkit) failed');
+            },
+        };
+        expect2(() => buildExpress(createEngine(), createWeb(), options)).toEqual('loadModule(lemon-devkit) failed');
+    });
+
+    it('should delegate to devkit buildExpress', () => {
+        const mockDevkit = mockDevkitFactory();
+        const options: BuildExpressOptions = {
+            loadModule: (() => mockDevkit) as any,
+        };
+        const engine = createEngine();
+        const web = createWeb();
+        const genRequestId = jest.fn(() => 'req-1');
+        const result = buildExpress(engine, web, { ...options, prefix: '/api', genRequestId });
+
+        expect2(() => mockDevkit.buildExpress.mock.calls.length).toEqual(1);
+        expect2(() => result.express()).toEqual('express-app');
+        expect2(() => result.app.name).toEqual('mock-app');
+        expect2(() => typeof result.createServer).toEqual('function');
     });
 });
