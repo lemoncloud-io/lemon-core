@@ -12,6 +12,7 @@ import { expect2, GETERR } from '../../common/test-helper';
 import { createSigV4Proxy } from '../../helpers/helpers';
 import { sigV4Client, sigV4ClientConfig } from './sig-v4';
 import request from 'request';
+import { loadProfile } from '../../environ';
 
 jest.mock('request', () => jest.fn());
 
@@ -44,10 +45,15 @@ const instance = async (profile: string) => {
 
 //! main test body.
 describe('createHttpWebProxy w/Sig4', () => {
-    it('should pass API w/invalid AWS key', async () => {
-        const proxy = await instance('lemon');
+    jest.setTimeout(30000);
+    const PROFILE = loadProfile(process); // override process.env.
+
+    it('should pass API w/ invalid AWS key', async () => {
+        if (PROFILE !== 'lemon') return; // skip unless using `lemon` profile.
+
+        const proxy = await instance(PROFILE);
         if (!proxy) {
-            console.info('! SKIP TEST - invalid AWS key[lemon]');
+            console.info(`! SKIP TEST - invalid AWS key[${PROFILE}]`);
             return;
         }
 
@@ -71,7 +77,7 @@ describe('createHttpWebProxy w/Sig4', () => {
     it('should pass API w/ unauthorized AWS key', async () => {
         const proxy = await instance('temp');
         if (!proxy) {
-            console.info('! SKIP TEST - invalid AWS key');
+            // console.info('! SKIP TEST - invalid AWS key');
             return;
         }
 

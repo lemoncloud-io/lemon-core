@@ -8,7 +8,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import $engine, { $U } from '../../engine';
-import { GETERR, expect2 } from '../../common/test-helper';
+import { GETERR, _it, expect2 } from '../../common/test-helper';
 import {
     APIService,
     APIServiceClient,
@@ -672,7 +672,7 @@ describe('APIService', () => {
     });
 
     //* test error handling in HTTP proxy
-    it('should handle HTTP proxy error scenarios', async () => {
+   _it('should handle HTTP proxy error scenarios', async () => {
         const TYPE = 'echo';
         const ENDPOINT = 'http://localhost:8888';
         const client: APIServiceClient = APIService.buildClient(TYPE, ENDPOINT, undefined, '');

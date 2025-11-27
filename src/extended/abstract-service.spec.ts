@@ -363,7 +363,7 @@ describe('abstract-service', () => {
     it('should pass $ES6.$X.createHttpSearchProxy()', async () => {
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            // console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
@@ -393,7 +393,7 @@ describe('abstract-service', () => {
     it('should pass _ES6 factory', async () => {
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            // console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 

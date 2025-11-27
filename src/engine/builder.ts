@@ -249,8 +249,10 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
             public toString = () => `engine: ${ROOT_NAME}`;
         })();
         //* start initialization only if making $engine.
-        STAGE && _inf('#STAGE =', STAGE);
-        _inf(`! engine[${ROOT_NAME}] service is ready!`);
+        if (STAGE && STAGE != 'local') {
+            _inf('#STAGE =', STAGE);
+            _inf(`! engine[${ROOT_NAME}] service is ready!`);
+        }
         return $engine;
     };
 
