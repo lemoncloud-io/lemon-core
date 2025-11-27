@@ -7,6 +7,12 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+//* Mock request module BEFORE any imports that use it
+const originalRequest = jest.requireActual('request');
+const mockRequestImpl = jest.fn();
+
+jest.mock('request', () => mockRequestImpl);
+
 import $engine, { $U } from '../../engine';
 import { GETERR, _it, expect2 } from '../../common/test-helper';
 import {
@@ -36,6 +42,34 @@ const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHt
 //! main test body.
 describe('APIService', () => {
     jest.setTimeout(10000);
+
+    //* Setup request mock to cover lines 560-565, 596, 598-601
+    beforeEach(() => {
+        mockRequestImpl.mockImplementation((options: any, callback: any) => {
+            const uri = options.uri || '';
+
+            //* Test JSON parsing logic
+            if (uri.includes('json-object-coverage-test')) {
+                // JSON object string parsing
+                return callback(null, { statusCode: 200 }, '{"coverage":"test","type":"object"}');
+            }
+            if (uri.includes('json-array-coverage-test')) {
+                // JSON array string parsing
+                return callback(null, { statusCode: 200 }, '[{"coverage":"test","type":"array"}]');
+            }
+            if (uri.includes('invalid-json-coverage-test')) {
+                // invalid JSON catch block
+                return callback(null, { statusCode: 200 }, '{"invalid": json, no quotes}');
+            }
+
+            //* For all other requests, use the original request module
+            return originalRequest(options, callback);
+        });
+    });
+
+    afterEach(() => {
+        mockRequestImpl.mockClear();
+    });
 
     //* via direct request.
     it('should pass API w/ direct request', async () => {
@@ -192,7 +226,7 @@ describe('APIService', () => {
         const removeDir = (dirPath: string) => {
             if (fs.existsSync(dirPath)) {
                 const files = fs.readdirSync(dirPath);
-                files.forEach((file) => {
+                files.forEach(file => {
                     const filePath = `${dirPath}/${file}`;
                     if (fs.lstatSync(filePath).isDirectory()) {
                         removeDir(filePath); // recursive call for subdirectories
@@ -693,7 +727,7 @@ describe('APIService', () => {
         const hasNotFoundError3 = res3.includes('404 NOT FOUND');
         expect2(hasNotFoundError3).toEqual(true); // expect error message
 
-        //* test JSON parsing error scenarios (598-601)
+        //* test JSON parsing error scenarios
         const jsonParsingProxy: ApiHttpProxy = {
             hello: () => 'json-parsing-proxy',
             doProxy: async <T = any>(
@@ -742,17 +776,19 @@ describe('APIService', () => {
 
     //* test MocksAPIService error handling
     it('should handle MocksAPIService error scenarios', async () => {
-        const proxy = new MocksAPIService('world', 'https://api.lemoncloud.io/hello');
+        const proxy = new MocksAPIService('test', 'https://api.lemoncloud.io/hello');
 
-        //* test JSON error parsing
-        expect2(await proxy.doProxy('GET', 'error-json', 'test').catch(GETERR)).toEqual(
-            '404 NOT FOUND - GET https://api.lemoncloud.io/hello/error-json/test',
-        ); // expect error message
+        //* test JSON string error
+        const jsonError = await proxy.doProxy('GET', 'test', 'error-json').catch(GETERR);
+        expect2(jsonError).toEqual('{"message":"JSON error","code":500}'); // JSON.parse result stringified by GETERR
 
-        //* test object error handling
-        expect2(await proxy.doProxy('GET', 'error-object', 'test').catch(GETERR)).toEqual(
-            '404 NOT FOUND - GET https://api.lemoncloud.io/hello/error-object/test',
-        );
+        //* test plain string error
+        const stringError = await proxy.doProxy('GET', 'test', 'error-string').catch(GETERR);
+        expect2(stringError).toEqual('Plain string error message');
+
+        //* test object error
+        const objectError = await proxy.doProxy('GET', 'test', 'error-object').catch(GETERR);
+        expect2(objectError).toEqual('{"message":"Error object","statusCode":400}'); // Object stringified by GETERR
 
         //* test JSON parsing scenarios with mock proxy
         const mockProxy: ApiHttpProxy = {
@@ -815,12 +851,12 @@ describe('APIService', () => {
         const { service: advancedService } = instance(undefined, undefined, advancedMockProxy);
 
         // Test string error that looks like JSON
-        const stringError = await advancedService.doGet('json-string-error').catch(GETERR);
-        expect2(stringError).toEqual('{"error": "string error"}');
+        const advStringError = await advancedService.doGet('json-string-error').catch(GETERR);
+        expect2(advStringError).toEqual('{"error": "string error"}');
 
         // Test object error
-        const objectError = await advancedService.doGet('object-error').catch(GETERR);
-        expect2(objectError).toEqual('{"error":"object error"}');
+        const advObjectError = await advancedService.doGet('object-error').catch(GETERR);
+        expect2(advObjectError).toEqual('{"error":"object error"}');
 
         // Test valid JSON array parsing
         const validArray = await advancedService.doGet('valid-json-array');
@@ -856,15 +892,15 @@ describe('APIService', () => {
 
         const { service: errorService } = instance(undefined, undefined, mockWithJsonError);
 
-        // Test JSON string error handling (705-706)
+        // test JSON string error handling
         const jsonErrorResult = await errorService.doGet('json-error').catch(GETERR);
         expect2(jsonErrorResult).toEqual('{"error": "JSON string error"}');
 
-        // Test object error handling (708)
+        // test object error handling
         const objectErrorResult = await errorService.doGet('object-error').catch(GETERR);
         expect2(objectErrorResult).toEqual('{"error":"Direct object error"}');
 
-        // Test simple string error handling
+        // test simple string error handling
         const stringErrorResult = await errorService.doGet('string-error').catch(GETERR);
         expect2(stringErrorResult).toEqual('Simple string error');
     });
@@ -897,7 +933,7 @@ describe('APIService', () => {
         const removeDir = (dirPath: string) => {
             if (fs.existsSync(dirPath)) {
                 const files = fs.readdirSync(dirPath);
-                files.forEach((file) => {
+                files.forEach(file => {
                     const filePath = `${dirPath}/${file}`;
                     if (fs.lstatSync(filePath).isDirectory()) {
                         removeDir(filePath); // recursive call for subdirectories
@@ -909,5 +945,47 @@ describe('APIService', () => {
             }
         };
         removeDir('./test-logs');
+    });
+
+    //* test backbone proxy creation
+    it('should create proxy with backbone', async () => {
+        const backbone = 'https://backbone.example.com';
+        const headers: APIHeaders = { Authorization: 'Bearer test-token' };
+
+        //* test backbone proxy creation
+        const client = APIService.buildClient(TYPE, ENDPOINT, headers, backbone);
+
+        expect2(client.hello()).toEqual(expect.stringContaining('WEB:'));
+    });
+
+    //* test createHttpWebProxy with request mocking
+    it('should handle request with headers and JSON parsing', async () => {
+        const headers: APIHeaders = {
+            'X-API-Key': 'test-key-123',
+            Authorization: 'Bearer token-456',
+        };
+
+        //* test client with headers
+        const client = APIService.buildClient(TYPE, ENDPOINT, headers);
+        expect2(client.hello()).toEqual(expect.stringContaining('http-web-proxy'));
+
+        //* test JSON object string parsing
+        const jsonObjectResult = await client.doGet('json-object-coverage-test');
+        expect2(jsonObjectResult).toEqual({ coverage: 'test', type: 'object' });
+
+        //* test JSON array string parsing
+        const jsonArrayResult = await client.doGet('json-array-coverage-test');
+        expect2(jsonArrayResult).toEqual([{ coverage: 'test', type: 'array' }]);
+
+        //* test invalid JSON catch block
+        const invalidJsonResult = await client.doGet('invalid-json-coverage-test');
+        expect2(invalidJsonResult).toEqual('{"invalid": json, no quotes}'); // returned as-is
+
+        //* test headers were relayed
+        //* Note: When relayHeaderKey is empty (''), headers are passed as-is
+        const lastCall = mockRequestImpl.mock.calls[mockRequestImpl.mock.calls.length - 1];
+        const requestOptions = lastCall[0];
+        //* test headers should exist
+        expect2(() => requestOptions.headers).toEqual(expect.any(Object));
     });
 });
