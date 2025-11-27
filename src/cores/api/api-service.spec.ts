@@ -672,7 +672,7 @@ describe('APIService', () => {
     });
 
     //* test error handling in HTTP proxy
-   _it('should handle HTTP proxy error scenarios', async () => {
+    _it('should handle HTTP proxy error scenarios', async () => {
         const TYPE = 'echo';
         const ENDPOINT = 'http://localhost:8888';
         const client: APIServiceClient = APIService.buildClient(TYPE, ENDPOINT, undefined, '');
