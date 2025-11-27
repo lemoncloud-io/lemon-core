@@ -1,0 +1,10 @@
+{
+    "!": "error case with plain string",
+    "param": {
+        "method": "GET",
+        "endpoint": "https://api.lemoncloud.io/hello/test",
+        "id": "error-string"
+    },
+    "data": null,
+    "error": "Plain string error message"
+}

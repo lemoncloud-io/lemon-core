@@ -1,0 +1,10 @@
+{
+    "!": "error case with JSON string",
+    "param": {
+        "method": "GET",
+        "endpoint": "https://api.lemoncloud.io/hello/test",
+        "id": "error-json"
+    },
+    "data": null,
+    "error": "{\"message\":\"JSON error\",\"code\":500}"
+}
