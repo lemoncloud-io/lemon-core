@@ -52,6 +52,25 @@ describe('environ', () => {
             jest.restoreAllMocks();
         });
 
+        it('should return null when module cannot be found (line 35)', async () => {
+            //* clear all module caches first
+            jest.resetModules();
+            jest.resetAllMocks();
+
+            //* use jest.doMock to throw module not found error BEFORE requiring environ
+            jest.doMock('lemon-devkit', () => {
+                const err = new Error("Cannot find module 'lemon-devkit'") as any;
+                err.code = 'MODULE_NOT_FOUND';
+                throw err;
+            });
+
+            //* when loadEnviron is called, _load will catch the error and return null
+            //* since $tools is null, it should throw the missing function error
+            expect2(() => loadEnviron(null, { ENV: 'test' })).toEqual(
+                'loadEnviron(function) is required (npm i -D lemon-devkit) - loadEnviron()',
+            );
+        });
+
         it('should throw error when lemon-devkit is missing loadEnviron function', async () => {
             jest.isolateModules(() => {
                 //* mock lemon-devkit without loadEnviron function
