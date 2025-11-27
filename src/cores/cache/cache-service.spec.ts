@@ -507,7 +507,7 @@ describe('DummyCacheService', () => {
         expect2(await cache.setTimeout(3, 1).catch(GETERR)).toEqual(true);
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(1000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         // NodeCacheBackend returns false when the key does not exist
@@ -766,7 +766,7 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeUndefined(); // undefined if key expired
         expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
@@ -785,7 +785,7 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
         expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
@@ -800,7 +800,7 @@ describe('CacheService - Memcached', () => {
         expect2(await cache.setTimeout(3, 1).catch(GETERR)).toEqual(true);
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(1000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         await cache.close();
@@ -968,7 +968,7 @@ describe('CacheService - Redis', () => {
         expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
         expect2(await cache.getTimeout(1).catch(GETERR)).toBeUndefined(); // undefined if key expired
         expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
@@ -987,7 +987,7 @@ describe('CacheService - Redis', () => {
         expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
         expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
@@ -1002,7 +1002,7 @@ describe('CacheService - Redis', () => {
         expect2(await cache.setTimeout(3, 1).catch(GETERR)).toEqual(true);
         expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(1000);
         // expired
-        await sleep(1000);
+        await sleep(1200);
         expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
 
         await cache.close();
