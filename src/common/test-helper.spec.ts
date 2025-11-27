@@ -100,7 +100,8 @@ describe('TestHelper', () => {
     //* test waited()
     it('should pass waited() by 200msec', async () => {
         const t1 = new Date().getTime();
-        expect2(await waited()).toEqual(undefined);
+        const result = await waited();
+        expect2(() => result).toEqual(undefined);
         const t2 = new Date().getTime();
         expect2(t2 - t1 >= 200).toEqual(true);
     });
