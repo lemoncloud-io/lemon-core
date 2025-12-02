@@ -138,5 +138,87 @@ describe('DummyController', () => {
         expect2(controller.asFuncName('GET', 'hello', '-')).toEqual('getHello_');
         expect2(controller.asFuncName('GET', 'hello', '-_--')).toEqual('getHello____');
         expect2(controller.asFuncName('GET', 'hello', '-Me')).toEqual('getHelloMe');
+
+        // decode test
+        const decoded1 = controller.decode('GET', 'test', '');
+        expect2(typeof decoded1).toEqual('function');
+
+        const decoded2 = controller.decode('GET', 'test', 'custom');
+        expect2(decoded2).toEqual(null); // non-exist handler
+
+        const decoded3 = controller.decode('LIST', '', '');
+        expect2(typeof decoded3).toEqual('function'); // do_list handler exist
+    });
+
+    //* test constructor with different parameters
+    it('should pass constructor with different idName', async () => {
+        //* test with custom idName (using existing data file: dummy-controller-data.yml)
+        const { controller: controller1 } = instance(type, name, '_id');
+        expect2(() => controller1.hello()).toEqual(`dummy-controller:${type}/${name}`);
+
+        //* test with name undefined (defaults to type) - dummy-controller-data.yml exists
+        const { controller: controller2 } = instance('controller', undefined, 'id');
+        expect2(() => controller2.hello()).toEqual(`dummy-controller:controller/controller`);
+
+        //* test with different type and name - using existing 'account' data
+        const { controller: controller3 } = instance('user', 'account', 'id');
+        expect2(() => controller3.hello()).toEqual(`dummy-controller:user/account`);
+    });
+
+    //* test decode method
+    it('should pass decode() edge cases', async () => {
+        const { controller } = instance(type, name);
+
+        //* decode with various mode values
+        const decodedGet = controller.decode('GET', 'test-id', '');
+        expect2(typeof decodedGet).toEqual('function');
+
+        const decodedPost = controller.decode('POST', 'test-id', '');
+        expect2(typeof decodedPost).toEqual('function');
+
+        const decodedPut = controller.decode('PUT', 'test-id', '');
+        expect2(typeof decodedPut).toEqual('function');
+
+        const decodedDelete = controller.decode('DELETE', 'test-id', '');
+        expect2(typeof decodedDelete).toEqual('function');
+
+        const decodedList = controller.decode('LIST', '', '');
+        expect2(typeof decodedList).toEqual('function');
+
+        //* decode with cmd (should find handler via super.decode first)
+        const decodedWithCmd = controller.decode('GET', 'test-id', 'custom');
+        expect2(decodedWithCmd).toEqual(null);
+
+        //* decode with patch mode (no handler exists for PATCH)
+        const decodedPatch = controller.decode('PATCH', 'test-id', '');
+        expect2(decodedPatch).toEqual(null);
+
+        //* test super.decode finding a handler (line 60 coverage)
+        //* add a method that super.decode can find via asFuncName pattern
+        (controller as any).getDummy = () => 'test-handler';
+        const decodedSuper = controller.decode('GET', 'test-id', '');
+        expect2(typeof decodedSuper).toEqual('function');
+
+        //* test do_list
+        expect2(await controller.do_list('', null, null, null).catch(GETERR)).toEqual({
+            limit: 1,
+            list: [{ id: 'A0', type: 'user', name: 'lemon' }],
+            page: 1,
+            total: 2,
+        });
+
+        expect2(await controller.do_list('', undefined, null, null).catch(GETERR)).toEqual({
+            limit: 1,
+            list: [{ id: 'A0', type: 'user', name: 'lemon' }],
+            page: 1,
+            total: 2,
+        });
+
+        expect2(await controller.do_list('', {}, null, null).catch(GETERR)).toEqual({
+            limit: 1,
+            list: [{ id: 'A0', type: 'user', name: 'lemon' }],
+            page: 1,
+            total: 2,
+        });
     });
 });

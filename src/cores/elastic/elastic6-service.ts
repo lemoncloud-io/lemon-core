@@ -1244,7 +1244,7 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
 
                 //* clear mappings.
                 const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
-                CLEANS.map(key => delete ES_SETTINGS.properties[key]);
+                CLEANS.map(key => delete ES_SETTINGS?.properties?.[key]);
             }
         }
 
@@ -1477,5 +1477,54 @@ export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service
         }
         this.buffer[id] = item;
         return { id: id, _version: Number(org._version || 0) + 1, ...updates };
+    }
+
+    public async pushItem(item: T): Promise<T> {
+        const { idName } = this.options;
+        // Generate auto ID for time-series data
+        const id = `auto-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        this.buffer[id] = { ...item, [idName]: id };
+        return { [idName]: id, ...item, _version: 1 };
+    }
+
+    public async searchRaw<R extends object = any>(body: SearchBody): Promise<R> {
+        if (!body) throw new Error('@body (SearchBody) is required');
+        const { idName } = this.options;
+        const size = body.size || 10;
+        const from = body.from || 0;
+
+        // Simple search: get all items from buffer
+        const allItems = Object.entries(this.buffer).map(([id, item]) => ({
+            _id: id,
+            _source: item,
+            _score: 1.0,
+        }));
+
+        // Apply pagination
+        const hits = allItems.slice(from, from + size);
+
+        return {
+            hits: {
+                total: allItems.length,
+                hits,
+            },
+        } as R;
+    }
+
+    public async search(body: SearchBody): Promise<SearchResponse> {
+        const size = body.size || 10;
+        const response: any = await this.searchRaw(body);
+        const hits = response.hits;
+
+        return {
+            total: hits.total,
+            list: hits.hits.map((hit: any) => ({
+                ...hit._source,
+                _id: hit._id,
+                _score: hit._score,
+            })),
+            last: hits.hits.length === size && size > 0 ? hits.hits[size - 1]?.sort : undefined,
+            aggregations: response.aggregations,
+        };
     }
 }

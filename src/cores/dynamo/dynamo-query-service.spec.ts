@@ -88,4 +88,316 @@ describe('DynamoQueryService', () => {
         // Cleanup table
         await Promise.all([...dataMap.keys()].map(id => dynamo.deleteItem(id)));
     });
+
+    it('should pass constructor test', () => {
+        expect2(() => new DynamoQueryService({ idName: 'ID' } as any)).toEqual('.tableName is required');
+        expect2(() => new DynamoQueryService({ tableName: 'Test' } as any)).toEqual('.idName is required');
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID' });
+        expect2(service.hello()).toEqual('dynamo-query-service:TestTable');
+        const result = service.buildQuery('pk1', -1, -1, undefined, undefined, undefined);
+
+        expect2(result).toEqual({
+            TableName: 'TestTable',
+            KeyConditionExpression: '(#ID = :ID)',
+            ExpressionAttributeNames: { '#ID': 'ID' },
+            ExpressionAttributeValues: { ':ID': 'pk1' },
+            ScanIndexForward: true,
+        });
+    });
+
+    //* Test buildQuery with sortName and between
+    it('should build query with sortName and between range', () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+        const result = service.buildQuery('pk1', 10, 20, undefined, undefined, undefined);
+
+        expect2(result.TableName).toEqual('TestTable');
+        expect2(result.KeyConditionExpression).toEqual('(#Sort BETWEEN :Sort AND :Sort_2) AND (#ID = :ID)');
+        expect2(result.ExpressionAttributeNames).toEqual({ '#ID': 'ID', '#Sort': 'Sort' });
+        expect2(result.ExpressionAttributeValues).toEqual({ ':ID': 'pk1', ':Sort': 10, ':Sort_2': 20 });
+        expect2(result.ScanIndexForward).toEqual(true);
+    });
+
+    //* Test buildQuery with sortName and gte
+    it('should build query with sortName and gte', () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+        const result = service.buildQuery('pk1', -1, -1, undefined, undefined, undefined);
+
+        expect2(result.TableName).toEqual('TestTable');
+        expect2(result.KeyConditionExpression).toEqual('(#Sort >= :Sort) AND (#ID = :ID)');
+        expect2(result.ExpressionAttributeNames).toEqual({ '#ID': 'ID', '#Sort': 'Sort' });
+        expect2(result.ExpressionAttributeValues).toEqual({ ':ID': 'pk1', ':Sort': 0 });
+        expect2(result.ScanIndexForward).toEqual(true);
+    });
+
+    //* Test buildQuery with isDesc
+    it('should build query with descending order', () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+        const result = service.buildQuery('pk1', -1, -1, undefined, undefined, true);
+
+        expect2(result.ScanIndexForward).toEqual(false);
+    });
+
+    //* Test buildQuery with limit
+    it('should build query with limit', () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID' });
+        const result = service.buildQuery('pk1', -1, -1, 10, undefined, undefined);
+
+        expect2(result.Limit).toEqual(10);
+    });
+
+    //* Test buildQuery with last (startKey)
+    it('should build query with last evaluated key', () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+        const result = service.buildQuery('pk1', -1, -1, undefined, 100, undefined);
+
+        expect2(result.ExclusiveStartKey).toEqual({ ID: 'pk1', Sort: 100 });
+    });
+
+    //* Test buildQuery with @ prefix replacement
+    it('should replace @ prefix in attribute names', () => {
+        const service = new DynamoQueryService({
+            tableName: 'TestTable',
+            idName: '@id',
+            sortName: '@sort',
+        });
+        const result = service.buildQuery('pk1', 10, 20, undefined, undefined, undefined);
+
+        expect2(result.ExpressionAttributeNames['#_id']).toEqual('@id');
+        expect2(result.ExpressionAttributeNames['#_sort']).toEqual('@sort');
+        expect2(result.KeyConditionExpression).toEqual('(#_sort BETWEEN :_sort AND :_sort_2) AND (#_id = :_id)');
+    });
+
+    //* Test queryAll with mock
+    it('should execute queryAll successfully', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+
+        const mockSend = jest.fn().mockResolvedValue({
+            Items: [{ ID: 'pk1', Sort: 1, data: 'test1' }],
+            Count: 1,
+            ScannedCount: 1,
+            LastEvaluatedKey: { ID: 'pk1', Sort: 1 },
+            ConsumedCapacity: { CapacityUnits: 1, TableName: 'TestTable' }
+        });
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryAll('pk1');
+
+        expect2(result.list).toEqual([{ ID: 'pk1', Sort: 1, data: 'test1' }]);
+        expect2(result.count).toEqual(1);
+        expect2(result.last).toEqual(1);
+    });
+
+    //* Test queryAll with limit and isDesc
+    it('should execute queryAll with limit and descending', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+
+        const mockSend = jest.fn().mockResolvedValue({
+            Items: [
+                { ID: 'pk1', Sort: 2 },
+                { ID: 'pk1', Sort: 1 },
+            ],
+            Count: 2,
+            ScannedCount: 2,
+            ConsumedCapacity: { CapacityUnits: 1, TableName: 'TestTable' }
+        });
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryAll('pk1', 2, true);
+
+        expect2(result.list).toEqual([
+            { ID: 'pk1', Sort: 2 },
+            { ID: 'pk1', Sort: 1 },
+        ]);
+        expect2(result.count).toEqual(2);
+    });
+
+    //* Test queryRange
+    it('should execute queryRange successfully', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+
+        const mockSend = jest.fn().mockResolvedValue({
+            Items: [
+                { ID: 'pk1', Sort: 10 },
+                { ID: 'pk1', Sort: 15 },
+            ],
+            Count: 2,
+            ScannedCount: 2,
+            LastEvaluatedKey: { ID: 'pk1', Sort: 15 },
+            ConsumedCapacity: { CapacityUnits: 1, TableName: 'TestTable' }
+        });
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRange('pk1', 10, 20);
+
+        expect2(result.list).toEqual([
+            { ID: 'pk1', Sort: 10 },
+            { ID: 'pk1', Sort: 15 },
+        ]);
+        expect2(result.count).toEqual(2);
+        expect2(result.last).toEqual(15);
+    });
+
+    //* Test queryRange with limit and last
+    it('should execute queryRange with limit and last', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+
+        const mockSend = jest.fn().mockResolvedValue({
+            Items: [{ ID: 'pk1', Sort: 25 }],
+            Count: 1,
+            ScannedCount: 1,
+            ConsumedCapacity: { CapacityUnits: 1, TableName: 'TestTable' }
+        });
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRange('pk1', 20, 30, 1, 24);
+
+        expect2(result.list).toEqual([{ ID: 'pk1', Sort: 25 }]);
+        expect2(result.count).toEqual(1);
+    });
+
+    //* Test queryRangeBy with all parameters
+    it('should execute queryRangeBy with all parameters', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+
+        const mockSend = jest.fn().mockResolvedValue({
+            Items: [
+                { ID: 'pk1', Sort: 30 },
+                { ID: 'pk1', Sort: 25 },
+            ],
+            Count: 2,
+            ScannedCount: 2,
+            LastEvaluatedKey: { ID: 'pk1', Sort: 25 },
+            ConsumedCapacity: { CapacityUnits: 1, TableName: 'TestTable' }
+        });
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRangeBy('pk1', 20, 30, 2, 31, true);
+
+        expect2(result.list).toEqual([
+            { ID: 'pk1', Sort: 30 },
+            { ID: 'pk1', Sort: 25 },
+        ]);
+        expect2(result.count).toEqual(2);
+        expect2(result.last).toEqual(25);
+    });
+
+    //* Test queryRangeBy with empty response
+    it('should handle empty response', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID' });
+
+        const mockSend = jest.fn().mockResolvedValue({
+            Items: [],
+            Count: 0,
+            ScannedCount: 0,
+            ConsumedCapacity: { CapacityUnits: 0, TableName: 'TestTable' }
+        });
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRangeBy('pk1', -1, -1);
+
+        expect2(result.list).toEqual([]);
+        expect2(result.count).toEqual(0);
+    });
+
+    //* Test queryRangeBy with null response
+    it('should handle null response', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID' });
+
+        const mockSend = jest.fn().mockResolvedValue(null);
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRangeBy('pk1', -1, -1);
+
+        expect2(result.list).toEqual([]);
+    });
+
+    it('should handle empty object response', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID' });
+
+        const mockSend = jest.fn().mockResolvedValue({});
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRangeBy('pk1', -1, -1);
+
+        expect2(result.list).toEqual([]);
+    });
+
+    //* Test queryRangeBy with undefined response
+    it('should handle undefined response', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID' });
+
+        const mockSend = jest.fn().mockResolvedValue(undefined);
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRangeBy('pk1', -1, -1);
+
+        expect2(result.list).toEqual([]);
+    });
+
+    //* Test queryRangeBy without LastEvaluatedKey
+    it('should handle response without LastEvaluatedKey', async () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+
+        const mockSend = jest.fn().mockResolvedValue({
+            Items: [{ ID: 'pk1', Sort: 1 }],
+            Count: 1,
+            ScannedCount: 1,
+            ConsumedCapacity: { CapacityUnits: 1, TableName: 'TestTable' }
+        });
+
+        jest.spyOn(DynamoService, 'instance').mockReturnValue({
+            dynamodoc: jest.fn().mockResolvedValue({ send: mockSend }),
+        } as any);
+
+        const result = await service.queryRangeBy('pk1', -1, -1);
+
+        expect2(result.list).toEqual([{ ID: 'pk1', Sort: 1 }]);
+        expect2(result.count).toEqual(1);
+        expect2(result.last).toEqual(0);
+    });
+
+    //* Test buildQuery with all combinations
+    it('should throw error when limit is 0', () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID' });
+
+        expect2(() => service.buildQuery('pk1', -1, -1, 0, undefined, undefined)).toEqual(
+            'Limit must be greater than 0',
+        );
+    });
+
+    it('should build query with from=0 and to=0', () => {
+        const service = new DynamoQueryService({ tableName: 'TestTable', idName: 'ID', sortName: 'Sort' });
+        const result = service.buildQuery('pk1', 0, 0, undefined, undefined, undefined);
+
+        expect2(result.KeyConditionExpression).toEqual('(#Sort BETWEEN :Sort AND :Sort_2) AND (#ID = :ID)');
+        expect2(result.ExpressionAttributeValues[':Sort']).toEqual(0);
+        expect2(result.ExpressionAttributeValues[':Sort_2']).toEqual(0);
+    });
 });

@@ -98,4 +98,37 @@ describe('LambdaAlbHandler', () => {
             expect2(() => $body?.context).toEqual({ ...expCtx });
         }
     });
+
+    //* ALBHttpHeaderTool tests for 100% coverage
+    it('should test ALBHttpHeaderTool methods', async () => {
+        const { service } = instance();
+        const event = loadJsonSync<ALBEvent>('data/samples/events/sample.event.alb.json');
+        const tool = service.tools(event);
+
+        // Test hello()
+        expect2(() => tool.hello()).toEqual('header-tool-by-default');
+
+        // Test getHeaders()
+        const userAgentHeaders = tool.getHeaders('user-agent');
+        expect2(() => userAgentHeaders.length).toBeGreaterThan(0);
+
+        // Test parseLanguageHeader()
+        const lang = tool.parseLanguageHeader();
+        expect2(() => typeof lang).toEqual('undefined');
+    });
+
+    //* prepareContext error case
+    it('should handle prepareContext error when targetGroupArn is invalid', async () => {
+        const { service } = instance();
+        const event = loadJsonSync<ALBEvent>('data/samples/events/sample.event.alb.json');
+        const tool = service.tools(event);
+
+        // Create invalid request context without targetGroupArn
+        const invalidReqContext: any = {
+            elb: {}, // targetGroupArn is missing
+        };
+
+        const error = await tool.prepareContext({}, invalidReqContext).catch(GETERR$);
+        expect2(() => (error as any).error).toContain('.targetGroupArn is invalid');
+    });
 });

@@ -13,6 +13,7 @@ import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from './lambda-handler';
 import { LambdaDynamoStreamHandler, DynamoStreamFilter, DynamoStreamCallback } from './lambda-dynamo-stream-handler';
 import { DynamoOption } from './../dynamo/';
+import { DummyElastic6Service, Elastic6Option } from './../elastic/';
 import * as $lambda from './lambda-handler.spec';
 import * as $elastic6 from './../elastic/elastic6-service.spec';
 
@@ -134,5 +135,149 @@ describe('LambdaDynamoStreamHandler', () => {
         expect2(res2).toEqual(undefined);
         expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`); // must be deleted.
         expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: true });
+    });
+
+    //* Test error handling in listener
+    it('should handle listener error', async () => {
+        const { service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        service.addListener(async () => {
+            throw new Error('Test listener error');
+        });
+        const res = await service.handle(event, null);
+        expect2(() => res).toEqual(undefined);
+    });
+
+    //* Test table name mismatch
+    it('should handle table name mismatch', async () => {
+        const { service } = instance();
+        const { dummy: elastic6 } = $elastic6.instance();
+        const tableName = 'DifferentTable';
+        const idName = '@id';
+        const options: DynamoOption = { tableName, idName };
+
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6);
+        service.addListener(handler);
+
+        const res = await service.handle(event, null);
+        expect2(() => res).toEqual(undefined);
+    });
+
+    //* Test missing node id
+    it('should handle missing node id', async () => {
+        const { service } = instance();
+        const { dummy: elastic6 } = $elastic6.instance();
+        const tableName = 'MetricsTest';
+        const idName = '@missing';
+        const options: DynamoOption = { tableName, idName };
+
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6);
+        service.addListener(handler);
+
+        const res = await service.handle(event, null);
+        expect2(() => res).toEqual(undefined);
+    });
+
+    //* Test filter returning false
+    it('should handle filter bypass', async () => {
+        const { service } = instance();
+        const { dummy: elastic6 } = $elastic6.instance();
+        const tableName = 'MetricsTest';
+        const idName = '@id';
+        const options: DynamoOption = { tableName, idName };
+
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        const filter: DynamoStreamFilter = () => false;
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6, filter);
+        service.addListener(handler);
+
+        const res = await service.handle(event, null);
+        expect2(() => res).toEqual(undefined);
+    });
+
+    //* Test hasDecomposed case
+    it('should handle hasDecomposed sync', async () => {
+        const { service } = instance();
+        const options6: Elastic6Option = {
+            endpoint: 'http://localhost:9200',
+            indexName: 'test-idx',
+            idName: '@id',
+            autocompleteFields: ['name'],
+        };
+        const elastic6 = new DummyElastic6Service('dummy-elastic6-data.yml', options6);
+
+        const tableName = 'MetricsTest';
+        const idName = '@id';
+        const id = 'A002';
+        const options: DynamoOption = { tableName, idName };
+
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        event.Records[0].dynamodb.Keys[idName] = { S: id };
+        event.Records[0].dynamodb.NewImage[idName] = { S: id };
+        event.Records[0].dynamodb.OldImage[idName] = { S: id };
+
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6);
+        service.addListener(handler);
+
+        const res = await service.handle(event, null);
+        expect2(() => res).toEqual(undefined);
+        const saved: any = await elastic6.readItem(id).catch(GETERR);
+        expect2(() => saved[idName]).toEqual(id);
+    });
+
+    //* Test INSERT event (no diff)
+    it('should handle INSERT event without diff', async () => {
+        const { service } = instance();
+        const { dummy: elastic6 } = $elastic6.instance();
+        const tableName = 'MetricsTest';
+        const idName = '@id';
+        const id = 'A003';
+        const options: DynamoOption = { tableName, idName };
+
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        event.Records[0].eventName = 'INSERT';
+        event.Records[0].dynamodb.Keys[idName] = { S: id };
+        event.Records[0].dynamodb.NewImage = { [idName]: { S: id }, name: { S: 'test' } };
+        event.Records[0].dynamodb.OldImage = null;
+
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6);
+        service.addListener(handler);
+
+        const res = await service.handle(event, null);
+        expect2(() => res).toEqual(undefined);
+        const saved: any = await elastic6.readItem(id).catch(GETERR);
+        expect2(() => saved.name).toEqual('test');
+    });
+
+    //* Test updateItem error (non-404)
+    it('should handle updateItem error', async () => {
+        const { service } = instance();
+        const { dummy: elastic6 } = $elastic6.instance();
+        const tableName = 'MetricsTest';
+        const idName = '@id';
+        const id = 'A004';
+        const options: DynamoOption = { tableName, idName };
+
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        event.Records[0].dynamodb.Keys[idName] = { S: id };
+        event.Records[0].dynamodb.NewImage[idName] = { S: id };
+        event.Records[0].dynamodb.OldImage[idName] = { S: id };
+
+        //* Mock updateItem to throw non-404 error
+        const originalUpdate = elastic6.updateItem.bind(elastic6);
+        elastic6.updateItem = async () => {
+            throw new Error('500 INTERNAL ERROR');
+        };
+
+        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(options, elastic6);
+        service.addListener(handler);
+
+        const res = await service.handle(event, null);
+        expect2(() => res).toEqual(undefined);
+
+        //* Restore
+        elastic6.updateItem = originalUpdate;
     });
 });

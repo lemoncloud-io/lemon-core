@@ -8,7 +8,7 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
-import { ProtocolParam, Elastic6QueryService } from '../cores';
+import { ProtocolParam, Elastic6QueryService, SimpleSearchParam } from '../cores';
 import { buildEngine } from '../engine';
 import { buildExpress } from '../tools';
 import { expect2, GETERR } from '../common/test-helper';
@@ -43,12 +43,21 @@ class MyGeneralAPIController extends GeneralAPIController<TypedStorageService<$p
 }
 
 //* create instance.
-export const instance = (type: 'dummy', unique?: string) => {
+export const instance = (type: 'dummy', unique?: string, withSearch = false) => {
     const { storage2 } = $proxy.instance(type == 'dummy' ? 'dummy-account-data.yml' : type);
     const $lambda = new LambdaHandler();
     const $web = new LambdaWEBHandlerLocal($lambda);
     const storage = storage2.makeTypedStorageService('test');
-    const controller = new MyGeneralAPIController('test', storage, null, unique);
+    //* create mock search service if requested
+    const search = withSearch
+        ? ({
+              searchSimple: async (param: SimpleSearchParam) => {
+                  return { total: 0, list: [] as any[], page: param?.$page || 0, limit: param?.$limit || 12 };
+              },
+          } as any)
+        : null;
+    const controller = new MyGeneralAPIController('test', storage, search, unique);
+
     $web.addController(controller);
     //* build engine + express.app.
     const $engine = buildEngine({});
@@ -411,5 +420,118 @@ describe('GeneralController', () => {
         expect2(await storage.read('#name/BBB').catch(GETERR), 'id,type,stereo,meta').toEqual(
             '404 NOT FOUND - _id:TT:test:#name/BBB',
         ); // lookup-data (no exists)
+
+        //* listBase test - search is null
+        try {
+            await request(app).get('/test?page=1&limit=5');
+        } catch (err) {
+            expect2(err.message.includes('searchSimple')).toEqual(true);
+        }
+
+        //* asFuncName test - base function mapping
+        expect2(controller.asFuncName('GET', 'test', '')).toEqual('getBase'); // actually mapped to getBase
+        expect2(controller.asFuncName('GET', 'base', '')).toEqual('getBase');
+    });
+
+    //* test listBase with search service
+    it('should pass listBase() with search service', async () => {
+        const { controller, app } = instance('dummy', undefined, true);
+        expect2(() => controller.hello()).toEqual('general-api-controller:test');
+
+        //* test listBase with default params
+        expect2(await request(app).get('/test'), 'status,body').toEqual({
+            status: 200,
+            body: { total: 0, list: [], page: 0, limit: 12 },
+        });
+
+        //* test listBase with custom page & limit
+        expect2(await request(app).get('/test?page=2&limit=20'), 'status,body').toEqual({
+            status: 200,
+            body: { total: 0, list: [], page: 2, limit: 20 },
+        });
+
+        //* test listBase with ipp (legacy parameter)
+        expect2(await request(app).get('/test?page=1&ipp=10'), 'status,body').toEqual({
+            status: 200,
+            body: { total: 0, list: [], page: 1, limit: 10 },
+        });
+    });
+
+    //* test edge cases
+    it('should pass edge cases', async () => {
+        const { controller, app, storage } = instance('dummy', 'name', true);
+
+        //* test deleteBase with destroy and unique field
+        //* first create an item
+        const created = (await request(app).post('/test/edge1').send({ name: 'ToDelete' })).body;
+        expect2(created, 'id,type,name').toEqual({ id: 'edge1', type: 'test', name: 'ToDelete' });
+
+        //* verify lookup was created
+        expect2(await storage.read('#name/ToDelete').catch(GETERR), 'id,stereo,meta').toEqual({
+            id: '#name/ToDelete',
+            stereo: '#',
+            meta: 'edge1',
+        });
+
+        //* delete with destroy
+        const deleteResult = await request(app).delete('/test/edge1?destroy');
+        expect2(typeof deleteResult.body.deletedAt).toEqual('number');
+
+        //* verify both item and lookup are deleted
+        expect2(await storage.read('edge1').catch(GETERR)).toEqual('404 NOT FOUND - _id:TT:test:edge1');
+        expect2(await storage.read('#name/ToDelete').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:#name/ToDelete',
+        );
+
+        //* test listBase with null param
+        const result1 = await controller.listBase('', null, null, null as any);
+        expect2(result1, 'total,page,limit').toEqual({ total: 0, page: 0, limit: 12 });
+
+        //* test deleteBase with null param
+        await controller.postBase('nulltest', null, { name: 'NullTest' }, null);
+        const result2 = await controller.deleteBase('nulltest', null, null, null);
+        expect2(result2.deletedAt > 0).toEqual(true);
+
+        //* test deleteBase with destroy on non-existent item
+        //* this tests the `: ''` branch where $org is null
+        await request(app).delete('/test/never-existed?destroy');
+
+        //* test postBase with id='0' to trigger auto-id generation
+        const post0Result = await request(app).post('/test/0').send({ name: 'AutoID' });
+        expect2(post0Result.body.type).toEqual('test');
+        expect2(typeof post0Result.body.id).toEqual('string');
+
+        //* cleanup
+        if (post0Result.body.id) await storage.delete(post0Result.body.id, true);
+
+        //* test putBase with various id types
+        await controller.postBase('testput2', null, { name: 'TestPut2' }, null);
+        const putResult = await controller.putBase('testput2' as any, null, { extra: 'data' }, null);
+        expect2(putResult, 'id').toEqual({ id: 'testput2' });
+
+        //* test postBase with id parameter
+        const postResult = await controller.postBase('testpost2' as any, null, { name: 'TestPost2' }, null);
+        expect2(postResult, 'id').toEqual({ id: 'testpost2' });
+
+        //* test with id that has whitespace
+        await controller.postBase(' testid3 ', null, { name: 'TrimTest' }, null);
+        const trimResult = await controller.putBase(' testid3 ' as any, null, { data: 'trimmed' }, null);
+        expect2(trimResult, 'id').toEqual({ id: 'testid3' });
+
+        //* test with falsy id
+        expect2(await controller.putBase(null as any, null, {}, null).catch(GETERR)).toEqual(
+            '@id (string) is required!',
+        );
+        expect2(await controller.postBase(undefined as any, null, {}, null).catch(GETERR)).toEqual(
+            '@id (string) is required!',
+        );
+
+        //* cleanup
+        await storage.delete('testput2', true);
+        await storage.delete('testpost2', true);
+        await storage.delete('testid3', true);
+        await storage.delete('#name/TestPut2', true);
+        await storage.delete('#name/TestPost2', true);
+        await storage.delete('#name/TrimTest', true);
     });
 });

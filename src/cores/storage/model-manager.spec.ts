@@ -266,4 +266,172 @@ describe('ModelManager', () => {
         // not existing model
         expect2(await manager.delete('1000003').catch(GETERR)).toEqual('404 NOT FOUND - user:1000003');
     });
+
+    //* Test constructor with custom namespace
+    it('should pass constructor with custom namespace', async () => {
+        class UserManagerWithNS extends AbstractManager<User, DummyStorageMaker, UserType> {
+            public constructor(parent: DummyStorageMaker, current?: number) {
+                super('user', parent, null, 'uid', 'CUSTOM-NS');
+                this.storage.storage.setTimer(() => current || Date.now());
+            }
+
+            protected prepareDefault($def: User): User {
+                return { active: 1, ...$def };
+            }
+        }
+
+        const parent = new DummyStorageMaker('dummy-user-data.yml');
+        const manager = new UserManagerWithNS(parent, Date.now());
+        expect2(manager.NS).toEqual('CUSTOM-NS');
+    });
+
+    //* Test constructor without uniqueField
+    it('should pass constructor without uniqueField', async () => {
+        class UserManagerNoUnique extends AbstractManager<User, DummyStorageMaker, UserType> {
+            public constructor(parent: DummyStorageMaker, current?: number) {
+                super('user', parent, null, undefined);
+                this.storage.storage.setTimer(() => current || Date.now());
+            }
+
+            protected prepareDefault($def: User): User {
+                return { active: 1, ...$def };
+            }
+        }
+
+        const parent = new DummyStorageMaker('dummy-user-data.yml');
+        const manager = new UserManagerNoUnique(parent, Date.now());
+        expect2(manager.$unique).toEqual(null);
+    });
+
+    //* Test constructor with null namespace
+    it('should pass constructor with null namespace', async () => {
+        class UserManagerNullNS extends AbstractManager<User, DummyStorageMaker, UserType> {
+            public constructor(parent: DummyStorageMaker, current?: number) {
+                super('user', parent, null, 'uid', null);
+                this.storage.storage.setTimer(() => current || Date.now());
+            }
+
+            protected prepareDefault($def: User): User {
+                return { active: 1, ...$def };
+            }
+        }
+
+        const parent = new DummyStorageMaker('dummy-user-data.yml');
+        const manager = new UserManagerNullNS(parent, Date.now());
+        expect2(manager.NS).toEqual(null);
+    });
+
+    //* Test prepare with empty id
+    it('should throw error for empty id in prepare', async () => {
+        const { manager } = instance();
+        expect2(await manager.prepare('').catch(GETERR)).toEqual('404 NOT FOUND - id is not valid!');
+        expect2(await manager.prepare(null).catch(GETERR)).toEqual('404 NOT FOUND - id is not valid!');
+        expect2(await manager.prepare(undefined).catch(GETERR)).toEqual('404 NOT FOUND - id is not valid!');
+    });
+
+    //* Test insert with null model
+    it('should throw error for null model in insert', async () => {
+        const { manager } = instance();
+        expect2(await manager.insert(null).catch(GETERR)).toEqual('@model (user-model) is required!');
+        expect2(await manager.insert(undefined).catch(GETERR)).toEqual('@model (user-model) is required!');
+    });
+
+    //* Test retrieve with empty id
+    it('should throw error for empty id in retrieve', async () => {
+        const { manager } = instance();
+        expect2(await manager.retrieve('').catch(GETERR)).toEqual('@id is required - retrieve(user/)');
+        expect2(await manager.retrieve(null).catch(GETERR)).toEqual('@id is required - retrieve(user/null)');
+        expect2(await manager.retrieve(undefined).catch(GETERR)).toEqual('@id is required - retrieve(user/undefined)');
+    });
+
+    //* Test delete with empty id
+    it('should throw error for empty id in delete', async () => {
+        const { manager } = instance();
+        expect2(await manager.delete('').catch(GETERR)).toEqual('@id is required - delete(user/)');
+        expect2(await manager.delete(null).catch(GETERR)).toEqual('@id is required - delete(user/null)');
+        expect2(await manager.delete(undefined).catch(GETERR)).toEqual('@id is required - delete(user/undefined)');
+    });
+
+    //* Test update with empty id
+    it('should throw error for empty id in update', async () => {
+        const { manager } = instance();
+        expect2(await manager.update('', { active: 1 }).catch(GETERR)).toEqual('@id is required - updateModel(user/)');
+        expect2(await manager.update(null, { active: 1 }).catch(GETERR)).toEqual(
+            '@id is required - updateModel(user/null)',
+        );
+        expect2(await manager.update(undefined, { active: 1 }).catch(GETERR)).toEqual(
+            '@id is required - updateModel(user/undefined)',
+        );
+    });
+
+    //* Test updateOrCreate with empty id
+    it('should throw error for empty id in updateOrCreate', async () => {
+        const { manager } = instance();
+        expect2(await manager.updateOrCreate('', { uid: 'U0001', name: 'test' }).catch(GETERR)).toEqual(
+            '@id is required - updateModel(user/)',
+        );
+        expect2(await manager.updateOrCreate(null, { uid: 'U0001', name: 'test' }).catch(GETERR)).toEqual(
+            '@id is required - updateModel(user/null)',
+        );
+        expect2(await manager.updateOrCreate(undefined, { uid: 'U0001', name: 'test' }).catch(GETERR)).toEqual(
+            '@id is required - updateModel(user/undefined)',
+        );
+    });
+
+    //* Test insert when storage.insert returns null or no id
+    it('should throw error when insert fails to return id', async () => {
+        const { manager } = instance();
+
+        // Mock storage.insert to return model without id
+        const originalInsert = manager.storage.insert.bind(manager.storage);
+        manager.storage.insert = jest.fn().mockResolvedValue({ ns: 'TT', type: 'user' });
+
+        expect2(await manager.insert({ uid: 'U0001', name: 'test' }).catch(GETERR)).toEqual(
+            '.id (string) is missing - insert() failed!',
+        );
+
+        // Restore
+        manager.storage.insert = originalInsert;
+    });
+
+    //* Test insert when storage.insert returns null
+    it('should throw error when insert returns null', async () => {
+        const { manager } = instance();
+
+        // Mock storage.insert to return null
+        const originalInsert = manager.storage.insert.bind(manager.storage);
+        manager.storage.insert = jest.fn().mockResolvedValue(null);
+
+        expect2(await manager.insert({ uid: 'U0001', name: 'test' }).catch(GETERR)).toEqual(
+            '.id (string) is missing - insert() failed!',
+        );
+
+        // Restore
+        manager.storage.insert = originalInsert;
+    });
+
+    //* Test onBeforeSave default implementation
+    it('should pass onBeforeSave default implementation', async () => {
+        class UserManagerTestSave extends AbstractManager<User, DummyStorageMaker, UserType> {
+            public constructor(parent: DummyStorageMaker, current?: number) {
+                super('user', parent, null, 'uid');
+                this.storage.storage.setTimer(() => current || Date.now());
+            }
+
+            protected prepareDefault($def: User): User {
+                return { active: 1, ...$def };
+            }
+
+            // Don't override onBeforeSave - test default implementation
+            public testOnBeforeSave(model: User, origin?: User): User {
+                return this.onBeforeSave(model, origin);
+            }
+        }
+
+        const parent = new DummyStorageMaker('dummy-user-data.yml');
+        const manager = new UserManagerTestSave(parent, Date.now());
+        const model = { uid: 'U0001', name: 'test' };
+        const result = manager.testOnBeforeSave(model);
+        expect2(result).toEqual(model);
+    });
 });

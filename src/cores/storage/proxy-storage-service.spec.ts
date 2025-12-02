@@ -770,5 +770,151 @@ describe('ProxyStorageService', () => {
                 '400 DUPLICATED NAME - name[BBB] is duplicated to test[aaa]',
             ); // change to 'BBB' w/o changing model.
         }
+
+        //* test findOrCreate() without $creates - should read existing model
+        if (1) {
+            const { storage, $unique } = await prepare();
+
+            //* create model first with lookup
+            const model = await $unique.findOrCreate('EEE', { name: 'EEE' });
+            expect2(model, 'id,type,name').toEqual({ id: '1000001', type: 'test', name: 'EEE' });
+
+            //* findOrCreate() without $creates should return existing model
+            const found = await $unique.findOrCreate('EEE');
+            expect2(found, 'id,type,name').toEqual({ id: '1000001', type: 'test', name: 'EEE' });
+
+            //* cleanup
+            expect2(await storage.delete('1000001', true).catch(GETERR), 'id').toEqual({ id: '1000001' });
+        }
+    });
+
+    //* Test beforeUpdate default implementation
+    it('should pass beforeUpdate default implementation', async () => {
+        class TestFilterNoUpdate extends GeneralModelFilter<MyModel, MyType> {
+            public constructor() {
+                super(FIELDS);
+            }
+            // Don't override beforeUpdate - test default
+            public testBeforeUpdate(model: MyModel, incrementals?: MyModel): MyModel {
+                return this.beforeUpdate(model, incrementals);
+            }
+        }
+
+        const filters = new TestFilterNoUpdate();
+        const model = { name: 'test', count: 1 };
+        const incrementals = { count: 1 };
+        const result = filters.testBeforeUpdate(model, incrementals);
+        expect2(result).toEqual(model);
+    });
+
+    //* Test asKey() with service.asKey function
+    it('should pass asKey() with service.asKey function', async () => {
+        class MyServiceWithAsKey extends GeneralKeyMaker<MyType> {
+            public constructor() {
+                super('TT', ':');
+            }
+            public asKey(type: MyType, id: string): string {
+                return `CUSTOM:${type}:${id}`;
+            }
+        }
+
+        const service = new MyServiceWithAsKey();
+        const filters = new MyModelFilter();
+        const storage = new ProxyStorageService(
+            service,
+            ProxyStorageService.makeStorageService('dummy-account-data.yml', FIELDS),
+            FIELDS,
+            filters,
+        );
+
+        expect2(storage.asKey('test', 'ABC')).toEqual('CUSTOM:test:ABC');
+    });
+
+    //* Test getTime() without timer
+    it('should pass getTime() without timer', async () => {
+        const { storage } = instance('dummy-account-data.yml');
+        const before = Date.now();
+
+        //* Reset timer to null
+        storage.setTimer(null);
+        storage.setTimer(null);
+
+        const time = storage.getTime();
+        const after = Date.now();
+
+        expect2(() => time >= before && time <= after).toEqual(true);
+    });
+
+    //* Test guard() with locked=true and success
+    it('should pass guard() with successful handler and release', async () => {
+        const { storage } = instance('dummy-account-data.yml');
+        const $test = storage.makeTypedStorageService('test');
+        const id = 'guard-test';
+
+        //* Create model
+        await $test.readOrCreate(id, { name: 'test' });
+
+        //* Test guard with successful async handler
+        const handler = async () => {
+            return { success: true };
+        };
+
+        const result = await $test.guard(id, handler, 1, 10);
+        expect2(result).toEqual({ success: true });
+
+        //* Verify lock was released
+        const model = await $test.read(id);
+        expect2(model, 'lock').toEqual({ lock: 0 });
+
+        //* cleanup
+        await $test.delete(id);
+    });
+
+    //* Test guard() with locked=false path
+    it('should pass guard() with locked=false path', async () => {
+        const { storage } = instance('dummy-account-data.yml');
+        const $test = storage.makeTypedStorageService('test');
+        const id = 'guard-test2';
+
+        //* Create model
+        await $test.readOrCreate(id, { name: 'test' });
+
+        //* Mock lock to return false
+        const originalLock = $test.lock.bind($test);
+        $test.lock = jest.fn().mockResolvedValue(false);
+
+        //* Test guard with handler when lock returns false
+        const handler = async () => {
+            return { data: 'test' };
+        };
+
+        const result = await $test.guard(id, handler, 0, 10);
+        expect2(result).toEqual({ data: 'test' });
+
+        //* Restore original lock
+        $test.lock = originalLock;
+
+        //* cleanup
+        await $test.delete(id);
+    });
+
+    //* Test makeGeneralAPIController
+    it('should pass makeGeneralAPIController', async () => {
+        const { storage } = instance('dummy-account-data.yml');
+        const $test = storage.makeTypedStorageService('test');
+
+        const controller = $test.makeGeneralAPIController();
+        expect2(typeof controller).toEqual('object');
+        expect2(() => controller.hello()).toEqual(expect.any(String));
+    });
+
+    //* Test makeGeneralAPIController with search and uniqueField
+    it('should pass makeGeneralAPIController with parameters', async () => {
+        const { storage } = instance('dummy-account-data.yml');
+        const $test = storage.makeTypedStorageService('test');
+
+        const mockSearch: any = null;
+        const controller = $test.makeGeneralAPIController(mockSearch, 'name');
+        expect2(typeof controller).toEqual('object');
     });
 });

@@ -1,0 +1,13 @@
+{
+    "!": "error case with error object",
+    "param": {
+        "method": "GET",
+        "endpoint": "https://api.lemoncloud.io/hello/test",
+        "id": "error-object"
+    },
+    "data": null,
+    "error": {
+        "message": "Error object",
+        "statusCode": 400
+    }
+}

@@ -163,4 +163,41 @@ describe('LambdaNotificationHandler', () => {
         expect2(typeof data.body).toEqual('object');
         expect2(data.body, '').toEqual({ hello: 'world' });
     });
+
+    //* Test listener error handling
+    it('should handle listener error', async () => {
+        const { lambda, service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.noti-msg-raw.json');
+
+        //* Add listener that throws error
+        service.addListener(async () => {
+            throw new Error('Test listener error');
+        });
+
+        const res = await lambda.handle(event, null);
+        expect2(() => res.statusCode).toEqual(200);
+        expect2(() => res.body).toEqual('Test listener error');
+    });
+
+    //* Test JSON parse error
+    it('should handle JSON parse error', async () => {
+        const { lambda, service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.noti-msg-noraw.json');
+
+        //* Modify body to have invalid JSON that starts with '{' and ends with '}' but cannot be parsed
+        event.body = JSON.stringify({
+            Message: '{ invalid json }',
+            MessageAttributes: {},
+        });
+
+        let receivedBody: any;
+        service.addListener(async (id, param, body) => {
+            receivedBody = body;
+            return 'OK';
+        });
+
+        const res = await lambda.handle(event, null);
+        expect2(() => res.statusCode).toEqual(200);
+        expect2(() => receivedBody.text).toEqual('{ invalid json }');
+    });
 });
