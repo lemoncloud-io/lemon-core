@@ -53,18 +53,18 @@ const instance = () => {
 };
 
 //* normalize dynamo properties.
-const normalize = (data: any): any => {
+const normalize = <T = any>(data: T): T => {
     if (data === '') return null;
     if (!data) return data;
-    if (Array.isArray(data)) return data.map(normalize);
+    if (Array.isArray(data)) return data.map(normalize) as T;
     if (typeof data == 'object') {
         return Object.keys(data).reduce((O: any, key) => {
-            const val = data[key];
+            const val = (data as any)[key];
             O[key] = normalize(val);
             return O;
-        }, {});
+        }, {} as T);
     }
-    return data;
+    return data as T;
 };
 
 /**
@@ -86,21 +86,27 @@ export class DynamoService<T extends GeneralItem> {
      */
     public hello = () => `dynamo-service:${this.options.tableName}`;
 
+    protected static _dynamo: Record<string, DynamoDBClient> = {};
+    protected static _dynamostr: Record<string, DynamoDBStreamsClient> = {};
+    protected static _dynamodoc: Record<string, () => Promise<DynamoDBDocumentClient>> = {};
+
     /**
      * simple instance maker.
      * @param region    (default as `ap-northeast-2`)
      */
     public static instance(region?: string) {
         region = `${region || 'ap-northeast-2'}`;
-        const cfg = awsConfig($engine, region);
-        const dynamo = new DynamoDBClient(cfg); // Low-level DynamoDB client
-        const $client = async (): Promise<DynamoDBDocumentClient> => {
-            const credentials = await cfg.credentials;
-            const dynamo = new DynamoDBClient({ ...cfg, credentials }); // Low-level DynamoDB client
-            return DynamoDBDocumentClient.from(dynamo); // High-level Document client
-        };
-        const dynamostr = new DynamoDBStreamsClient(cfg); // DynamoDB Streams client
-        return { dynamo, dynamostr, dynamodoc: $client };
+        const $cfg = awsConfig($engine, region);
+        const dynamo = DynamoService._dynamo[region] ?? new DynamoDBClient($cfg); // Low-level DynamoDB client
+        const dynamostr = DynamoService._dynamostr[region] ?? new DynamoDBStreamsClient($cfg); // DynamoDB Streams client
+        const dynamodoc =
+            DynamoService._dynamodoc[region] ??
+            (async (): Promise<DynamoDBDocumentClient> => {
+                const credentials = $cfg.credentials;
+                const dynamo = new DynamoDBClient({ ...$cfg, credentials }); // Low-level DynamoDB client
+                return DynamoDBDocumentClient.from(dynamo); // High-level Document client
+            });
+        return { dynamo, dynamostr, dynamodoc };
     }
 
     /**

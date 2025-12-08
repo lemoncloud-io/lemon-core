@@ -46,6 +46,11 @@ const DEFAULT_FAVICON_ICO =
 const FAVICON_ICO = $U.env('FAVICON_ICO', DEFAULT_FAVICON_ICO);
 
 /**
+ * shared KMS service pool
+ */
+const $kmsPool: Record<string, AWSKMSService> = {};
+
+/**
  * class: `WEBController`
  * - common controller interface.
  */
@@ -608,10 +613,10 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
      * @returns service
      */
     protected findKMSService(keyId: string): AWSKMSService {
-        // const aws = $engine.module('aws') as AWSModule;
-        // return aws?.kms;
-        const kms = new AWSKMSService(keyId);
-        return kms;
+        const _key = keyId || '#default';
+        // use the shared pool.
+        if (!$kmsPool[_key]) $kmsPool[_key] = new AWSKMSService(keyId);
+        return $kmsPool[_key];
     }
 
     /**
