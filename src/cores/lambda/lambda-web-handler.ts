@@ -97,12 +97,15 @@ export const buildResponse = (
     const origin = options?.origin === undefined ? '*' : options?.origin;
     const credentials = options?.credentials === undefined ? true : options?.credentials;
     const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
+    const _isXml = (body: string) => body.startsWith('<?xml ') && body.trim().endsWith('>');
     const _isHtml = (body: string) =>
         body.startsWith('<!DOCTYPE html>') || (body.startsWith('<') && body.endsWith('>'));
     const _type = () => {
         if (contentType) return contentType;
         return typeof body === 'string'
-            ? _isHtml(body)
+            ? _isXml(body)
+                ? 'application/xml; charset=utf-8'
+                : _isHtml(body)
                 ? 'text/html; charset=utf-8'
                 : 'text/plain; charset=utf-8'
             : 'application/json; charset=utf-8';
