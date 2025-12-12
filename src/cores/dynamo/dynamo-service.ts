@@ -88,6 +88,7 @@ export class DynamoService<T extends GeneralItem> {
 
     protected static _dynamo: Record<string, DynamoDBClient> = {};
     protected static _dynamostr: Record<string, DynamoDBStreamsClient> = {};
+    //TODO [Steve] why to use promise here to make DynamoDBDocumentClient? @251212
     protected static _dynamodoc: Record<string, () => Promise<DynamoDBDocumentClient>> = {};
 
     /**
