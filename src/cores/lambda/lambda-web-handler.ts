@@ -329,6 +329,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public async handleProtocol<TResult = any>(param: ProtocolParam, event?: APIGatewayProxyEvent): Promise<TResult> {
         if (!param) throw new Error(`@param (protocol-param) is required!`);
+        //TODO [Steve] id, cmd can (or should) be null or empty! (support for `/{cmd+}` pattern) @251212
         const TYPE = `${param.type || ''}`;
         const MODE: NextMode = `${param.mode || 'GET'}` as NextMode;
         const ID = `${param.id || ''}`;
