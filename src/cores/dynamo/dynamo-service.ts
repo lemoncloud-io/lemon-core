@@ -100,13 +100,22 @@ export class DynamoService<T extends GeneralItem> {
         const $cfg = awsConfig($engine, region);
         const dynamo = DynamoService._dynamo[region] ?? new DynamoDBClient($cfg); // Low-level DynamoDB client
         const dynamostr = DynamoService._dynamostr[region] ?? new DynamoDBStreamsClient($cfg); // DynamoDB Streams client
-        const dynamodoc =
-            DynamoService._dynamodoc[region] ??
-            (async (): Promise<DynamoDBDocumentClient> => {
-                const credentials = $cfg.credentials;
-                const dynamo = new DynamoDBClient({ ...$cfg, credentials }); // Low-level DynamoDB client
-                return DynamoDBDocumentClient.from(dynamo); // High-level Document client
-            });
+
+        // Create memoized function for dynamodoc
+        if (!DynamoService._dynamodoc[region]) {
+            const cache: { client: DynamoDBDocumentClient | null } = { client: null };
+            DynamoService._dynamodoc[region] = async (): Promise<DynamoDBDocumentClient> => {
+                if (!cache.client) {
+                    _log(NS, `! creating NEW DynamoDBDocumentClient for region[${region}]`);
+                    const credentials = $cfg.credentials;
+                    const dynamo = new DynamoDBClient({ ...$cfg, credentials });
+                    cache.client = DynamoDBDocumentClient.from(dynamo);
+                }
+                return cache.client;
+            };
+        }
+
+        const dynamodoc = DynamoService._dynamodoc[region]; // High-level Document client
         return { dynamo, dynamostr, dynamodoc };
     }
 
