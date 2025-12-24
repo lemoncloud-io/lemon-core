@@ -10,7 +10,7 @@
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
 import { loadJsonSync } from '../tools/';
-import { expect2, waited } from '../common/test-helper';
+import { GETERR, expect2, waited } from '../common/test-helper';
 import {
     $protocol,
     $rand,
@@ -412,6 +412,56 @@ describe('utils', () => {
             { id: '1', error: 'yes error of me' },
             { id: '2', error: null, data: 2 },
         ]);
+
+        const result3 = await my_parrallel(
+            [
+                { id: '1', error: 'me' },
+                { id: '2', error: null },
+                { id: undefined, error: 'me2' },
+            ],
+            async (item: MyModel, i) => {
+                if (item?.error) throw new Error(`yes error of ${item?.error}`);
+                const data = i + 1;
+                return { ...item, data };
+            },
+            10,
+            { throwable: true },
+        ).catch(GETERR);
+        expect2(() => result3).toEqual(
+            'my_parrallel Task T(S/F): 3(1/2) - func()\n' +
+                'Failed tasks:\n' +
+                '  - 1: yes error of me\n' +
+                '  - N/A: yes error of me2',
+        );
+
+        //* test throwable=false (no error thrown)
+        const result4 = await my_parrallel(
+            [
+                { id: 'a', error: 'fail' },
+                { id: 'b', error: null },
+            ],
+            async (item: MyModel) => {
+                if (item?.error) throw new Error(`error: ${item?.error}`);
+                return { ...item, data: 100 };
+            },
+            10,
+            { throwable: false },
+        );
+        expect2(() => result4).toEqual([{ id: 'a', error: 'error: fail' }, { id: 'b', error: null, data: 100 }]);
+
+        //* test with custom errScope
+        const result5 = await my_parrallel(
+            [{ id: 'x', error: 'test' }],
+            async (item: MyModel) => {
+                if (item?.error) throw new Error(`failed`);
+                return item;
+            },
+            10,
+            { throwable: true, errScope: 'customScope()' },
+        ).catch(GETERR);
+        expect2(() => result5).toEqual(
+            'my_parrallel Task T(S/F): 1(0/1) - customScope()\n' + 'Failed tasks:\n' + '  - x: failed',
+        );
     });
 
     it('should pass my_sequence()', async () => {

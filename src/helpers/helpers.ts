@@ -436,8 +436,13 @@ export const $protocol = (
     const execute = <T = any>(param?: any, body?: any, mode: string = 'POST'): Promise<T> =>
         $proto.execute($param(param, body, { mode }));
     // eslint-disable-next-line prettier/prettier
-    const enqueue = <T=any>(param?: any, body?: any, mode: string = 'POST', callback?: string, delaySeconds: number = 1): Promise<string> =>
-        $proto.enqueue($param(param, body, { mode }), $callback(callback), delaySeconds);
+    const enqueue = <T = any>(
+        param?: any,
+        body?: any,
+        mode: string = 'POST',
+        callback?: string,
+        delaySeconds: number = 1,
+    ): Promise<string> => $proto.enqueue($param(param, body, { mode }), $callback(callback), delaySeconds);
     const notify = (param?: any, body?: any, mode: string = 'POST', callback?: string): Promise<string> =>
         $proto.notify($param(param, body, { mode }), $callback(callback));
 
@@ -603,7 +608,42 @@ export const my_parrallel = async <
     list: T[],
     func: (item: T, index?: number) => Promise<U>,
     size?: number,
+    options?: {
+        /** throw error if any item fails (default: false) */
+        throwable?: boolean;
+        /** error scope for context tracking */
+        errScope?: string;
+        /** report to slack when completed (default: false) - TODO */
+        reportSlack?: boolean;
+        /** context for slack reporting */
+        context?: NextContext;
+    },
 ) => {
+    type MyParrallelError = { id?: string; error: string };
+    const throwable = options?.throwable ?? false;
+    const errScope = options?.errScope ?? 'func()';
+
+    //* inner: collect and analyze errors
+    const handleErrors = (results: any[]): void => {
+        const errors = results.filter(
+            (r): r is MyParrallelError => r && typeof r === 'object' && 'error' in r && typeof r.error === 'string',
+        );
+        //* calculate statistics
+        const total = $T.N(list.length);
+        const failed = $T.N(errors.length);
+        const success = $T.N(total - failed);
+
+        //* build error message
+        const summaryLine = `my_parrallel Task T(S/F): ${total}(${success}/${failed}) - ${errScope}`;
+        const failureDetails =
+            failed > 0 ? ['Failed tasks:', ...errors.map(e => `  - ${e.id ?? 'N/A'}: ${e.error}`)] : [];
+        const msg = [summaryLine, ...failureDetails].join('\n');
+
+        //* throw if throwable and has errors
+        if (failed > 0 && throwable) throw new Error(msg);
+    };
+
+    //* run parallel execution
     const results = await do_parrallel(
         list,
         (item, i) => {
@@ -619,6 +659,9 @@ export const my_parrallel = async <
         },
         size,
     );
+    //* analyze and handle errors
+    if (throwable) handleErrors(results);
+
     return results as unknown as U[];
 };
 
@@ -711,7 +754,11 @@ export const createSigV4Proxy = (
 
             //* prepare request parameters
             // eslint-disable-next-line prettier/prettier
-            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+            const query_string = _isNa($param)
+                ? ''
+                : typeof $param == 'object'
+                ? queryString.stringify($param)
+                : `${$param}`;
             const url =
                 endpoint +
                 (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
