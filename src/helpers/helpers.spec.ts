@@ -374,24 +374,26 @@ describe('utils', () => {
 
     //* test of my_parrallel()
     it('should pass my_parrallel()', async () => {
-        interface MyModel {
-            id: string;
-            error: string;
+        interface T {
+            id?: string;
+            error?: string | null;
             data?: number;
         }
+
         //* test with async function.
-        const results = await my_parrallel(
+        const results1 = await my_parrallel<T, T>(
             [
                 { id: '1', error: 'me' },
                 { id: '2', error: null },
             ],
-            async (item: MyModel, i) => {
+            async (item: T, i) => {
                 if (item?.error) throw new Error(`yes error of ${item?.error}`);
                 const data = i + 1;
                 return { ...item, data };
             },
-        );
-        expect2(() => results).toEqual([
+            { throwable: false },
+        ).catch(GETERR);
+        expect2(() => results1).toEqual([
             { id: '1', error: 'yes error of me' },
             { id: '2', error: null, data: 2 },
         ]);
@@ -402,37 +404,78 @@ describe('utils', () => {
                 { id: '1', error: 'me' },
                 { id: '2', error: null },
             ],
-            (item: MyModel, i): any => {
+            (item: T, i): any => {
                 if (item?.error) throw new Error(`yes error of ${item?.error}`);
                 const data = i + 1;
                 return { ...item, data };
             },
-        );
+            { throwable: false },
+        ).catch(GETERR);
         expect2(() => results2).toEqual([
             { id: '1', error: 'yes error of me' },
             { id: '2', error: null, data: 2 },
         ]);
 
-        const result3 = await my_parrallel(
-            [
-                { id: '1', error: 'me' },
-                { id: '2', error: null },
-                { id: undefined, error: 'me2' },
-            ],
-            async (item: MyModel, i) => {
-                if (item?.error) throw new Error(`yes error of ${item?.error}`);
-                const data = i + 1;
-                return { ...item, data };
-            },
-            10,
-            { throwable: true },
-        ).catch(GETERR);
-        expect2(() => result3).toEqual(
-            'my_parrallel Task T(S/F): 3(1/2) - func()\n' +
-                'Failed tasks:\n' +
-                '  - 1: yes error of me\n' +
-                '  - N/A: yes error of me2',
+        class AppError extends Error {
+            constructor(message: string, public readonly cause?: unknown) {
+                super(message);
+                this.name = 'AppError';
+            }
+        }
+        function formatError(err: unknown, prefix = '', delim = '  '): string {
+            let output = '';
+            let current = err;
+            while (current instanceof Error) {
+                output += `${prefix}${current.name}: ${current.message}\n`;
+                current = (current as any).cause;
+                if (current && Array.isArray(current)) {
+                    output += current.map(e => formatError(e, prefix + delim, delim)).join('\n');
+                    continue;
+                }
+            }
+            return output.trim();
+        }
+        expect2(() =>
+            formatError(
+                new AppError(
+                    'level1',
+                    new AppError('level2', [new AppError('level3-1', new Error('level4')), new Error('level3-2')]),
+                ),
+            ),
+        ).toEqual(`AppError: level1\nAppError: level2\nAppError: level3-1\n  Error: level4\nError: level3-2`);
+
+        //* test throwable=true (error thrown)
+        const case3List: T[] = [
+            { id: '1', error: 'me' },
+            { id: '2', error: null, data: 1 },
+            { id: undefined, error: 'me2' },
+            { id: '4', data: 4 },
+        ];
+        const func3Async = async (item: T, i: number) => {
+            if (item?.error) throw new Error(`yes error of ${item?.error}`);
+            const data = i + 1;
+            return { ...item, data };
+        };
+        const result3E = await my_parrallel(case3List, func3Async, { throwable: true }).catch(e => formatError(e));
+        expect2(() => result3E).toEqual(
+            `MyError: yes error of me (+1 more errors) (S:2/4) - parrallel(10)
+MyError: yes error of me
+  Error: yes error of me
+MyError: yes error of me2
+  Error: yes error of me2
+`.trim(),
         );
+        const result3D = await my_parrallel(case3List, func3Async).catch(e => formatError(e));
+        expect2(() => result3D).toEqual(result3E);
+
+        //* test throwable=false (no error thrown)
+        const result3S = await my_parrallel(case3List, func3Async, { throwable: false }).catch(GETERR);
+        expect2(() => result3S).toEqual([
+            { id: '1', error: 'yes error of me' },
+            { id: '2', error: null, data: 2 },
+            { id: undefined, error: 'yes error of me2' },
+            { id: '4', data: 4 },
+        ]);
 
         //* test throwable=false (no error thrown)
         const result4 = await my_parrallel(
@@ -440,47 +483,46 @@ describe('utils', () => {
                 { id: 'a', error: 'fail' },
                 { id: 'b', error: null },
             ],
-            async (item: MyModel) => {
+            (item: any) => {
                 if (item?.error) throw new Error(`error: ${item?.error}`);
                 return { ...item, data: 100 };
             },
-            10,
             { throwable: false },
         );
-        expect2(() => result4).toEqual([{ id: 'a', error: 'error: fail' }, { id: 'b', error: null, data: 100 }]);
+        expect2(() => result4).toEqual([
+            { id: 'a', error: 'error: fail' },
+            { id: 'b', error: null, data: 100 },
+        ]);
 
         //* test with custom errScope
         const result5 = await my_parrallel(
             [{ id: 'x', error: 'test' }],
-            async (item: MyModel) => {
+            (item: any) => {
                 if (item?.error) throw new Error(`failed`);
                 return item;
             },
-            10,
             { throwable: true, errScope: 'customScope()' },
         ).catch(GETERR);
-        expect2(() => result5).toEqual(
-            'my_parrallel Task T(S/F): 1(0/1) - customScope()\n' + 'Failed tasks:\n' + '  - x: failed',
-        );
+        expect2(() => result5).toEqual('failed (S:0/1) - customScope()');
     });
 
     it('should pass my_sequence()', async () => {
-        interface MyModel {
-            id: string;
-            error: string;
+        interface T {
+            id?: string;
+            error?: string | null;
             data?: number;
             actionTime?: number;
         }
         const actionDelay = 100; // milliseconds
         //* test with async function.
-        const results = await my_sequence(
+        const results = await my_sequence<T, T>(
             [
                 { id: '1', error: null },
                 { id: '2', error: null },
                 { id: '3', error: null },
                 { id: '4', error: null },
             ],
-            async (item: MyModel, i) => {
+            async (item: T, i) => {
                 const actionTime = new Date().getTime();
                 await waited(actionDelay);
                 return { ...item, actionTime };
@@ -497,7 +539,7 @@ describe('utils', () => {
         // compare action time of each task by order sequence
         results.forEach(result => {
             expect2(() => result.actionTime).toBeGreaterThan(previousActionTime + actionDelay - 0.1);
-            previousActionTime = result.actionTime;
+            previousActionTime = result.actionTime ?? 0;
         });
     });
 
