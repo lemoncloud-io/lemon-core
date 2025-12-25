@@ -448,8 +448,9 @@ describe('utils', () => {
         const case3List: T[] = [
             { id: '1', error: 'me' },
             { id: '2', error: null, data: 1 },
-            { id: undefined, error: 'me2' },
+            { id: null as any, error: 'me3', data: 3 },
             { id: '4', data: 4 },
+            { id: '5', error: '', data: 5 },
         ];
         const func3Async = async (item: T, i: number) => {
             if (item?.error) throw new Error(`yes error of ${item?.error}`);
@@ -458,11 +459,11 @@ describe('utils', () => {
         };
         const result3E = await my_parrallel(case3List, func3Async, { throwable: true }).catch(e => formatError(e));
         expect2(() => result3E).toEqual(
-            `MyError: yes error of me (+1 more errors) (S:2/4) - parallel(10/4)
+            `MyError: yes error of me (+1 more errors) (S:3/5) - parallel(10/5)
 MyError: yes error of me
   Error: yes error of me
-MyError: yes error of me2
-  Error: yes error of me2
+MyError: yes error of me3
+  Error: yes error of me3
 `.trim(),
         );
         const result3D = await my_parrallel(case3List, func3Async).catch(e => formatError(e));
@@ -473,15 +474,16 @@ MyError: yes error of me2
         expect2(() => result3S).toEqual([
             { id: '1', error: 'yes error of me' },
             { id: '2', error: null, data: 2 },
-            { id: undefined, error: 'yes error of me2' },
+            { id: null, error: 'yes error of me3', data: 3 },
             { id: '4', data: 4 },
+            { id: '5', error: '', data: 5 },
         ]);
 
         //* test throwable=false (no error thrown)
         const result4 = await my_parrallel(
             [
-                { id: 'a', error: 'fail' },
-                { id: 'b', error: null },
+                { id: 'a', error: 'fail', data: 1 },
+                { id: 'b', error: null, data: 2 },
             ],
             (item: any) => {
                 if (item?.error) throw new Error(`error: ${item?.error}`);
@@ -490,7 +492,7 @@ MyError: yes error of me2
             { throwable: false },
         );
         expect2(() => result4).toEqual([
-            { id: 'a', error: 'error: fail' },
+            { id: 'a', error: 'error: fail', data: 1 },
             { id: 'b', error: null, data: 100 },
         ]);
 

@@ -632,16 +632,16 @@ export const my_parallel = async <
     //* run parallel execution
     const results = await do_parallel(
         list,
-        (item, i) => {
+        (N, i) => {
             const ret = (() => {
                 try {
-                    return func(item, i);
+                    return func(N, i);
                 } catch (e) {
                     return Promise.reject(e);
                 }
             })();
             const res = ret instanceof Promise ? ret : Promise.resolve(ret);
-            return res.catch(e => ({ id: item.id, error: e instanceof Error ? e : new Error(e) }));
+            return res.catch(e => ({ ...N, id: N?.id, error: e instanceof Error ? e : new Error(e) }));
         },
         size,
     );
