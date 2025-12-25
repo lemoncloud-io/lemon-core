@@ -436,8 +436,13 @@ export const $protocol = (
     const execute = <T = any>(param?: any, body?: any, mode: string = 'POST'): Promise<T> =>
         $proto.execute($param(param, body, { mode }));
     // eslint-disable-next-line prettier/prettier
-    const enqueue = <T=any>(param?: any, body?: any, mode: string = 'POST', callback?: string, delaySeconds: number = 1): Promise<string> =>
-        $proto.enqueue($param(param, body, { mode }), $callback(callback), delaySeconds);
+    const enqueue = <T = any>(
+        param?: any,
+        body?: any,
+        mode: string = 'POST',
+        callback?: string,
+        delaySeconds: number = 1,
+    ): Promise<string> => $proto.enqueue($param(param, body, { mode }), $callback(callback), delaySeconds);
     const notify = (param?: any, body?: any, mode: string = 'POST', callback?: string): Promise<string> =>
         $proto.notify($param(param, body, { mode }), $callback(callback));
 
@@ -534,7 +539,7 @@ export const $event = (context: NextContext, defEndpoint: string = '') => {
  * authentication helper - get identity-id from context
  * @param context the current context
  */
-export function getIdentityId(context: NextContext): string | undefined {
+export function getIdentityId(context?: NextContext | null): string | undefined {
     const identityId = (context?.identity as NextIdentityCognito)?.identityId;
     if (!identityId && context?.domain === 'localhost') {
         //* use `env[LOCAL_ACCOUNT]` only if runs in local server.
@@ -594,16 +599,36 @@ export function parseRange(exp: string): any {
  *
  * @param list list of model.
  * @param func callback to process of each
- * @param size (optional) size of parrallel (default 10)
+ * @param params (optional) size of parrallel (default 10) or options. (for comparibility with `do_parrallel()`)
  */
 export const my_parrallel = async <
-    T extends { id?: string; error?: string },
-    U extends { id?: string; error?: string },
+    T extends { id?: string; error?: string | null },
+    U extends { id?: string; error?: string | null },
 >(
     list: T[],
-    func: (item: T, index?: number) => Promise<U>,
-    size?: number,
+    func: (item: T, index: number) => Promise<U>,
+    params?:
+        | number
+        | {
+              /** size of parallel execution (default 10) */
+              size?: number;
+              /** throw error if any item fails (default: false) */
+              throwable?: boolean;
+              /** error scope for context tracking */
+              errScope?: string;
+              /** report to slack when completed (default: false) - TODO */
+              reportSlack?: boolean;
+              /** context for slack reporting */
+              context?: NextContext;
+          },
 ) => {
+    const options = typeof params === 'number' ? { size: params } : params || {};
+    const size = options?.size ?? 10;
+    const throwable = options?.throwable ?? true;
+    const errScope = options?.errScope ?? `parrallel(${size})`;
+    if (!list?.length) return [];
+
+    //* run parallel execution
     const results = await do_parrallel(
         list,
         (item, i) => {
@@ -615,11 +640,45 @@ export const my_parrallel = async <
                 }
             })();
             const res = ret instanceof Promise ? ret : Promise.resolve(ret);
-            return res.catch(e => ({ id: item.id, error: GETERR(e) }));
+            return res.catch(e => ({ id: item.id, error: e instanceof Error ? e : new Error(e) }));
         },
         size,
     );
-    return results as unknown as U[];
+
+    //* analyze and handle errors
+    const errors = results
+        .map<Error>((N: any) => N?.error)
+        .filter(e => (typeof e === 'object' && e instanceof Error ? true : false));
+    //* calculate statistics
+    const total = $T.N(list.length);
+    const failed = $T.N(errors.length);
+    const success = $T.N(total - failed);
+
+    class MyError extends Error {
+        constructor(message: string, public readonly cause?: unknown) {
+            super(message);
+            this.name = 'MyError';
+        }
+    }
+    //* build error message
+    if (throwable && failed > 0) {
+        const msg = GETERR(errors[0]);
+        const cnt = failed > 1 ? ` (+${failed - 1} more errors)` : '';
+        throw new MyError(
+            `${msg}${cnt} (S:${success}/${total}) - ${errScope}`,
+            errors?.map(e => new MyError(GETERR(e), e)),
+        );
+    }
+
+    //* make sure to transform error objects.
+    return results.map<U>((N: any) =>
+        N?.error === undefined
+            ? N
+            : {
+                  ...N,
+                  error: N?.error === null ? null : GETERR(N.error),
+              },
+    );
 };
 
 /**
@@ -631,10 +690,10 @@ export const my_parrallel = async <
  * @param list list of model.
  * @param func callback to process of each
  */
-export const my_sequence = <T extends { id?: string; error?: string }, U = T>(
+export const my_sequence = <T extends { id?: string; error?: string | null }, U = T>(
     list: T[],
     func: (item: T, index?: number) => Promise<U>,
-) => my_parrallel(list, func, 1);
+) => my_parrallel<T, U>(list, func, 1);
 
 /**
  * create api-http-proxy with sig-v4 agent, which using endpoint as proxy server.
@@ -671,7 +730,7 @@ export const createSigV4Proxy = (
 ): ApiHttpProxy => {
     const errScope = `createSigV4Proxy(${name ?? ''})`;
     if (!endpoint) throw new Error(`@endpoint (url) is required - ${errScope}`);
-    const NS = $U.NS(`X${name}`, 'magenta'); // NAMESPACE TO BE PRINTED.
+    const NS = $U.NS(`X${name ?? ''}`, 'magenta'); // NAMESPACE TO BE PRINTED.
     const encoder = options?.encoder ?? ((name, path) => path);
     const relayHeaderKey = options?.relayHeaderKey ?? '';
     const resultKey = options?.resultKey ?? '';
@@ -711,7 +770,11 @@ export const createSigV4Proxy = (
 
             //* prepare request parameters
             // eslint-disable-next-line prettier/prettier
-            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+            const query_string = _isNa($param)
+                ? ''
+                : typeof $param == 'object'
+                ? queryString.stringify($param)
+                : `${$param}`;
             const url =
                 endpoint +
                 (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
