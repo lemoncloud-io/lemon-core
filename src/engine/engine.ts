@@ -289,18 +289,19 @@ export interface ParrallelParam<T> {
 export interface ParrallelCallback<T, U> {
     (node: T, index: number): U;
 }
+
 /**
- * parrallel actions in list (in batch-size = 10)
+ * parallel actions in list (in batch-size = 10)
  *
  * **TODO** - improve return types by refering callback.
  *
  * @param param         any list
  * @param callback      (item)=>any | Promise<any>
- * @param size          (optional) size of parrallel (default 10)
+ * @param size          (optional) size of parallel (default 10)
  * @param pos           (optional) current pos (default 0)
  * @param result        (optional) result set in stacked.
  */
-export const do_parrallel = <T, U>(
+export const do_parallel = <T, U>(
     param: T[] | ParrallelParam<T>,
     callback: ParrallelCallback<T, U>,
     size = 10,
@@ -363,9 +364,15 @@ export const do_parrallel = <T, U>(
         .then(_ => {
             result = result.concat(_);
             if (!_.length) return Promise.resolve(result);
-            return do_parrallel(param, callback, size, pos + size, result);
+            return do_parallel(param, callback, size, pos + size, result);
         });
 };
+
+/**
+ * alias of `do_parallel()`
+ * - compatibility for typo in previous version.
+ */
+export const do_parrallel = do_parallel;
 
 //* default time-zone for this api. (Asia/Seoul - 9 hours)
 export const DEFAULT_TIME_ZONE = 9;

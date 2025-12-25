@@ -458,7 +458,7 @@ describe('utils', () => {
         };
         const result3E = await my_parrallel(case3List, func3Async, { throwable: true }).catch(e => formatError(e));
         expect2(() => result3E).toEqual(
-            `MyError: yes error of me (+1 more errors) (S:2/4) - parrallel(10)
+            `MyError: yes error of me (+1 more errors) (S:2/4) - parallel(10/4)
 MyError: yes error of me
   Error: yes error of me
 MyError: yes error of me2

@@ -13,7 +13,7 @@
  */
 import $cores, { APIHeaders, APIHttpMethod, ApiHttpProxy, NextContext, NextIdentityCognito } from '../cores/';
 import { ProtocolModule, ProtocolService, SimpleSet } from '../cores/';
-import $engine, { $U, doReportSlack, do_parrallel } from '../engine/';
+import $engine, { $U, doReportSlack, do_parallel } from '../engine/';
 import { GETERR } from '../common/test-helper';
 import { sigV4Client, sigV4ClientConfig } from '../extended/libs/sig-v4';
 import { performance } from 'perf_hooks';
@@ -594,14 +594,14 @@ export function parseRange(exp: string): any {
 }
 
 /**
- * customized of `do_parrallel` for safe error-handling.
+ * customized of `do_parallel` for safe error-handling.
  * - use `.error` to report the internal error.
  *
  * @param list list of model.
  * @param func callback to process of each
- * @param params (optional) size of parrallel (default 10) or options. (for comparibility with `do_parrallel()`)
+ * @param params (optional) size of parallel (default 10) or options. (for comparibility with `do_parallel()`)
  */
-export const my_parrallel = async <
+export const my_parallel = async <
     T extends { id?: string; error?: string | null },
     U extends { id?: string; error?: string | null },
 >(
@@ -623,13 +623,14 @@ export const my_parrallel = async <
           },
 ) => {
     const options = typeof params === 'number' ? { size: params } : params || {};
-    const size = options?.size ?? 10;
+    const DEF_SIZE = $U.env('MY_PARALLEL_SIZE', '10'); // use env variable for default size.
+    const size = options?.size ?? $T.N(DEF_SIZE);
     const throwable = options?.throwable ?? true;
-    const errScope = options?.errScope ?? `parrallel(${size})`;
+    const errScope = options?.errScope ?? `parallel(${size}/${list?.length || 0})`;
     if (!list?.length) return [];
 
     //* run parallel execution
-    const results = await do_parrallel(
+    const results = await do_parallel(
         list,
         (item, i) => {
             const ret = (() => {
@@ -682,8 +683,14 @@ export const my_parrallel = async <
 };
 
 /**
+ * alias of `my_parallel`
+ * - compatibility for typo in previous version.
+ */
+export const my_parrallel = my_parallel;
+
+/**
  * run in sequence order
- * - same as `my_parrallel(list, func, 1)`;
+ * - same as `my_parallel(list, func, 1)`;
  *
  * 주의) 내부 error를 throw 하지 않으니, list 를 전부 처리할때까지 안끝남.
  *
@@ -693,7 +700,7 @@ export const my_parrallel = async <
 export const my_sequence = <T extends { id?: string; error?: string | null }, U = T>(
     list: T[],
     func: (item: T, index?: number) => Promise<U>,
-) => my_parrallel<T, U>(list, func, 1);
+) => my_parallel<T, U>(list, func, 1);
 
 /**
  * create api-http-proxy with sig-v4 agent, which using endpoint as proxy server.
