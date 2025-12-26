@@ -624,8 +624,9 @@ export const my_parallel = async <
 ) => {
     const options = typeof params === 'number' ? { size: params } : params || {};
     const DEF_SIZE = $U.env('MY_PARALLEL_SIZE', '10'); // use env variable for default size.
+    const DEF_THROW = $U.env('MY_PARALLEL_THROW', '1'); // use env variable for default size.
     const size = options?.size ?? $T.N(DEF_SIZE);
-    const throwable = options?.throwable ?? true;
+    const throwable = options?.throwable ?? ($T.B(DEF_THROW) ? true : false);
     const errScope = options?.errScope ?? `parallel(${size}/${list?.length || 0})`;
     if (!list?.length) return [];
 
