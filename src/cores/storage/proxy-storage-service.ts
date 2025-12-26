@@ -14,6 +14,7 @@ import { Elastic6SimpleQueriable, CoreModel, CORE_FIELDS } from 'lemon-model';
 import { NUL404 } from '../../common/test-helper';
 import { StorageService, DummyStorageService, DynamoStorageService } from './storage-service';
 import { GeneralAPIController } from '../../controllers/general-api-controller';
+import { BatchResult } from '../dynamo/dynamo-service';
 const NS = $U.NS('PSTR', 'blue'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -495,6 +496,31 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     }
 
     /**
+     * read multiple models by key + ids
+     *
+     * @param type      model-type
+     * @param ids       node-ids
+     */
+    public async doReadMulti(type: ModelType, ids: string[]): Promise<BatchResult<T>> {
+        const total = ids?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!ids || total === 0) return result;
+
+        const _ids = ids.map(id => this.asKey(type, id));
+        const res = await (this.storage as any).mread(_ids);
+
+        result.success = (res.success || []).map((model: T) => {
+            const res = this.filters.afterRead(model);
+            return res;
+        });
+        result.failed = (res.failed || []).map((model: T) => {
+            const res = this.filters.afterRead(model);
+            return res;
+        });
+        return result;
+    }
+
+    /**
      * delete model by id.
      *
      * @param type      model-type
@@ -530,6 +556,40 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         //* make sure it has `_id`
         (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
+    }
+
+    /**
+     * update multiple models (or it will create automatically)
+     *
+     * @param type      model-type
+     * @param list      list of models (should include id)
+     */
+    public async doUpdateMulti(type: ModelType, list: Array<T & { id: string }>): Promise<BatchResult<T>> {
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        const { updatedAt } = this.asTime();
+        const items = list.map((node: T & { id: string }) => {
+            const id = node.id;
+            if (!id) throw new Error('@id is required!');
+            const _id = this.asKey(type, id);
+            const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, undefined);
+            delete node2['_id'];
+            return { ...node2, [this.idName]: _id, updatedAt };
+        });
+
+        const res = await (this.storage as any).mupdate(items);
+
+        result.success = (res.success || []).map((model: T) => {
+            const res = this.filters.afterUpdate(model);
+            return res;
+        });
+        result.failed = (res.failed || []).map((model: T) => {
+            const res = this.filters.afterUpdate(model);
+            return res;
+        });
+        return result;
     }
 
     /**

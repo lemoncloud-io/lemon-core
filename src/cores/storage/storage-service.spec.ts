@@ -23,6 +23,160 @@ describe('StorageService', () => {
     const PROFILE = loadProfile(process); // override process.env.
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
+    // Track test data for cleanup
+    const testDataIds = new Set<string>();
+
+    //* dummy storage service - mread tests
+    it('should pass dummy storage-service mread operations', async () => {
+        //* load dummy storage service
+        const $storage = new DummyStorageService('ticketing-dummy-data', 'memory', 'id');
+        const $account = $storage as DummyStorageService<AccountModel>;
+
+        //* mread test
+        // 1. validate ids parameter test
+        // - null ids
+        const nullResult = await $account.mread(null as any);
+        expect2(nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - undefined ids
+        const undefinedResult = await $account.mread(undefined as any);
+        expect2(undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - empty array
+        const emptyResult = await $account.mread([]);
+        expect2(emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // 2. match error cases
+        // - invalid id (empty string) in array
+        expect2(await $account.mread(['', 'A00000']).catch(GETERR)).toEqual('@id (string) is required!');
+
+        // - invalid id (whitespace only) in array
+        expect2(await $account.mread(['  ', 'A00000']).catch(GETERR)).toEqual('@id (string) is required!');
+
+        // 3. success cases
+        // - setup test data
+        await $account.save('M00001', { type: 'account', name: 'user1', balance: 100 });
+        await $account.save('M00002', { type: 'account', name: 'user2', balance: 200 });
+        await $account.save('M00003', { type: 'account', name: 'user3', balance: 300 });
+
+        // - read single existing id
+        const single = await $account.mread(['M00001']);
+        expect2(single.total).toEqual(1);
+        expect2(single.success.length).toEqual(1);
+        expect2(single.failed.length).toEqual(0);
+        expect2(() => single.success[0], 'id,name,balance').toEqual({ id: 'M00001', name: 'user1', balance: 100 });
+
+        // - read multiple existing ids
+        const multiple = await $account.mread(['M00001', 'M00002', 'M00003']);
+        expect2(multiple.total).toEqual(3);
+        expect2(multiple.success.length).toEqual(3);
+        expect2(multiple.failed.length).toEqual(0);
+        expect2(() => multiple.success[0], 'id,name').toEqual({ id: 'M00001', name: 'user1' });
+        expect2(() => multiple.success[1], 'id,name').toEqual({ id: 'M00002', name: 'user2' });
+        expect2(() => multiple.success[2], 'id,name').toEqual({ id: 'M00003', name: 'user3' });
+
+        // - read mixed (existing and non-existing ids)
+        const mixed = await $account.mread(['M00001', 'NOTFOUND1', 'M00002', 'NOTFOUND2']);
+        expect2(mixed.total).toEqual(4);
+        expect2(mixed.success.length).toEqual(2);
+        expect2(mixed.failed.length).toEqual(2);
+        expect2(() => mixed.success[0], 'id,name').toEqual({ id: 'M00001', name: 'user1' });
+        expect2(() => mixed.success[1], 'id,name').toEqual({ id: 'M00002', name: 'user2' });
+        expect2(() => mixed.failed[0], 'id').toEqual({ id: 'NOTFOUND1' });
+        expect2(() => mixed.failed[1], 'id').toEqual({ id: 'NOTFOUND2' });
+
+        // - read all non-existing ids
+        const allFailed = await $account.mread(['NOTFOUND1', 'NOTFOUND2', 'NOTFOUND3']);
+        expect2(allFailed.total).toEqual(3);
+        expect2(allFailed.success.length).toEqual(0);
+        expect2(allFailed.failed.length).toEqual(3);
+
+        // - cleanup
+        await $account.delete('M00001');
+        await $account.delete('M00002');
+        await $account.delete('M00003');
+    });
+
+    //* dummy storage service - mupdate tests
+    it('should pass dummy storage-service mupdate operations', async () => {
+        //* load dummy storage service
+        const $storage = new DummyStorageService('ticketing-dummy-data', 'memory', 'id');
+        const $account = $storage as DummyStorageService<AccountModel>;
+
+        //* mupdate test
+        // 1. validate list parameter test
+        // - null list
+        const nullResult = await $account.mupdate(null as any);
+        expect2(nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - undefined list
+        const undefinedResult = await $account.mupdate(undefined as any);
+        expect2(undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - empty array
+        const emptyResult = await $account.mupdate([]);
+        expect2(emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // 2. match error cases
+        // - missing id in item
+        expect2(await $account.mupdate([{ type: 'account', name: 'test' } as any]).catch(GETERR)).toEqual(
+            '@id is required!',
+        );
+
+        // - item without id field
+        expect2(
+            await $account.mupdate([{ type: 'account', balance: 100 }, { type: 'account' }] as any).catch(GETERR),
+        ).toEqual('@id is required!');
+
+        // 3. success cases
+        // - update single item (create new)
+        const single = await $account.mupdate([{ id: 'U00001', type: 'account', name: 'test1', balance: 100 }]);
+        expect2(single.total).toEqual(1);
+        expect2(single.success.length).toEqual(1);
+        expect2(single.failed.length).toEqual(0);
+        expect2(() => single.success[0], 'id,name,balance').toEqual({ id: 'U00001', name: 'test1', balance: 100 });
+
+        // - verify saved
+        const verified1 = await $account.read('U00001');
+        expect2(() => verified1, 'id,name,balance').toEqual({ id: 'U00001', name: 'test1', balance: 100 });
+
+        // - update multiple items
+        const multiple = await $account.mupdate([
+            { id: 'U00002', type: 'account', name: 'test2', balance: 200 },
+            { id: 'U00003', type: 'account', name: 'test3', balance: 300 },
+            { id: 'U00004', type: 'account', name: 'test4', balance: 400 },
+        ]);
+        expect2(multiple.total).toEqual(3);
+        expect2(multiple.success.length).toEqual(3);
+        expect2(multiple.failed.length).toEqual(0);
+        expect2(() => multiple.success[0], 'id,name').toEqual({ id: 'U00002', name: 'test2' });
+        expect2(() => multiple.success[1], 'id,name').toEqual({ id: 'U00003', name: 'test3' });
+        expect2(() => multiple.success[2], 'id,name').toEqual({ id: 'U00004', name: 'test4' });
+
+        // - update existing items (modify)
+        const updated = await $account.mupdate([
+            { id: 'U00001', name: 'updated1', balance: 150 },
+            { id: 'U00002', name: 'updated2', balance: 250 },
+        ]);
+        expect2(updated.total).toEqual(2);
+        expect2(updated.success.length).toEqual(2);
+        expect2(() => updated.success[0], 'id,name,balance').toEqual({ id: 'U00001', name: 'updated1', balance: 150 });
+        expect2(() => updated.success[1], 'id,name,balance').toEqual({ id: 'U00002', name: 'updated2', balance: 250 });
+
+        // - verify updates
+        const verified2 = await $account.read('U00001');
+        expect2(() => verified2, 'id,name,balance').toEqual({ id: 'U00001', name: 'updated1', balance: 150 });
+
+        const verified3 = await $account.read('U00002');
+        expect2(() => verified3, 'id,name,balance').toEqual({ id: 'U00002', name: 'updated2', balance: 250 });
+
+        // - cleanup
+        await $account.delete('U00001');
+        await $account.delete('U00002');
+        await $account.delete('U00003');
+        await $account.delete('U00004');
+    });
+
     //* dummy storage service.
     it('should pass dummy storage-service', async () => {
         //* load dummy storage service.
@@ -192,6 +346,156 @@ describe('StorageService', () => {
             type: 'test',
             slot: 1,
         });
+    });
+
+    //* dynamo storage service - mread tests
+    it('should pass dynamo storage-service mread operations', async () => {
+        //* load dynamo storage service
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', ['name', 'slot', 'balance'], 'no');
+
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        //* mread test
+        // 1. validate ids parameter test
+        // - null ids
+        const nullResult = await $dynamo.mread(null as any);
+        expect2(nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - undefined ids
+        const undefinedResult = await $dynamo.mread(undefined as any);
+        expect2(undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - empty array
+        const emptyResult = await $dynamo.mread([]);
+        expect2(emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // 2. success cases
+        // - setup test data
+        await $dynamo.save('DM00001', { type: 'account', name: 'user1', balance: 100 });
+        testDataIds.add('DM00001');
+        await $dynamo.save('DM00002', { type: 'account', name: 'user2', balance: 200 });
+        testDataIds.add('DM00002');
+        await $dynamo.save('DM00003', { type: 'account', name: 'user3', balance: 300 });
+        testDataIds.add('DM00003');
+
+        // - read single existing id
+        const single = await $dynamo.mread(['DM00001']);
+        expect2(single.total).toEqual(1);
+        expect2(single.success.length).toEqual(1);
+        expect2(single.failed.length).toEqual(0);
+        expect2(() => single.success[0], 'no,name,balance').toEqual({ no: 'DM00001', name: 'user1', balance: 100 });
+
+        // - read multiple existing ids
+        const multiple = await $dynamo.mread(['DM00001', 'DM00002', 'DM00003']);
+        expect2(multiple.total).toEqual(3);
+        expect2(multiple.success.length).toEqual(3);
+        expect2(multiple.failed.length).toEqual(0);
+        expect2(() => multiple.success[0], 'no,name').toEqual({ no: 'DM00001', name: 'user1' });
+        expect2(() => multiple.success[1], 'no,name').toEqual({ no: 'DM00002', name: 'user2' });
+        expect2(() => multiple.success[2], 'no,name').toEqual({ no: 'DM00003', name: 'user3' });
+
+        // - read mixed (existing and non-existing ids)
+        const mixed = await $dynamo.mread(['DM00001', 'NOTFOUND1', 'DM00002', 'NOTFOUND2']);
+        expect2(mixed.total).toEqual(4);
+        expect2(mixed.success.length).toEqual(2);
+        expect2(mixed.failed.length).toEqual(2);
+        expect2(() => mixed.success[0], 'no,name').toEqual({ no: 'DM00001', name: 'user1' });
+        expect2(() => mixed.success[1], 'no,name').toEqual({ no: 'DM00002', name: 'user2' });
+        expect2(() => mixed.failed[0], 'no').toEqual({ no: 'NOTFOUND1' });
+        expect2(() => mixed.failed[1], 'no').toEqual({ no: 'NOTFOUND2' });
+
+        // - read all non-existing ids
+        const allFailed = await $dynamo.mread(['NOTFOUND1', 'NOTFOUND2', 'NOTFOUND3']);
+        expect2(allFailed.total).toEqual(3);
+        expect2(allFailed.success.length).toEqual(0);
+        expect2(allFailed.failed.length).toEqual(3);
+    });
+
+    //* dynamo storage service - mupdate tests
+    it('should pass dynamo storage-service mupdate operations', async () => {
+        //* load dynamo storage service
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', ['name', 'slot', 'balance'], 'no');
+
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        //* mupdate test
+        // 1. validate list parameter test
+        // - null list
+        const nullResult = await $dynamo.mupdate(null as any);
+        expect2(nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - undefined list
+        const undefinedResult = await $dynamo.mupdate(undefined as any);
+        expect2(undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // - empty array
+        const emptyResult = await $dynamo.mupdate([]);
+        expect2(emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+        // 2. match error cases
+        // - missing id in item (using 'no' as idName)
+        expect2(await $dynamo.mupdate([{ type: 'account', name: 'test' } as any]).catch(GETERR)).toEqual(
+            '@id is required!',
+        );
+
+        // - item without id field
+        expect2(
+            await $dynamo.mupdate([{ type: 'account', balance: 100 }, { type: 'account' }] as any).catch(GETERR),
+        ).toEqual('@id is required!');
+
+        // 3. success cases
+        // - update single item (create new)
+        const single = await $dynamo.mupdate([{ no: 'DU00001', type: 'account', name: 'test1', balance: 100 } as any]);
+        testDataIds.add('DU00001');
+        expect2(single.total).toEqual(1);
+        expect2(single.success.length).toEqual(1);
+        expect2(single.failed.length).toEqual(0);
+        expect2(() => single.success[0], 'no,name,balance').toEqual({ no: 'DU00001', name: 'test1', balance: 100 });
+
+        // - verify saved
+        const verified1 = await $dynamo.read('DU00001');
+        expect2(() => verified1, 'no,name,balance').toEqual({ no: 'DU00001', name: 'test1', balance: 100 });
+
+        // - update multiple items
+        const multiple = await $dynamo.mupdate([
+            { no: 'DU00002', type: 'account', name: 'test2', balance: 200 } as any,
+            { no: 'DU00003', type: 'account', name: 'test3', balance: 300 } as any,
+            { no: 'DU00004', type: 'account', name: 'test4', balance: 400 } as any,
+        ]);
+        testDataIds.add('DU00002');
+        testDataIds.add('DU00003');
+        testDataIds.add('DU00004');
+        expect2(multiple.total).toEqual(3);
+        expect2(multiple.success.length).toEqual(3);
+        expect2(multiple.failed.length).toEqual(0);
+        expect2(() => multiple.success[0], 'no,name').toEqual({ no: 'DU00002', name: 'test2' });
+        expect2(() => multiple.success[1], 'no,name').toEqual({ no: 'DU00003', name: 'test3' });
+        expect2(() => multiple.success[2], 'no,name').toEqual({ no: 'DU00004', name: 'test4' });
+
+        // - update existing items (modify)
+        const updated = await $dynamo.mupdate([
+            { no: 'DU00001', name: 'updated1', balance: 150 } as any,
+            { no: 'DU00002', name: 'updated2', balance: 250 } as any,
+        ]);
+        expect2(updated.total).toEqual(2);
+        expect2(updated.success.length).toEqual(2);
+        expect2(() => updated.success[0], 'no,name,balance').toEqual({ no: 'DU00001', name: 'updated1', balance: 150 });
+        expect2(() => updated.success[1], 'no,name,balance').toEqual({ no: 'DU00002', name: 'updated2', balance: 250 });
+
+        // - verify updates
+        const verified2 = await $dynamo.read('DU00001');
+        expect2(() => verified2, 'no,name,balance').toEqual({ no: 'DU00001', name: 'updated1', balance: 150 });
+
+        const verified3 = await $dynamo.read('DU00002');
+        expect2(() => verified3, 'no,name,balance').toEqual({ no: 'DU00002', name: 'updated2', balance: 250 });
     });
 
     //* dynamo storage service. (should be equivalent with `dummy-storage-server`)
@@ -392,5 +696,13 @@ describe('StorageService', () => {
             type: 'test',
             slot: 1,
         });
+    });
+
+    afterAll(async () => {
+        if (PROFILE !== 'lemon') return;
+
+        // Cleanup the table - delete all test data
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', ['name', 'slot', 'balance'], 'no');
+        await Promise.all([...testDataIds].map(id => $dynamo.delete(id).catch(() => {})));
     });
 });

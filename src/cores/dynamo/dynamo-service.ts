@@ -16,12 +16,22 @@ import { GeneralItem, Incrementable } from 'lemon-model';
 import { awsConfig, loadDataYml } from '../../tools/';
 import { StreamViewType, KeySchemaElement } from '@aws-sdk/client-dynamodb';
 import { CreateTableCommand, DeleteTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import {
+    DynamoDBDocumentClient,
+    GetCommand,
+    BatchGetCommand,
+    PutCommand,
+    DeleteCommand,
+    UpdateCommand,
+    BatchWriteCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { DynamoDBStreamsClient } from '@aws-sdk/client-dynamodb-streams';
 
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type KEY_TYPE = 'number' | 'string';
+type DynamoKey = Record<string, KEY_TYPE extends 'number' ? number : string>;
+type DynamoItem = Record<string, string | number | string[] | number[] | null>;
 
 export interface DynamoOption {
     tableName: string;
@@ -44,6 +54,26 @@ export interface DynamoOption {
  */
 export interface Updatable {
     [key: string]: GeneralItem['key'] | { setIndex: [number, string | number][] } | { removeIndex: number[] };
+}
+
+/**
+ * type: BatchWriteRequest for DynamoDB Document Client
+ */
+interface BatchWriteRequest {
+    PutRequest?: { Item: DynamoItem };
+    DeleteRequest?: { Key: DynamoKey };
+}
+
+/**
+ * type: BatchResult for batch operation results
+ */
+export interface BatchResult<T> {
+    /** successfully saved items */
+    success: T[];
+    /** failed items */
+    failed: T[];
+    /** total number of items */
+    total: number;
 }
 
 //* create(or get) instance.
@@ -100,13 +130,22 @@ export class DynamoService<T extends GeneralItem> {
         const $cfg = awsConfig($engine, region);
         const dynamo = DynamoService._dynamo[region] ?? new DynamoDBClient($cfg); // Low-level DynamoDB client
         const dynamostr = DynamoService._dynamostr[region] ?? new DynamoDBStreamsClient($cfg); // DynamoDB Streams client
-        const dynamodoc =
-            DynamoService._dynamodoc[region] ??
-            (async (): Promise<DynamoDBDocumentClient> => {
-                const credentials = $cfg.credentials;
-                const dynamo = new DynamoDBClient({ ...$cfg, credentials }); // Low-level DynamoDB client
-                return DynamoDBDocumentClient.from(dynamo); // High-level Document client
-            });
+
+        // Create memoized function for dynamodoc
+        if (!DynamoService._dynamodoc[region]) {
+            const cache: { client: DynamoDBDocumentClient | null } = { client: null };
+            DynamoService._dynamodoc[region] = async (): Promise<DynamoDBDocumentClient> => {
+                if (!cache.client) {
+                    _log(NS, `! creating NEW DynamoDBDocumentClient for region[${region}]`);
+                    const credentials = $cfg.credentials;
+                    const dynamo = new DynamoDBClient({ ...$cfg, credentials });
+                    cache.client = DynamoDBDocumentClient.from(dynamo);
+                }
+                return cache.client;
+            };
+        }
+
+        const dynamodoc = DynamoService._dynamodoc[region]; // High-level Document client
         return { dynamo, dynamostr, dynamodoc };
     }
 
@@ -386,6 +425,119 @@ export class DynamoService<T extends GeneralItem> {
     }
 
     /**
+     * multiple read-item
+     * - chunks requests into groups of 100 (DynamoDB BatchGetItem limit)
+     *
+     * @param list array of items with { id, sort? }
+     * @returns BatchResult with success/failed items
+     */
+    public async mreadItem(list: Array<{ id: string; sort?: string | number }>): Promise<BatchResult<T>> {
+        const { tableName, idName, sortName } = this.options;
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        const dynamodoc = await DynamoService.instance().dynamodoc();
+
+        const _convertKeyToSig = (key: DynamoKey) => {
+            const id = key[idName] as string | number;
+            const sort = sortName ? (key[sortName] as string | number) : undefined;
+            return `${id}${sortName ? '/' + sort : ''}`;
+        };
+        const _convertItemToSig = (item: T) => {
+            const id = item[idName] as string | number;
+            const sort = sortName ? (item[sortName] as string | number) : undefined;
+            return `${id}${sortName ? '/' + sort : ''}`;
+        };
+
+        //* Maps to preserve original order
+        const successMap = new Map<string, T>();
+        const failedMap = new Map<string, T>();
+
+        //* process in chunks of 100 (DynamoDB BatchGetItem limit)
+        const CHUNK_SIZE = 100;
+
+        for (let i = 0; i < total; i += CHUNK_SIZE) {
+            const chunk = list?.slice(i, i + CHUNK_SIZE) ?? [];
+            const chunkKeyMap = new Map<string, DynamoKey>();
+
+            const chunkKeys = chunk.map(item => {
+                const key = this.prepareItemKey(item.id, item.sort).Key as DynamoKey;
+                const sig = _convertKeyToSig(key);
+                if (!chunkKeyMap.has(sig)) chunkKeyMap.set(sig, key);
+                return key;
+            });
+
+            const MAX_RETRIES = 3;
+            const _doBatchGet = async (
+                keys: DynamoKey[],
+                attempt: number,
+                acc: T[],
+            ): Promise<{ items: T[]; unprocessed: DynamoKey[] }> => {
+                const response = await dynamodoc
+                    .send(new BatchGetCommand({ RequestItems: { [tableName]: { Keys: keys } } }))
+                    .catch((e: Error) => {
+                        if (`${e.message}`.includes('ResourceNotFoundException'))
+                            throw new Error(`404 NOT FOUND - table:${tableName}`);
+                        throw e;
+                    });
+
+                const items = (response.Responses?.[tableName] ?? []) as T[];
+                if (items.length > 0) acc.push(...items);
+
+                const unprocessed = (response.UnprocessedKeys?.[tableName]?.Keys ?? []) as DynamoKey[];
+                if (unprocessed.length > 0) {
+                    if (attempt >= MAX_RETRIES) return { items: acc, unprocessed };
+                    //* exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
+                    return _doBatchGet(unprocessed, attempt + 1, acc);
+                }
+                return { items: acc, unprocessed: [] };
+            };
+
+            try {
+                const { items } = await _doBatchGet(chunkKeys, 1, []);
+                items.forEach(item => {
+                    const sig = _convertItemToSig(item);
+                    successMap.set(sig, item);
+                });
+
+                const received = new Set(items.map(item => _convertItemToSig(item)));
+                const missing = Array.from(chunkKeyMap.entries())
+                    .filter(([sig]) => !received.has(sig))
+                    .map(([sig, key]) => {
+                        failedMap.set(sig, key as T);
+                        return key as T;
+                    });
+            } catch (e) {
+                Array.from(chunkKeyMap.entries()).forEach(([sig, key]) => {
+                    failedMap.set(sig, key as T);
+                });
+            }
+        }
+
+        //* Preserve original order
+        list.forEach(item => {
+            const key = this.prepareItemKey(item.id, item.sort).Key as DynamoKey;
+            const sig = _convertKeyToSig(key);
+            const successItem = successMap.get(sig);
+            const failedItem = failedMap.get(sig);
+            if (successItem) {
+                result.success.push(successItem);
+            } else if (failedItem) {
+                result.failed.push(failedItem);
+            }
+        });
+
+        _log(NS, `> mreadItem.res =`, {
+            success: result.success.length,
+            failed: result.failed.length,
+            total: result.total,
+        });
+        return result;
+    }
+
+    /**
      * save-item
      * - save whole data with param (use update if partial save)
      *
@@ -411,6 +563,92 @@ export class DynamoService<T extends GeneralItem> {
                     throw new Error(`404 NOT FOUND - ${idName}:${id}`);
                 throw e;
             });
+    }
+
+    /**
+     * multiple save-item
+     * - chunks requests into groups of 25 (DynamoDB BatchWriteItem limit)
+     * - NOTE: This overwrites entire items (no partial update or increment support)
+     *
+     * @param list array of items with { id, sort?, ...model }
+     * @returns BatchResult with success/failed items
+     */
+    public async msaveItem(list: Array<T & { id: string; sort?: string | number }>): Promise<BatchResult<T>> {
+        const { tableName } = this.options;
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        // _log(NS, `msaveItem(${tableName})[${list.length}]...`);
+        const dynamodoc = await DynamoService.instance().dynamodoc();
+
+        //* process in chunks of 25 (DynamoDB BatchWriteItem limit)
+        const CHUNK_SIZE = 25;
+
+        for (let i = 0; i < total; i += CHUNK_SIZE) {
+            const chunk = list?.slice(i, i + CHUNK_SIZE) ?? [];
+            const chunkItems: T[] = [];
+
+            //* prepare batch write requests
+            const putRequests: BatchWriteRequest[] = chunk.map(item => {
+                const { id, ...rest } = item;
+                const payload = this.prepareSaveItem(id, rest as T);
+                chunkItems.push(payload.Item);
+                return {
+                    PutRequest: {
+                        Item: payload.Item,
+                    },
+                };
+            });
+
+            //* execute batch write with retry for unprocessed items
+            const MAX_RETRIES = 3;
+            const _doBatchWrite = async (
+                requests: BatchWriteRequest[],
+                attempt: number,
+            ): Promise<BatchWriteRequest[]> => {
+                const response = await dynamodoc
+                    .send(new BatchWriteCommand({ RequestItems: { [tableName]: requests } }))
+                    .catch((e: Error) => {
+                        if (`${e.message}`.includes('ResourceNotFoundException'))
+                            throw new Error(`404 NOT FOUND - table:${tableName}`);
+                        throw e;
+                    });
+
+                //* check for unprocessed items
+                const unprocessed = response.UnprocessedItems?.[tableName];
+                if (unprocessed && unprocessed?.length > 0) {
+                    if (attempt >= MAX_RETRIES) {
+                        return unprocessed;
+                    }
+                    //* exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
+                    return _doBatchWrite(unprocessed, attempt + 1);
+                }
+                return [];
+            };
+
+            try {
+                const unprocessed = await _doBatchWrite(putRequests, 1);
+                if (unprocessed?.length > 0) {
+                    //* partial failure: some items unprocessed after retries
+                    result.failed.push(...chunkItems);
+                } else {
+                    //* all items in chunk succeeded
+                    result.success.push(...chunkItems);
+                }
+            } catch (e) {
+                //* chunk failed completely
+                result.failed.push(...chunkItems);
+            }
+        }
+
+        _log(NS, `> msaveItem.res =`, {
+            success: result.success.length,
+            failed: result.failed.length,
+            total: result.total,
+        });
+        return result;
     }
 
     /**
@@ -469,6 +707,114 @@ export class DynamoService<T extends GeneralItem> {
                 throw e;
             });
     }
+
+    /**
+     * multiple update-item
+     * - chunks requests into groups of 25 (DynamoDB BatchWriteItem limit)
+     * - NOTE: This overwrites entire items (no partial update or increment support)
+     *
+     * @param list array of items with { id, sort?, ...model }
+     * @returns BatchResult with success/failed items
+     */
+    public async mupdateItem(list: Array<T & { id: string; sort?: string | number }>): Promise<BatchResult<T>> {
+        const { tableName, idName } = this.options;
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        // _log(NS, `mupdateItem(${tableName})[${list.length}]...`);
+        const dynamodoc = await DynamoService.instance().dynamodoc();
+
+        //* Maps to preserve original order
+        const successMap = new Map<string, T>();
+        const failedMap = new Map<string, T>();
+
+        //* process in chunks of 25 (DynamoDB BatchWriteItem limit)
+        const CHUNK_SIZE = 25;
+
+        for (let i = 0; i < total; i += CHUNK_SIZE) {
+            const chunk = list?.slice(i, i + CHUNK_SIZE) ?? [];
+            const chunkItemMap = new Map<string, T>();
+
+            //* prepare batch write requests
+            const putRequests = chunk.map(item => {
+                const { id, ...rest } = item;
+                const payload = this.prepareSaveItem(id, rest as unknown as T);
+                chunkItemMap.set(id, payload.Item as T);
+                return {
+                    PutRequest: {
+                        Item: payload.Item,
+                    },
+                };
+            });
+
+            //* execute batch write with retry for unprocessed items
+            const MAX_RETRIES = 3;
+            const _doBatchWrite = async (
+                requests: BatchWriteRequest[],
+                attempt: number,
+            ): Promise<BatchWriteRequest[]> => {
+                const response = await dynamodoc
+                    .send(new BatchWriteCommand({ RequestItems: { [tableName]: requests } }))
+                    .catch((e: Error) => {
+                        if (`${e.message}`.includes('ResourceNotFoundException'))
+                            throw new Error(`404 NOT FOUND - table:${tableName}`);
+                        throw e;
+                    });
+
+                //* check for unprocessed items
+                const unprocessed = response.UnprocessedItems?.[tableName];
+                if (unprocessed && unprocessed?.length > 0) {
+                    if (attempt >= MAX_RETRIES) {
+                        return unprocessed;
+                    }
+                    //* exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 100));
+                    return _doBatchWrite(unprocessed, attempt + 1);
+                }
+                return [];
+            };
+
+            try {
+                const unprocessed = await _doBatchWrite(putRequests, 1);
+                if (unprocessed?.length > 0) {
+                    //* partial failure: some items unprocessed after retries
+                    chunkItemMap.forEach((item, id) => {
+                        failedMap.set(id, item);
+                    });
+                } else {
+                    //* all items in chunk succeeded
+                    chunkItemMap.forEach((item, id) => {
+                        successMap.set(id, item);
+                    });
+                }
+            } catch (e) {
+                //* chunk failed completely
+                chunkItemMap.forEach((item, id) => {
+                    failedMap.set(id, item);
+                });
+            }
+        }
+
+        //* Preserve original order
+        list.forEach(item => {
+            const id = item.id;
+            const successItem = successMap.get(id);
+            const failedItem = failedMap.get(id);
+            if (successItem) {
+                result.success.push(successItem);
+            } else if (failedItem) {
+                result.failed.push(failedItem);
+            }
+        });
+
+        _log(NS, `> mupdateItem.res =`, {
+            success: result.success.length,
+            failed: result.failed.length,
+            total: result.total,
+        });
+        return result;
+    }
 }
 
 /** ****************************************************************************************************************
@@ -525,10 +871,58 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         return { [idName]: id, ...item };
     }
 
+    public async mreadItem(list: Array<{ id: string; sort?: string | number }>): Promise<BatchResult<T>> {
+        const { idName, sortName } = this.options;
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        for (const item of list) {
+            const data: T = this.buffer[item.id];
+            if (data === undefined) {
+                const key = sortName
+                    ? ({ [idName]: item.id, [sortName]: item.sort } as T)
+                    : ({ [idName]: item.id } as T);
+                result.failed.push(key);
+                continue;
+            }
+            result.success.push({ [idName]: item.id, ...data } as T);
+        }
+
+        _log(NS, `> mreadItem.res =`, {
+            success: result.success.length,
+            failed: result.failed.length,
+            total: result.total,
+        });
+        return result;
+    }
+
     public async saveItem(id: string, item: T): Promise<T> {
         const { idName } = this.options;
         this.buffer[id] = normalize(item);
         return { [idName]: id, ...this.buffer[id] };
+    }
+
+    public async msaveItem(list: Array<T & { id: string; sort?: string | number }>): Promise<BatchResult<T>> {
+        const { idName } = this.options;
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        // _log(NS, `msaveItem(dummy)[${list.length}]...`);
+        //* process all saves using the in-memory buffer (overwrites entire items)
+        for (const item of list) {
+            const { id, ...rest } = item;
+            this.buffer[id] = normalize(rest as T);
+            result.success.push({ [idName]: id, ...this.buffer[id] } as T);
+        }
+
+        _log(NS, `> msaveItem.res =`, {
+            success: result.success.length,
+            failed: result.failed.length,
+            total: result.total,
+        });
+        return result;
     }
 
     public async deleteItem(id: string, sort?: string | number): Promise<T> {
@@ -542,5 +936,28 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
         this.buffer[id] = { ...item, ...normalize(updates) };
         return { [idName]: id, ...this.buffer[id] };
+    }
+
+    public async mupdateItem(list: Array<T & { id: string; sort?: string | number }>): Promise<BatchResult<T>> {
+        const { idName } = this.options;
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        // _log(NS, `mupdateItem(dummy)[${list.length}]...`);
+        //* process all updates using the in-memory buffer (overwrites entire items)
+        for (const item of list) {
+            const { id, ...rest } = item;
+            //* overwrite entire item (same as PutItem behavior)
+            this.buffer[id] = normalize(rest as any);
+            result.success.push({ [idName]: id, ...this.buffer[id] } as any);
+        }
+
+        _log(NS, `> mupdateItem.res =`, {
+            success: result.success.length,
+            failed: result.failed.length,
+            total: result.total,
+        });
+        return result;
     }
 }

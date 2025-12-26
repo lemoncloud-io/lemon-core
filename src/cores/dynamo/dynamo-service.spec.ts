@@ -152,7 +152,7 @@ describe('DynamoService', () => {
         //* load dummy storage service.
         const { dummy, tableName } = instance();
 
-        it('should pass basic CRUD', async () => {
+        it('should pass mutiple crud operations with dummy', async () => {
             //* check dummy data.
             expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
 
@@ -172,14 +172,391 @@ describe('DynamoService', () => {
             expect2(await dummy.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null });
             expect2(await dummy.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'ID').toEqual({ ID: 'A0' });
             expect2(await dummy.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
-        });
 
-        it('should pass simple list w/ dummy', async () => {
-            //* check dummy data.
+            //* check dummy data list
             expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
             expect2(await dummy.listItems(), '!list').toEqual({ page: 1, limit: 2, total: 3 });
             expect2(await dummy.listItems(1, 1), '!list').toEqual({ page: 1, limit: 1, total: 3 });
             expect2(await dummy.listItems(2, 2), '!list').toEqual({ page: 2, limit: 2, total: 3 });
+
+            //* msaveItem test
+            {
+                // 1. validate list parameter
+                //* null list
+                const nullResult = await dummy.msaveItem(null as any);
+                expect2(() => nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* undefined list
+                const undefinedResult = await dummy.msaveItem(undefined as any);
+                expect2(() => undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* empty list
+                const emptyResult = await dummy.msaveItem([]);
+                expect2(() => emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // 2. success cases
+                //* single item save
+                const singleItem = [{ id: 'S0', type: 'product', name: 'Item A' }];
+                const singleResult = await dummy.msaveItem(singleItem);
+                expect2(() => singleResult, 'total').toEqual({ total: 1 });
+                expect2(() => singleResult.success.length).toEqual(1);
+                expect2(() => singleResult.failed.length).toEqual(0);
+                expect2(() => singleResult.success[0], 'ID,type,name').toEqual({
+                    ID: 'S0',
+                    type: 'product',
+                    name: 'Item A',
+                });
+
+                //* verify saved item
+                expect2(await dummy.readItem('S0'), 'ID,type,name').toEqual({
+                    ID: 'S0',
+                    type: 'product',
+                    name: 'Item A',
+                });
+
+                //* multiple items save (small batch < 25)
+                const multipleItems = [
+                    { id: 'S1', type: 'product', name: 'Item B' },
+                    { id: 'S2', type: 'product', name: 'Item C' },
+                    { id: 'S3', type: 'service', name: 'Item D' },
+                ];
+                const multipleResult = await dummy.msaveItem(multipleItems);
+                expect2(() => multipleResult, 'total').toEqual({ total: 3 });
+                expect2(() => multipleResult.success.length).toEqual(3);
+                expect2(() => multipleResult.failed.length).toEqual(0);
+
+                //* verify all saved items
+                expect2(await dummy.readItem('S1'), 'ID,type,name').toEqual({
+                    ID: 'S1',
+                    type: 'product',
+                    name: 'Item B',
+                });
+                expect2(await dummy.readItem('S2'), 'ID,type,name').toEqual({
+                    ID: 'S2',
+                    type: 'product',
+                    name: 'Item C',
+                });
+                expect2(await dummy.readItem('S3'), 'ID,type,name').toEqual({
+                    ID: 'S3',
+                    type: 'service',
+                    name: 'Item D',
+                });
+
+                //* overwrite existing items
+                const overwriteItems = [
+                    { id: 'S1', type: 'service', name: 'Item B Updated' },
+                    { id: 'S2', type: 'service', name: 'Item C Updated' },
+                ];
+                const overwriteResult = await dummy.msaveItem(overwriteItems);
+                expect2(() => overwriteResult.success.length).toEqual(2);
+                expect2(await dummy.readItem('S1'), 'ID,type,name').toEqual({
+                    ID: 'S1',
+                    type: 'service',
+                    name: 'Item B Updated',
+                });
+                expect2(await dummy.readItem('S2'), 'ID,type,name').toEqual({
+                    ID: 'S2',
+                    type: 'service',
+                    name: 'Item C Updated',
+                });
+
+                // 3. edge cases
+                //* empty string normalization
+                const emptyStringItems = [{ id: 'S4', type: '', name: 'Empty Type' }];
+                const emptyStringResult = await dummy.msaveItem(emptyStringItems);
+                expect2(() => emptyStringResult.success.length).toEqual(1);
+                expect2(await dummy.readItem('S4'), 'ID,type,name').toEqual({
+                    ID: 'S4',
+                    type: null,
+                    name: 'Empty Type',
+                });
+
+                //* large batch (> 25 items to test chunking)
+                const largeItems = Array.from({ length: 30 }, (_, i) => ({
+                    id: `T${i}`,
+                    type: 'batch',
+                    name: `Item ${i}`,
+                }));
+                const largeResult = await dummy.msaveItem(largeItems);
+                expect2(() => largeResult.total).toEqual(30);
+                expect2(() => largeResult.success.length).toEqual(30);
+                expect2(() => largeResult.failed.length).toEqual(0);
+
+                //* verify some items from large batch
+                expect2(await dummy.readItem('T0'), 'ID,type,name').toEqual({
+                    ID: 'T0',
+                    type: 'batch',
+                    name: 'Item 0',
+                });
+                expect2(await dummy.readItem('T25'), 'ID,type,name').toEqual({
+                    ID: 'T25',
+                    type: 'batch',
+                    name: 'Item 25',
+                });
+                expect2(await dummy.readItem('T29'), 'ID,type,name').toEqual({
+                    ID: 'T29',
+                    type: 'batch',
+                    name: 'Item 29',
+                });
+            }
+
+            //* mreadItem test
+            {
+                // 1. validate list parameter
+                //* null list
+                const nullResult = await dummy.mreadItem(null as any);
+                expect2(() => nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* undefined list
+                const undefinedResult = await dummy.mreadItem(undefined as any);
+                expect2(() => undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* empty list
+                const emptyResult = await dummy.mreadItem([]);
+                expect2(() => emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // 2. success cases
+                //* prepare test data first
+                await dummy.msaveItem([
+                    { id: 'R0', type: 'product', name: 'Read Item A' },
+                    { id: 'R1', type: 'product', name: 'Read Item B' },
+                    { id: 'R2', type: 'service', name: 'Read Item C' },
+                ]);
+
+                //* single item read
+                const singleRead = await dummy.mreadItem([{ id: 'R0' }]);
+                expect2(() => singleRead, 'total').toEqual({ total: 1 });
+                expect2(() => singleRead.success.length).toEqual(1);
+                expect2(() => singleRead.failed.length).toEqual(0);
+                expect2(() => singleRead.success[0], 'ID,type,name').toEqual({
+                    ID: 'R0',
+                    type: 'product',
+                    name: 'Read Item A',
+                });
+
+                //* multiple items read (small batch < 100)
+                const multipleRead = await dummy.mreadItem([{ id: 'R0' }, { id: 'R1' }, { id: 'R2' }]);
+                expect2(() => multipleRead, 'total').toEqual({ total: 3 });
+                expect2(() => multipleRead.success.length).toEqual(3);
+                expect2(() => multipleRead.failed.length).toEqual(0);
+
+                //* verify read items
+                const items = multipleRead.success;
+                expect2(() => items[0], 'ID,type,name').toEqual({ ID: 'R0', type: 'product', name: 'Read Item A' });
+                expect2(() => items[1], 'ID,type,name').toEqual({ ID: 'R1', type: 'product', name: 'Read Item B' });
+                expect2(() => items[2], 'ID,type,name').toEqual({ ID: 'R2', type: 'service', name: 'Read Item C' });
+
+                // 3. edge cases
+                //* read non-existent items (should fail)
+                const notFoundRead = await dummy.mreadItem([{ id: 'NOT_EXISTS' }]);
+                expect2(() => notFoundRead, 'total').toEqual({ total: 1 });
+                expect2(() => notFoundRead.success.length).toEqual(0);
+                expect2(() => notFoundRead.failed.length).toEqual(1);
+                expect2(() => notFoundRead.failed[0], 'ID').toEqual({ ID: 'NOT_EXISTS' });
+
+                //* mixed: some exist, some don't
+                const mixedRead = await dummy.mreadItem([{ id: 'R0' }, { id: 'NOT_EXISTS' }, { id: 'R1' }]);
+                expect2(() => mixedRead, 'total').toEqual({ total: 3 });
+                expect2(() => mixedRead.success.length).toEqual(2);
+                expect2(() => mixedRead.failed.length).toEqual(1);
+
+                //* large batch (> 100 items to test chunking)
+                const largeSaveItems = Array.from({ length: 110 }, (_, i) => ({
+                    id: `U${i}`,
+                    type: 'batch',
+                    name: `Item ${i}`,
+                }));
+                await dummy.msaveItem(largeSaveItems);
+
+                const largeReadKeys = Array.from({ length: 110 }, (_, i) => ({ id: `U${i}` }));
+                const largeRead = await dummy.mreadItem(largeReadKeys);
+                expect2(() => largeRead.total).toEqual(110);
+                expect2(() => largeRead.success.length).toEqual(110);
+                expect2(() => largeRead.failed.length).toEqual(0);
+
+                //* verify some items from large batch
+                const largeItems = largeRead.success;
+                const item0 = largeItems.find(item => item.ID === 'U0');
+                const item50 = largeItems.find(item => item.ID === 'U50');
+                const item109 = largeItems.find(item => item.ID === 'U109');
+                expect2(() => item0, 'ID,type,name').toEqual({ ID: 'U0', type: 'batch', name: 'Item 0' });
+                expect2(() => item50, 'ID,type,name').toEqual({ ID: 'U50', type: 'batch', name: 'Item 50' });
+                expect2(() => item109, 'ID,type,name').toEqual({ ID: 'U109', type: 'batch', name: 'Item 109' });
+            }
+
+            //* mupdateItem test
+            {
+                // 1. validate list parameter
+                // null list
+                const nullResult = await dummy.mupdateItem(null as any);
+                expect2(() => nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // undefined list
+                const undefinedResult = await dummy.mupdateItem(undefined as any);
+                expect2(() => undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // empty list
+                const emptyResult = await dummy.mupdateItem([]);
+                expect2(() => emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // 2. success cases
+                //* single item update
+                const singleItem = [{ id: 'B0', type: 'user', name: 'Alice' }];
+                const singleResult = await dummy.mupdateItem(singleItem);
+                expect2(() => singleResult, 'total').toEqual({ total: 1 });
+                expect2(() => singleResult.success.length).toEqual(1);
+                expect2(() => singleResult.failed.length).toEqual(0);
+                expect2(() => singleResult.success[0], 'ID,type,name').toEqual({
+                    ID: 'B0',
+                    type: 'user',
+                    name: 'Alice',
+                });
+
+                // verify saved item
+                expect2(await dummy.readItem('B0'), 'ID,type,name').toEqual({ ID: 'B0', type: 'user', name: 'Alice' });
+
+                //* multiple items update (small batch < 25)
+                const multipleItems = [
+                    { id: 'B1', type: 'user', name: 'Bob' },
+                    { id: 'B2', type: 'user', name: 'Charlie' },
+                    { id: 'B3', type: 'admin', name: 'David' },
+                ];
+                const multipleResult = await dummy.mupdateItem(multipleItems);
+                expect2(() => multipleResult, 'total').toEqual({ total: 3 });
+                expect2(() => multipleResult.success.length).toEqual(3);
+                expect2(() => multipleResult.failed.length).toEqual(0);
+
+                // verify all saved items
+                expect2(await dummy.readItem('B1'), 'ID,type,name').toEqual({ ID: 'B1', type: 'user', name: 'Bob' });
+                expect2(await dummy.readItem('B2'), 'ID,type,name').toEqual({
+                    ID: 'B2',
+                    type: 'user',
+                    name: 'Charlie',
+                });
+                expect2(await dummy.readItem('B3'), 'ID,type,name').toEqual({ ID: 'B3', type: 'admin', name: 'David' });
+
+                //* overwrite existing items
+                const overwriteItems = [
+                    { id: 'B1', type: 'admin', name: 'Bob Updated' },
+                    { id: 'B2', type: 'admin', name: 'Charlie Updated' },
+                ];
+                const overwriteResult = await dummy.mupdateItem(overwriteItems);
+                expect2(() => overwriteResult.success.length).toEqual(2);
+                expect2(await dummy.readItem('B1'), 'ID,type,name').toEqual({
+                    ID: 'B1',
+                    type: 'admin',
+                    name: 'Bob Updated',
+                });
+                expect2(await dummy.readItem('B2'), 'ID,type,name').toEqual({
+                    ID: 'B2',
+                    type: 'admin',
+                    name: 'Charlie Updated',
+                });
+
+                // 3. edge cases
+                //* empty string normalization
+                const emptyStringItems = [{ id: 'B4', type: '', name: 'Empty Type' }];
+                const emptyStringResult = await dummy.mupdateItem(emptyStringItems);
+                expect2(() => emptyStringResult.success.length).toEqual(1);
+                expect2(await dummy.readItem('B4'), 'ID,type,name').toEqual({
+                    ID: 'B4',
+                    type: null,
+                    name: 'Empty Type',
+                });
+
+                //* large batch (> 25 items to test chunking)
+                const largeItems = Array.from({ length: 30 }, (_, i) => ({
+                    id: `C${i}`,
+                    type: 'batch',
+                    name: `Item ${i}`,
+                }));
+                const largeResult = await dummy.mupdateItem(largeItems);
+                expect2(() => largeResult.total).toEqual(30);
+                expect2(() => largeResult.success.length).toEqual(30);
+                expect2(() => largeResult.failed.length).toEqual(0);
+
+                // verify some items from large batch
+                expect2(await dummy.readItem('C0'), 'ID,type,name').toEqual({ ID: 'C0', type: 'batch', name: 'Item 0' });
+                expect2(await dummy.readItem('C25'), 'ID,type,name').toEqual({
+                    ID: 'C25',
+                    type: 'batch',
+                    name: 'Item 25',
+                });
+                expect2(await dummy.readItem('C29'), 'ID,type,name').toEqual({
+                    ID: 'C29',
+                    type: 'batch',
+                    name: 'Item 29',
+                });
+            }
+
+            //* multiple crud operations (100+ items)
+            {
+                const count = 120;
+
+                //* msaveItem (100+ items)
+                const saveItems = Array.from({ length: count }, (_, i) => ({
+                    id: `ZD${i}`,
+                    type: 'dummy-multi',
+                    name: `Multi ${i}`,
+                }));
+                const saveResult = await dummy.msaveItem(saveItems);
+                expect2(() => saveResult.total).toEqual(count);
+                expect2(() => saveResult.success.length).toEqual(count);
+                expect2(() => saveResult.failed.length).toEqual(0);
+
+                //* mreadItem (100+ items)
+                const readKeys = saveItems.map(item => ({ id: item.id }));
+                const readResult = await dummy.mreadItem(readKeys);
+                expect2(() => readResult.total).toEqual(count);
+                expect2(() => readResult.success.length).toEqual(count);
+                expect2(() => readResult.failed.length).toEqual(0);
+                const readSample0 = readResult.success.find(item => item.ID === 'ZD0');
+                const readSample60 = readResult.success.find(item => item.ID === 'ZD60');
+                const readSample119 = readResult.success.find(item => item.ID === 'ZD119');
+                expect2(() => readSample0, 'ID,type,name').toEqual({
+                    ID: 'ZD0',
+                    type: 'dummy-multi',
+                    name: 'Multi 0',
+                });
+                expect2(() => readSample60, 'ID,type,name').toEqual({
+                    ID: 'ZD60',
+                    type: 'dummy-multi',
+                    name: 'Multi 60',
+                });
+                expect2(() => readSample119, 'ID,type,name').toEqual({
+                    ID: 'ZD119',
+                    type: 'dummy-multi',
+                    name: 'Multi 119',
+                });
+
+                //* mupdateItem (100+ items)
+                const updateItems = Array.from({ length: count }, (_, i) => ({
+                    id: `ZD${i}`,
+                    type: 'dummy-multi-updated',
+                    name: `Multi Updated ${i}`,
+                }));
+                const updateResult = await dummy.mupdateItem(updateItems);
+                expect2(() => updateResult.total).toEqual(count);
+                expect2(() => updateResult.success.length).toEqual(count);
+                expect2(() => updateResult.failed.length).toEqual(0);
+
+                //* verify updated items
+                expect2(await dummy.readItem('ZD0'), 'ID,type,name').toEqual({
+                    ID: 'ZD0',
+                    type: 'dummy-multi-updated',
+                    name: 'Multi Updated 0',
+                });
+                expect2(await dummy.readItem('ZD60'), 'ID,type,name').toEqual({
+                    ID: 'ZD60',
+                    type: 'dummy-multi-updated',
+                    name: 'Multi Updated 60',
+                });
+                expect2(await dummy.readItem('ZD119'), 'ID,type,name').toEqual({
+                    ID: 'ZD119',
+                    type: 'dummy-multi-updated',
+                    name: 'Multi Updated 119',
+                });
+            }
         });
     });
 
@@ -199,31 +576,471 @@ describe('DynamoService', () => {
             });
         });
 
-        it('should pass basic CRUD', async () => {
+        it('should pass mutiple crud operations with real DynamoDB', async () => {
             if (!PROFILE) return;
 
-            //* check dummy data.
-            expect2(service.hello()).toEqual(`dynamo-service:${tableName}`);
-            expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
-            expect2(await service.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });
-            expect2(await service.readItem('A1').catch(GETERR), 'ID,type,name').toEqual({
-                ID: 'A1',
-                type: 'account',
-                name: 'Hong',
-            });
+            //* basic CRUD
+            {
+                //* check dummy data.
+                expect2(service.hello()).toEqual(`dynamo-service:${tableName}`);
+                expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
+                expect2(await service.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });
+                expect2(await service.readItem('A1').catch(GETERR), 'ID,type,name').toEqual({
+                    ID: 'A1',
+                    type: 'account',
+                    name: 'Hong',
+                });
 
-            //* basic simple CRUD test.
-            expect2(await service.readItem('A0').catch(GETERR), 'ID').toEqual({ ID: 'A0' });
-            expect2(await service.deleteItem('A0').catch(GETERR)).toEqual(null);
-            expect2(await service.readItem('A0').catch(GETERR), 'ID').toEqual('404 NOT FOUND - ID:A0');
-            // empty string will be saved as null
-            expect2(await service.saveItem('A0', { type: '' }).catch(GETERR), 'ID,type').toEqual({
-                ID: 'A0',
-                type: null,
-            });
-            expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null });
-            expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'ID').toEqual({ ID: 'A0' });
-            expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
+                //* basic simple CRUD test.
+                expect2(await service.readItem('A0').catch(GETERR), 'ID').toEqual({ ID: 'A0' });
+                expect2(await service.deleteItem('A0').catch(GETERR)).toEqual(null);
+                expect2(await service.readItem('A0').catch(GETERR), 'ID').toEqual('404 NOT FOUND - ID:A0');
+                // empty string will be saved as null
+                expect2(await service.saveItem('A0', { type: '' }).catch(GETERR), 'ID,type').toEqual({
+                    ID: 'A0',
+                    type: null,
+                });
+                expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null });
+                expect2(await service.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'ID').toEqual({
+                    ID: 'A0',
+                });
+                expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
+            }
+
+            //* msaveItem test
+            {
+                // 1. validate list parameter
+                //* null list
+                const nullResult = await service.msaveItem(null as any);
+                expect2(() => nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* undefined list
+                const undefinedResult = await service.msaveItem(undefined as any);
+                expect2(() => undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* empty list
+                const emptyResult = await service.msaveItem([]);
+                expect2(() => emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // 2. success cases
+                //* single item save
+                const singleItem = [{ id: 'F0', type: 'real-product', name: 'Item A' }];
+                const singleResult = await service.msaveItem(singleItem);
+                dataMap.set('F0', singleItem[0] as MyModel);
+                expect2(() => singleResult, 'total').toEqual({ total: 1 });
+                expect2(() => singleResult.success.length).toEqual(1);
+                expect2(() => singleResult.failed.length).toEqual(0);
+                expect2(() => singleResult.success[0], 'ID,type,name').toEqual({
+                    ID: 'F0',
+                    type: 'real-product',
+                    name: 'Item A',
+                });
+
+                //* verify saved item
+                expect2(await service.readItem('F0'), 'ID,type,name').toEqual({
+                    ID: 'F0',
+                    type: 'real-product',
+                    name: 'Item A',
+                });
+
+                //* multiple items save (small batch < 25)
+                const multipleItems = [
+                    { id: 'F1', type: 'real-product', name: 'Item B' },
+                    { id: 'F2', type: 'real-product', name: 'Item C' },
+                    { id: 'F3', type: 'real-service', name: 'Item D' },
+                ];
+                const multipleResult = await service.msaveItem(multipleItems);
+                multipleItems.forEach(item => dataMap.set(item.id, item as MyModel));
+                expect2(() => multipleResult, 'total').toEqual({ total: 3 });
+                expect2(() => multipleResult.success.length).toEqual(3);
+                expect2(() => multipleResult.failed.length).toEqual(0);
+
+                //* verify all saved items
+                expect2(await service.readItem('F1'), 'ID,type,name').toEqual({
+                    ID: 'F1',
+                    type: 'real-product',
+                    name: 'Item B',
+                });
+                expect2(await service.readItem('F2'), 'ID,type,name').toEqual({
+                    ID: 'F2',
+                    type: 'real-product',
+                    name: 'Item C',
+                });
+                expect2(await service.readItem('F3'), 'ID,type,name').toEqual({
+                    ID: 'F3',
+                    type: 'real-service',
+                    name: 'Item D',
+                });
+
+                //* overwrite existing items
+                const overwriteItems = [
+                    { id: 'F1', type: 'real-service', name: 'Item B Updated' },
+                    { id: 'F2', type: 'real-service', name: 'Item C Updated' },
+                ];
+                const overwriteResult = await service.msaveItem(overwriteItems);
+                expect2(() => overwriteResult.success.length).toEqual(2);
+                expect2(await service.readItem('F1'), 'ID,type,name').toEqual({
+                    ID: 'F1',
+                    type: 'real-service',
+                    name: 'Item B Updated',
+                });
+                expect2(await service.readItem('F2'), 'ID,type,name').toEqual({
+                    ID: 'F2',
+                    type: 'real-service',
+                    name: 'Item C Updated',
+                });
+
+                // 3. edge cases
+                //* empty string normalization
+                const emptyStringItems = [{ id: 'F4', type: '', name: 'Empty Type' }];
+                const emptyStringResult = await service.msaveItem(emptyStringItems);
+                dataMap.set('F4', emptyStringItems[0] as MyModel);
+                expect2(() => emptyStringResult.success.length).toEqual(1);
+                expect2(await service.readItem('F4'), 'ID,type,name').toEqual({
+                    ID: 'F4',
+                    type: null,
+                    name: 'Empty Type',
+                });
+
+                //* large batch (> 25 items to test chunking)
+                const largeItems = Array.from({ length: 30 }, (_, i) => ({
+                    id: `G${i}`,
+                    type: 'real-batch',
+                    name: `Item ${i}`,
+                }));
+                const largeResult = await service.msaveItem(largeItems);
+                largeItems.forEach(item => dataMap.set(item.id, item as MyModel));
+                expect2(() => largeResult.total).toEqual(30);
+                expect2(() => largeResult.success.length).toEqual(30);
+                expect2(() => largeResult.failed.length).toEqual(0);
+
+                //* verify some items from large batch
+                expect2(await service.readItem('G0'), 'ID,type,name').toEqual({
+                    ID: 'G0',
+                    type: 'real-batch',
+                    name: 'Item 0',
+                });
+                expect2(await service.readItem('G25'), 'ID,type,name').toEqual({
+                    ID: 'G25',
+                    type: 'real-batch',
+                    name: 'Item 25',
+                });
+                expect2(await service.readItem('G29'), 'ID,type,name').toEqual({
+                    ID: 'G29',
+                    type: 'real-batch',
+                    name: 'Item 29',
+                });
+            }
+
+            //* mreadItem test
+            {
+                // 1. validate list parameter
+                //* null list
+                const nullResult = await service.mreadItem(null as any);
+                expect2(() => nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* undefined list
+                const undefinedResult = await service.mreadItem(undefined as any);
+                expect2(() => undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+                //* empty list
+                const emptyResult = await service.mreadItem([]);
+                expect2(() => emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // 2. success cases
+                //* prepare test data first
+                const prepareItems = [
+                    { id: 'H0', type: 'real-product', name: 'Read Item A' },
+                    { id: 'H1', type: 'real-product', name: 'Read Item B' },
+                    { id: 'H2', type: 'real-service', name: 'Read Item C' },
+                ];
+                await service.msaveItem(prepareItems);
+                prepareItems.forEach(item => dataMap.set(item.id, item as MyModel));
+
+                //* single item read
+                const singleRead = await service.mreadItem([{ id: 'H0' }]);
+                expect2(() => singleRead, 'total').toEqual({ total: 1 });
+                expect2(() => singleRead.success.length).toEqual(1);
+                expect2(() => singleRead.failed.length).toEqual(0);
+                expect2(() => singleRead.success[0], 'ID,type,name').toEqual({
+                    ID: 'H0',
+                    type: 'real-product',
+                    name: 'Read Item A',
+                });
+
+                //* multiple items read (small batch < 100)
+                const multipleRead = await service.mreadItem([{ id: 'H0' }, { id: 'H1' }, { id: 'H2' }]);
+                expect2(() => multipleRead, 'total').toEqual({ total: 3 });
+                expect2(() => multipleRead.success.length).toEqual(3);
+                expect2(() => multipleRead.failed.length).toEqual(0);
+
+                //* verify read items
+                const items = multipleRead.success;
+                const item0 = items.find(item => item.ID === 'H0');
+                const item1 = items.find(item => item.ID === 'H1');
+                const item2 = items.find(item => item.ID === 'H2');
+                expect2(() => item0, 'ID,type,name').toEqual({
+                    ID: 'H0',
+                    type: 'real-product',
+                    name: 'Read Item A',
+                });
+                expect2(() => item1, 'ID,type,name').toEqual({
+                    ID: 'H1',
+                    type: 'real-product',
+                    name: 'Read Item B',
+                });
+                expect2(() => item2, 'ID,type,name').toEqual({
+                    ID: 'H2',
+                    type: 'real-service',
+                    name: 'Read Item C',
+                });
+
+                // 3. edge cases
+                //* read non-existent items (should fail)
+                const notFoundRead = await service.mreadItem([{ id: 'NOT_EXISTS_REAL' }]);
+                expect2(() => notFoundRead, 'total').toEqual({ total: 1 });
+                expect2(() => notFoundRead.success.length).toEqual(0);
+                expect2(() => notFoundRead.failed.length).toEqual(1);
+                expect2(() => notFoundRead.failed[0], 'ID').toEqual({ ID: 'NOT_EXISTS_REAL' });
+
+                //* mixed: some exist, some don't
+                const mixedRead = await service.mreadItem([{ id: 'H0' }, { id: 'NOT_EXISTS_REAL2' }, { id: 'H1' }]);
+                expect2(() => mixedRead, 'total').toEqual({ total: 3 });
+                expect2(() => mixedRead.success.length).toEqual(2);
+                expect2(() => mixedRead.failed.length).toEqual(1);
+
+                //* large batch (> 100 items to test chunking)
+                const largeSaveItems = Array.from({ length: 110 }, (_, i) => ({
+                    id: `I${i}`,
+                    type: 'real-batch',
+                    name: `Item ${i}`,
+                }));
+                await service.msaveItem(largeSaveItems);
+                largeSaveItems.forEach(item => dataMap.set(item.id, item as MyModel));
+
+                const largeReadKeys = Array.from({ length: 110 }, (_, i) => ({ id: `I${i}` }));
+                const largeRead = await service.mreadItem(largeReadKeys);
+                expect2(() => largeRead.total).toEqual(110);
+                expect2(() => largeRead.success.length).toEqual(110);
+                expect2(() => largeRead.failed.length).toEqual(0);
+
+                //* verify some items from large batch
+                const largeItems = largeRead.success;
+                const largeItem0 = largeItems.find(item => item.ID === 'I0');
+                const largeItem50 = largeItems.find(item => item.ID === 'I50');
+                const largeItem109 = largeItems.find(item => item.ID === 'I109');
+                expect2(() => largeItem0, 'ID,type,name').toEqual({
+                    ID: 'I0',
+                    type: 'real-batch',
+                    name: 'Item 0',
+                });
+                expect2(() => largeItem50, 'ID,type,name').toEqual({
+                    ID: 'I50',
+                    type: 'real-batch',
+                    name: 'Item 50',
+                });
+                expect2(() => largeItem109, 'ID,type,name').toEqual({
+                    ID: 'I109',
+                    type: 'real-batch',
+                    name: 'Item 109',
+                });
+            }
+
+            //* mupdateItem test
+            {
+                // 1. validate list parameter
+                // null list
+                const nullResult = await service.mupdateItem(null as any);
+                expect2(() => nullResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // undefined list
+                const undefinedResult = await service.mupdateItem(undefined as any);
+                expect2(() => undefinedResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // empty list
+                const emptyResult = await service.mupdateItem([]);
+                expect2(() => emptyResult).toEqual({ success: [], failed: [], total: 0 });
+
+                // 2. success cases
+                //* single item update
+                const singleItem = [{ id: 'D0', type: 'real-user', name: 'Alice' }];
+                const singleResult = await service.mupdateItem(singleItem);
+                dataMap.set('D0', singleItem[0] as MyModel);
+                expect2(() => singleResult, 'total').toEqual({ total: 1 });
+                expect2(() => singleResult.success.length).toEqual(1);
+                expect2(() => singleResult.failed.length).toEqual(0);
+                expect2(() => singleResult.success[0], 'ID,type,name').toEqual({
+                    ID: 'D0',
+                    type: 'real-user',
+                    name: 'Alice',
+                });
+
+                // verify saved item
+                expect2(await service.readItem('D0'), 'ID,type,name').toEqual({
+                    ID: 'D0',
+                    type: 'real-user',
+                    name: 'Alice',
+                });
+
+                //* multiple items update (small batch < 25)
+                const multipleItems = [
+                    { id: 'D1', type: 'real-user', name: 'Bob' },
+                    { id: 'D2', type: 'real-user', name: 'Charlie' },
+                    { id: 'D3', type: 'real-admin', name: 'David' },
+                ];
+                const multipleResult = await service.mupdateItem(multipleItems);
+                multipleItems.forEach(item => dataMap.set(item.id, item as MyModel));
+                expect2(() => multipleResult, 'total').toEqual({ total: 3 });
+                expect2(() => multipleResult.success.length).toEqual(3);
+                expect2(() => multipleResult.failed.length).toEqual(0);
+
+                // verify all saved items
+                expect2(await service.readItem('D1'), 'ID,type,name').toEqual({
+                    ID: 'D1',
+                    type: 'real-user',
+                    name: 'Bob',
+                });
+                expect2(await service.readItem('D2'), 'ID,type,name').toEqual({
+                    ID: 'D2',
+                    type: 'real-user',
+                    name: 'Charlie',
+                });
+                expect2(await service.readItem('D3'), 'ID,type,name').toEqual({
+                    ID: 'D3',
+                    type: 'real-admin',
+                    name: 'David',
+                });
+
+                //* overwrite existing items
+                const overwriteItems = [
+                    { id: 'D1', type: 'real-admin', name: 'Bob Updated' },
+                    { id: 'D2', type: 'real-admin', name: 'Charlie Updated' },
+                ];
+                const overwriteResult = await service.mupdateItem(overwriteItems);
+                expect2(() => overwriteResult.success.length).toEqual(2);
+                expect2(await service.readItem('D1'), 'ID,type,name').toEqual({
+                    ID: 'D1',
+                    type: 'real-admin',
+                    name: 'Bob Updated',
+                });
+                expect2(await service.readItem('D2'), 'ID,type,name').toEqual({
+                    ID: 'D2',
+                    type: 'real-admin',
+                    name: 'Charlie Updated',
+                });
+
+                // 3. edge cases
+                //* empty string normalization
+                const emptyStringItems = [{ id: 'D4', type: '', name: 'Empty Type' }];
+                const emptyStringResult = await service.mupdateItem(emptyStringItems);
+                dataMap.set('D4', emptyStringItems[0] as MyModel);
+                expect2(() => emptyStringResult.success.length).toEqual(1);
+                expect2(await service.readItem('D4'), 'ID,type,name').toEqual({
+                    ID: 'D4',
+                    type: null,
+                    name: 'Empty Type',
+                });
+
+                //* large batch (> 25 items to test chunking)
+                const largeItems = Array.from({ length: 30 }, (_, i) => ({
+                    id: `E${i}`,
+                    type: 'real-batch',
+                    name: `Item ${i}`,
+                }));
+                const largeResult = await service.mupdateItem(largeItems);
+                largeItems.forEach(item => dataMap.set(item.id, item as MyModel));
+                expect2(() => largeResult.total).toEqual(30);
+                expect2(() => largeResult.success.length).toEqual(30);
+                expect2(() => largeResult.failed.length).toEqual(0);
+
+                // verify some items from large batch
+                expect2(await service.readItem('E0'), 'ID,type,name').toEqual({
+                    ID: 'E0',
+                    type: 'real-batch',
+                    name: 'Item 0',
+                });
+                expect2(await service.readItem('E25'), 'ID,type,name').toEqual({
+                    ID: 'E25',
+                    type: 'real-batch',
+                    name: 'Item 25',
+                });
+                expect2(await service.readItem('E29'), 'ID,type,name').toEqual({
+                    ID: 'E29',
+                    type: 'real-batch',
+                    name: 'Item 29',
+                });
+            }
+
+            //* multiple crud operations (100+ items)
+            {
+                const count = 120;
+
+                //* msaveItem (100+ items)
+                const saveItems = Array.from({ length: count }, (_, i) => ({
+                    id: `Z${i}`,
+                    type: 'real-multi',
+                    name: `Multi ${i}`,
+                }));
+                const saveResult = await service.msaveItem(saveItems);
+                saveItems.forEach(item => dataMap.set(item.id, item as MyModel));
+                expect2(() => saveResult.total).toEqual(count);
+                expect2(() => saveResult.success.length).toEqual(count);
+                expect2(() => saveResult.failed.length).toEqual(0);
+
+                //* mreadItem (100+ items)
+                const readKeys = saveItems.map(item => ({ id: item.id }));
+                const readResult = await service.mreadItem(readKeys);
+                expect2(() => readResult.total).toEqual(count);
+                expect2(() => readResult.success.length).toEqual(count);
+                expect2(() => readResult.failed.length).toEqual(0);
+                const readSample0 = readResult.success.find(item => item.ID === 'Z0');
+                const readSample60 = readResult.success.find(item => item.ID === 'Z60');
+                const readSample119 = readResult.success.find(item => item.ID === 'Z119');
+                expect2(() => readSample0, 'ID,type,name').toEqual({
+                    ID: 'Z0',
+                    type: 'real-multi',
+                    name: 'Multi 0',
+                });
+                expect2(() => readSample60, 'ID,type,name').toEqual({
+                    ID: 'Z60',
+                    type: 'real-multi',
+                    name: 'Multi 60',
+                });
+                expect2(() => readSample119, 'ID,type,name').toEqual({
+                    ID: 'Z119',
+                    type: 'real-multi',
+                    name: 'Multi 119',
+                });
+
+                //* mupdateItem (100+ items)
+                const updateItems = Array.from({ length: count }, (_, i) => ({
+                    id: `Z${i}`,
+                    type: 'real-multi-updated',
+                    name: `Multi Updated ${i}`,
+                }));
+                const updateResult = await service.mupdateItem(updateItems);
+                updateItems.forEach(item => dataMap.set(item.id, item as MyModel));
+                expect2(() => updateResult.total).toEqual(count);
+                expect2(() => updateResult.success.length).toEqual(count);
+                expect2(() => updateResult.failed.length).toEqual(0);
+
+                //* verify updated items
+                expect2(await service.readItem('Z0'), 'ID,type,name').toEqual({
+                    ID: 'Z0',
+                    type: 'real-multi-updated',
+                    name: 'Multi Updated 0',
+                });
+                expect2(await service.readItem('Z60'), 'ID,type,name').toEqual({
+                    ID: 'Z60',
+                    type: 'real-multi-updated',
+                    name: 'Multi Updated 60',
+                });
+                expect2(await service.readItem('Z119'), 'ID,type,name').toEqual({
+                    ID: 'Z119',
+                    type: 'real-multi-updated',
+                    name: 'Multi Updated 119',
+                });
+            }
         });
 
         afterAll(async () => {
