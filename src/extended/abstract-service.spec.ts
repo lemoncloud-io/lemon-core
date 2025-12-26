@@ -25,7 +25,6 @@ import {
     ManagerProxy,
 } from './abstract-service';
 import { asyncCredentials } from '../tools';
-
 /**
  * type: `Model`
  */
@@ -339,5 +338,283 @@ describe('abstract-service', () => {
                 signature: 'v1:84g6M+IU2X/yfcyYqUxNAgQPKYlnucbWrPhP+hFYXUE=',
             },
         });
+    });
+    it('should pass saveAllUpdates()', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        const { service } = instance();
+        const proxy = service.buildProxy({ domain: 'test', source: 'test' });
+
+        //* test of options parameter validation
+        // undefined options (should use defaults)
+        const proxy1 = service.buildProxy({ domain: 'test', source: 'test' });
+        const model1 = await proxy1.tests.get('item-undefined-test', {});
+        model1.name = 'undefined options';
+        await proxy1.saveAllUpdates();
+        const retrieved1 = await proxy1.tests.get('item-undefined-test');
+        expect2(() => retrieved1, 'name').toEqual({ name: 'undefined options' });
+
+        // empty options object
+        const proxy2 = service.buildProxy({ domain: 'test', source: 'test' });
+        const model2 = await proxy2.tests.get('item-empty-opts', {});
+        model2.name = 'empty opts';
+        await proxy2.saveAllUpdates({});
+        const retrieved2 = await proxy2.tests.get('item-empty-opts');
+        expect2(() => retrieved2, 'name').toEqual({ name: 'empty opts' });
+
+        //* prepare 20 test items for batch mode test
+        for (let i = 0; i < 20; i++) {
+            const model = await proxy.tests.get(`item-${i}`, {});
+            model.name = `Item ${i}`;
+            model.test = i * 10;
+        }
+
+        //* mock storage methods to count calls
+        let updateCallCount = 0;
+        let batchCallCount = 0;
+        const originalUpdate = proxy.tests.$mgr.storage.update.bind(proxy.tests.$mgr.storage);
+        const originalDoUpdateMulti = proxy.tests.$mgr.storage.storage.doUpdateMulti.bind(
+            proxy.tests.$mgr.storage.storage,
+        );
+
+        proxy.tests.$mgr.storage.update = async (id: string, model: any, inc?: any) => {
+            updateCallCount++;
+            return originalUpdate(id, model, inc);
+        };
+
+        proxy.tests.$mgr.storage.storage.doUpdateMulti = async (type: string, list: any[]) => {
+            batchCallCount++;
+            return originalDoUpdateMulti(type, list);
+        };
+
+        //* test of default mode (useBatch: true by default - batch updates)
+        const batchResult = await proxy.saveAllUpdates();
+        expect2(() => updateCallCount).toEqual(0);
+        expect2(() => batchCallCount).toEqual(1);
+        expect2(() => Array.isArray(batchResult)).toEqual(true);
+        expect2(() => batchResult.length).toEqual(20);
+
+        //* test of explicit batch mode with useBatch: true
+        updateCallCount = 0;
+        batchCallCount = 0;
+        const proxyExplicit = service.buildProxy({ domain: 'test', source: 'test' });
+        for (let i = 0; i < 5; i++) {
+            const model = await proxyExplicit.tests.get(`item-explicit-${i}`, {});
+            model.name = `Explicit ${i}`;
+        }
+        await proxyExplicit.saveAllUpdates({ useBatch: true });
+
+        //* prepare 20 test items again for legacy test
+        const proxyLegacy = service.buildProxy({ domain: 'test', source: 'test' });
+        let legacyUpdateCount = 0;
+        let legacyBatchCount = 0;
+        const originalUpdateLegacy = proxyLegacy.tests.$mgr.storage.update.bind(proxyLegacy.tests.$mgr.storage);
+        const originalDoUpdateMultiLegacy = proxyLegacy.tests.$mgr.storage.storage.doUpdateMulti.bind(
+            proxyLegacy.tests.$mgr.storage.storage,
+        );
+
+        proxyLegacy.tests.$mgr.storage.update = async (id: string, model: any, inc?: any) => {
+            legacyUpdateCount++;
+            return originalUpdateLegacy(id, model, inc);
+        };
+
+        proxyLegacy.tests.$mgr.storage.storage.doUpdateMulti = async (type: string, list: any[]) => {
+            legacyBatchCount++;
+            return originalDoUpdateMultiLegacy(type, list);
+        };
+
+        for (let i = 0; i < 20; i++) {
+            const model = await proxyLegacy.tests.get(`item-legacy-${i}`, {});
+            model.name = `Item ${i} v2`;
+            model.test = i * 100;
+        }
+
+        //* test of legacy mode (useBatch: false - individual updates)
+        const legacyResult = await proxyLegacy.saveAllUpdates({ useBatch: false });
+        expect2(() => legacyUpdateCount).toEqual(20);
+        expect2(() => legacyBatchCount).toEqual(0);
+        expect2(() => Array.isArray(legacyResult)).toEqual(true);
+
+        //* test of onlyValid option with batch mode
+        const proxyValid = service.buildProxy({ domain: 'test', source: 'test' });
+        const modelWithNull = await proxyValid.tests.get('item-null-test', {});
+        modelWithNull.name = 'valid name';
+        modelWithNull.test = null as any;
+        await proxyValid.saveAllUpdates({ onlyValid: true });
+        const retrievedValid = await proxyValid.tests.get('item-null-test');
+        expect2(() => retrievedValid, 'name').toEqual({ name: 'valid name' });
+
+        //* test of parrallel option (legacy mode)
+        const proxyParrallel = service.buildProxy({ domain: 'test', source: 'test' });
+        let parallelUpdateCallCount = 0;
+        const originalUpdateParrallel = proxyParrallel.tests.$mgr.storage.update.bind(
+            proxyParrallel.tests.$mgr.storage,
+        );
+        proxyParrallel.tests.$mgr.storage.update = async (id: string, model: any, inc?: any) => {
+            parallelUpdateCallCount++;
+            return originalUpdateParrallel(id, model, inc);
+        };
+
+        for (let i = 0; i < 10; i++) {
+            const model = await proxyParrallel.tests.get(`item-parrallel-${i}`, {});
+            model.name = `Parrallel ${i}`;
+        }
+        await proxyParrallel.saveAllUpdates({ useBatch: false, parrallel: 5 });
+        expect2(() => parallelUpdateCallCount).toEqual(10);
+
+        //* test of empty update set
+        const proxyEmpty = service.buildProxy({ domain: 'test', source: 'test' });
+        const emptyResult = await proxyEmpty.saveAllUpdates();
+        expect2(() => emptyResult).toEqual([]);
+
+        //* test of single item update (batch mode)
+        const proxySingle = service.buildProxy({ domain: 'test', source: 'test' });
+        let singleBatchCount = 0;
+        const originalDoUpdateMultiSingle = proxySingle.tests.$mgr.storage.storage.doUpdateMulti.bind(
+            proxySingle.tests.$mgr.storage.storage,
+        );
+        proxySingle.tests.$mgr.storage.storage.doUpdateMulti = async (type: string, list: any[]) => {
+            singleBatchCount++;
+            return originalDoUpdateMultiSingle(type, list);
+        };
+
+        const singleModel = await proxySingle.tests.get('item-single', {});
+        singleModel.name = 'single item';
+        await proxySingle.saveAllUpdates({ useBatch: true });
+        expect2(() => singleBatchCount).toEqual(1);
+
+        //* test of result comparison between batch mode and legacy mode
+        //* STEP.1: prepare test data for batch mode
+        const proxyBatchCompare = service.buildProxy({ domain: 'test', source: 'test' });
+        const batchTestItems = [];
+        for (let i = 0; i < 10; i++) {
+            const model = await proxyBatchCompare.tests.get(`batch-compare-${i}`, {});
+            model.name = `Batch Item ${i}`;
+            model.test = i * 100;
+            batchTestItems.push({ id: `batch-compare-${i}`, name: `Batch Item ${i}`, test: i * 100 });
+        }
+
+        //* STEP.2: save with batch mode (useBatch: true)
+        const batchModeResult = await proxyBatchCompare.saveAllUpdates({ useBatch: true });
+
+        //* STEP.3: verify batch mode results
+        expect2(() => Array.isArray(batchModeResult)).toEqual(true);
+        expect2(() => batchModeResult.length).toEqual(10);
+
+        //* STEP.4: retrieve and verify batch mode saved data
+        const batchRetrievedItems = [];
+        for (let i = 0; i < 10; i++) {
+            const retrieved = await proxyBatchCompare.tests.get(`batch-compare-${i}`);
+            batchRetrievedItems.push(retrieved);
+        }
+
+        //* STEP.5: prepare identical test data for legacy mode
+        const proxyLegacyCompare = service.buildProxy({ domain: 'test', source: 'test' });
+        const legacyTestItems = [];
+        for (let i = 0; i < 10; i++) {
+            const model = await proxyLegacyCompare.tests.get(`legacy-compare-${i}`, {});
+            model.name = `Batch Item ${i}`;
+            model.test = i * 100;
+            legacyTestItems.push({ id: `legacy-compare-${i}`, name: `Batch Item ${i}`, test: i * 100 });
+        }
+
+        //* STEP.6: save with legacy mode (useBatch: false)
+        const legacyModeResult = await proxyLegacyCompare.saveAllUpdates({ useBatch: false });
+
+        //* STEP.7: verify legacy mode results
+        expect2(() => Array.isArray(legacyModeResult)).toEqual(true);
+        expect2(() => legacyModeResult.length).toEqual(10);
+
+        //* STEP.8: retrieve and verify legacy mode saved data
+        const legacyRetrievedItems = [];
+        for (let i = 0; i < 10; i++) {
+            const retrieved = await proxyLegacyCompare.tests.get(`legacy-compare-${i}`);
+            legacyRetrievedItems.push(retrieved);
+        }
+
+        //* STEP.9: compare batch mode vs legacy mode results structure
+        expect2(() => batchModeResult.length).toEqual(legacyModeResult.length);
+        expect2(() => typeof batchModeResult).toEqual(typeof legacyModeResult);
+
+        //* STEP.10: compare retrieved data field by field
+        for (let i = 0; i < 10; i++) {
+            const batchItem = batchRetrievedItems[i];
+            const legacyItem = legacyRetrievedItems[i];
+
+            // verify name field is identical
+            expect2(() => batchItem, 'name').toEqual({ name: `Batch Item ${i}` });
+            expect2(() => legacyItem, 'name').toEqual({ name: `Batch Item ${i}` });
+
+            // verify test field is identical
+            expect2(() => batchItem, 'test').toEqual({ test: i * 100 });
+            expect2(() => legacyItem, 'test').toEqual({ test: i * 100 });
+
+            // verify both have same structure
+            expect2(() => typeof batchItem.name).toEqual('string');
+            expect2(() => typeof legacyItem.name).toEqual('string');
+            expect2(() => typeof batchItem.test).toEqual('number');
+            expect2(() => typeof legacyItem.test).toEqual('number');
+        }
+
+        //* STEP.11: verify result return value comparison
+        // both modes should return updated models with same field structure
+        const batchFirstResult = batchModeResult[0];
+        const legacyFirstResult = legacyModeResult[0];
+
+        expect2(() => typeof batchFirstResult).toEqual('object');
+        expect2(() => typeof legacyFirstResult).toEqual('object');
+        expect2(() => batchFirstResult).toEqual(expect.objectContaining({ name: expect.any(String) }));
+        expect2(() => legacyFirstResult).toEqual(expect.objectContaining({ name: expect.any(String) }));
+
+        //* STEP.12: verify update count consistency
+        // batch mode: 10 items saved in 1 call
+        // legacy mode: 10 items saved in 10 calls
+        // result: both should have 10 items saved successfully
+        expect2(() => batchRetrievedItems.length).toEqual(10);
+        expect2(() => legacyRetrievedItems.length).toEqual(10);
+        expect2(() => batchRetrievedItems.length).toEqual(legacyRetrievedItems.length);
+
+        //* STEP.13: test with complex data comparison
+        const proxyBatchComplex = service.buildProxy({ domain: 'test', source: 'test' });
+        const proxyLegacyComplex = service.buildProxy({ domain: 'test', source: 'test' });
+
+        // prepare complex data with multiple fields
+        for (let i = 0; i < 5; i++) {
+            const batchModel = await proxyBatchComplex.tests.get(`complex-batch-${i}`, {});
+            batchModel.name = `Complex ${i}`;
+            batchModel.test = i * 50;
+
+            const legacyModel = await proxyLegacyComplex.tests.get(`complex-legacy-${i}`, {});
+            legacyModel.name = `Complex ${i}`;
+            legacyModel.test = i * 50;
+        }
+
+        // save with both modes
+        await proxyBatchComplex.saveAllUpdates({ useBatch: true });
+        await proxyLegacyComplex.saveAllUpdates({ useBatch: false });
+
+        // retrieve and compare
+        for (let i = 0; i < 5; i++) {
+            const batchComplex = await proxyBatchComplex.tests.get(`complex-batch-${i}`);
+            const legacyComplex = await proxyLegacyComplex.tests.get(`complex-legacy-${i}`);
+
+            // verify identical values
+            expect2(() => batchComplex, 'name,test').toEqual({
+                name: `Complex ${i}`,
+                test: i * 50,
+            });
+            expect2(() => legacyComplex, 'name,test').toEqual({
+                name: `Complex ${i}`,
+                test: i * 50,
+            });
+
+            // verify both modes produce identical structure
+            expect2(() => batchComplex.name).toEqual(legacyComplex.name);
+            expect2(() => batchComplex.test).toEqual(legacyComplex.test);
+        }
     });
 });

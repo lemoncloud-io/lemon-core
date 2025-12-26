@@ -504,6 +504,92 @@ export class ManagerProxy<
     }
 
     /**
+     * read multiple nodes.
+     * @param ids list of object-ids
+     * @param throwable (optional) flag to throw error if not found
+     */
+    public async mget(ids: string[], throwable = true): Promise<(Model | null)[]> {
+        if (!ids || ids.length === 0) return [];
+
+        const result: (Model | null)[] = [];
+        const toFetch: string[] = [];
+        const indexMap: { [key: string]: number[] } = {};
+
+        //* STEP.1 check cached items
+        ids.forEach((id, index) => {
+            const err404 = `404 NOT FOUND - proxy/${this.$mgr.type}/id:${id}`;
+            //* already marked as null (404)
+            if (this._org[id] === null) {
+                if (throwable) throw new Error(err404);
+                result[index] = null;
+                return;
+            }
+            //* found in _new
+            const N = this._new[id];
+            if (N !== undefined) {
+                result[index] = N;
+                return;
+            }
+            //* need to fetch
+            if (!indexMap[id]) {
+                indexMap[id] = [];
+                toFetch.push(id);
+            }
+            indexMap[id].push(index);
+        });
+
+        //* STEP.2 batch read from storage
+        if (toFetch.length > 0) {
+            const res = await this.$mgr.storage.storage.doReadMulti(this.$mgr.type, toFetch);
+            const successMap: { [key: string]: Model } = {};
+            (res.success || []).forEach((model: Model) => {
+                const id = (model as any).id;
+                if (id) successMap[id] = model;
+            });
+
+            //* STEP.3 save to cache and build result
+            toFetch.forEach(id => {
+                const M = successMap[id];
+                if (M) {
+                    const M2 = this.normal(M);
+                    this._org[id] = M2;
+                    const M3 = JSON.parse($U.json(M2)) as Model;
+                    this._new[id] = M3;
+                    indexMap[id].forEach(index => {
+                        result[index] = M3;
+                    });
+                } else {
+                    this._org[id] = null;
+                    const err404 = `404 NOT FOUND - proxy/${this.$mgr.type}/id:${id}`;
+                    indexMap[id].forEach(index => {
+                        if (throwable) throw new Error(err404);
+                        result[index] = null;
+                    });
+                }
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * update multiple nodes.
+     * @param updates list of models (should include id)
+     */
+    public async mset(updates: Array<Model & { id: string }>): Promise<Model[]> {
+        if (!updates || updates.length === 0) return [];
+
+        const result: Model[] = [];
+        for (const model of updates) {
+            const id = model.id;
+            if (!id) throw new Error(`@id is required - proxy/${this.$mgr.type}/mset()!`);
+            const O = await this.get(id);
+            result.push(this.override(O, model));
+        }
+        return result;
+    }
+
+    /**
      * increment the field of Object[id]
      * !WARN! this incremented properties should NOT be updated later.
      */
@@ -615,12 +701,15 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         parrallel?: number;
         /** (optional) flag to use only valid value (not null) (default true) */
         onlyValid?: boolean;
+        /** (optional) flag to use batch update (default false) */
+        useBatch?: boolean;
     }) {
         const parrallel = $U.N(options?.parrallel, this.parrallel);
+        const useBatch = options?.useBatch ?? false;
         type Model = CoreModel<U>;
-        type TYPE = { id: string; N: Model; _: () => Promise<Model> };
+        type TYPE = { id: string; N: Model; _: () => Promise<Model>; type?: string; storage?: any };
 
-        // STEP.1 prepare the list of updater.
+        // STEP.1 prepare the list of updater (collect type and storage info for batch mode)
         const list = this.allProxies.reduce((L: TYPE[], $p: ManagerProxy<any, CoreManager<any, any, any>>) => {
             const $set = $p.alls(true, options?.onlyValid);
             return Object.entries($set).reduce((L: TYPE[], [id, N]) => {
@@ -628,13 +717,53 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                 if (hasUpdate) {
                     _log(NS, `>> ${$p.$mgr.type}/${id} =`, $U.json(N));
                     const _ = () => $p.$mgr.storage.update(id, N);
-                    L.push({ id, N, _ });
+                    L.push({ id, N, _, type: $p.$mgr.type, storage: $p.$mgr.storage });
                 }
                 return L;
             }, L);
         }, []);
 
         // STEP.2 finally update storage.
+        if (useBatch) {
+            //* NEW: batch update mode
+            _log(NS, `> saveAllUpdates: using batch mode (${list.length} items)`);
+
+            //* group by type from pre-collected list (no duplicate traversal)
+            const grouped = new Map<string, { storage: any; items: Array<Model & { id: string }> }>();
+            list.forEach(({ id, N, type, storage }) => {
+                if (!grouped.has(type!)) {
+                    grouped.set(type!, { storage, items: [] });
+                }
+                grouped.get(type!)!.items.push({ ...(N as Model), id });
+            });
+
+            //* execute batch updates
+            const results = await Promise.all(
+                Array.from(grouped.entries()).map(([type, { storage, items }]) =>
+                    storage.storage.doUpdateMulti(type, items),
+                ),
+            );
+
+            //* flatten BatchResult[] to Model[]
+            const allItems: Model[] = [];
+            let totalFailed = 0;
+            results.forEach(result => {
+                allItems.push(...result.success);
+                totalFailed += result.failed.length;
+                if (result.failed.length > 0) {
+                    _log(NS, `! batch update failed: ${result.failed.length} items`, result.failed);
+                }
+            });
+            _log(
+                NS,
+                `> saveAllUpdates: success=${allItems.length}, failed=${totalFailed}, total=${
+                    allItems.length + totalFailed
+                }`,
+            );
+            return allItems;
+        }
+
+        //* LEGACY: original parallel update (default behavior)
         return my_parrallel(
             list,
             async (N: any) => {
