@@ -706,6 +706,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
     }) {
         const parrallel = $U.N(options?.parrallel, this.parrallel);
         const useBatch = options?.useBatch ?? false;
+        const errScope = `saveAllUpdates(${parrallel})`;
+
         type Model = CoreModel<U>;
         type TYPE = { id: string; N: Model; _: () => Promise<Model>; type?: string; storage?: any };
 
@@ -717,7 +719,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                 if (hasUpdate) {
                     _log(NS, `>> ${$p.$mgr.type}/${id} =`, $U.json(N));
                     const _ = () => $p.$mgr.storage.update(id, N);
-                    L.push({ id, N, _, type: $p.$mgr.type, storage: $p.$mgr.storage });
+                    if (useBatch) L.push({ id, N, _, type: $p.$mgr.type, storage: $p.$mgr.storage });
+                    else L.push({ id, N, _ });
                 }
                 return L;
             }, L);
@@ -726,7 +729,7 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         // STEP.2 finally update storage.
         if (useBatch) {
             //* NEW: batch update mode
-            _log(NS, `> saveAllUpdates: using batch mode (${list.length} items)`);
+            _log(NS, `> ${errScope}: using batch mode (${list.length} items)`);
 
             //* group by type from pre-collected list (no duplicate traversal)
             const grouped = new Map<string, { storage: any; items: Array<Model & { id: string }> }>();
@@ -751,15 +754,11 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                 allItems.push(...result.success);
                 totalFailed += result.failed.length;
                 if (result.failed.length > 0) {
-                    _log(NS, `! batch update failed: ${result.failed.length} items`, result.failed);
+                    _err(NS, `! batch update failed: ${result.failed.length} items`, result.failed);
                 }
             });
-            _log(
-                NS,
-                `> saveAllUpdates: success=${allItems.length}, failed=${totalFailed}, total=${
-                    allItems.length + totalFailed
-                }`,
-            );
+            const _total = allItems.length + totalFailed;
+            _log(NS, `> ${errScope}: success=${allItems.length}, failed=${totalFailed}, total=${_total}`);
             return allItems;
         }
 
