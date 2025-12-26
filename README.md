@@ -69,7 +69,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
-| 4.1.4     | optimized `saveAllUpdates` w/ failed model as cause.
+| 4.1.5     | optimized `saveAllUpdates` w/ failed model as cause.
 | 4.1.2     | optimized `asErrorPayload` w/ env[`MY_PARALLEL_THROW`].
 | 4.1.0     | optimized `DynamoService.mreadItem()` along with `lemon-model@1.1.1`
 | 4.0.8     | optimized `findKMSService()` w/ shared pool storage.
