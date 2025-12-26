@@ -704,12 +704,12 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         onlyValid?: boolean;
         /** (optional) flag to use batch update (default false) */
         useBatch?: boolean;
-    }) {
+    }): Promise<CoreModel<any>[]> {
         const parrallel = $U.N(options?.parrallel, this.parrallel);
         const useBatch = options?.useBatch ?? false;
         const errScope = `saveAllUpdates(${parrallel})`;
 
-        type Model = CoreModel<U>;
+        type Model = CoreModel<any>;
         type TYPE = {
             /** id of model */
             id: string;
@@ -720,7 +720,7 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
             /** type of model */
             type?: string;
             /** storage service */
-            storage?: TypedStorageService<Model, U>;
+            storage?: TypedStorageService<Model, any>;
         };
 
         /**
