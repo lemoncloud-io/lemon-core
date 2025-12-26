@@ -69,6 +69,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 4.1.0     | optimized with `lemon-model@1.1.1` and `DynamoService.mreadItem()`
 | 4.0.8     | optimized `findKMSService()` w/ shared pool storage.
 | 4.0.7     | optimized `verifyJWT()` w/ more detail error.
 | 4.0.6     | optimized `loadProfile()` as sync call.
