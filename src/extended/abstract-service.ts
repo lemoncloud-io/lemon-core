@@ -39,12 +39,13 @@ import $cores, {
     ProxyStorageService,
     SearchBody,
     StorageMakeable,
+    TypedStorageService,
 } from '../cores/';
 import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
-import { credentials, CrendentialForAWS } from '../environ';
+import { CrendentialForAWS } from '../environ';
 import REQUEST from 'request';
 import queryString from 'query-string';
 import elasticsearch from '@elastic/elasticsearch';
@@ -709,7 +710,34 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         const errScope = `saveAllUpdates(${parrallel})`;
 
         type Model = CoreModel<U>;
-        type TYPE = { id: string; N: Model; _: () => Promise<Model>; type?: string; storage?: any };
+        type TYPE = {
+            /** id of model */
+            id: string;
+            /** updated properties */
+            N: Model;
+            /** callback updater */
+            _?: (M: TYPE, i?: number) => Promise<Model>;
+            /** type of model */
+            type?: string;
+            /** storage service */
+            storage?: TypedStorageService<Model, U>;
+        };
+
+        /**
+         * custom error class
+         * - to wrap the root cause error
+         */
+        class MyError extends Error {
+            constructor(message: string, public readonly cause?: unknown) {
+                super(message);
+                this.name = 'MyError';
+            }
+        }
+        /**
+         * factory to create custom error
+         */
+        const $err = (e: any, M?: TYPE) =>
+            new MyError(`Failed to update ${M?.type ?? ''}/${M?.id ?? ''}: ${e?.message ?? '-'} @${errScope}`, M?.N);
 
         // STEP.1 prepare the list of updater (collect type and storage info for batch mode)
         const list = this.allProxies.reduce((L: TYPE[], $p: ManagerProxy<any, CoreManager<any, any, any>>) => {
@@ -718,9 +746,18 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                 const hasUpdate = Object.keys(N).length > 0;
                 if (hasUpdate) {
                     _log(NS, `>> ${$p.$mgr.type}/${id} =`, $U.json(N));
-                    const _ = () => $p.$mgr.storage.update(id, N);
-                    if (useBatch) L.push({ id, N, _, type: $p.$mgr.type, storage: $p.$mgr.storage });
-                    else L.push({ id, N, _ });
+                    //* callback updater
+                    const _ = (M: TYPE, i?: number) => {
+                        const storage = M?.storage ?? $p.$mgr.storage;
+                        const type = M?.type ?? $p.$mgr.type;
+                        M = { ...M, type, storage };
+                        try {
+                            return storage.update(id, M.N).catch(e => Promise.reject($err(e, M)));
+                        } catch (e) {
+                            throw $err(e, M);
+                        }
+                    };
+                    L.push({ id, N, _, type: $p.$mgr.type, storage: $p.$mgr.storage });
                 }
                 return L;
             }, L);
@@ -765,8 +802,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         //* LEGACY: original parallel update (default behavior)
         return my_parrallel(
             list,
-            async (N: any) => {
-                return typeof N._ === 'function' ? N._() : null;
+            async (M: TYPE, i?: number) => {
+                return typeof M._ === 'function' ? M._(M, i) : null;
             },
             parrallel,
         );

@@ -185,7 +185,11 @@ describe('TestHelper', () => {
         }
         const E1 = new AppError(
             'level1',
-            new AppError('level2', [new AppError('level3-1', new Error('level4')), new Error('level3-2')]),
+            new AppError('level2', [
+                new AppError('level3-1', new Error('level4')),
+                new Error('level3-2'),
+                { hello: 'world' } as any,
+            ]),
         );
         expect2(() => asErrorPayload(E1, null as any)).toEqual({
             message: 'level1',
@@ -203,6 +207,9 @@ describe('TestHelper', () => {
                             error: 'level3-2',
                             stack: expect.any(String),
                             errors: undefined,
+                        },
+                        {
+                            error: '{"hello":"world"}',
                         },
                     ],
                     stack: expect.any(String),
