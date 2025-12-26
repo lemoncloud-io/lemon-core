@@ -103,23 +103,10 @@ interface PerfTestResult {
     legacyMode: { elapsed: number; errors: number };
 }
 
-interface VpcPerfTestResult {
-    childNo: number;
-    nonVpcBatch: { elapsed: number; errors: number };
-    vpcBatch: { elapsed: number; errors: number };
-    nonVpcLegacy: { elapsed: number; errors: number };
-    vpcLegacy: { elapsed: number; errors: number };
-}
-
 /**
  * save performance report to coverage folder
  */
-const savePerformanceReport = (
-    testName: string,
-    results: PerfTestResult[] | VpcPerfTestResult[],
-    isVpc: boolean = false,
-    vpcConfig?: any,
-) => {
+const _savePerformanceReport = (testName: string, results: PerfTestResult[]) => {
     const coverageDir = join(process.cwd(), 'coverage');
     if (!existsSync(coverageDir)) {
         mkdirSync(coverageDir, { recursive: true });
@@ -132,10 +119,8 @@ const savePerformanceReport = (
     const report = {
         testName,
         timestamp: new Date().toISOString(),
-        isVpc,
-        vpcConfig: isVpc ? vpcConfig : undefined,
         results,
-        summary: generateSummary(results, isVpc),
+        summary: _generateSummary(results),
     };
 
     writeFileSync(filepath, JSON.stringify(report, null, 2), 'utf8');
@@ -146,44 +131,22 @@ const savePerformanceReport = (
 /**
  * generate performance summary
  */
-const generateSummary = (results: PerfTestResult[] | VpcPerfTestResult[], isVpc: boolean) => {
-    if (isVpc) {
-        const vpcResults = results as VpcPerfTestResult[];
-        return vpcResults.map(r => ({
-            childNo: r.childNo,
-            nonVpcBatchElapsed: r.nonVpcBatch.elapsed,
-            vpcBatchElapsed: r.vpcBatch.elapsed,
-            vpcBatchOverhead: calculateOverhead(r.nonVpcBatch.elapsed, r.vpcBatch.elapsed),
-            nonVpcLegacyElapsed: r.nonVpcLegacy.elapsed,
-            vpcLegacyElapsed: r.vpcLegacy.elapsed,
-            vpcLegacyOverhead: calculateOverhead(r.nonVpcLegacy.elapsed, r.vpcLegacy.elapsed),
-            batchAdvantageVpc: calculateImprovement(r.vpcLegacy.elapsed, r.vpcBatch.elapsed),
-        }));
-    } else {
-        const perfResults = results as PerfTestResult[];
-        return perfResults.map(r => ({
-            childNo: r.childNo,
-            batchElapsed: r.batchMode.elapsed,
-            legacyElapsed: r.legacyMode.elapsed,
-            improvement: calculateImprovement(r.legacyMode.elapsed, r.batchMode.elapsed),
-            batchErrors: r.batchMode.errors,
-            legacyErrors: r.legacyMode.errors,
-        }));
-    }
+const _generateSummary = (results: PerfTestResult[]) => {
+    return results.map(r => ({
+        childNo: r?.childNo,
+        batchElapsed: r?.batchMode?.elapsed,
+        legacyElapsed: r?.legacyMode?.elapsed,
+        improvement: _calculateImprovement(r?.legacyMode?.elapsed, r?.batchMode?.elapsed),
+        batchErrors: r?.batchMode?.errors,
+        legacyErrors: r?.legacyMode?.errors,
+    }));
 };
 
 /**
  * calculate improvement percentage
  */
-const calculateImprovement = (baseline: number, improved: number): number => {
+const _calculateImprovement = (baseline: number, improved: number): number => {
     return baseline > 0 ? ((baseline - improved) / baseline) * 100 : 0;
-};
-
-/**
- * calculate overhead percentage
- */
-const calculateOverhead = (baseline: number, actual: number): number => {
-    return baseline > 0 ? ((actual - baseline) / baseline) * 100 : 0;
 };
 
 //! main test body.
@@ -873,7 +836,7 @@ describe('abstract-service', () => {
         }
 
         //* save performance report to JSON file
-        const reportPath = savePerformanceReport('child-replication', perfResults, false);
+        const reportPath = _savePerformanceReport('child-replication', perfResults);
 
         //* verify data consistency between batch and legacy mode
 
