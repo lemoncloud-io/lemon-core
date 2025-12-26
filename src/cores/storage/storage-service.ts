@@ -82,7 +82,7 @@ export interface StorageService<T extends StorageModel> {
 /** ****************************************************************************************************************
  *  Data Storage Service
  ** ****************************************************************************************************************/
-import { DynamoService, KEY_TYPE } from '../dynamo/';
+import { DynamoService, KEY_TYPE, BatchResult } from '../dynamo/';
 import { loadDataYml } from '../../tools/';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
@@ -136,6 +136,31 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             return N;
         }, {});
         return item;
+    }
+
+    /**
+     * Read multiple models via database.
+     *
+     * @param ids       ids
+     */
+    public async mread(ids: string[]): Promise<BatchResult<T>> {
+        const total = ids?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!ids || total === 0) return result;
+
+        const list = ids.map(id => ({ id }));
+        const res = await this.$dynamo.mreadItem(list);
+        const fields = this._fields || [];
+        const toModel = (data: MyGeneral): T =>
+            fields.reduce((N: any, key) => {
+                const val = (data as any)[key];
+                if (val !== undefined) N[key] = val;
+                return N;
+            }, {});
+
+        result.success = (res.success || []).map(toModel);
+        result.failed = (res.failed || []).map(toModel);
+        return result;
     }
 
     /**
@@ -193,6 +218,41 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
         /* eslint-enable prettier/prettier */
         const ret: any = await this.$dynamo.updateItem(id, undefined, $U, $I);
         return ret as T;
+    }
+
+    /**
+     * update multiple models
+     *
+     * @param list      list of models (should include id)
+     */
+    public async mupdate(list: T[]): Promise<BatchResult<T>> {
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        const fields = this._fields || [];
+        const items = list.map((item: T) => {
+            const _id = (item as any)[this._idName] || (item as any).id;
+            if (!_id) throw new Error('@id is required!');
+            const data: MyGeneral = fields.reduce((N: any, key) => {
+                const val = (item as any)[key];
+                if (val !== undefined) N[key] = val;
+                return N;
+            }, {});
+            return { id: `${_id}`, ...data };
+        });
+
+        const res = await this.$dynamo.mupdateItem(items);
+        const toModel = (data: MyGeneral): T =>
+            fields.reduce((N: any, key) => {
+                const val = (data as any)[key];
+                if (val !== undefined) N[key] = val;
+                return N;
+            }, {});
+
+        result.success = (res.success || []).map(toModel);
+        result.failed = (res.failed || []).map(toModel);
+        return result;
     }
 
     /**
@@ -291,6 +351,24 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         return { ...item, [this.idName]: id } as T;
     }
 
+    public async mread(ids: string[]): Promise<BatchResult<T>> {
+        const total = ids?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!ids || total === 0) return result;
+
+        for (const id of ids) {
+            if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
+            const item = this.buffer[id];
+            if (!item) {
+                result.failed.push({ [this.idName]: id } as unknown as T);
+            } else {
+                result.success.push({ ...item, [this.idName]: id } as T);
+            }
+        }
+
+        return result;
+    }
+
     protected async readSafe(id: string): Promise<T> {
         return this.read(id).catch(e => {
             if (`${e.message || e}`.startsWith('404 NOT FOUND')) {
@@ -348,6 +426,22 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         const $set = { ...item, ...incremented };
         if (typeof $set.lock == 'number') ($set as any).lock = lock;
         return Object.assign({ [this.idName]: id }, $set);
+    }
+
+    public async mupdate(list: T[]): Promise<BatchResult<T>> {
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        for (const item of list) {
+            const _id = (item as any)[this.idName] || (item as any).id;
+            if (!_id) throw new Error('@id is required!');
+            if (item && typeof (item as any).lock == 'number') this.$locks[_id] = (item as any).lock;
+            this.buffer[_id] = item;
+            result.success.push({ ...item, [this.idName]: _id } as T);
+        }
+
+        return result;
     }
 
     public async increment(id: string, $inc: T, $upt?: T): Promise<T> {
