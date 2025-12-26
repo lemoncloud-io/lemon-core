@@ -51,7 +51,7 @@ class MyModelFilter extends GeneralModelFilter<MyModel, MyType> {
         return model;
     }
     public beforeUpdate(model: MyModel, incrementals?: MyModel): MyModel {
-        if (model.price) incrementals.count = 1; // increment count so.
+        if (model.price && incrementals) incrementals.count = 1; // increment count so.
         return model;
     }
 }
@@ -551,6 +551,228 @@ describe('ProxyStorageService', () => {
         expect2(() => data3.pop()).toEqual({});
         expect2(() => Object.keys(data3)).toEqual([]);
         expect2(() => data3.pop()).toEqual('data3.pop is not a function');
+    });
+
+    //* test doReadMulti
+    it('should pass doReadMulti()', async () => {
+        const { storage, current } = instance('dummy-account-data.yml');
+        const $test = storage.makeTypedStorageService('test');
+
+        const createdAt = current + 10;
+        const updatedAt = current + 100;
+
+        //* 1. validate parameters test
+        // null ids
+        expect2(await storage.doReadMulti('test', null as any)).toEqual({
+            success: [],
+            failed: [],
+            total: 0,
+        });
+
+        // empty array
+        expect2(await storage.doReadMulti('test', [])).toEqual({
+            success: [],
+            failed: [],
+            total: 0,
+        });
+
+        // undefined ids
+        expect2(await storage.doReadMulti('test', undefined as any)).toEqual({
+            success: [],
+            failed: [],
+            total: 0,
+        });
+
+        //* 2. match err cases
+        // prepare test data first
+        await $test.delete('multi-read-1').catch(GETERR);
+        await $test.delete('multi-read-2').catch(GETERR);
+        await $test.delete('multi-read-3').catch(GETERR);
+
+        await $test.save('multi-read-1', { name: 'Item 1' });
+        await $test.save('multi-read-2', { name: 'Item 2' });
+
+        // non-existent IDs only
+        const notFoundResult = await storage.doReadMulti('test', ['non-exist-1', 'non-exist-2']);
+        expect2(() => notFoundResult.total).toEqual(2);
+        expect2(() => notFoundResult.success.length).toEqual(0);
+        expect2(() => notFoundResult.failed.length).toEqual(2);
+
+        // mixed existing and non-existing IDs
+        const mixedResult = await storage.doReadMulti('test', ['multi-read-1', 'non-exist', 'multi-read-2']);
+        expect2(() => mixedResult.total).toEqual(3);
+        expect2(() => mixedResult.success.length).toEqual(2);
+        expect2(() => mixedResult.failed.length).toEqual(1);
+
+        //* 3. success cases
+        // read single model
+        const singleResult = await storage.doReadMulti('test', ['multi-read-1']);
+        expect2(() => singleResult.total).toEqual(1);
+        expect2(() => singleResult.success.length).toEqual(1);
+        expect2(() => singleResult.failed.length).toEqual(0);
+        expect2(() => singleResult.success[0], 'id,name').toEqual({
+            id: 'multi-read-1',
+            name: 'Item 1',
+        });
+
+        // read multiple models
+        await $test.save('multi-read-3', { name: 'Item 3' });
+        const multiResult = await storage.doReadMulti('test', ['multi-read-1', 'multi-read-2', 'multi-read-3']);
+        expect2(() => multiResult.total).toEqual(3);
+        expect2(() => multiResult.success.length).toEqual(3);
+        expect2(() => multiResult.failed.length).toEqual(0);
+
+        // verify BatchResult structure
+        expect2(() => typeof multiResult.total).toEqual('number');
+        expect2(() => Array.isArray(multiResult.success)).toEqual(true);
+        expect2(() => Array.isArray(multiResult.failed)).toEqual(true);
+
+        // verify afterRead filter is applied and _id is properly set
+        multiResult.success.forEach((model, index) => {
+            const expectedId = `multi-read-${index + 1}`;
+            expect2(() => model, '_id,id,name').toEqual({
+                _id: `TT:test:${expectedId}`,
+                id: expectedId,
+                name: `Item ${index + 1}`,
+            });
+        });
+
+        //* cleanup
+        await $test.delete('multi-read-1').catch(GETERR);
+        await $test.delete('multi-read-2').catch(GETERR);
+        await $test.delete('multi-read-3').catch(GETERR);
+    });
+
+    //* test doUpdateMulti
+    it('should pass doUpdateMulti()', async () => {
+        const { storage, current } = instance('dummy-account-data.yml');
+        const $test = storage.makeTypedStorageService('test');
+
+        //* doUpdateMulti test
+
+        const createdAt = current + 10;
+        const updatedAt = current + 100;
+
+        //* 1. validate parameters test
+        // null list
+        expect2(await storage.doUpdateMulti('test', null as any)).toEqual({
+            success: [],
+            failed: [],
+            total: 0,
+        });
+
+        // empty array
+        expect2(await storage.doUpdateMulti('test', [])).toEqual({
+            success: [],
+            failed: [],
+            total: 0,
+        });
+
+        // undefined list
+        expect2(await storage.doUpdateMulti('test', undefined as any)).toEqual({
+            success: [],
+            failed: [],
+            total: 0,
+        });
+
+        // missing id in item
+        expect2(await storage.doUpdateMulti('test', [{ name: 'no id' } as any]).catch(GETERR)).toEqual(
+            '@id is required!',
+        );
+
+        //* 2. match err cases
+        // prepare test data
+        await $test.delete('multi-update-1').catch(GETERR);
+        await $test.delete('multi-update-2').catch(GETERR);
+        await $test.delete('multi-update-3').catch(GETERR);
+
+        await $test.save('multi-update-1', { name: 'Original 1' });
+        await $test.save('multi-update-2', { name: 'Original 2' });
+
+        // update existing items
+        const updateResult = await storage.doUpdateMulti('test', [
+            { id: 'multi-update-1', name: 'Updated 1' },
+            { id: 'multi-update-2', name: 'Updated 2' },
+        ]);
+
+        expect2(() => updateResult.total).toEqual(2);
+        expect2(() => updateResult.success.length).toEqual(2);
+        expect2(() => updateResult.failed.length).toEqual(0);
+
+        //* 3. success cases
+        // update single item
+        const singleUpdateResult = await storage.doUpdateMulti('test', [
+            { id: 'multi-update-1', name: 'Single Update' },
+        ]);
+        expect2(() => singleUpdateResult.total).toEqual(1);
+        expect2(() => singleUpdateResult.success.length).toEqual(1);
+        expect2(() => singleUpdateResult.failed.length).toEqual(0);
+        expect2(() => singleUpdateResult.success[0], 'name,updatedAt').toEqual({
+            name: 'Single Update',
+            updatedAt,
+        });
+
+        // update multiple items
+        const multiUpdateResult = await storage.doUpdateMulti('test', [
+            { id: 'multi-update-1', name: 'Multi Update 1' },
+            { id: 'multi-update-2', name: 'Multi Update 2' },
+            { id: 'multi-update-3', name: 'Multi Update 3' },
+        ]);
+        expect2(() => multiUpdateResult.total).toEqual(3);
+        expect2(() => multiUpdateResult.success.length).toEqual(3);
+        expect2(() => multiUpdateResult.failed.length).toEqual(0);
+
+        // verify BatchResult structure
+        expect2(() => typeof multiUpdateResult.total).toEqual('number');
+        expect2(() => Array.isArray(multiUpdateResult.success)).toEqual(true);
+        expect2(() => Array.isArray(multiUpdateResult.failed)).toEqual(true);
+
+        // verify afterUpdate filter is applied
+        multiUpdateResult.success.forEach((model, index) => {
+            const expectedId = `multi-update-${index + 1}`;
+            expect2(() => model, '_id,name').toEqual({
+                _id: `TT:test:${expectedId}`,
+                name: `Multi Update ${index + 1}`,
+            });
+        });
+
+        // verify updatedAt is set correctly
+        multiUpdateResult.success.forEach(model => {
+            expect2(() => model.updatedAt).toEqual(updatedAt);
+        });
+
+        // verify auto-creation on update
+        await $test.delete('auto-create-1').catch(GETERR);
+        const autoCreateResult = await storage.doUpdateMulti('test', [{ id: 'auto-create-1', name: 'Auto Created' }]);
+        expect2(() => autoCreateResult.success.length).toEqual(1);
+        const retrieved = await $test.read('auto-create-1');
+        expect2(() => retrieved, 'name').toEqual({ name: 'Auto Created' });
+
+        // verify _id is removed and updatedAt is added
+        await $test.delete('filter-test').catch(GETERR);
+        await $test.save('filter-test', { name: 'Filter Test' });
+
+        const filterResult = await storage.doUpdateMulti('test', [
+            { id: 'filter-test', name: 'Updated Name', _id: 'should-be-removed' as any },
+        ]);
+        // _id should be removed from update and updatedAt should be set
+        expect2(() => filterResult.success[0], 'name,updatedAt').toEqual({
+            name: 'Updated Name',
+            updatedAt,
+        });
+
+        const filterRetrieved = await $test.read('filter-test');
+        expect2(() => filterRetrieved, 'name,updatedAt').toEqual({
+            name: 'Updated Name',
+            updatedAt,
+        });
+
+        //* cleanup
+        await $test.delete('multi-update-1').catch(GETERR);
+        await $test.delete('multi-update-2').catch(GETERR);
+        await $test.delete('multi-update-3').catch(GETERR);
+        await $test.delete('auto-create-1').catch(GETERR);
+        await $test.delete('filter-test').catch(GETERR);
     });
 
     //* dummy storage service.
