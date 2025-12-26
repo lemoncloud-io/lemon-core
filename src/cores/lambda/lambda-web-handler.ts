@@ -28,8 +28,8 @@ import {
 } from 'lemon-model';
 import { ProtocolParam } from './../core-services';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
-import { loadJsonSync, onlyDefined } from '../../tools/';
-import { GETERR } from '../../common/test-helper';
+import { GETERR, onlyDefined } from '../../common/test-helper';
+import { loadJsonSync } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';

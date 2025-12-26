@@ -22,6 +22,7 @@ import { CrendentialForAWS } from '../environ';
 import { RuntimeConfigAwsCredentialIdentityProvider } from '@aws-sdk/types/dist-types/identity/AwsCredentialIdentity';
 // import $engine from '../engine'; #WARN! DO NOT LOAD $engine here due to global initialization.
 import { LemonEngine } from '../engine/types';
+import { onlyDefined } from '../common/test-helper';
 
 /**
  * Check if the current environment is AWS Lambda
@@ -30,15 +31,6 @@ import { LemonEngine } from '../engine/types';
 export const isLambda = (): boolean => {
     return !!process?.env?.AWS_LAMBDA_FUNCTION_NAME;
 };
-
-/** returns only defined */
-export const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
-    N && typeof N === 'object'
-        ? Object.entries(N).reduce<T>((N, [k, v]) => {
-              if (v !== undefined) N[k as keyof T] = v;
-              return N;
-          }, {} as T)
-        : ($def as T);
 
 /**
  * load json in sync.

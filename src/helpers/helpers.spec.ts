@@ -10,7 +10,7 @@
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
 import { loadJsonSync } from '../tools/';
-import { GETERR, expect2, waited } from '../common/test-helper';
+import { GETERR, asErrorPayload, expect2, waited } from '../common/test-helper';
 import {
     $protocol,
     $rand,
@@ -468,6 +468,24 @@ MyError: yes error of me3
         );
         const result3D = await my_parrallel(case3List, func3Async).catch(e => formatError(e));
         expect2(() => result3D).toEqual(result3E);
+        const result3F = await my_parrallel(case3List, func3Async, { throwable: true }).catch(e => asErrorPayload(e));
+        expect2(() => result3F).toEqual({
+            message: 'yes error of me (+1 more errors) (S:3/5) - parallel(10/5)',
+            error: 'yes error of me (+1 more errors) (S:3/5) - parallel(10/5)',
+            errors: [
+                {
+                    error: 'yes error of me',
+                    stack: expect.any(String),
+                    errors: [{ error: 'yes error of me', stack: expect.any(String) }],
+                },
+                {
+                    error: 'yes error of me3',
+                    stack: expect.any(String),
+                    errors: [{ error: 'yes error of me3', stack: expect.any(String) }],
+                },
+            ],
+            'stack-trace': expect.any(String),
+        });
 
         //* test throwable=false (no error thrown)
         const result3S = await my_parrallel(case3List, func3Async, { throwable: false }).catch(GETERR);

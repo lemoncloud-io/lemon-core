@@ -14,10 +14,9 @@
 import $cores, { APIHeaders, APIHttpMethod, ApiHttpProxy, NextContext, NextIdentityCognito } from '../cores/';
 import { ProtocolModule, ProtocolService, SimpleSet } from '../cores/';
 import $engine, { $U, doReportSlack, do_parallel } from '../engine/';
-import { GETERR } from '../common/test-helper';
+import { GETERR, onlyDefined } from '../common/test-helper';
 import { sigV4Client, sigV4ClientConfig } from '../extended/libs/sig-v4';
 import { performance } from 'perf_hooks';
-import { onlyDefined } from '../tools/tools';
 
 import REQUEST from 'request';
 import queryString from 'query-string';
