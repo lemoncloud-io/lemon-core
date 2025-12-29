@@ -13,7 +13,7 @@ import { loadProfile } from '../environ';
 import { keys } from 'ts-transformer-keys';
 import { CoreModel, NextContext, SearchBody } from '../cores/';
 import { expect2, GETERR } from '../common/test-helper';
-import { $U } from '../engine';
+import { $U, _log } from '../engine';
 import {
     $ES6,
     _ES6,
@@ -25,6 +25,11 @@ import {
     ManagerProxy,
 } from './abstract-service';
 import { asyncCredentials } from '../tools';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { join } from 'path';
+
+const NS = $U.NS('TEST', 'blue'); // NAMESPACE FOR TEST LOGGING
+
 /**
  * type: `Model`
  */
@@ -87,6 +92,61 @@ export const instance = (type: string = 'dummy') => {
     const service = new BackendService(type == 'dummy' ? 'dummy-data.yml' : '');
     service.setCurrent(current);
     return { service, current };
+};
+
+/**
+ * interface: Performance Test Result
+ */
+interface PerfTestResult {
+    childNo: number;
+    batchMode: { elapsed: number; errors: number };
+    legacyMode: { elapsed: number; errors: number };
+}
+
+/**
+ * save performance report to coverage folder
+ */
+const _savePerformanceReport = (testName: string, results: PerfTestResult[]) => {
+    const coverageDir = join(process.cwd(), 'coverage');
+    if (!existsSync(coverageDir)) {
+        mkdirSync(coverageDir, { recursive: true });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `perf-${testName}-${timestamp}.json`;
+    const filepath = join(coverageDir, filename);
+
+    const report = {
+        testName,
+        timestamp: new Date().toISOString(),
+        results,
+        summary: _generateSummary(results),
+    };
+
+    writeFileSync(filepath, JSON.stringify(report, null, 2), 'utf8');
+    _log(NS, `> Performance report saved: ${filepath}`);
+    return filepath;
+};
+
+/**
+ * generate performance summary
+ */
+const _generateSummary = (results: PerfTestResult[]) => {
+    return results.map(r => ({
+        childNo: r?.childNo,
+        batchElapsed: r?.batchMode?.elapsed,
+        legacyElapsed: r?.legacyMode?.elapsed,
+        improvement: _calculateImprovement(r?.legacyMode?.elapsed, r?.batchMode?.elapsed),
+        batchErrors: r?.batchMode?.errors,
+        legacyErrors: r?.legacyMode?.errors,
+    }));
+};
+
+/**
+ * calculate improvement percentage
+ */
+const _calculateImprovement = (baseline: number, improved: number): number => {
+    return baseline > 0 ? ((baseline - improved) / baseline) * 100 : 0;
 };
 
 //! main test body.
@@ -347,7 +407,6 @@ describe('abstract-service', () => {
         }
 
         const { service } = instance();
-        const proxy = service.buildProxy({ domain: 'test', source: 'test' });
 
         //* test of options parameter validation
         // undefined options (should use defaults)
@@ -367,6 +426,7 @@ describe('abstract-service', () => {
         expect2(() => retrieved2, 'name').toEqual({ name: 'empty opts' });
 
         //* prepare 20 test items for batch mode test
+        const proxy = service.buildProxy({ domain: 'test', source: 'test' });
         for (let i = 0; i < 20; i++) {
             const model = await proxy.tests.get(`item-${i}`, {});
             model.name = `Item ${i}`;
@@ -391,22 +451,41 @@ describe('abstract-service', () => {
             return originalDoUpdateMulti(type, list);
         };
 
-        //* test of default mode (useBatch: true by default - batch updates)
-        const batchResult = await proxy.saveAllUpdates();
-        expect2(() => updateCallCount).toEqual(0);
-        expect2(() => batchCallCount).toEqual(1);
-        expect2(() => Array.isArray(batchResult)).toEqual(true);
-        expect2(() => batchResult.length).toEqual(20);
+        //* test of default mode (useBatch: false by default - legacy updates)
+        const defaultResult = await proxy.saveAllUpdates();
+        expect2(() => updateCallCount).toEqual(20);
+        expect2(() => batchCallCount).toEqual(0);
+        expect2(() => Array.isArray(defaultResult)).toEqual(true);
+        expect2(() => defaultResult.length).toEqual(20);
 
         //* test of explicit batch mode with useBatch: true
         updateCallCount = 0;
         batchCallCount = 0;
-        const proxyExplicit = service.buildProxy({ domain: 'test', source: 'test' });
+        const proxyBatch = service.buildProxy({ domain: 'test', source: 'test' });
+        let batchUpdateCount = 0;
+        let batchCallCountExplicit = 0;
+        const originalUpdateBatch = proxyBatch.tests.$mgr.storage.update.bind(proxyBatch.tests.$mgr.storage);
+        const originalDoUpdateMultiBatch = proxyBatch.tests.$mgr.storage.storage.doUpdateMulti.bind(
+            proxyBatch.tests.$mgr.storage.storage,
+        );
+
+        proxyBatch.tests.$mgr.storage.update = async (id: string, model: any, inc?: any) => {
+            batchUpdateCount++;
+            return originalUpdateBatch(id, model, inc);
+        };
+
+        proxyBatch.tests.$mgr.storage.storage.doUpdateMulti = async (type: string, list: any[]) => {
+            batchCallCountExplicit++;
+            return originalDoUpdateMultiBatch(type, list);
+        };
+
         for (let i = 0; i < 5; i++) {
-            const model = await proxyExplicit.tests.get(`item-explicit-${i}`, {});
+            const model = await proxyBatch.tests.get(`item-explicit-${i}`, {});
             model.name = `Explicit ${i}`;
         }
-        await proxyExplicit.saveAllUpdates({ useBatch: true });
+        await proxyBatch.saveAllUpdates({ useBatch: true });
+        expect2(() => batchUpdateCount).toEqual(0);
+        expect2(() => batchCallCountExplicit).toEqual(1);
 
         //* prepare 20 test items again for legacy test
         const proxyLegacy = service.buildProxy({ domain: 'test', source: 'test' });
@@ -616,5 +695,180 @@ describe('abstract-service', () => {
             expect2(() => batchComplex.name).toEqual(legacyComplex.name);
             expect2(() => batchComplex.test).toEqual(legacyComplex.test);
         }
+    });
+
+    it('should pass saveAllUpdates() performance test with child replication', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        const { service } = instance();
+
+        //* test scenario: replicate parent model into N children based on childNo parameter
+        //* test childNo values: 100, 500, 1000, 1500, 2000
+        //* compare performance: batch mode (useBatch: true) vs legacy mode (useBatch: false)
+        //* verify: response time, error handling, data consistency
+
+        /* helper function: create parent and replicate children*/
+        const _replicateChildren = async (
+            childNo: number,
+            useBatch: boolean,
+        ): Promise<{ parent: TestModel; children: TestModel[]; elapsed: number; errors: number }> => {
+            const proxy = service.buildProxy({ domain: 'perf-test', source: 'child-replication' });
+
+            // STEP.1: create parent model
+            const parent = await proxy.tests.get(`parent-${useBatch ? 'batch' : 'legacy'}-${childNo}`, {});
+            parent.name = `Parent for ${childNo} children`;
+            parent.test = childNo;
+
+            // STEP.2: replicate children based on childNo
+            const children: TestModel[] = [];
+            for (let i = 0; i < childNo; i++) {
+                const child = await proxy.tests.get(`child-${useBatch ? 'batch' : 'legacy'}-${childNo}-${i}`, {});
+                child.name = `${parent.name}#${i}`;
+                child.test = i;
+                children.push(child);
+            }
+
+            // STEP.3: measure saveAllUpdates performance
+            const startTime = Date.now();
+            let errors = 0;
+
+            try {
+                await proxy.saveAllUpdates({ useBatch });
+            } catch (err) {
+                errors++;
+            }
+
+            const elapsed = Date.now() - startTime;
+
+            return { parent, children, elapsed, errors };
+        };
+
+        //* performance test results storage
+        const perfResults: PerfTestResult[] = [];
+
+        //* TEST.1: childNo = 100
+        if (1) {
+            const batchResult100 = await _replicateChildren(100, true);
+            const legacyResult100 = await _replicateChildren(100, false);
+
+            expect2(() => batchResult100.errors).toEqual(0);
+            expect2(() => legacyResult100.errors).toEqual(0);
+            expect2(() => batchResult100.children.length).toEqual(100);
+            expect2(() => legacyResult100.children.length).toEqual(100);
+
+            perfResults.push({
+                childNo: 100,
+                batchMode: { elapsed: batchResult100.elapsed, errors: batchResult100.errors },
+                legacyMode: { elapsed: legacyResult100.elapsed, errors: legacyResult100.errors },
+            });
+        }
+
+        //* TEST.2: childNo = 500
+        if (1) {
+            const batchResult500 = await _replicateChildren(500, true);
+            const legacyResult500 = await _replicateChildren(500, false);
+
+            expect2(() => batchResult500.errors).toEqual(0);
+            expect2(() => legacyResult500.errors).toEqual(0);
+            expect2(() => batchResult500.children.length).toEqual(500);
+            expect2(() => legacyResult500.children.length).toEqual(500);
+
+            perfResults.push({
+                childNo: 500,
+                batchMode: { elapsed: batchResult500.elapsed, errors: batchResult500.errors },
+                legacyMode: { elapsed: legacyResult500.elapsed, errors: legacyResult500.errors },
+            });
+        }
+
+        //* TEST.3: childNo = 1000
+        if (1) {
+            const batchResult1000 = await _replicateChildren(1000, true);
+            const legacyResult1000 = await _replicateChildren(1000, false);
+
+            expect2(() => batchResult1000.errors).toEqual(0);
+            expect2(() => legacyResult1000.errors).toEqual(0);
+            expect2(() => batchResult1000.children.length).toEqual(1000);
+            expect2(() => legacyResult1000.children.length).toEqual(1000);
+
+            perfResults.push({
+                childNo: 1000,
+                batchMode: { elapsed: batchResult1000.elapsed, errors: batchResult1000.errors },
+                legacyMode: { elapsed: legacyResult1000.elapsed, errors: legacyResult1000.errors },
+            });
+        }
+
+        //* TEST.4: childNo = 1500
+        if (1) {
+            const batchResult1500 = await _replicateChildren(1500, true);
+            const legacyResult1500 = await _replicateChildren(1500, false);
+
+            expect2(() => batchResult1500.errors).toEqual(0);
+            expect2(() => legacyResult1500.errors).toEqual(0);
+            expect2(() => batchResult1500.children.length).toEqual(1500);
+            expect2(() => legacyResult1500.children.length).toEqual(1500);
+
+            perfResults.push({
+                childNo: 1500,
+                batchMode: { elapsed: batchResult1500.elapsed, errors: batchResult1500.errors },
+                legacyMode: { elapsed: legacyResult1500.elapsed, errors: legacyResult1500.errors },
+            });
+        }
+
+        //* TEST.5: childNo = 2000
+        if (1) {
+            const batchResult2000 = await _replicateChildren(2000, true);
+            const legacyResult2000 = await _replicateChildren(2000, false);
+
+            expect2(() => batchResult2000.errors).toEqual(0);
+            expect2(() => legacyResult2000.errors).toEqual(0);
+            expect2(() => batchResult2000.children.length).toEqual(2000);
+            expect2(() => legacyResult2000.children.length).toEqual(2000);
+
+            perfResults.push({
+                childNo: 2000,
+                batchMode: { elapsed: batchResult2000.elapsed, errors: batchResult2000.errors },
+                legacyMode: { elapsed: legacyResult2000.elapsed, errors: legacyResult2000.errors },
+            });
+        }
+
+        //* save performance report to JSON file
+        const reportPath = _savePerformanceReport('child-replication', perfResults);
+
+        //* verify data consistency between batch and legacy mode
+
+        //* verify random samples from each test case
+        const proxyVerify = service.buildProxy({ domain: 'verify', source: 'consistency-check' });
+
+        // verify 100 children case
+        const batchChild100Sample = await proxyVerify.tests.get('child-batch-100-50');
+        const legacyChild100Sample = await proxyVerify.tests.get('child-legacy-100-50');
+        expect2(() => batchChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
+        expect2(() => legacyChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
+        expect2(() => batchChild100Sample.test).toEqual(50);
+        expect2(() => legacyChild100Sample.test).toEqual(50);
+
+        // verify 1000 children case
+        const batchChild1000Sample = await proxyVerify.tests.get('child-batch-1000-500');
+        const legacyChild1000Sample = await proxyVerify.tests.get('child-legacy-1000-500');
+        expect2(() => batchChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
+        expect2(() => legacyChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
+        expect2(() => batchChild1000Sample.test).toEqual(500);
+        expect2(() => legacyChild1000Sample.test).toEqual(500);
+
+        // verify 2000 children case
+        const batchChild2000Sample = await proxyVerify.tests.get('child-batch-2000-1000');
+        const legacyChild2000Sample = await proxyVerify.tests.get('child-legacy-2000-1000');
+        expect2(() => batchChild2000Sample, 'name').toEqual({ name: 'Parent for 2000 children#1000' });
+        expect2(() => legacyChild2000Sample, 'name').toEqual({ name: 'Parent for 2000 children#1000' });
+        expect2(() => batchChild2000Sample.test).toEqual(1000);
+        expect2(() => legacyChild2000Sample.test).toEqual(1000);
+
+        //* verify report file was created
+        expect2(() => typeof reportPath).toEqual('string');
+        expect2(() => reportPath.includes('coverage/perf-child-replication')).toEqual(true);
     });
 });
