@@ -43,6 +43,13 @@ export interface TestModel extends Model {
     A_B?: string;
     Model?: Model;
     $model?: Model;
+    object$?: {
+        id?: string;
+        userId?: string;
+        siteId?: string;
+        activateToken?: string;
+        activateTokenTs?: string;
+    };
 }
 const TEST_FIELDS = filterFields(keys<TestModel>());
 
@@ -698,13 +705,15 @@ describe('abstract-service', () => {
     });
 
     it('should pass saveAllUpdates() performance test with child replication', async () => {
+        jest.setTimeout(200000);
+
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
             console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
-        const { service } = instance();
+        const { service } = instance('real'); // use real DynamoDB for accurate performance testing
 
         //* test scenario: replicate parent model into N children based on childNo parameter
         //* test childNo values: 100, 500, 1000, 1500, 2000
@@ -870,5 +879,229 @@ describe('abstract-service', () => {
         //* verify report file was created
         expect2(() => typeof reportPath).toEqual('string');
         expect2(() => reportPath.includes('coverage/perf-child-replication')).toEqual(true);
+    });
+
+    it('should reproduce undefined values error in saveAllUpdates()', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        const { service } = instance('real');
+
+        //* TEST CASE: onlyValid: false
+        // undefined in nested object → error
+        const proxyUndefined1 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelUndefined1 = await proxyUndefined1.tests.get('user-with-undefined-nested', {});
+        modelUndefined1.name = 'Test User With Undefined';
+        modelUndefined1.object$ = {
+            id: ':200389404',
+            userId: '200389404',
+            siteId: '200002034',
+            activateToken: undefined, // undefined value causes error with onlyValid: false
+            activateTokenTs: '2026-01-30 14:24:20',
+        };
+
+        const errorUndefined1 = await proxyUndefined1.saveAllUpdates({ onlyValid: false }).catch(GETERR);
+        expect2(() => errorUndefined1).toEqual(
+            'Failed to update test/user-with-undefined-nested: Pass options.removeUndefinedValues=true to remove undefined values from map/array/set. @saveAllUpdates(2) (S:0/1) - parallel(2/1)',
+        );
+
+        // undefined in array → succeed
+        const proxyUndefined2 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelUndefined2 = await proxyUndefined2.tests.get('user-with-undefined-array', {});
+        modelUndefined2.name = 'Test User With Array';
+        (modelUndefined2 as any).tags = ['tag1', undefined, 'tag3'];
+
+        const errorUndefined2 = await proxyUndefined2.saveAllUpdates({ onlyValid: false }).catch(GETERR);
+        expect2(() => errorUndefined2[0], '_id').toEqual({ _id: 'TT:test:user-with-undefined-array' });
+
+        // production error case (user/T1019734) → error
+        const proxyProdError = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelProdError = await proxyProdError.tests.get('T1019734', {});
+        modelProdError.name = 'Production Error User';
+        modelProdError.object$ = {
+            id: ':200389404',
+            userId: '200389404',
+            siteId: '200002034',
+            activateToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            activateTokenTs: undefined, // undefined value causes error with onlyValid: false
+        };
+
+        const errorProdError = await proxyProdError.saveAllUpdates({ onlyValid: false }).catch(GETERR);
+        expect2(() => errorProdError).toEqual(
+            'Failed to update test/T1019734: Pass options.removeUndefinedValues=true to remove undefined values from map/array/set. @saveAllUpdates(2) (S:0/1) - parallel(2/1)',
+        );
+
+        // batch mode with undefined values → error
+        const proxyBatchUndefined = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        for (let i = 0; i < 3; i++) {
+            const model = await proxyBatchUndefined.tests.get(`user-batch-undefined-${i}`, {});
+            model.name = `Batch User ${i}`;
+            model.object$ = {
+                id: `:${i}`,
+                userId: `${i}`,
+                siteId: undefined, // undefined value causes error with onlyValid: false
+                activateToken: `token-${i}`,
+            };
+        }
+
+        const errorBatch = await proxyBatchUndefined.saveAllUpdates({ useBatch: true, onlyValid: false }).catch(GETERR);
+        expect2(() => errorBatch).toEqual([]);
+
+        //* TEST CASE: onlyValid: true
+        // nested undefined → succeed (undefined filtered)
+        const proxyOnlyValidTrue1 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelOnlyValidTrue1 = await proxyOnlyValidTrue1.tests.get('user-onlyvalid-true-nested', {});
+        modelOnlyValidTrue1.name = 'OnlyValid True Nested';
+        modelOnlyValidTrue1.object$ = {
+            id: ':test',
+            userId: 'test-user',
+            siteId: '200002034',
+            activateToken: undefined, // undefined is filtered when onlyValid: true
+            activateTokenTs: '2026-01-30 14:24:20',
+        };
+
+        const resultOnlyValidTrue1 = await proxyOnlyValidTrue1.saveAllUpdates({ onlyValid: true }).catch(GETERR);
+        expect2(() => resultOnlyValidTrue1[0], '_id').toEqual({ _id: 'TT:test:user-onlyvalid-true-nested' });
+
+        // array with undefined → succeed (undefined filtered)
+        const proxyOnlyValidTrue2 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelOnlyValidTrue2 = await proxyOnlyValidTrue2.tests.get('user-onlyvalid-true-array', {});
+        modelOnlyValidTrue2.name = 'OnlyValid True Array';
+        (modelOnlyValidTrue2 as any).tags = ['tag1', undefined, 'tag3']; // undefined filtered
+
+        const resultOnlyValidTrue2 = await proxyOnlyValidTrue2.saveAllUpdates({ onlyValid: true }).catch(GETERR);
+        expect2(() => resultOnlyValidTrue2[0], '_id').toEqual({ _id: 'TT:test:user-onlyvalid-true-array' });
+
+        // production case → succeed (undefined filtered)
+        const proxyOnlyValidTrue3 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelOnlyValidTrue3 = await proxyOnlyValidTrue3.tests.get('user-onlyvalid-true-production', {});
+        modelOnlyValidTrue3.name = 'OnlyValid True Production';
+        modelOnlyValidTrue3.object$ = {
+            id: ':200389404',
+            userId: '200389404',
+            siteId: '200002034',
+            activateToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            activateTokenTs: undefined, // undefined filtered
+        };
+
+        const resultOnlyValidTrue3 = await proxyOnlyValidTrue3.saveAllUpdates({ onlyValid: true }).catch(GETERR);
+        expect2(() => resultOnlyValidTrue3[0], '_id').toEqual({ _id: 'TT:test:user-onlyvalid-true-production' });
+
+        // batch mode → succeed (undefined filtered)
+        const proxyOnlyValidTrue4 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const timestamp2 = Date.now();
+        for (let i = 0; i < 3; i++) {
+            const model = await proxyOnlyValidTrue4.tests.get(`user-onlyvalid-true-batch-${i}`, {});
+            model.name = `OnlyValid True Batch ${i} ${timestamp2}`;
+            model.object$ = {
+                id: `:${i}`,
+                userId: `${i}`,
+                siteId: undefined, // undefined filtered
+                activateToken: `token-${i}-${timestamp2}`,
+            };
+        }
+
+        const resultOnlyValidTrue4 = await proxyOnlyValidTrue4
+            .saveAllUpdates({ useBatch: true, onlyValid: true })
+            .catch(GETERR);
+        expect2(() => resultOnlyValidTrue4[0], '_id').toEqual({ _id: 'user-onlyvalid-true-batch-0' });
+        expect2(() => resultOnlyValidTrue4[1], '_id').toEqual({ _id: 'user-onlyvalid-true-batch-1' });
+        expect2(() => resultOnlyValidTrue4[2], '_id').toEqual({ _id: 'user-onlyvalid-true-batch-2' });
+        expect2(() => resultOnlyValidTrue4.length).toEqual(3);
+
+        //* TEST CASE: default
+        // nested undefined → succeed
+        const proxyDefault1 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelDefault1 = await proxyDefault1.tests.get('user-default-nested', {});
+        modelDefault1.name = 'Default Nested';
+        modelDefault1.object$ = {
+            id: ':default',
+            userId: 'default-user',
+            siteId: undefined, // undefined is filtered by default (onlyValid !== false)
+            activateToken: 'token123',
+        };
+
+        const resultDefault1 = await proxyDefault1.saveAllUpdates().catch(GETERR);
+        expect2(() => resultDefault1[0], '_id').toEqual({ _id: 'TT:test:user-default-nested' });
+
+        // array with undefined → succeed (undefined filtered)
+        const proxyDefault2 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelDefault2 = await proxyDefault2.tests.get('user-default-array', {});
+        modelDefault2.name = 'Default Array';
+        (modelDefault2 as any).tags = ['tag1', undefined, 'tag3']; // undefined filtered by default
+
+        const resultDefault2 = await proxyDefault2.saveAllUpdates().catch(GETERR);
+        expect2(() => resultDefault2[0], '_id').toEqual({ _id: 'TT:test:user-default-array' });
+ 
+        // multiple nested levels → succeed (undefined filtered)
+        const proxyDefault3 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const modelDefault3 = await proxyDefault3.tests.get('user-default-multilevel', {});
+        modelDefault3.name = 'Default Multilevel';
+        (modelDefault3 as any).object$ = {
+            id: ':multilevel',
+            userId: 'multilevel-user',
+            siteId: '200002034',
+            activateToken: undefined, // undefined filtered
+            nested: {
+                level1: 'value1',
+                level2: undefined, // undefined filtered
+            },
+        };
+
+        const resultDefault3 = await proxyDefault3.saveAllUpdates().catch(GETERR);
+        expect2(() => resultDefault3[0], '_id').toEqual({ _id: 'TT:test:user-default-multilevel' });
+
+        // batch mode → succeed (undefined filtered)
+        const proxyDefault4 = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const timestamp3 = Date.now();
+        for (let i = 0; i < 3; i++) {
+            const model = await proxyDefault4.tests.get(`user-default-batch-${i}`, {});
+            model.name = `Default Batch ${i} ${timestamp3}`;
+            model.object$ = {
+                id: `:${i}`,
+                userId: `${i}`,
+                siteId: undefined, // undefined filtered by default
+                activateToken: `token-${i}-${timestamp3}`,
+            };
+        }
+
+        const resultDefault4 = await proxyDefault4.saveAllUpdates({ useBatch: true }).catch(GETERR);
+        expect2(() => resultDefault4[0], '_id').toEqual({ _id: 'user-default-batch-0' });
+        expect2(() => resultDefault4[1], '_id').toEqual({ _id: 'user-default-batch-1' });
+        expect2(() => resultDefault4[2], '_id').toEqual({ _id: 'user-default-batch-2' });
+        expect2(() => resultDefault4.length).toEqual(3);
+
+        //* CLEANUP: delete all created test data
+        const proxyCleanup = service.buildProxy({ domain: 'test-undefined', source: 'error-reproduction' });
+        const testIds = [
+            // onlyValid: false cases
+            'user-with-undefined-nested',
+            'user-with-undefined-array',
+            'T1019734',
+            'user-batch-undefined-0',
+            'user-batch-undefined-1',
+            'user-batch-undefined-2',
+            // onlyValid: true cases
+            'user-onlyvalid-true-nested',
+            'user-onlyvalid-true-array',
+            'user-onlyvalid-true-production',
+            'user-onlyvalid-true-batch-0',
+            'user-onlyvalid-true-batch-1',
+            'user-onlyvalid-true-batch-2',
+            // default cases
+            'user-default-nested',
+            'user-default-array',
+            'user-default-multilevel',
+            'user-default-batch-0',
+            'user-default-batch-1',
+            'user-default-batch-2',
+        ];
+
+        const cleanupStorage = proxyCleanup.tests.storage;
+
+        for (const id of testIds) await cleanupStorage.delete(id).catch(() => {});
     });
 });
