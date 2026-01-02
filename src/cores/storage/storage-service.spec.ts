@@ -16,6 +16,7 @@ interface AccountModel extends StorageModel {
     slot?: number;
     balance?: number;
     name?: string;
+    no?: string; // for DynamoStorageService with 'no' as idName
 }
 
 //! main test body.
@@ -175,6 +176,82 @@ describe('StorageService', () => {
         await $account.delete('U00002');
         await $account.delete('U00003');
         await $account.delete('U00004');
+    });
+
+    //* LAYER EQUIVALENCE: batch vs legacy methods for DummyStorageService
+    it('should have equivalent results for read/mread and update/mupdate in dummy storage', async () => {
+        const $storage = new DummyStorageService('ticketing-dummy-data', 'memory', 'id');
+        const $account = $storage as DummyStorageService<AccountModel>;
+
+        //* test of mread vs read
+        const readItems = [
+            { id: 'equiv-read-1', type: 'equiv-test', name: 'Equiv Read 1', balance: 100 },
+            { id: 'equiv-read-2', type: 'equiv-test', name: 'Equiv Read 2', balance: 200 },
+            { id: 'equiv-read-3', type: 'equiv-test', name: 'Equiv Read 3', balance: 300 },
+        ];
+
+        // Setup test data
+        await $account.save('equiv-read-1', readItems[0] as AccountModel);
+        await $account.save('equiv-read-2', readItems[1] as AccountModel);
+        await $account.save('equiv-read-3', readItems[2] as AccountModel);
+
+        // Legacy: multiple read calls
+        const dummyLegacy1 = await $account.read('equiv-read-1');
+        const dummyLegacy2 = await $account.read('equiv-read-2');
+        const dummyLegacy3 = await $account.read('equiv-read-3');
+
+        // Batch: single mread call
+        const dummyBatchRead = await $account.mread(['equiv-read-1', 'equiv-read-2', 'equiv-read-3']);
+
+        // Verify equivalence
+        expect2(() => dummyBatchRead.success.length).toEqual(3);
+        expect2(() => dummyBatchRead.success[0]).toEqual(dummyLegacy1);
+        expect2(() => dummyBatchRead.success[1]).toEqual(dummyLegacy2);
+        expect2(() => dummyBatchRead.success[2]).toEqual(dummyLegacy3);
+
+        //* test of mupdate vs update
+        const initialItems = [
+            { id: 'equiv-update-1', type: 'equiv-test', name: 'Initial 1', balance: 100 },
+            { id: 'equiv-update-2', type: 'equiv-test', name: 'Initial 2', balance: 200 },
+            { id: 'equiv-update-3', type: 'equiv-test', name: 'Initial 3', balance: 300 },
+        ];
+
+        // Setup test data
+        await $account.save('equiv-update-1', initialItems[0] as AccountModel);
+        await $account.save('equiv-update-2', initialItems[1] as AccountModel);
+        await $account.save('equiv-update-3', initialItems[2] as AccountModel);
+
+        // Legacy: multiple update calls
+        const dummyLegacyUpdate1 = await $account.update('equiv-update-1', { type: 'equiv-updated', name: 'Updated 1', balance: 200 });
+        const dummyLegacyUpdate2 = await $account.update('equiv-update-2', { type: 'equiv-updated', name: 'Updated 2', balance: 400 });
+        const dummyLegacyUpdate3 = await $account.update('equiv-update-3', { type: 'equiv-updated', name: 'Updated 3', balance: 600 });
+
+        // Reset data for batch test
+        await $account.save('equiv-update-1', initialItems[0] as AccountModel);
+        await $account.save('equiv-update-2', initialItems[1] as AccountModel);
+        await $account.save('equiv-update-3', initialItems[2] as AccountModel);
+
+        // Batch: single mupdate call
+        const updateItems = [
+            { id: 'equiv-update-1', type: 'equiv-updated', name: 'Updated 1', balance: 200 },
+            { id: 'equiv-update-2', type: 'equiv-updated', name: 'Updated 2', balance: 400 },
+            { id: 'equiv-update-3', type: 'equiv-updated', name: 'Updated 3', balance: 600 },
+        ];
+        const dummyBatchUpdate = await $account.mupdate(updateItems as AccountModel[]);
+
+        // Verify equivalence
+        expect2(() => dummyBatchUpdate.success.length).toEqual(3);
+        expect2(() => dummyBatchUpdate.success[0], 'id,type,name,balance').toEqual(dummyLegacyUpdate1);
+        expect2(() => dummyBatchUpdate.success[1], 'id,type,name,balance').toEqual(dummyLegacyUpdate2);
+        expect2(() => dummyBatchUpdate.success[2], 'id,type,name,balance').toEqual(dummyLegacyUpdate3);
+
+        // Cleanup
+        await $account.delete('equiv-read-1');
+        await $account.delete('equiv-read-2');
+        await $account.delete('equiv-read-3');
+        await $account.delete('equiv-update-1');
+        await $account.delete('equiv-update-2');
+        await $account.delete('equiv-update-3');
     });
 
     //* dummy storage service.
@@ -496,6 +573,85 @@ describe('StorageService', () => {
 
         const verified3 = await $dynamo.read('DU00002');
         expect2(() => verified3, 'no,name,balance').toEqual({ no: 'DU00002', name: 'updated2', balance: 250 });
+    });
+
+    //* LAYER EQUIVALENCE: batch vs legacy methods for DynamoStorageService
+    it('should have equivalent results for read/mread and update/mupdate in dynamo storage', async () => {
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', ['name', 'slot', 'balance'], 'no');
+
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        //* test of mread vs read
+        const readItems = [
+            { no: 'dynamo-equiv-read-1', type: 'equiv-test', name: 'Dynamo Equiv Read 1', balance: 100 },
+            { no: 'dynamo-equiv-read-2', type: 'equiv-test', name: 'Dynamo Equiv Read 2', balance: 200 },
+            { no: 'dynamo-equiv-read-3', type: 'equiv-test', name: 'Dynamo Equiv Read 3', balance: 300 },
+        ];
+
+        // Setup test data
+        await $dynamo.save('dynamo-equiv-read-1', readItems[0] as any);
+        testDataIds.add('dynamo-equiv-read-1');
+        await $dynamo.save('dynamo-equiv-read-2', readItems[1] as any);
+        testDataIds.add('dynamo-equiv-read-2');
+        await $dynamo.save('dynamo-equiv-read-3', readItems[2] as any);
+        testDataIds.add('dynamo-equiv-read-3');
+
+        // Legacy: multiple read calls
+        const dynamoLegacy1 = await $dynamo.read('dynamo-equiv-read-1');
+        const dynamoLegacy2 = await $dynamo.read('dynamo-equiv-read-2');
+        const dynamoLegacy3 = await $dynamo.read('dynamo-equiv-read-3');
+
+        // Batch: single mread call
+        const dynamoBatchRead = await $dynamo.mread(['dynamo-equiv-read-1', 'dynamo-equiv-read-2', 'dynamo-equiv-read-3']);
+
+        // Verify equivalence
+        expect2(() => dynamoBatchRead.success.length).toEqual(3);
+        expect2(() => dynamoBatchRead.success[0]).toEqual(dynamoLegacy1);
+        expect2(() => dynamoBatchRead.success[1]).toEqual(dynamoLegacy2);
+        expect2(() => dynamoBatchRead.success[2]).toEqual(dynamoLegacy3);
+
+        //* test of mupdate vs update
+        const initialItems = [
+            { no: 'dynamo-equiv-update-1', type: 'equiv-test', name: 'Initial 1', balance: 100 },
+            { no: 'dynamo-equiv-update-2', type: 'equiv-test', name: 'Initial 2', balance: 200 },
+            { no: 'dynamo-equiv-update-3', type: 'equiv-test', name: 'Initial 3', balance: 300 },
+        ];
+
+        // Setup test data
+        await $dynamo.save('dynamo-equiv-update-1', initialItems[0] as any);
+        testDataIds.add('dynamo-equiv-update-1');
+        await $dynamo.save('dynamo-equiv-update-2', initialItems[1] as any);
+        testDataIds.add('dynamo-equiv-update-2');
+        await $dynamo.save('dynamo-equiv-update-3', initialItems[2] as any);
+        testDataIds.add('dynamo-equiv-update-3');
+
+        // Legacy: multiple update calls
+        const dynamoLegacyUpdate1 = await $dynamo.update('dynamo-equiv-update-1', { type: 'equiv-updated', name: 'Updated 1', balance: 200 });
+        const dynamoLegacyUpdate2 = await $dynamo.update('dynamo-equiv-update-2', { type: 'equiv-updated', name: 'Updated 2', balance: 400 });
+        const dynamoLegacyUpdate3 = await $dynamo.update('dynamo-equiv-update-3', { type: 'equiv-updated', name: 'Updated 3', balance: 600 });
+
+        // Reset data for batch test
+        await $dynamo.save('dynamo-equiv-update-1', initialItems[0] as any);
+        await $dynamo.save('dynamo-equiv-update-2', initialItems[1] as any);
+        await $dynamo.save('dynamo-equiv-update-3', initialItems[2] as any);
+
+        // Batch: single mupdate call
+        const updateItems = [
+            { no: 'dynamo-equiv-update-1', type: 'equiv-updated', name: 'Updated 1', balance: 200 },
+            { no: 'dynamo-equiv-update-2', type: 'equiv-updated', name: 'Updated 2', balance: 400 },
+            { no: 'dynamo-equiv-update-3', type: 'equiv-updated', name: 'Updated 3', balance: 600 },
+        ];
+        const dynamoBatchUpdate = await $dynamo.mupdate(updateItems as any[]);
+
+        // Verify equivalence
+        expect2(() => dynamoBatchUpdate.success.length).toEqual(3);
+        expect2(() => dynamoBatchUpdate.success[0], 'no,type,name,balance').toEqual(dynamoLegacyUpdate1);
+        expect2(() => dynamoBatchUpdate.success[1], 'no,type,name,balance').toEqual(dynamoLegacyUpdate2);
+        expect2(() => dynamoBatchUpdate.success[2], 'no,type,name,balance').toEqual(dynamoLegacyUpdate3);
     });
 
     //* dynamo storage service. (should be equivalent with `dummy-storage-server`)

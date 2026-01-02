@@ -557,6 +557,87 @@ describe('DynamoService', () => {
                     name: 'Multi Updated 119',
                 });
             }
+
+            //* LAYER EQUIVALENCE: batch vs legacy methods
+            if (1) {
+                //* test of mreadItem vs readItem
+                const readItems = [
+                    { id: 'equiv-read-1', type: 'equiv-test', name: 'Equiv Read 1' },
+                    { id: 'equiv-read-2', type: 'equiv-test', name: 'Equiv Read 2' },
+                    { id: 'equiv-read-3', type: 'equiv-test', name: 'Equiv Read 3' },
+                ];
+                await dummy.msaveItem(readItems);
+
+                // Legacy: multiple readItem calls
+                const legacy1 = await dummy.readItem('equiv-read-1');
+                const legacy2 = await dummy.readItem('equiv-read-2');
+                const legacy3 = await dummy.readItem('equiv-read-3');
+
+                // Batch: single mreadItem call
+                const batchRead = await dummy.mreadItem([{ id: 'equiv-read-1' }, { id: 'equiv-read-2' }, { id: 'equiv-read-3' }]);
+
+                // Verify equivalence
+                expect2(() => batchRead.success.length).toEqual(3);
+                expect2(() => batchRead.success[0]).toEqual(legacy1);
+                expect2(() => batchRead.success[1]).toEqual(legacy2);
+                expect2(() => batchRead.success[2]).toEqual(legacy3);
+
+                //* test of msaveItem vs saveItem
+                const saveItems = [
+                    { id: 'equiv-save-1', type: 'equiv-test', name: 'Equiv Save 1' },
+                    { id: 'equiv-save-2', type: 'equiv-test', name: 'Equiv Save 2' },
+                    { id: 'equiv-save-3', type: 'equiv-test', name: 'Equiv Save 3' },
+                ];
+
+                // Legacy: multiple saveItem calls
+                const legacySave1 = await dummy.saveItem('equiv-save-1', { type: 'equiv-test', name: 'Equiv Save 1' } as MyModel);
+                const legacySave2 = await dummy.saveItem('equiv-save-2', { type: 'equiv-test', name: 'Equiv Save 2' } as MyModel);
+                const legacySave3 = await dummy.saveItem('equiv-save-3', { type: 'equiv-test', name: 'Equiv Save 3' } as MyModel);
+
+                // Cleanup for batch test
+                await dummy.deleteItem('equiv-save-1');
+                await dummy.deleteItem('equiv-save-2');
+                await dummy.deleteItem('equiv-save-3');
+
+                // Batch: single msaveItem call
+                const batchSave = await dummy.msaveItem(saveItems);
+
+                // Verify equivalence
+                expect2(() => batchSave.success.length).toEqual(3);
+                expect2(() => batchSave.success[0], 'ID,type,name').toEqual(legacySave1);
+                expect2(() => batchSave.success[1], 'ID,type,name').toEqual(legacySave2);
+                expect2(() => batchSave.success[2], 'ID,type,name').toEqual(legacySave3);
+
+                //* test of mupdateItem vs updateItem
+                const initialItems = [
+                    { id: 'equiv-update-1', type: 'equiv-test', name: 'Initial 1' },
+                    { id: 'equiv-update-2', type: 'equiv-test', name: 'Initial 2' },
+                    { id: 'equiv-update-3', type: 'equiv-test', name: 'Initial 3' },
+                ];
+                await dummy.msaveItem(initialItems);
+
+                // Legacy: multiple updateItem calls
+                const legacyUpdate1 = await dummy.updateItem('equiv-update-1', 0, { type: 'equiv-updated', name: 'Updated 1' });
+                const legacyUpdate2 = await dummy.updateItem('equiv-update-2', 0, { type: 'equiv-updated', name: 'Updated 2' });
+                const legacyUpdate3 = await dummy.updateItem('equiv-update-3', 0, { type: 'equiv-updated', name: 'Updated 3' });
+
+                // Reset data for batch test
+                await dummy.msaveItem(initialItems);
+
+                // Batch: single mupdateItem call
+                const updateItems = [
+                    { id: 'equiv-update-1', type: 'equiv-updated', name: 'Updated 1' },
+                    { id: 'equiv-update-2', type: 'equiv-updated', name: 'Updated 2' },
+                    { id: 'equiv-update-3', type: 'equiv-updated', name: 'Updated 3' },
+                ];
+                const batchUpdate = await dummy.mupdateItem(updateItems);
+
+                // Verify equivalence
+                expect2(() => batchUpdate.success.length).toEqual(3);
+                expect2(() => batchUpdate.success[0], 'ID,type,name').toEqual(legacyUpdate1);
+                expect2(() => batchUpdate.success[1], 'ID,type,name').toEqual(legacyUpdate2);
+                expect2(() => batchUpdate.success[2], 'ID,type,name').toEqual(legacyUpdate3);
+            }
         });
     });
 
@@ -577,6 +658,7 @@ describe('DynamoService', () => {
         });
 
         it('should pass mutiple crud operations with real DynamoDB', async () => {
+            jest.setTimeout(30000); // Increase timeout for equivalence tests
             if (!PROFILE) return;
 
             //* basic CRUD
@@ -1040,6 +1122,177 @@ describe('DynamoService', () => {
                     type: 'real-multi-updated',
                     name: 'Multi Updated 119',
                 });
+            }
+
+            //* LAYER EQUIVALENCE: batch vs legacy methods
+            if (1) {
+                //* test of mreadItem vs readItem
+                const readItems = [
+                    { id: 'real-equiv-read-1', type: 'real-equiv-test', name: 'Real Equiv Read 1' },
+                    { id: 'real-equiv-read-2', type: 'real-equiv-test', name: 'Real Equiv Read 2' },
+                    { id: 'real-equiv-read-3', type: 'real-equiv-test', name: 'Real Equiv Read 3' },
+                ];
+                await service.msaveItem(readItems);
+                dataMap.set('real-equiv-read-1', readItems[0] as MyModel);
+                dataMap.set('real-equiv-read-2', readItems[1] as MyModel);
+                dataMap.set('real-equiv-read-3', readItems[2] as MyModel);
+
+                // Legacy: multiple readItem calls
+                const realLegacy1 = await service.readItem('real-equiv-read-1');
+                const realLegacy2 = await service.readItem('real-equiv-read-2');
+                const realLegacy3 = await service.readItem('real-equiv-read-3');
+
+                // Batch: single mreadItem call
+                const realBatchRead = await service.mreadItem([{ id: 'real-equiv-read-1' }, { id: 'real-equiv-read-2' }, { id: 'real-equiv-read-3' }]);
+
+                // Verify equivalence
+                expect2(() => realBatchRead.success.length).toEqual(3);
+                expect2(() => realBatchRead.success[0]).toEqual(realLegacy1);
+                expect2(() => realBatchRead.success[1]).toEqual(realLegacy2);
+                expect2(() => realBatchRead.success[2]).toEqual(realLegacy3);
+
+                //* test of msaveItem vs saveItem
+                const saveItems = [
+                    { id: 'real-equiv-save-1', type: 'real-equiv-test', name: 'Real Equiv Save 1' },
+                    { id: 'real-equiv-save-2', type: 'real-equiv-test', name: 'Real Equiv Save 2' },
+                    { id: 'real-equiv-save-3', type: 'real-equiv-test', name: 'Real Equiv Save 3' },
+                ];
+
+                // Legacy: multiple saveItem calls
+                const realLegacySave1 = await service.saveItem('real-equiv-save-1', { type: 'real-equiv-test', name: 'Real Equiv Save 1' } as MyModel);
+                dataMap.set('real-equiv-save-1', realLegacySave1);
+                const realLegacySave2 = await service.saveItem('real-equiv-save-2', { type: 'real-equiv-test', name: 'Real Equiv Save 2' } as MyModel);
+                dataMap.set('real-equiv-save-2', realLegacySave2);
+                const realLegacySave3 = await service.saveItem('real-equiv-save-3', { type: 'real-equiv-test', name: 'Real Equiv Save 3' } as MyModel);
+                dataMap.set('real-equiv-save-3', realLegacySave3);
+
+                // Cleanup and prepare for batch test
+                await service.deleteItem('real-equiv-save-1');
+                dataMap.delete('real-equiv-save-1');
+                await service.deleteItem('real-equiv-save-2');
+                dataMap.delete('real-equiv-save-2');
+                await service.deleteItem('real-equiv-save-3');
+                dataMap.delete('real-equiv-save-3');
+
+                // Batch: single msaveItem call
+                const realBatchSave = await service.msaveItem(saveItems);
+                dataMap.set((realBatchSave.success[0] as any).ID, realBatchSave.success[0]);
+                dataMap.set((realBatchSave.success[1] as any).ID, realBatchSave.success[1]);
+                dataMap.set((realBatchSave.success[2] as any).ID, realBatchSave.success[2]);
+
+                // Verify equivalence
+                expect2(() => realBatchSave.success.length).toEqual(3);
+                expect2(() => realBatchSave.success[0], 'ID,type,name').toEqual(realLegacySave1);
+                expect2(() => realBatchSave.success[1], 'ID,type,name').toEqual(realLegacySave2);
+                expect2(() => realBatchSave.success[2], 'ID,type,name').toEqual(realLegacySave3);
+
+                //* test of mupdateItem vs updateItem
+                const initialItems = [
+                    { id: 'real-equiv-update-1', type: 'real-equiv-test', name: 'Real Initial 1' },
+                    { id: 'real-equiv-update-2', type: 'real-equiv-test', name: 'Real Initial 2' },
+                    { id: 'real-equiv-update-3', type: 'real-equiv-test', name: 'Real Initial 3' },
+                ];
+                await service.msaveItem(initialItems);
+                dataMap.set('real-equiv-update-1', initialItems[0] as MyModel);
+                dataMap.set('real-equiv-update-2', initialItems[1] as MyModel);
+                dataMap.set('real-equiv-update-3', initialItems[2] as MyModel);
+
+                // Legacy: multiple updateItem calls
+                const realLegacyUpdate1 = await service.updateItem('real-equiv-update-1', 0, { type: 'real-equiv-updated', name: 'Real Updated 1' });
+                const realLegacyUpdate2 = await service.updateItem('real-equiv-update-2', 0, { type: 'real-equiv-updated', name: 'Real Updated 2' });
+                const realLegacyUpdate3 = await service.updateItem('real-equiv-update-3', 0, { type: 'real-equiv-updated', name: 'Real Updated 3' });
+
+                // Reset data for batch test
+                await service.msaveItem(initialItems);
+
+                // Batch: single mupdateItem call
+                const updateItems = [
+                    { id: 'real-equiv-update-1', type: 'real-equiv-updated', name: 'Real Updated 1' },
+                    { id: 'real-equiv-update-2', type: 'real-equiv-updated', name: 'Real Updated 2' },
+                    { id: 'real-equiv-update-3', type: 'real-equiv-updated', name: 'Real Updated 3' },
+                ];
+                const realBatchUpdate = await service.mupdateItem(updateItems);
+
+                // Verify equivalence
+                expect2(() => realBatchUpdate.success.length).toEqual(3);
+                expect2(() => realBatchUpdate.success[0], 'ID,type,name').toEqual(realLegacyUpdate1);
+                expect2(() => realBatchUpdate.success[1], 'ID,type,name').toEqual(realLegacyUpdate2);
+                expect2(() => realBatchUpdate.success[2], 'ID,type,name').toEqual(realLegacyUpdate3);
+            }
+
+            //* CRITICAL TEST: UpdateCommand vs PutRequest equivalence
+            {
+                // Setup: create items with multiple fields
+                const setupIds = ['update-equiv-1', 'update-equiv-2', 'update-equiv-3'];
+                const setupItems = setupIds.map((id, i) => ({
+                    id,
+                    type: 'update-equiv-test',
+                    name: `Original ${i}`,
+                    count: (i + 1) * 10,
+                    extraField: `extra-${i}`,
+                    keepMe: `should-persist-${i}`,
+                }));
+                await service.msaveItem(setupItems);
+                setupItems.forEach(item => dataMap.set(item.id, item as MyModel));
+
+                // Legacy: updateItem (UpdateCommand) - partial update only
+                const legacyUpdateId = 'update-equiv-1';
+                await service.updateItem(legacyUpdateId, 0, { name: 'Legacy Updated' });
+
+                // Verify: updateItem preserves unchanged fields
+                const legacyVerified = await service.readItem(legacyUpdateId);
+                expect2(() => legacyVerified.name).toEqual('Legacy Updated');
+                expect2(() => (legacyVerified as any).count).toEqual(10);
+                expect2(() => (legacyVerified as any).extraField).toEqual('extra-0');
+                expect2(() => (legacyVerified as any).keepMe).toEqual('should-persist-0');
+
+                // Batch: mupdateItem (PutRequest) - requires full model to preserve fields
+                const batchUpdateId = 'update-equiv-2';
+                const currentState = await service.readItem(batchUpdateId);
+                await service.mupdateItem([
+                    {
+                        id: batchUpdateId,
+                        type: 'update-equiv-test',
+                        name: 'Batch Updated',
+                        count: (currentState as any).count,
+                        extraField: (currentState as any).extraField,
+                        keepMe: (currentState as any).keepMe,
+                    },
+                ]);
+
+                // Verify: mupdateItem preserves fields when full model provided
+                const batchVerified = await service.readItem(batchUpdateId);
+                expect2(() => batchVerified.name).toEqual('Batch Updated');
+                expect2(() => (batchVerified as any).count).toEqual(20);
+                expect2(() => (batchVerified as any).extraField).toEqual('extra-1');
+                expect2(() => (batchVerified as any).keepMe).toEqual('should-persist-1');
+
+                // Verify: both methods preserve unchanged fields (when batch gets full model)
+                expect2(() => legacyVerified.name).toEqual('Legacy Updated');
+                expect2(() => batchVerified.name).toEqual('Batch Updated');
+                expect2(() => (legacyVerified as any).count).toEqual(10);
+                expect2(() => (batchVerified as any).count).toEqual(20);
+                expect2(() => (legacyVerified as any).extraField).toEqual('extra-0');
+                expect2(() => (batchVerified as any).extraField).toEqual('extra-1');
+                expect2(() => (legacyVerified as any).keepMe).toEqual('should-persist-0');
+                expect2(() => (batchVerified as any).keepMe).toEqual('should-persist-1');
+
+                // Critical: mupdateItem WITHOUT full model loses fields (PutRequest overwrites)
+                const testPartialId = 'update-equiv-3';
+                await service.mupdateItem([
+                    {
+                        id: testPartialId,
+                        type: 'update-equiv-test',
+                        name: 'Partial Batch Update',
+                        count: 999,
+                    },
+                ]);
+
+                const afterPartial = await service.readItem(testPartialId);
+                expect2(() => afterPartial.name).toEqual('Partial Batch Update');
+                expect2(() => (afterPartial as any).count).toEqual(999);
+                expect2(() => (afterPartial as any).extraField).toEqual(undefined);
+                expect2(() => (afterPartial as any).keepMe).toEqual(undefined);
             }
         });
 

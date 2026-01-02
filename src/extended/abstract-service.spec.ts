@@ -50,6 +50,9 @@ export interface TestModel extends Model {
         activateToken?: string;
         activateTokenTs?: string;
     };
+    // For equivalence testing
+    extra?: string;
+    keepMe?: string;
 }
 const TEST_FIELDS = filterFields(keys<TestModel>());
 
@@ -171,10 +174,10 @@ describe('abstract-service', () => {
         const isKeys = true;
         if (isKeys) {
             expect2(() => filterFields(TEST_FIELDS).join(',')).toEqual(
-                'name,test,A,AB,A_B,object$,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
+                'name,test,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
             );
             expect2(() => filterFields(TEST_FIELDS, ['test']).join(',')).toEqual(
-                'test,name,A,AB,A_B,object$,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
+                'test,name,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
             );
         } else {
             //NOTE - improve..
@@ -631,6 +634,199 @@ describe('abstract-service', () => {
 
         //* CLEANUP: delete all test items after test
         await deleteAllTestItems();
+    });
+
+    //* LAYER EQUIVALENCE: test existing data update (diff vs fullModel)
+    it('should have equivalent results when updating existing data (diff vs fullModel)', async () => {
+        jest.setTimeout(60000);
+
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        const { service } = instance('real');
+
+        // Setup: create initial data with multiple fields
+        const setupProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        for (let i = 0; i < 5; i++) {
+            const model = await setupProxy.tests.get(`equiv-update-${i}`, {});
+            model.name = `Original ${i}`;
+            model.test = i * 100;
+            (model as any).extra = `extra-field-${i}`;
+            (model as any).keepMe = `should-persist-${i}`;
+        }
+        await setupProxy.saveAllUpdates();
+
+        // Legacy: update with useBatch: false (diff mode)
+        const legacyProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        for (let i = 0; i < 5; i++) {
+            const model = await legacyProxy.tests.get(`equiv-update-${i}`);
+            model.name = `Legacy Updated ${i}`;
+        }
+        await legacyProxy.saveAllUpdates({ useBatch: false });
+
+        // Verify: legacy mode preserves unchanged fields
+        const legacyVerifyProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        const legacyVerified0 = await legacyVerifyProxy.tests.get('equiv-update-0');
+        expect2(() => legacyVerified0.name).toEqual('Legacy Updated 0');
+        expect2(() => legacyVerified0.test).toEqual(0);
+        expect2(() => (legacyVerified0 as any).extra).toEqual('extra-field-0');
+        expect2(() => (legacyVerified0 as any).keepMe).toEqual('should-persist-0');
+
+        const legacyVerified1 = await legacyVerifyProxy.tests.get('equiv-update-1');
+        expect2(() => legacyVerified1.name).toEqual('Legacy Updated 1');
+        expect2(() => legacyVerified1.test).toEqual(100);
+        expect2(() => (legacyVerified1 as any).extra).toEqual('extra-field-1');
+        expect2(() => (legacyVerified1 as any).keepMe).toEqual('should-persist-1');
+
+        const legacyVerified2 = await legacyVerifyProxy.tests.get('equiv-update-2');
+        expect2(() => legacyVerified2.name).toEqual('Legacy Updated 2');
+        expect2(() => legacyVerified2.test).toEqual(200);
+        expect2(() => (legacyVerified2 as any).extra).toEqual('extra-field-2');
+        expect2(() => (legacyVerified2 as any).keepMe).toEqual('should-persist-2');
+
+        const legacyVerified3 = await legacyVerifyProxy.tests.get('equiv-update-3');
+        expect2(() => legacyVerified3.name).toEqual('Legacy Updated 3');
+        expect2(() => legacyVerified3.test).toEqual(300);
+        expect2(() => (legacyVerified3 as any).extra).toEqual('extra-field-3');
+        expect2(() => (legacyVerified3 as any).keepMe).toEqual('should-persist-3');
+
+        const legacyVerified4 = await legacyVerifyProxy.tests.get('equiv-update-4');
+        expect2(() => legacyVerified4.name).toEqual('Legacy Updated 4');
+        expect2(() => legacyVerified4.test).toEqual(400);
+        expect2(() => (legacyVerified4 as any).extra).toEqual('extra-field-4');
+        expect2(() => (legacyVerified4 as any).keepMe).toEqual('should-persist-4');
+
+        // Reset data for batch mode test
+        const resetProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        for (let i = 0; i < 5; i++) {
+            const model = await resetProxy.tests.get(`equiv-update-${i}`, {});
+            model.name = `Original ${i}`;
+            model.test = i * 100;
+            (model as any).extra = `extra-field-${i}`;
+            (model as any).keepMe = `should-persist-${i}`;
+        }
+        await resetProxy.saveAllUpdates();
+
+        // Batch: update with useBatch: true (full model mode)
+        const batchProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        for (let i = 0; i < 5; i++) {
+            const model = await batchProxy.tests.get(`equiv-update-${i}`);
+            model.name = `Batch Updated ${i}`;
+        }
+        await batchProxy.saveAllUpdates({ useBatch: true });
+
+        // Verify: batch mode preserves unchanged fields
+        const batchVerifyProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        const batchVerified0 = await batchVerifyProxy.tests.get('equiv-update-0');
+        expect2(() => batchVerified0.name).toEqual('Batch Updated 0');
+        expect2(() => batchVerified0.test).toEqual(0);
+        expect2(() => (batchVerified0 as any).extra).toEqual('extra-field-0');
+        expect2(() => (batchVerified0 as any).keepMe).toEqual('should-persist-0');
+
+        const batchVerified1 = await batchVerifyProxy.tests.get('equiv-update-1');
+        expect2(() => batchVerified1.name).toEqual('Batch Updated 1');
+        expect2(() => batchVerified1.test).toEqual(100);
+        expect2(() => (batchVerified1 as any).extra).toEqual('extra-field-1');
+        expect2(() => (batchVerified1 as any).keepMe).toEqual('should-persist-1');
+
+        const batchVerified2 = await batchVerifyProxy.tests.get('equiv-update-2');
+        expect2(() => batchVerified2.name).toEqual('Batch Updated 2');
+        expect2(() => batchVerified2.test).toEqual(200);
+        expect2(() => (batchVerified2 as any).extra).toEqual('extra-field-2');
+        expect2(() => (batchVerified2 as any).keepMe).toEqual('should-persist-2');
+
+        const batchVerified3 = await batchVerifyProxy.tests.get('equiv-update-3');
+        expect2(() => batchVerified3.name).toEqual('Batch Updated 3');
+        expect2(() => batchVerified3.test).toEqual(300);
+        expect2(() => (batchVerified3 as any).extra).toEqual('extra-field-3');
+        expect2(() => (batchVerified3 as any).keepMe).toEqual('should-persist-3');
+
+        const batchVerified4 = await batchVerifyProxy.tests.get('equiv-update-4');
+        expect2(() => batchVerified4.name).toEqual('Batch Updated 4');
+        expect2(() => batchVerified4.test).toEqual(400);
+        expect2(() => (batchVerified4 as any).extra).toEqual('extra-field-4');
+        expect2(() => (batchVerified4 as any).keepMe).toEqual('should-persist-4');
+
+        // Compare: side-by-side equivalence test
+        const finalSetupProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        for (let i = 0; i < 3; i++) {
+            const legacyModel = await finalSetupProxy.tests.get(`final-legacy-${i}`, {});
+            legacyModel.name = `Original ${i}`;
+            legacyModel.test = i * 100;
+            (legacyModel as any).extra = `extra-${i}`;
+
+            const batchModel = await finalSetupProxy.tests.get(`final-batch-${i}`, {});
+            batchModel.name = `Original ${i}`;
+            batchModel.test = i * 100;
+            (batchModel as any).extra = `extra-${i}`;
+        }
+        await finalSetupProxy.saveAllUpdates();
+
+        // Legacy: update items
+        const finalLegacyProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        for (let i = 0; i < 3; i++) {
+            const model = await finalLegacyProxy.tests.get(`final-legacy-${i}`);
+            model.name = `Updated ${i}`;
+        }
+        await finalLegacyProxy.saveAllUpdates({ useBatch: false });
+
+        // Batch: update items
+        const finalBatchProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        for (let i = 0; i < 3; i++) {
+            const model = await finalBatchProxy.tests.get(`final-batch-${i}`);
+            model.name = `Updated ${i}`;
+        }
+        await finalBatchProxy.saveAllUpdates({ useBatch: true });
+
+        // Verify: both methods produce identical results
+        const finalVerifyProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        const finalLegacy0 = await finalVerifyProxy.tests.get('final-legacy-0');
+        const finalBatch0 = await finalVerifyProxy.tests.get('final-batch-0');
+        expect2(() => finalLegacy0.name).toEqual('Updated 0');
+        expect2(() => finalBatch0.name).toEqual('Updated 0');
+        expect2(() => finalLegacy0.test).toEqual(0);
+        expect2(() => finalBatch0.test).toEqual(0);
+        expect2(() => (finalLegacy0 as any).extra).toEqual('extra-0');
+        expect2(() => (finalBatch0 as any).extra).toEqual('extra-0');
+        expect2(() => finalLegacy0.name).toEqual(finalBatch0.name);
+        expect2(() => finalLegacy0.test).toEqual(finalBatch0.test);
+        expect2(() => (finalLegacy0 as any).extra).toEqual((finalBatch0 as any).extra);
+
+        const finalLegacy1 = await finalVerifyProxy.tests.get('final-legacy-1');
+        const finalBatch1 = await finalVerifyProxy.tests.get('final-batch-1');
+        expect2(() => finalLegacy1.name).toEqual('Updated 1');
+        expect2(() => finalBatch1.name).toEqual('Updated 1');
+        expect2(() => finalLegacy1.test).toEqual(100);
+        expect2(() => finalBatch1.test).toEqual(100);
+        expect2(() => (finalLegacy1 as any).extra).toEqual('extra-1');
+        expect2(() => (finalBatch1 as any).extra).toEqual('extra-1');
+        expect2(() => finalLegacy1.name).toEqual(finalBatch1.name);
+        expect2(() => finalLegacy1.test).toEqual(finalBatch1.test);
+        expect2(() => (finalLegacy1 as any).extra).toEqual((finalBatch1 as any).extra);
+
+        const finalLegacy2 = await finalVerifyProxy.tests.get('final-legacy-2');
+        const finalBatch2 = await finalVerifyProxy.tests.get('final-batch-2');
+        expect2(() => finalLegacy2.name).toEqual('Updated 2');
+        expect2(() => finalBatch2.name).toEqual('Updated 2');
+        expect2(() => finalLegacy2.test).toEqual(200);
+        expect2(() => finalBatch2.test).toEqual(200);
+        expect2(() => (finalLegacy2 as any).extra).toEqual('extra-2');
+        expect2(() => (finalBatch2 as any).extra).toEqual('extra-2');
+        expect2(() => finalLegacy2.name).toEqual(finalBatch2.name);
+        expect2(() => finalLegacy2.test).toEqual(finalBatch2.test);
+        expect2(() => (finalLegacy2 as any).extra).toEqual((finalBatch2 as any).extra);
+
+        // Cleanup
+        const cleanupProxy = service.buildProxy({ domain: 'test-equiv', source: 'diff-test' });
+        const cleanupIds = [
+            ...Array.from({ length: 5 }, (_, i) => `equiv-update-${i}`),
+            ...Array.from({ length: 3 }, (_, i) => `final-legacy-${i}`),
+            ...Array.from({ length: 3 }, (_, i) => `final-batch-${i}`),
+        ];
+        await Promise.all(cleanupIds.map(id => cleanupProxy.tests.storage.delete(id, true).catch(() => null)));
     });
 
     it('should pass saveAllUpdates() performance test with child replication', async () => {
