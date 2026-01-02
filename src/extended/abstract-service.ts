@@ -761,7 +761,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
         // STEP.1 prepare the list of updater (collect type and storage info for batch mode)
         const list = this.allProxies.reduce((L: TYPE[], $p: ManagerProxy<any, CoreManager<any, any, any>>) => {
-            const $set = $p.alls(true, options?.onlyValid);
+            // batch mode needs full model, legacy mode needs only diff
+            const $set = $p.alls(!useBatch, options?.onlyValid);
             return Object.entries($set).reduce((L: TYPE[], [id, N]) => {
                 const hasUpdate = Object.keys(N).length > 0;
                 if (hasUpdate) {

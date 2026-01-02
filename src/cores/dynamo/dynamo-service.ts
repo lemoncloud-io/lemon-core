@@ -739,7 +739,9 @@ export class DynamoService<T extends GeneralItem> {
             //* prepare batch write requests
             const putRequests = chunk.map(item => {
                 const { id, ...rest } = item;
-                const payload = this.prepareSaveItem(id, rest as unknown as T);
+                // Use _id if available (partition key), otherwise use id
+                const actualId = (rest as any)[this.options.idName] || id;
+                const payload = this.prepareSaveItem(actualId, rest as unknown as T);
                 chunkItemMap.set(id, payload.Item as T);
                 return {
                     PutRequest: {
