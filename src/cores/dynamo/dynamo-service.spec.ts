@@ -476,7 +476,11 @@ describe('DynamoService', () => {
                 expect2(() => largeResult.failed.length).toEqual(0);
 
                 // verify some items from large batch
-                expect2(await dummy.readItem('C0'), 'ID,type,name').toEqual({ ID: 'C0', type: 'batch', name: 'Item 0' });
+                expect2(await dummy.readItem('C0'), 'ID,type,name').toEqual({
+                    ID: 'C0',
+                    type: 'batch',
+                    name: 'Item 0',
+                });
                 expect2(await dummy.readItem('C25'), 'ID,type,name').toEqual({
                     ID: 'C25',
                     type: 'batch',
@@ -574,7 +578,11 @@ describe('DynamoService', () => {
                 const legacy3 = await dummy.readItem('equiv-read-3');
 
                 // Batch: single mreadItem call
-                const batchRead = await dummy.mreadItem([{ id: 'equiv-read-1' }, { id: 'equiv-read-2' }, { id: 'equiv-read-3' }]);
+                const batchRead = await dummy.mreadItem([
+                    { id: 'equiv-read-1' },
+                    { id: 'equiv-read-2' },
+                    { id: 'equiv-read-3' },
+                ]);
 
                 // Verify equivalence
                 expect2(() => batchRead.success.length).toEqual(3);
@@ -590,23 +598,37 @@ describe('DynamoService', () => {
                 ];
 
                 // Legacy: multiple saveItem calls
-                const legacySave1 = await dummy.saveItem('equiv-save-1', { type: 'equiv-test', name: 'Equiv Save 1' } as MyModel);
-                const legacySave2 = await dummy.saveItem('equiv-save-2', { type: 'equiv-test', name: 'Equiv Save 2' } as MyModel);
-                const legacySave3 = await dummy.saveItem('equiv-save-3', { type: 'equiv-test', name: 'Equiv Save 3' } as MyModel);
+                const legacySave1 = await dummy.saveItem('equiv-save-1', {
+                    type: 'equiv-test',
+                    name: 'Equiv Save 1',
+                } as MyModel);
+                const legacySave2 = await dummy.saveItem('equiv-save-2', {
+                    type: 'equiv-test',
+                    name: 'Equiv Save 2',
+                } as MyModel);
+                const legacySave3 = await dummy.saveItem('equiv-save-3', {
+                    type: 'equiv-test',
+                    name: 'Equiv Save 3',
+                } as MyModel);
 
                 // Cleanup for batch test
                 await dummy.deleteItem('equiv-save-1');
                 await dummy.deleteItem('equiv-save-2');
                 await dummy.deleteItem('equiv-save-3');
 
+                // Verify items are deleted
+                expect2(await dummy.readItem('equiv-save-1').catch(GETERR)).toEqual('404 NOT FOUND - ID:equiv-save-1');
+                expect2(await dummy.readItem('equiv-save-2').catch(GETERR)).toEqual('404 NOT FOUND - ID:equiv-save-2');
+                expect2(await dummy.readItem('equiv-save-3').catch(GETERR)).toEqual('404 NOT FOUND - ID:equiv-save-3');
+
                 // Batch: single msaveItem call
                 const batchSave = await dummy.msaveItem(saveItems);
 
                 // Verify equivalence
                 expect2(() => batchSave.success.length).toEqual(3);
-                expect2(() => batchSave.success[0], 'ID,type,name').toEqual(legacySave1);
-                expect2(() => batchSave.success[1], 'ID,type,name').toEqual(legacySave2);
-                expect2(() => batchSave.success[2], 'ID,type,name').toEqual(legacySave3);
+                expect2(() => batchSave.success[0]).toEqual(legacySave1);
+                expect2(() => batchSave.success[1]).toEqual(legacySave2);
+                expect2(() => batchSave.success[2]).toEqual(legacySave3);
 
                 //* test of mupdateItem vs updateItem
                 const initialItems = [
@@ -617,9 +639,18 @@ describe('DynamoService', () => {
                 await dummy.msaveItem(initialItems);
 
                 // Legacy: multiple updateItem calls
-                const legacyUpdate1 = await dummy.updateItem('equiv-update-1', 0, { type: 'equiv-updated', name: 'Updated 1' });
-                const legacyUpdate2 = await dummy.updateItem('equiv-update-2', 0, { type: 'equiv-updated', name: 'Updated 2' });
-                const legacyUpdate3 = await dummy.updateItem('equiv-update-3', 0, { type: 'equiv-updated', name: 'Updated 3' });
+                const legacyUpdate1 = await dummy.updateItem('equiv-update-1', 0, {
+                    type: 'equiv-updated',
+                    name: 'Updated 1',
+                });
+                const legacyUpdate2 = await dummy.updateItem('equiv-update-2', 0, {
+                    type: 'equiv-updated',
+                    name: 'Updated 2',
+                });
+                const legacyUpdate3 = await dummy.updateItem('equiv-update-3', 0, {
+                    type: 'equiv-updated',
+                    name: 'Updated 3',
+                });
 
                 // Reset data for batch test
                 await dummy.msaveItem(initialItems);
@@ -634,9 +665,69 @@ describe('DynamoService', () => {
 
                 // Verify equivalence
                 expect2(() => batchUpdate.success.length).toEqual(3);
-                expect2(() => batchUpdate.success[0], 'ID,type,name').toEqual(legacyUpdate1);
-                expect2(() => batchUpdate.success[1], 'ID,type,name').toEqual(legacyUpdate2);
-                expect2(() => batchUpdate.success[2], 'ID,type,name').toEqual(legacyUpdate3);
+                expect2(() => batchUpdate.success[0]).toEqual(legacyUpdate1);
+                expect2(() => batchUpdate.success[1]).toEqual(legacyUpdate2);
+                expect2(() => batchUpdate.success[2]).toEqual(legacyUpdate3);
+
+                //* msaveItem failure cases
+                // test circular reference error
+                const circular: any = { id: 'fail-circular-1', type: 'test', name: 'Circular' };
+                circular.self = circular; // circular reference causes JSON serialization error
+
+                const msaveFailResult = await dummy.msaveItem([
+                    { id: 'fail-good-1', type: 'test', name: 'Good 1' },
+                    circular, // this will fail
+                    { id: 'fail-good-2', type: 'test', name: 'Good 2' },
+                ]);
+
+                expect2(() => msaveFailResult.total).toEqual(3);
+                expect2(() => msaveFailResult.success.length).toEqual(2);
+                expect2(() => msaveFailResult.failed.length).toEqual(1);
+
+                // verify successful items were saved
+                expect2(await dummy.readItem('fail-good-1'), 'ID,type,name').toEqual({
+                    ID: 'fail-good-1',
+                    type: 'test',
+                    name: 'Good 1',
+                });
+                expect2(await dummy.readItem('fail-good-2'), 'ID,type,name').toEqual({
+                    ID: 'fail-good-2',
+                    type: 'test',
+                    name: 'Good 2',
+                });
+
+                // verify failed item is in failed array
+                expect2(() => msaveFailResult.failed[0], 'id').toEqual({ id: 'fail-circular-1' });
+
+                //* mupdateItem failure cases
+                // test circular reference error
+                const circular2: any = { id: 'fail-circular-2', type: 'test', name: 'Circular Update' };
+                circular2.self = circular2; // circular reference
+
+                const mupdateFailResult = await dummy.mupdateItem([
+                    { id: 'fail-update-1', type: 'test', name: 'Update 1' },
+                    circular2, // this will fail
+                    { id: 'fail-update-2', type: 'test', name: 'Update 2' },
+                ]);
+
+                expect2(() => mupdateFailResult.total).toEqual(3);
+                expect2(() => mupdateFailResult.success.length).toEqual(2);
+                expect2(() => mupdateFailResult.failed.length).toEqual(1);
+
+                // verify successful items were saved
+                expect2(await dummy.readItem('fail-update-1'), 'ID,type,name').toEqual({
+                    ID: 'fail-update-1',
+                    type: 'test',
+                    name: 'Update 1',
+                });
+                expect2(await dummy.readItem('fail-update-2'), 'ID,type,name').toEqual({
+                    ID: 'fail-update-2',
+                    type: 'test',
+                    name: 'Update 2',
+                });
+
+                // verify failed item is in failed array
+                expect2(() => mupdateFailResult.failed[0], 'ID').toEqual({ ID: 'fail-circular-2' });
             }
         });
     });
@@ -666,7 +757,11 @@ describe('DynamoService', () => {
                 //* check dummy data.
                 expect2(service.hello()).toEqual(`dynamo-service:${tableName}`);
                 expect2(await service.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - ID:00');
-                expect2(await service.readItem('A0').catch(GETERR)).toEqual({ ID: 'A0', type: 'account', name: 'lemon' });
+                expect2(await service.readItem('A0').catch(GETERR)).toEqual({
+                    ID: 'A0',
+                    type: 'account',
+                    name: 'lemon',
+                });
                 expect2(await service.readItem('A1').catch(GETERR), 'ID,type,name').toEqual({
                     ID: 'A1',
                     type: 'account',
@@ -1143,7 +1238,11 @@ describe('DynamoService', () => {
                 const realLegacy3 = await service.readItem('real-equiv-read-3');
 
                 // Batch: single mreadItem call
-                const realBatchRead = await service.mreadItem([{ id: 'real-equiv-read-1' }, { id: 'real-equiv-read-2' }, { id: 'real-equiv-read-3' }]);
+                const realBatchRead = await service.mreadItem([
+                    { id: 'real-equiv-read-1' },
+                    { id: 'real-equiv-read-2' },
+                    { id: 'real-equiv-read-3' },
+                ]);
 
                 // Verify equivalence
                 expect2(() => realBatchRead.success.length).toEqual(3);
@@ -1159,11 +1258,20 @@ describe('DynamoService', () => {
                 ];
 
                 // Legacy: multiple saveItem calls
-                const realLegacySave1 = await service.saveItem('real-equiv-save-1', { type: 'real-equiv-test', name: 'Real Equiv Save 1' } as MyModel);
+                const realLegacySave1 = await service.saveItem('real-equiv-save-1', {
+                    type: 'real-equiv-test',
+                    name: 'Real Equiv Save 1',
+                } as MyModel);
                 dataMap.set('real-equiv-save-1', realLegacySave1);
-                const realLegacySave2 = await service.saveItem('real-equiv-save-2', { type: 'real-equiv-test', name: 'Real Equiv Save 2' } as MyModel);
+                const realLegacySave2 = await service.saveItem('real-equiv-save-2', {
+                    type: 'real-equiv-test',
+                    name: 'Real Equiv Save 2',
+                } as MyModel);
                 dataMap.set('real-equiv-save-2', realLegacySave2);
-                const realLegacySave3 = await service.saveItem('real-equiv-save-3', { type: 'real-equiv-test', name: 'Real Equiv Save 3' } as MyModel);
+                const realLegacySave3 = await service.saveItem('real-equiv-save-3', {
+                    type: 'real-equiv-test',
+                    name: 'Real Equiv Save 3',
+                } as MyModel);
                 dataMap.set('real-equiv-save-3', realLegacySave3);
 
                 // Cleanup and prepare for batch test
@@ -1174,6 +1282,17 @@ describe('DynamoService', () => {
                 await service.deleteItem('real-equiv-save-3');
                 dataMap.delete('real-equiv-save-3');
 
+                // Verify items are deleted
+                expect2(await service.readItem('real-equiv-save-1').catch(GETERR)).toEqual(
+                    '404 NOT FOUND - ID:real-equiv-save-1',
+                );
+                expect2(await service.readItem('real-equiv-save-2').catch(GETERR)).toEqual(
+                    '404 NOT FOUND - ID:real-equiv-save-2',
+                );
+                expect2(await service.readItem('real-equiv-save-3').catch(GETERR)).toEqual(
+                    '404 NOT FOUND - ID:real-equiv-save-3',
+                );
+
                 // Batch: single msaveItem call
                 const realBatchSave = await service.msaveItem(saveItems);
                 dataMap.set((realBatchSave.success[0] as any).ID, realBatchSave.success[0]);
@@ -1182,9 +1301,9 @@ describe('DynamoService', () => {
 
                 // Verify equivalence
                 expect2(() => realBatchSave.success.length).toEqual(3);
-                expect2(() => realBatchSave.success[0], 'ID,type,name').toEqual(realLegacySave1);
-                expect2(() => realBatchSave.success[1], 'ID,type,name').toEqual(realLegacySave2);
-                expect2(() => realBatchSave.success[2], 'ID,type,name').toEqual(realLegacySave3);
+                expect2(() => realBatchSave.success[0]).toEqual(realLegacySave1);
+                expect2(() => realBatchSave.success[1]).toEqual(realLegacySave2);
+                expect2(() => realBatchSave.success[2]).toEqual(realLegacySave3);
 
                 //* test of mupdateItem vs updateItem
                 const initialItems = [
@@ -1198,9 +1317,18 @@ describe('DynamoService', () => {
                 dataMap.set('real-equiv-update-3', initialItems[2] as MyModel);
 
                 // Legacy: multiple updateItem calls
-                const realLegacyUpdate1 = await service.updateItem('real-equiv-update-1', 0, { type: 'real-equiv-updated', name: 'Real Updated 1' });
-                const realLegacyUpdate2 = await service.updateItem('real-equiv-update-2', 0, { type: 'real-equiv-updated', name: 'Real Updated 2' });
-                const realLegacyUpdate3 = await service.updateItem('real-equiv-update-3', 0, { type: 'real-equiv-updated', name: 'Real Updated 3' });
+                const realLegacyUpdate1 = await service.updateItem('real-equiv-update-1', 0, {
+                    type: 'real-equiv-updated',
+                    name: 'Real Updated 1',
+                });
+                const realLegacyUpdate2 = await service.updateItem('real-equiv-update-2', 0, {
+                    type: 'real-equiv-updated',
+                    name: 'Real Updated 2',
+                });
+                const realLegacyUpdate3 = await service.updateItem('real-equiv-update-3', 0, {
+                    type: 'real-equiv-updated',
+                    name: 'Real Updated 3',
+                });
 
                 // Reset data for batch test
                 await service.msaveItem(initialItems);
@@ -1215,81 +1343,76 @@ describe('DynamoService', () => {
 
                 // Verify equivalence
                 expect2(() => realBatchUpdate.success.length).toEqual(3);
-                expect2(() => realBatchUpdate.success[0], 'ID,type,name').toEqual(realLegacyUpdate1);
-                expect2(() => realBatchUpdate.success[1], 'ID,type,name').toEqual(realLegacyUpdate2);
-                expect2(() => realBatchUpdate.success[2], 'ID,type,name').toEqual(realLegacyUpdate3);
+                expect2(() => realBatchUpdate.success[0]).toEqual(realLegacyUpdate1);
+                expect2(() => realBatchUpdate.success[1]).toEqual(realLegacyUpdate2);
+                expect2(() => realBatchUpdate.success[2]).toEqual(realLegacyUpdate3);
             }
 
             //* CRITICAL TEST: UpdateCommand vs PutRequest equivalence
             {
-                // Setup: create items with multiple fields
-                const setupIds = ['update-equiv-1', 'update-equiv-2', 'update-equiv-3'];
-                const setupItems = setupIds.map((id, i) => ({
-                    id,
+                // Setup: create item with multiple fields for direct comparison
+                const testItem = {
+                    id: 'update-equiv-compare',
                     type: 'update-equiv-test',
-                    name: `Original ${i}`,
-                    count: (i + 1) * 10,
-                    extraField: `extra-${i}`,
-                    keepMe: `should-persist-${i}`,
-                }));
-                await service.msaveItem(setupItems);
-                setupItems.forEach(item => dataMap.set(item.id, item as MyModel));
+                    name: 'Original',
+                    count: 100,
+                    extraField: 'extra-data',
+                    keepMe: 'should-persist',
+                };
+                await service.msaveItem([testItem]);
+                dataMap.set(testItem.id, testItem as MyModel);
 
-                // Legacy: updateItem (UpdateCommand) - partial update only
-                const legacyUpdateId = 'update-equiv-1';
-                await service.updateItem(legacyUpdateId, 0, { name: 'Legacy Updated' });
+                // Legacy: updateItem (UpdateCommand) - partial update
+                await service.updateItem(testItem.id, 0, { name: 'Updated via UpdateCommand' });
+                const legacyResult = await service.readItem(testItem.id);
 
-                // Verify: updateItem preserves unchanged fields
-                const legacyVerified = await service.readItem(legacyUpdateId);
-                expect2(() => legacyVerified.name).toEqual('Legacy Updated');
-                expect2(() => (legacyVerified as any).count).toEqual(10);
-                expect2(() => (legacyVerified as any).extraField).toEqual('extra-0');
-                expect2(() => (legacyVerified as any).keepMe).toEqual('should-persist-0');
+                // Reset to original state for batch test
+                await service.msaveItem([testItem]);
 
-                // Batch: mupdateItem (PutRequest) - requires full model to preserve fields
-                const batchUpdateId = 'update-equiv-2';
-                const currentState = await service.readItem(batchUpdateId);
+                // Batch: mupdateItem (PutRequest) with full model - same update
+                const currentState = await service.readItem(testItem.id);
                 await service.mupdateItem([
                     {
-                        id: batchUpdateId,
-                        type: 'update-equiv-test',
-                        name: 'Batch Updated',
-                        count: (currentState as any).count,
-                        extraField: (currentState as any).extraField,
-                        keepMe: (currentState as any).keepMe,
-                    },
+                        id: testItem.id,
+                        ...currentState,
+                        name: 'Updated via UpdateCommand', // Same update as legacy
+                    } as any,
                 ]);
+                const batchResult = await service.readItem(testItem.id);
 
-                // Verify: mupdateItem preserves fields when full model provided
-                const batchVerified = await service.readItem(batchUpdateId);
-                expect2(() => batchVerified.name).toEqual('Batch Updated');
-                expect2(() => (batchVerified as any).count).toEqual(20);
-                expect2(() => (batchVerified as any).extraField).toEqual('extra-1');
-                expect2(() => (batchVerified as any).keepMe).toEqual('should-persist-1');
-
-                // Verify: both methods preserve unchanged fields (when batch gets full model)
-                expect2(() => legacyVerified.name).toEqual('Legacy Updated');
-                expect2(() => batchVerified.name).toEqual('Batch Updated');
-                expect2(() => (legacyVerified as any).count).toEqual(10);
-                expect2(() => (batchVerified as any).count).toEqual(20);
-                expect2(() => (legacyVerified as any).extraField).toEqual('extra-0');
-                expect2(() => (batchVerified as any).extraField).toEqual('extra-1');
-                expect2(() => (legacyVerified as any).keepMe).toEqual('should-persist-0');
-                expect2(() => (batchVerified as any).keepMe).toEqual('should-persist-1');
+                // Direct comparison: both methods should produce identical results
+                expect2(() => batchResult).toEqual(legacyResult);
+                expect2(() => batchResult.name).toEqual('Updated via UpdateCommand');
+                expect2(() => (batchResult as any).count).toEqual(100);
+                expect2(() => (batchResult as any).extraField).toEqual('extra-data');
+                expect2(() => (batchResult as any).keepMe).toEqual('should-persist');
 
                 // Critical: mupdateItem WITHOUT full model loses fields (PutRequest overwrites)
-                const testPartialId = 'update-equiv-3';
+                const testPartialId = 'update-equiv-partial';
+                await service.msaveItem([
+                    {
+                        id: testPartialId,
+                        type: 'update-equiv-test',
+                        name: 'Original',
+                        count: 100,
+                        extraField: 'will-be-lost',
+                        keepMe: 'will-be-lost-too',
+                    },
+                ]);
+                dataMap.set(testPartialId, { id: testPartialId } as MyModel);
+
                 await service.mupdateItem([
                     {
                         id: testPartialId,
                         type: 'update-equiv-test',
-                        name: 'Partial Batch Update',
+                        name: 'Partial Update',
                         count: 999,
+                        // extraField and keepMe NOT provided - will be deleted
                     },
                 ]);
 
                 const afterPartial = await service.readItem(testPartialId);
-                expect2(() => afterPartial.name).toEqual('Partial Batch Update');
+                expect2(() => afterPartial.name).toEqual('Partial Update');
                 expect2(() => (afterPartial as any).count).toEqual(999);
                 expect2(() => (afterPartial as any).extraField).toEqual(undefined);
                 expect2(() => (afterPartial as any).keepMe).toEqual(undefined);

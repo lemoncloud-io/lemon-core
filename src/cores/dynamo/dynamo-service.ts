@@ -914,9 +914,14 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         // _log(NS, `msaveItem(dummy)[${list.length}]...`);
         //* process all saves using the in-memory buffer (overwrites entire items)
         for (const item of list) {
-            const { id, ...rest } = item;
-            this.buffer[id] = normalize(rest as T);
-            result.success.push({ [idName]: id, ...this.buffer[id] } as T);
+            try {
+                const { id, ...rest } = item;
+                this.buffer[id] = normalize(rest as T);
+                result.success.push({ [idName]: id, ...this.buffer[id] } as T);
+            } catch (e) {
+                _err(NS, `! msaveItem failed for id=${item?.id}:`, e);
+                result.failed.push(item as T);
+            }
         }
 
         _log(NS, `> msaveItem.res =`, {
@@ -949,10 +954,15 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         // _log(NS, `mupdateItem(dummy)[${list.length}]...`);
         //* process all updates using the in-memory buffer (overwrites entire items)
         for (const item of list) {
-            const { id, ...rest } = item;
-            //* overwrite entire item (same as PutItem behavior)
-            this.buffer[id] = normalize(rest as any);
-            result.success.push({ [idName]: id, ...this.buffer[id] } as any);
+            try {
+                const { id, ...rest } = item;
+                //* overwrite entire item (same as PutItem behavior)
+                this.buffer[id] = normalize(rest as any);
+                result.success.push({ [idName]: id, ...this.buffer[id] } as any);
+            } catch (e) {
+                _err(NS, `! mupdateItem failed for id=${item?.id}:`, e);
+                result.failed.push({ [idName]: item.id } as T);
+            }
         }
 
         _log(NS, `> mupdateItem.res =`, {
