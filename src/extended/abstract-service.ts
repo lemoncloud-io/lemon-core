@@ -810,17 +810,35 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
             );
 
             //* flatten BatchResult[] to Model[]
-            const allItems: Model[] = [];
-            let totalFailed = 0;
-            results.forEach(result => {
-                allItems.push(...result.success);
-                totalFailed += result.failed.length;
-                if (result.failed.length > 0) {
-                    _err(NS, `! batch update failed: ${result.failed.length} items`, result.failed);
+            const allItems = results.reduce<Model[]>((acc, result) => [...acc, ...(result?.success ?? [])], []);
+            const failedItems = results.reduce<any[]>((acc, result) => {
+                const failed = result?.failed ?? [];
+                if (failed.length > 0) {
+                    _err(NS, `! batch update failed: ${failed.length} items`, failed);
                 }
-            });
-            const _total = allItems.length + totalFailed;
-            _log(NS, `> ${errScope}: success=${allItems.length}, failed=${totalFailed}, total=${_total}`);
+                return [...acc, ...failed];
+            }, []);
+            const totalFailed = failedItems.length;
+            const _total = (allItems?.length ?? 0) + totalFailed;
+
+            //* send Slack notification if there are failed items
+            if (totalFailed > 0) {
+                this.report(`Batch update failed: ${totalFailed}/${_total} items`, {
+                    scope: errScope,
+                    failed_count: totalFailed,
+                    success_count: allItems?.length ?? 0,
+                    total_count: _total,
+                    failed_samples: failedItems
+                        .filter((item: any) => item != null)
+                        .slice(0, 10)
+                        .map((item: any) => ({
+                            id: item?.id ?? 'unknown',
+                            type: item?.type ?? 'unknown',
+                            error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
+                        })),
+                }).catch(e => _err(NS, `! slack notification failed:`, e));
+            }
+
             return allItems;
         }
 
