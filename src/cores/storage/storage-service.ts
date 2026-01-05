@@ -242,16 +242,9 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             return { id: `${_id}`, ...data };
         });
 
-        const res = await this.$dynamo.mupdateItem(items);
-        const toModel = (data: MyGeneral): T =>
-            fields.reduce((N: any, key) => {
-                const val = (data as any)[key];
-                if (val !== undefined) N[key] = val;
-                return N;
-            }, {});
-
-        result.success = (res.success || []).map(toModel);
-        result.failed = (res.failed || []).map(toModel);
+        const res = await this.$dynamo.mupdateItem(items);ß
+        result.success = (res.success as unknown as T[]) || [];
+        result.failed = (res.failed as unknown as T[]) || [];
         return result;
     }
 

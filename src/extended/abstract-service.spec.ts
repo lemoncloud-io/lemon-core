@@ -1008,16 +1008,16 @@ describe('abstract-service', () => {
         const legacyChild100Sample = await proxyVerify.tests.get('child-legacy-100-50');
         expect2(() => batchChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
         expect2(() => legacyChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
-        expect2(() => batchChild100Sample.test).toEqual(50);
-        expect2(() => legacyChild100Sample.test).toEqual(50);
+        expect2(() => batchChild100Sample?.test).toEqual(50);
+        expect2(() => legacyChild100Sample?.test).toEqual(50);
 
         // verify 1000 children case
         const batchChild1000Sample = await proxyVerify.tests.get('child-batch-1000-500');
         const legacyChild1000Sample = await proxyVerify.tests.get('child-legacy-1000-500');
         expect2(() => batchChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
         expect2(() => legacyChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
-        expect2(() => batchChild1000Sample.test).toEqual(500);
-        expect2(() => legacyChild1000Sample.test).toEqual(500);
+        expect2(() => batchChild1000Sample?.test).toEqual(500);
+        expect2(() => legacyChild1000Sample?.test).toEqual(500);
 
         //* verify report file was created
         expect2(() => typeof reportPath).toEqual('string');

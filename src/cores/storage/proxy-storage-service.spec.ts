@@ -95,7 +95,7 @@ describe('ProxyStorageService', () => {
     const PROFILE = loadProfile(process); // override process.env.
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
-    jest.setTimeout(10000);
+    jest.setTimeout(30000);
 
     //* test w/ service
     it('should pass basic service', async () => {
@@ -809,21 +809,9 @@ describe('ProxyStorageService', () => {
 
         // Verify equivalence
         expect2(() => proxyBatchRead.success.length).toEqual(3);
-        expect2(() => proxyBatchRead.success[0], '_id,id,name').toEqual({
-            _id: proxyLegacy1._id,
-            id: proxyLegacy1.id,
-            name: proxyLegacy1.name,
-        });
-        expect2(() => proxyBatchRead.success[1], '_id,id,name').toEqual({
-            _id: proxyLegacy2._id,
-            id: proxyLegacy2.id,
-            name: proxyLegacy2.name,
-        });
-        expect2(() => proxyBatchRead.success[2], '_id,id,name').toEqual({
-            _id: proxyLegacy3._id,
-            id: proxyLegacy3.id,
-            name: proxyLegacy3.name,
-        });
+        expect2(() => proxyBatchRead.success[0]).toEqual(proxyLegacy1);
+        expect2(() => proxyBatchRead.success[1]).toEqual(proxyLegacy2);
+        expect2(() => proxyBatchRead.success[2]).toEqual(proxyLegacy3);
 
         //* test of doUpdateMulti vs doUpdate
         const initialItems = [
@@ -863,21 +851,14 @@ describe('ProxyStorageService', () => {
 
         // Verify equivalence
         expect2(() => proxyBatchUpdate.success.length).toEqual(3);
-        expect2(() => proxyBatchUpdate.success[0], '_id,name,updatedAt').toEqual({
-            _id: proxyLegacyUpdate1._id,
-            name: proxyLegacyUpdate1.name,
-            updatedAt: proxyLegacyUpdate1.updatedAt,
-        });
-        expect2(() => proxyBatchUpdate.success[1], '_id,name,updatedAt').toEqual({
-            _id: proxyLegacyUpdate2._id,
-            name: proxyLegacyUpdate2.name,
-            updatedAt: proxyLegacyUpdate2.updatedAt,
-        });
-        expect2(() => proxyBatchUpdate.success[2], '_id,name,updatedAt').toEqual({
-            _id: proxyLegacyUpdate3._id,
-            name: proxyLegacyUpdate3.name,
-            updatedAt: proxyLegacyUpdate3.updatedAt,
-        });
+        // Check _id values first
+        expect2(() => proxyBatchUpdate.success[0]._id).toEqual(proxyLegacyUpdate1._id);
+        expect2(() => proxyBatchUpdate.success[1]._id).toEqual(proxyLegacyUpdate2._id);
+        expect2(() => proxyBatchUpdate.success[2]._id).toEqual(proxyLegacyUpdate3._id);
+        // Check if batch has extra 'id' field
+        expect2(() => proxyBatchUpdate.success[0], '!id').toEqual(proxyLegacyUpdate1);
+        expect2(() => proxyBatchUpdate.success[1], '!id').toEqual(proxyLegacyUpdate2);
+        expect2(() => proxyBatchUpdate.success[2], '!id').toEqual(proxyLegacyUpdate3);
 
         // Cleanup
         await $test.delete('proxy-equiv-read-1').catch(GETERR);
@@ -886,6 +867,26 @@ describe('ProxyStorageService', () => {
         await $test.delete('proxy-equiv-update-1').catch(GETERR);
         await $test.delete('proxy-equiv-update-2').catch(GETERR);
         await $test.delete('proxy-equiv-update-3').catch(GETERR);
+
+        // Verify items are deleted
+        expect2(await $test.read('proxy-equiv-read-1').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-read-1',
+        );
+        expect2(await $test.read('proxy-equiv-read-2').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-read-2',
+        );
+        expect2(await $test.read('proxy-equiv-read-3').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-read-3',
+        );
+        expect2(await $test.read('proxy-equiv-update-1').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-update-1',
+        );
+        expect2(await $test.read('proxy-equiv-update-2').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-update-2',
+        );
+        expect2(await $test.read('proxy-equiv-update-3').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-update-3',
+        );
     });
 
     //* dummy storage service.

@@ -241,9 +241,9 @@ describe('StorageService', () => {
 
         // Verify equivalence
         expect2(() => dummyBatchUpdate.success.length).toEqual(3);
-        expect2(() => dummyBatchUpdate.success[0], 'id,type,name,balance').toEqual(dummyLegacyUpdate1);
-        expect2(() => dummyBatchUpdate.success[1], 'id,type,name,balance').toEqual(dummyLegacyUpdate2);
-        expect2(() => dummyBatchUpdate.success[2], 'id,type,name,balance').toEqual(dummyLegacyUpdate3);
+        expect2(() => dummyBatchUpdate.success[0]).toEqual(dummyLegacyUpdate1);
+        expect2(() => dummyBatchUpdate.success[1]).toEqual(dummyLegacyUpdate2);
+        expect2(() => dummyBatchUpdate.success[2]).toEqual(dummyLegacyUpdate3);
 
         // Cleanup
         await $account.delete('equiv-read-1');
@@ -252,6 +252,14 @@ describe('StorageService', () => {
         await $account.delete('equiv-update-1');
         await $account.delete('equiv-update-2');
         await $account.delete('equiv-update-3');
+
+        // Verify items are deleted
+        expect2(await $account.read('equiv-read-1').catch(GETERR)).toEqual('404 NOT FOUND - id:equiv-read-1');
+        expect2(await $account.read('equiv-read-2').catch(GETERR)).toEqual('404 NOT FOUND - id:equiv-read-2');
+        expect2(await $account.read('equiv-read-3').catch(GETERR)).toEqual('404 NOT FOUND - id:equiv-read-3');
+        expect2(await $account.read('equiv-update-1').catch(GETERR)).toEqual('404 NOT FOUND - id:equiv-update-1');
+        expect2(await $account.read('equiv-update-2').catch(GETERR)).toEqual('404 NOT FOUND - id:equiv-update-2');
+        expect2(await $account.read('equiv-update-3').catch(GETERR)).toEqual('404 NOT FOUND - id:equiv-update-3');
     });
 
     //* dummy storage service.
@@ -649,9 +657,33 @@ describe('StorageService', () => {
 
         // Verify equivalence
         expect2(() => dynamoBatchUpdate.success.length).toEqual(3);
-        expect2(() => dynamoBatchUpdate.success[0], 'no,type,name,balance').toEqual(dynamoLegacyUpdate1);
-        expect2(() => dynamoBatchUpdate.success[1], 'no,type,name,balance').toEqual(dynamoLegacyUpdate2);
-        expect2(() => dynamoBatchUpdate.success[2], 'no,type,name,balance').toEqual(dynamoLegacyUpdate3);
+        expect2(() => dynamoBatchUpdate.success[0]).toEqual(dynamoLegacyUpdate1);
+        expect2(() => dynamoBatchUpdate.success[1]).toEqual(dynamoLegacyUpdate2);
+        expect2(() => dynamoBatchUpdate.success[2]).toEqual(dynamoLegacyUpdate3);
+
+        // Cleanup and verify deletion
+        await $dynamo.delete('dynamo-equiv-read-1');
+        await $dynamo.delete('dynamo-equiv-read-2');
+        await $dynamo.delete('dynamo-equiv-read-3');
+        await $dynamo.delete('dynamo-equiv-update-1');
+        await $dynamo.delete('dynamo-equiv-update-2');
+        await $dynamo.delete('dynamo-equiv-update-3');
+
+        // Verify items are deleted
+        expect2(await $dynamo.read('dynamo-equiv-read-1').catch(GETERR)).toEqual('404 NOT FOUND - no:dynamo-equiv-read-1');
+        expect2(await $dynamo.read('dynamo-equiv-read-2').catch(GETERR)).toEqual('404 NOT FOUND - no:dynamo-equiv-read-2');
+        expect2(await $dynamo.read('dynamo-equiv-read-3').catch(GETERR)).toEqual('404 NOT FOUND - no:dynamo-equiv-read-3');
+        expect2(await $dynamo.read('dynamo-equiv-update-1').catch(GETERR)).toEqual('404 NOT FOUND - no:dynamo-equiv-update-1');
+        expect2(await $dynamo.read('dynamo-equiv-update-2').catch(GETERR)).toEqual('404 NOT FOUND - no:dynamo-equiv-update-2');
+        expect2(await $dynamo.read('dynamo-equiv-update-3').catch(GETERR)).toEqual('404 NOT FOUND - no:dynamo-equiv-update-3');
+
+        // Remove from testDataIds since we already cleaned up
+        testDataIds.delete('dynamo-equiv-read-1');
+        testDataIds.delete('dynamo-equiv-read-2');
+        testDataIds.delete('dynamo-equiv-read-3');
+        testDataIds.delete('dynamo-equiv-update-1');
+        testDataIds.delete('dynamo-equiv-update-2');
+        testDataIds.delete('dynamo-equiv-update-3');
     });
 
     //* dynamo storage service. (should be equivalent with `dummy-storage-server`)

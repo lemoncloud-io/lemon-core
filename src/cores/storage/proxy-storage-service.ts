@@ -553,8 +553,6 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         delete node2['_id'];
         const { updatedAt } = this.asTime();
         const model = await this.update(_id, { ...node2, updatedAt }, $inc);
-        //* make sure it has `_id`
-        (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
 
@@ -570,14 +568,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         if (!list || total === 0) return result;
 
         const { updatedAt } = this.asTime();
-        //* map to preserve short id -> full _id
-        const idMap = new Map<string, string>();
         const items = list.map((node: T & { id: string }) => {
             const id = node.id;
             if (!id) throw new Error('@id is required!');
             const _id = this.asKey(type, id);
-            //* store mapping: short id -> full _id
-            idMap.set(id, _id);
             const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, undefined);
             delete node2['_id'];
             return { ...node2, [this.idName]: _id, updatedAt };
@@ -586,19 +580,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         const res = await (this.storage as any).mupdate(items);
 
         result.success = (res.success || []).map((model: T) => {
-            //* make sure it has `_id`
-            //* mupdate may return short id in _id field, restore full _id
-            const shortId = (model as any)[this.idName];
-            const fullId = idMap.get(shortId);
-            if (fullId) (model as any)[this.idName] = fullId;
             const res = this.filters.afterUpdate(model);
             return res;
         });
         result.failed = (res.failed || []).map((model: T) => {
-            //* make sure it has `_id`
-            const shortId = (model as any)[this.idName];
-            const fullId = idMap.get(shortId);
-            if (fullId) (model as any)[this.idName] = fullId;
             const res = this.filters.afterUpdate(model);
             return res;
         });
@@ -615,8 +600,6 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         const _id = this.asKey(type, id);
         const { updatedAt } = this.asTime();
         const model = await this.increment(_id, { ...$inc }, { ...$up, updatedAt });
-        //* make sure it has `_id`
-        (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
 
