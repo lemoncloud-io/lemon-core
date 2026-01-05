@@ -242,7 +242,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             return { id: `${_id}`, ...data };
         });
 
-        const res = await this.$dynamo.mupdateItem(items);ß
+        const res = await this.$dynamo.mupdateItem(items);
         result.success = (res.success as unknown as T[]) || [];
         result.failed = (res.failed as unknown as T[]) || [];
         return result;
