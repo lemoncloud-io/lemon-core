@@ -723,6 +723,26 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
             storage?: TypedStorageService<Model, any>;
         };
 
+        /** recursively remove undefined values from object */
+        const removeUndefined = <T extends Record<string, any>>(obj: T): T => {
+            if (obj === null || obj === undefined) return obj;
+            if (typeof obj !== 'object') return obj;
+            if (Array.isArray(obj)) {
+                return obj.filter(item => item !== undefined).map(item => removeUndefined(item)) as any;
+            }
+
+            const result: any = {};
+            for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    const value = obj[key];
+                    if (value !== undefined) {
+                        result[key] = typeof value === 'object' && value !== null ? removeUndefined(value) : value;
+                    }
+                }
+            }
+            return result;
+        };
+
         /**
          * custom error class
          * - to wrap the root cause error
@@ -741,7 +761,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
         // STEP.1 prepare the list of updater (collect type and storage info for batch mode)
         const list = this.allProxies.reduce((L: TYPE[], $p: ManagerProxy<any, CoreManager<any, any, any>>) => {
-            const $set = $p.alls(true, options?.onlyValid);
+            // batch mode needs full model, legacy mode needs only diff
+            const $set = $p.alls(!useBatch, options?.onlyValid);
             return Object.entries($set).reduce((L: TYPE[], [id, N]) => {
                 const hasUpdate = Object.keys(N).length > 0;
                 if (hasUpdate) {
@@ -752,7 +773,9 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                         const type = M?.type ?? $p.$mgr.type;
                         M = { ...M, type, storage };
                         try {
-                            return storage.update(id, M.N).catch(e => Promise.reject($err(e, M)));
+                            // keep undefined values only when onlyValid is false
+                            const cleanedData = options?.onlyValid !== false ? removeUndefined(M.N) : M.N;
+                            return storage.update(id, cleanedData).catch(e => Promise.reject($err(e, M)));
                         } catch (e) {
                             throw $err(e, M);
                         }
@@ -774,7 +797,9 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                 if (!grouped.has(type!)) {
                     grouped.set(type!, { storage, items: [] });
                 }
-                grouped.get(type!)!.items.push({ ...(N as Model), id });
+                // keep undefined values only when onlyValid is false
+                const cleanedData = options?.onlyValid !== false ? removeUndefined(N as Model) : (N as Model);
+                grouped.get(type!)!.items.push({ ...cleanedData, id });
             });
 
             //* execute batch updates
@@ -785,17 +810,35 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
             );
 
             //* flatten BatchResult[] to Model[]
-            const allItems: Model[] = [];
-            let totalFailed = 0;
-            results.forEach(result => {
-                allItems.push(...result.success);
-                totalFailed += result.failed.length;
-                if (result.failed.length > 0) {
-                    _err(NS, `! batch update failed: ${result.failed.length} items`, result.failed);
+            const allItems = results.reduce<Model[]>((acc, result) => [...acc, ...(result?.success ?? [])], []);
+            const failedItems = results.reduce<any[]>((acc, result) => {
+                const failed = result?.failed ?? [];
+                if (failed.length > 0) {
+                    _err(NS, `! batch update failed: ${failed.length} items`, failed);
                 }
-            });
-            const _total = allItems.length + totalFailed;
-            _log(NS, `> ${errScope}: success=${allItems.length}, failed=${totalFailed}, total=${_total}`);
+                return [...acc, ...failed];
+            }, []);
+            const totalFailed = failedItems.length;
+            const _total = (allItems?.length ?? 0) + totalFailed;
+
+            //* send Slack notification if there are failed items
+            if (totalFailed > 0) {
+                this.report(`Batch update failed: ${totalFailed}/${_total} items`, {
+                    scope: errScope,
+                    failed_count: totalFailed,
+                    success_count: allItems?.length ?? 0,
+                    total_count: _total,
+                    failed_samples: failedItems
+                        .filter((item: any) => item != null)
+                        .slice(0, 10)
+                        .map((item: any) => ({
+                            id: item?.id ?? 'unknown',
+                            type: item?.type ?? 'unknown',
+                            error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
+                        })),
+                }).catch(e => _err(NS, `! slack notification failed:`, e));
+            }
+
             return allItems;
         }
 

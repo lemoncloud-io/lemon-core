@@ -553,8 +553,6 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         delete node2['_id'];
         const { updatedAt } = this.asTime();
         const model = await this.update(_id, { ...node2, updatedAt }, $inc);
-        //* make sure it has `_id`
-        (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
 
@@ -602,8 +600,6 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         const _id = this.asKey(type, id);
         const { updatedAt } = this.asTime();
         const model = await this.increment(_id, { ...$inc }, { ...$up, updatedAt });
-        //* make sure it has `_id`
-        (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
 

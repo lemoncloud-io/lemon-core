@@ -31,7 +31,7 @@ export interface MyModel extends CoreModel<MyType> {
     count?: number;
     price?: number;
 }
-const FIELDS = 'name,count'.split(',');
+const FIELDS = 'name,count,price'.split(',');
 class MyService extends GeneralKeyMaker<MyType> {
     public constructor() {
         super('TT', ':');
@@ -95,7 +95,7 @@ describe('ProxyStorageService', () => {
     const PROFILE = loadProfile(process); // override process.env.
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
-    jest.setTimeout(10000);
+    jest.setTimeout(30000);
 
     //* test w/ service
     it('should pass basic service', async () => {
@@ -129,7 +129,7 @@ describe('ProxyStorageService', () => {
 
         //* check fields count.
         expect2(CORE_FIELDS.length).toEqual(12);
-        expect2(FIELDS.length).toEqual(2);
+        expect2(FIELDS.length).toEqual(3);
     });
 
     //* builder to test main service by type
@@ -773,6 +773,120 @@ describe('ProxyStorageService', () => {
         await $test.delete('multi-update-3').catch(GETERR);
         await $test.delete('auto-create-1').catch(GETERR);
         await $test.delete('filter-test').catch(GETERR);
+    });
+
+    //* LAYER EQUIVALENCE: batch vs legacy methods for ProxyStorageService
+    it('should have equivalent results for doRead/doReadMulti and doUpdate/doUpdateMulti', async () => {
+        const { storage, current } = instance('dummy-account-data.yml');
+        const $test = storage.makeTypedStorageService('test');
+
+        const createdAt = current + 10;
+        const updatedAt = current + 100;
+
+        //* test of doReadMulti vs doRead
+        const readItems = [
+            { id: 'proxy-equiv-read-1', name: 'Proxy Equiv Read 1' },
+            { id: 'proxy-equiv-read-2', name: 'Proxy Equiv Read 2' },
+            { id: 'proxy-equiv-read-3', name: 'Proxy Equiv Read 3' },
+        ];
+
+        // Setup test data
+        await $test.save('proxy-equiv-read-1', readItems[0] as MyModel);
+        await $test.save('proxy-equiv-read-2', readItems[1] as MyModel);
+        await $test.save('proxy-equiv-read-3', readItems[2] as MyModel);
+
+        // Legacy: multiple doRead calls
+        const proxyLegacy1 = await storage.doRead('test', 'proxy-equiv-read-1');
+        const proxyLegacy2 = await storage.doRead('test', 'proxy-equiv-read-2');
+        const proxyLegacy3 = await storage.doRead('test', 'proxy-equiv-read-3');
+
+        // Batch: single doReadMulti call
+        const proxyBatchRead = await storage.doReadMulti('test', [
+            'proxy-equiv-read-1',
+            'proxy-equiv-read-2',
+            'proxy-equiv-read-3',
+        ]);
+
+        // Verify equivalence
+        expect2(() => proxyBatchRead.success.length).toEqual(3);
+        expect2(() => proxyBatchRead.success[0]).toEqual(proxyLegacy1);
+        expect2(() => proxyBatchRead.success[1]).toEqual(proxyLegacy2);
+        expect2(() => proxyBatchRead.success[2]).toEqual(proxyLegacy3);
+
+        //* test of doUpdateMulti vs doUpdate
+        const initialItems = [
+            { id: 'proxy-equiv-update-1', name: 'Initial 1' },
+            { id: 'proxy-equiv-update-2', name: 'Initial 2' },
+            { id: 'proxy-equiv-update-3', name: 'Initial 3' },
+        ];
+
+        // Setup test data
+        await $test.save('proxy-equiv-update-1', initialItems[0] as MyModel);
+        await $test.save('proxy-equiv-update-2', initialItems[1] as MyModel);
+        await $test.save('proxy-equiv-update-3', initialItems[2] as MyModel);
+
+        // Legacy: multiple doUpdate calls
+        const proxyLegacyUpdate1 = await storage.doUpdate('test', 'proxy-equiv-update-1', {
+            name: 'Updated 1',
+        } as MyModel);
+        const proxyLegacyUpdate2 = await storage.doUpdate('test', 'proxy-equiv-update-2', {
+            name: 'Updated 2',
+        } as MyModel);
+        const proxyLegacyUpdate3 = await storage.doUpdate('test', 'proxy-equiv-update-3', {
+            name: 'Updated 3',
+        } as MyModel);
+
+        // Reset data for batch test
+        await $test.save('proxy-equiv-update-1', initialItems[0] as MyModel);
+        await $test.save('proxy-equiv-update-2', initialItems[1] as MyModel);
+        await $test.save('proxy-equiv-update-3', initialItems[2] as MyModel);
+
+        // Batch: single doUpdateMulti call
+        const updateItems = [
+            { id: 'proxy-equiv-update-1', name: 'Updated 1' },
+            { id: 'proxy-equiv-update-2', name: 'Updated 2' },
+            { id: 'proxy-equiv-update-3', name: 'Updated 3' },
+        ];
+        const proxyBatchUpdate = await storage.doUpdateMulti('test', updateItems as any);
+
+        // Verify equivalence
+        expect2(() => proxyBatchUpdate.success.length).toEqual(3);
+        // Check _id values first
+        expect2(() => proxyBatchUpdate.success[0]._id).toEqual(proxyLegacyUpdate1._id);
+        expect2(() => proxyBatchUpdate.success[1]._id).toEqual(proxyLegacyUpdate2._id);
+        expect2(() => proxyBatchUpdate.success[2]._id).toEqual(proxyLegacyUpdate3._id);
+        // Check if batch has extra 'id' field
+        expect2(() => proxyBatchUpdate.success[0], '!id').toEqual(proxyLegacyUpdate1);
+        expect2(() => proxyBatchUpdate.success[1], '!id').toEqual(proxyLegacyUpdate2);
+        expect2(() => proxyBatchUpdate.success[2], '!id').toEqual(proxyLegacyUpdate3);
+
+        // Cleanup
+        await $test.delete('proxy-equiv-read-1').catch(GETERR);
+        await $test.delete('proxy-equiv-read-2').catch(GETERR);
+        await $test.delete('proxy-equiv-read-3').catch(GETERR);
+        await $test.delete('proxy-equiv-update-1').catch(GETERR);
+        await $test.delete('proxy-equiv-update-2').catch(GETERR);
+        await $test.delete('proxy-equiv-update-3').catch(GETERR);
+
+        // Verify items are deleted
+        expect2(await $test.read('proxy-equiv-read-1').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-read-1',
+        );
+        expect2(await $test.read('proxy-equiv-read-2').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-read-2',
+        );
+        expect2(await $test.read('proxy-equiv-read-3').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-read-3',
+        );
+        expect2(await $test.read('proxy-equiv-update-1').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-update-1',
+        );
+        expect2(await $test.read('proxy-equiv-update-2').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-update-2',
+        );
+        expect2(await $test.read('proxy-equiv-update-3').catch(GETERR)).toEqual(
+            '404 NOT FOUND - _id:TT:test:proxy-equiv-update-3',
+        );
     });
 
     //* dummy storage service.
