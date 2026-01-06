@@ -82,7 +82,7 @@ export interface StorageService<T extends StorageModel> {
 /** ****************************************************************************************************************
  *  Data Storage Service
  ** ****************************************************************************************************************/
-import { DynamoService, KEY_TYPE, BatchResult } from '../dynamo/';
+import { DynamoService, KEY_TYPE, BatchResult, FailedItem } from '../dynamo/';
 import { loadDataYml } from '../../tools/';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
@@ -159,7 +159,10 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             }, {});
 
         result.success = (res.success || []).map(toModel);
-        result.failed = (res.failed || []).map(toModel);
+        result.failed = (res.failed || []).map(item => {
+            const model = toModel(item);
+            return { ...model, error: (item as any).error || 'Unknown error' } as FailedItem<T>;
+        });
         return result;
     }
 
@@ -244,7 +247,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
 
         const res = await this.$dynamo.mupdateItem(items);
         result.success = (res.success as unknown as T[]) || [];
-        result.failed = (res.failed as unknown as T[]) || [];
+        result.failed = (res.failed as unknown as FailedItem<T>[]) || [];
         return result;
     }
 
@@ -353,7 +356,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
             if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
             const item = this.buffer[id];
             if (!item) {
-                result.failed.push({ [this.idName]: id } as unknown as T);
+                result.failed.push({ [this.idName]: id, error: '404 NOT FOUND' } as unknown as FailedItem<T>);
             } else {
                 result.success.push({ ...item, [this.idName]: id } as T);
             }
