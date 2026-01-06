@@ -41,7 +41,7 @@ import $cores, {
     StorageMakeable,
     TypedStorageService,
 } from '../cores/';
-import { $U, _err, _log } from '../engine/';
+import { $U, _err, _log, doReportError } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
@@ -707,6 +707,7 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
     }): Promise<CoreModel<any>[]> {
         const parrallel = $U.N(options?.parrallel, this.parrallel);
         const useBatch = options?.useBatch ?? false;
+        const onlyValid = options?.onlyValid ?? true;
         const errScope = `saveAllUpdates(${parrallel})`;
 
         type Model = CoreModel<any>;
@@ -723,26 +724,6 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
             storage?: TypedStorageService<Model, any>;
         };
 
-        /** recursively remove undefined values from object */
-        const removeUndefined = <T extends Record<string, any>>(obj: T): T => {
-            if (obj === null || obj === undefined) return obj;
-            if (typeof obj !== 'object') return obj;
-            if (Array.isArray(obj)) {
-                return obj.filter(item => item !== undefined).map(item => removeUndefined(item)) as any;
-            }
-
-            const result: any = {};
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    const value = obj[key];
-                    if (value !== undefined) {
-                        result[key] = typeof value === 'object' && value !== null ? removeUndefined(value) : value;
-                    }
-                }
-            }
-            return result;
-        };
-
         /**
          * custom error class
          * - to wrap the root cause error
@@ -757,7 +738,12 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
          * factory to create custom error
          */
         const $err = (e: any, M?: TYPE) =>
-            new MyError(`Failed to update ${M?.type ?? ''}/${M?.id ?? ''}: ${e?.message ?? '-'} @${errScope}`, M?.N);
+            new MyError(
+                `Failed to update ${M?.type ?? M?.storage?.type ?? 'unknown'}/${M?.id ?? ''}: ${
+                    e?.message ?? '-'
+                } @${errScope}`,
+                M?.N,
+            );
 
         // STEP.1 prepare the list of updater (collect type and storage info for batch mode)
         const list = this.allProxies.reduce((L: TYPE[], $p: ManagerProxy<any, CoreManager<any, any, any>>) => {
@@ -773,9 +759,7 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                         const type = M?.type ?? $p.$mgr.type;
                         M = { ...M, type, storage };
                         try {
-                            // keep undefined values only when onlyValid is false
-                            const cleanedData = options?.onlyValid !== false ? removeUndefined(M.N) : M.N;
-                            return storage.update(id, cleanedData).catch(e => Promise.reject($err(e, M)));
+                            return storage.update(id, M.N).catch(e => Promise.reject($err(e, M)));
                         } catch (e) {
                             throw $err(e, M);
                         }
@@ -791,22 +775,16 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
             //* NEW: batch update mode
             _log(NS, `> ${errScope}: using batch mode (${list.length} items)`);
 
-            //* group by type from pre-collected list (no duplicate traversal)
-            const grouped = new Map<string, { storage: any; items: Array<Model & { id: string }> }>();
-            list.forEach(({ id, N, type, storage }) => {
-                if (!grouped.has(type!)) {
-                    grouped.set(type!, { storage, items: [] });
-                }
-                // keep undefined values only when onlyValid is false
-                const cleanedData = options?.onlyValid !== false ? removeUndefined(N as Model) : (N as Model);
-                grouped.get(type!)!.items.push({ ...cleanedData, id });
+            //* group by storage instance
+            const grouped = new Map<TypedStorageService<Model, any>, Array<Model & { id: string }>>();
+            list.forEach(({ id, N, storage }) => {
+                const group = grouped.get(storage);
+                group ? group.push({ ...(N as Model), id }) : grouped.set(storage, [{ ...(N as Model), id }]);
             });
 
             //* execute batch updates
             const results = await Promise.all(
-                Array.from(grouped.entries()).map(([type, { storage, items }]) =>
-                    storage.storage.doUpdateMulti(type, items),
-                ),
+                Array.from(grouped.entries()).map(([storage, items]) => storage.mupdate(items, { onlyValid })),
             );
 
             //* flatten BatchResult[] to Model[]
@@ -823,20 +801,23 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
 
             //* send Slack notification if there are failed items
             if (totalFailed > 0) {
-                this.report(`Batch update failed: ${totalFailed}/${_total} items`, {
-                    scope: errScope,
+                const error = new Error(`Batch update failed: ${totalFailed}/${_total} items`);
+                const data = {
+                    dt: $U.dt(),
+                    total_count: _total,
                     failed_count: totalFailed,
                     success_count: allItems?.length ?? 0,
-                    total_count: _total,
-                    failed_samples: failedItems
+                    failed_items: failedItems
                         .filter((item: any) => item != null)
-                        .slice(0, 10)
                         .map((item: any) => ({
                             id: item?.id ?? 'unknown',
-                            type: item?.type ?? 'unknown',
                             error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
                         })),
-                }).catch(e => _err(NS, `! slack notification failed:`, e));
+                };
+
+                await doReportError(error, this.context, null, data).catch(e => {
+                    _err(NS, '! failed to report error via SNS:', e);
+                });
             }
 
             return allItems;

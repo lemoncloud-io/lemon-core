@@ -562,7 +562,32 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param type      model-type
      * @param list      list of models (should include id)
      */
-    public async doUpdateMulti(type: ModelType, list: Array<T & { id: string }>): Promise<BatchResult<T>> {
+    public async doUpdateMulti(
+        type: ModelType,
+        list: Array<T & { id: string }>,
+        options?: { onlyValid?: boolean },
+    ): Promise<BatchResult<T>> {
+        /** recursively remove undefined values from object */
+        const _removeUndefined = <T extends Record<string, any>>(obj: T): T => {
+            if (options?.onlyValid === false) return obj;
+            if (obj === null || obj === undefined) return obj;
+            if (typeof obj !== 'object') return obj;
+            if (Array.isArray(obj)) {
+                return obj.filter(item => item !== undefined).map(item => _removeUndefined(item)) as any;
+            }
+
+            const result: any = {};
+            for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    const value = obj[key];
+                    if (value !== undefined) {
+                        result[key] = typeof value === 'object' && value !== null ? _removeUndefined(value) : value;
+                    }
+                }
+            }
+            return result;
+        };
+
         const total = list?.length ?? 0;
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
@@ -574,7 +599,9 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             const _id = this.asKey(type, id);
             const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, undefined);
             delete node2['_id'];
-            return { ...node2, [this.idName]: _id, updatedAt };
+            // remove undefined values before saving to DynamoDB
+            const cleaned = _removeUndefined({ ...node2, [this.idName]: _id, updatedAt });
+            return cleaned;
         });
 
         const res = await (this.storage as any).mupdate(items);
@@ -817,6 +844,19 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      */
     public update = (id: string | number, model: T, incrementals?: T): Promise<T> =>
         this.storage.doUpdate(this.type, `${id || ''}`, model, incrementals) as Promise<T>;
+
+    /**
+     * update multiple models in batch (or it will create automatically)
+     * - automatically removes undefined values (DynamoDB does not support undefined)
+     *
+     * @param list      list of models (should include id)
+     */
+    public mupdate = (
+        list: Array<T & { id: string }>,
+        options?: {
+            onlyValid?: boolean;
+        },
+    ): Promise<BatchResult<T>> => this.storage.doUpdateMulti(this.type, list, options);
 
     /**
      * insert model w/ auto generated id
