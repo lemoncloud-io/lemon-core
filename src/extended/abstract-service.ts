@@ -41,7 +41,7 @@ import $cores, {
     StorageMakeable,
     TypedStorageService,
 } from '../cores/';
-import { $U, _err, _log, doReportError } from '../engine/';
+import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
@@ -508,8 +508,9 @@ export class ManagerProxy<
      * read multiple nodes.
      * @param ids list of object-ids
      * @param throwable (optional) flag to throw error if not found
+     * @param options (optional) options for batch read error reporting
      */
-    public async mget(ids: string[], throwable = true): Promise<(Model | null)[]> {
+    public async mget(ids: string[], throwable = true, options?: { context?: NextContext }): Promise<(Model | null)[]> {
         if (!ids || ids.length === 0) return [];
 
         const result: (Model | null)[] = [];
@@ -541,7 +542,7 @@ export class ManagerProxy<
 
         //* STEP.2 batch read from storage
         if (toFetch.length > 0) {
-            const res = await this.$mgr.storage.storage.doReadMulti(this.$mgr.type, toFetch);
+            const res = await this.$mgr.storage.storage.doReadMulti(this.$mgr.type, toFetch, options);
             const successMap: { [key: string]: Model } = {};
             (res.success || []).forEach((model: Model) => {
                 const id = (model as any).id;
@@ -782,43 +783,15 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                 group ? group.push({ ...(N as Model), id }) : grouped.set(storage, [{ ...(N as Model), id }]);
             });
 
-            //* execute batch updates
+            //* execute batch updates (slack notification is handled in doUpdateMulti)
             const results = await Promise.all(
-                Array.from(grouped.entries()).map(([storage, items]) => storage.mupdate(items, { onlyValid })),
+                Array.from(grouped.entries()).map(([storage, items]) =>
+                    storage.mupdate(items, { onlyValid, context: this.context }),
+                ),
             );
 
             //* flatten BatchResult[] to Model[]
             const allItems = results.reduce<Model[]>((acc, result) => [...acc, ...(result?.success ?? [])], []);
-            const failedItems = results.reduce<any[]>((acc, result) => {
-                const failed = result?.failed ?? [];
-                if (failed.length > 0) {
-                    _err(NS, `! batch update failed: ${failed.length} items`, failed);
-                }
-                return [...acc, ...failed];
-            }, []);
-            const totalFailed = failedItems.length;
-            const _total = (allItems?.length ?? 0) + totalFailed;
-
-            //* send Slack notification if there are failed items
-            if (totalFailed > 0) {
-                const error = new Error(`Batch update failed: ${totalFailed}/${_total} items`);
-                const data = {
-                    dt: $U.dt(),
-                    total_count: _total,
-                    failed_count: totalFailed,
-                    success_count: allItems?.length ?? 0,
-                    failed_items: failedItems
-                        .filter((item: any) => item != null)
-                        .map((item: any) => ({
-                            id: item?.id ?? 'unknown',
-                            error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
-                        })),
-                };
-
-                await doReportError(error, this.context, null, data).catch(e => {
-                    _err(NS, '! failed to report error via SNS:', e);
-                });
-            }
 
             return allItems;
         }

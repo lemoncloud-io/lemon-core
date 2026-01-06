@@ -9,7 +9,8 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../../engine/';
+import { _log, _inf, _err, $U, doReportError } from '../../engine/';
+import { NextContext } from 'lemon-model';
 import { Elastic6SimpleQueriable, CoreModel, CORE_FIELDS } from 'lemon-model';
 import { NUL404 } from '../../common/test-helper';
 import { StorageService, DummyStorageService, DynamoStorageService } from './storage-service';
@@ -496,12 +497,55 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     }
 
     /**
+     * report batch operation error via Slack notification.
+     * - used internally for doReadMulti and doUpdateMulti
+     *
+     * @param operation     operation name (e.g., 'read', 'update')
+     * @param total         total count of items
+     * @param failed        list of failed items
+     * @param context       (optional) next-context for reporting
+     */
+    private async reportBatchError(
+        operation: string,
+        total: number,
+        failed: any[],
+        context?: NextContext,
+    ): Promise<void> {
+        const totalFailed = failed?.length ?? 0;
+        if (totalFailed <= 0) return;
+
+        const successCount = total - totalFailed;
+        const error = new Error(`Batch ${operation} failed: ${totalFailed}/${total} items`);
+        const data = {
+            dt: $U.dt(),
+            total_count: total,
+            failed_count: totalFailed,
+            success_count: successCount,
+            failed_items: failed
+                .filter((item: any) => item != null)
+                .map((item: any) => ({
+                    id: item?.id ?? item?._id ?? 'unknown',
+                    error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
+                })),
+        };
+
+        await doReportError(error, context, null, data).catch(e => {
+            _err(NS, `! failed to report ${operation} error via SNS:`, e);
+        });
+    }
+
+    /**
      * read multiple models by key + ids
      *
      * @param type      model-type
      * @param ids       node-ids
+     * @param options   (optional) options for batch read error reporting
      */
-    public async doReadMulti(type: ModelType, ids: string[]): Promise<BatchResult<T>> {
+    public async doReadMulti(
+        type: ModelType,
+        ids: string[],
+        options?: { context?: NextContext },
+    ): Promise<BatchResult<T>> {
         const total = ids?.length ?? 0;
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!ids || total === 0) return result;
@@ -517,6 +561,12 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             const res = this.filters.afterRead(model);
             return res;
         });
+
+        //* send Slack notification if there are failed items
+        if (result.failed.length > 0) {
+            await this.reportBatchError('read', total, result.failed, options?.context);
+        }
+
         return result;
     }
 
@@ -561,11 +611,12 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      *
      * @param type      model-type
      * @param list      list of models (should include id)
+     * @param options   (optional) options for batch update
      */
     public async doUpdateMulti(
         type: ModelType,
         list: Array<T & { id: string }>,
-        options?: { onlyValid?: boolean },
+        options?: { onlyValid?: boolean; context?: NextContext },
     ): Promise<BatchResult<T>> {
         /** recursively remove undefined values from object */
         const _removeUndefined = <T extends Record<string, any>>(obj: T): T => {
@@ -614,6 +665,12 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             const res = this.filters.afterUpdate(model);
             return res;
         });
+
+        //* send Slack notification if there are failed items
+        if (result.failed.length > 0) {
+            await this.reportBatchError('update', total, result.failed, options?.context);
+        }
+
         return result;
     }
 
@@ -850,11 +907,13 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      * - automatically removes undefined values (DynamoDB does not support undefined)
      *
      * @param list      list of models (should include id)
+     * @param options   (optional) options for batch update error reporting
      */
     public mupdate = (
         list: Array<T & { id: string }>,
         options?: {
             onlyValid?: boolean;
+            context?: NextContext;
         },
     ): Promise<BatchResult<T>> => this.storage.doUpdateMulti(this.type, list, options);
 
