@@ -760,7 +760,9 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
                         const type = M?.type ?? $p.$mgr.type;
                         M = { ...M, type, storage };
                         try {
-                            return storage.update(id, M.N).catch(e => Promise.reject($err(e, M)));
+                            return storage
+                                .update(id, M.N, undefined, { onlyValid })
+                                .catch(e => Promise.reject($err(e, M)));
                         } catch (e) {
                             throw $err(e, M);
                         }

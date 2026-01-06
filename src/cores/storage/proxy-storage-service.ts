@@ -497,6 +497,34 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     }
 
     /**
+     * recursively remove undefined values from object.
+     * - used internally for doUpdate and doUpdateMulti
+     *
+     * @param obj           object to clean
+     * @param onlyValid     flag to skip if false (default true)
+     */
+    private removeUndefined<U extends Record<string, any>>(obj: U, onlyValid = true): U {
+        if (onlyValid === false) return obj;
+        if (obj === null || obj === undefined) return obj;
+        if (typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) {
+            return obj.filter(item => item !== undefined).map(item => this.removeUndefined(item, onlyValid)) as any;
+        }
+
+        const result: any = {};
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const value = obj[key];
+                if (value !== undefined) {
+                    result[key] =
+                        typeof value === 'object' && value !== null ? this.removeUndefined(value, onlyValid) : value;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
      * report batch operation error via Slack notification.
      * - used internally for doReadMulti and doUpdateMulti
      *
@@ -594,15 +622,19 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      * @param node      model
      * @param incrementals (optional) fields to increment
+     * @param options   (optional) options for update
      */
-    public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T) {
-        const $inc: T = { ...incrementals }; //* make copy.
+    public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T, options?: { onlyValid?: boolean }) {
+        const onlyValid = options?.onlyValid ?? true;
+        const $inc: T = this.removeUndefined({ ...incrementals }, onlyValid); //* make copy & clean.
         const _id = this.asKey(type, id);
         // const $key = this.service.asKey$(type, id);
         const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, $inc);
         delete node2['_id'];
         const { updatedAt } = this.asTime();
-        const model = await this.update(_id, { ...node2, updatedAt }, $inc);
+        // remove undefined values before saving to DynamoDB
+        const cleaned = this.removeUndefined({ ...node2, updatedAt }, onlyValid);
+        const model = await this.update(_id, cleaned, $inc);
         return this.filters.afterUpdate(model);
     }
 
@@ -618,27 +650,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         list: Array<T & { id: string }>,
         options?: { onlyValid?: boolean; context?: NextContext },
     ): Promise<BatchResult<T>> {
-        /** recursively remove undefined values from object */
-        const _removeUndefined = <T extends Record<string, any>>(obj: T): T => {
-            if (options?.onlyValid === false) return obj;
-            if (obj === null || obj === undefined) return obj;
-            if (typeof obj !== 'object') return obj;
-            if (Array.isArray(obj)) {
-                return obj.filter(item => item !== undefined).map(item => _removeUndefined(item)) as any;
-            }
-
-            const result: any = {};
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    const value = obj[key];
-                    if (value !== undefined) {
-                        result[key] = typeof value === 'object' && value !== null ? _removeUndefined(value) : value;
-                    }
-                }
-            }
-            return result;
-        };
-
+        const onlyValid = options?.onlyValid ?? true;
         const total = list?.length ?? 0;
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
@@ -651,7 +663,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, undefined);
             delete node2['_id'];
             // remove undefined values before saving to DynamoDB
-            const cleaned = _removeUndefined({ ...node2, [this.idName]: _id, updatedAt });
+            const cleaned = this.removeUndefined({ ...node2, [this.idName]: _id, updatedAt }, onlyValid);
             return cleaned;
         });
 
@@ -696,8 +708,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      * @param node      node to save (or update)
      * @param $create   (optional) initial creation model if not found.
+     * @param options   (optional) options for save
      */
-    public async doSave(type: ModelType, id: string, node: T, $create?: T) {
+    public async doSave(type: ModelType, id: string, node: T, $create?: T, options?: { onlyValid?: boolean }) {
+        const onlyValid = options?.onlyValid ?? true;
+
         //* read origin model w/o error.
         const $org: T = (await this.doRead(type, id, null).catch(e => {
             if (`${e.message}`.startsWith('404 NOT FOUND')) return null as T; // mark null to create later.
@@ -723,12 +738,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         const { createdAt, updatedAt } = this.asTime();
         if ($org) {
             const $save = { ...$ups, updatedAt };
-            const res = await this.doUpdate(type, id, $save);
+            const res = await this.doUpdate(type, id, $save, undefined, { onlyValid });
             return this.filters.afterSave(res, $org); //* `$org` should be valid if update.
         } else {
             const $key: T = this.service.asKey$(type, id) as T;
             const $save = { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 };
-            const res = await this.storage.save(_id, $save);
+            // remove undefined values before saving to DynamoDB
+            const cleaned = this.removeUndefined($save, onlyValid);
+            const res = await this.storage.save(_id, cleaned);
             return this.filters.afterSave(res, null); //* `$org` should be null if create.
         }
     }
@@ -898,9 +915,10 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      * @param model     model to update
      * @param incrementals (optional) fields to increment.
+     * @param options   (optional) options for update
      */
-    public update = (id: string | number, model: T, incrementals?: T): Promise<T> =>
-        this.storage.doUpdate(this.type, `${id || ''}`, model, incrementals) as Promise<T>;
+    public update = (id: string | number, model: T, incrementals?: T, options?: { onlyValid?: boolean }): Promise<T> =>
+        this.storage.doUpdate(this.type, `${id || ''}`, model, incrementals, options) as Promise<T>;
 
     /**
      * update multiple models in batch (or it will create automatically)
