@@ -5,8 +5,10 @@
 ## 0. Update lemon-core Version
 
 ```sh
-npm install lemon-core@^4.0.5 --save
+npm install lemon-core@^4.1.7 --save
 ```
+
+---
 
 ## 1. Upgrade Node.js Version
 
@@ -27,7 +29,7 @@ nvm use 22
 ```diff
          lemon: {
             name: 'lemon-app',
--            runtime: 'nodejs18.x', // Powered by the V8 JavaScript Engine (used in Chromium)
+-            runtime: 'nodejs18.x',
 +            runtime: 'nodejs22.x',
         },
 ```
@@ -36,10 +38,8 @@ nvm use 22
 
 ```diff
   plugins:
-    - serverless-offline
 -   - serverless-offline
-+   #WARN - failure in nodejs 22.x due to `serverless-offline` plugin @250627
-+   # - serverless-offline
++   # - serverless-offline  # WARN: fails in Node.js 22.x
     - serverless-aws-documentation
     - serverless-prune-plugin
     - serverless-plugin-log-retention
@@ -55,22 +55,17 @@ nvm use 22
 > Error [ERR_REQUIRE_ASYNC_MODULE]: require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --experimental-print-required-tla.
 > ```
 >
-> In this case:
->
-> * Set only the Lambda runtime (Node.js version) to 22 in your `serverless.yml`.
-> * Execute the deployment command (`npm run deploy`) in a **Node.js 18 (nvm 18)**.
-
-## 2. Install `lemon-devkit`
-
-* Add as a `devDependency`:
-
-  ```bash
-  npm install --save-dev lemon-devkit
-  ```
+> **Workaround**: Execute the deployment command in **Node.js 18** (`nvm use 18`), while keeping the Lambda runtime as `nodejs22.x`.
 
 ---
 
-### package.json Key Changes
+## 2. Install `lemon-devkit`
+
+```bash
+npm install --save-dev lemon-devkit
+```
+
+### package.json Summary
 
 ```diff
  {
@@ -80,12 +75,10 @@ nvm use 22
    },
    "dependencies": {
 -    "lemon-core": "^3.x",
-+     "lemon-core": "^4.x",
++    "lemon-core": "^4.x",
    },
    "devDependencies": {
 +    "lemon-devkit": "^0.0.3",
-     "typescript": "^4.x",
-     "jest": "^29.x"
    }
  }
 ```
@@ -94,55 +87,35 @@ nvm use 22
 
 ## 3. AWS SDK: v2 to v3 Migration
 
-1. **Credential Management**
+### 3.1 Credential Management
 
-   * Replace legacy `credentials` approach with `asyncCredentials()` from `lemon-core`.
+Replace legacy `credentials` with `asyncCredentials()`:
 
-   * Example:
-
-     ```ts
-     import { asyncCredentials } from 'lemon-core';
-     const credentials = await asyncCredentials(PROFILE);
-     ```
+```ts
+import { asyncCredentials } from 'lemon-core';
+const credentials = await asyncCredentials(PROFILE);
+```
 
    * **\[express.ts Updates]**
 
-    ```diff
-      //! dynamic loading credentials by profile. (search PROFILE -> NAME)
-      export const credentials = async (name?: string) => {
-          _log(NS, `credentials(${name})..`);
-          const NAME = name || ($engine.environ('NAME', '') as string);
-          const profile = $engine.environ('PROFILE', NAME) as string;
-    -      return $core.tools.credentials(profile);
-    +      return $core.tools.asyncCredentials(profile);
-      };
-    ```
+  ```diff
+    export const credentials = async (name?: string) => {
+        const profile = $engine.environ('PROFILE', NAME) as string;
+  -     return $core.tools.credentials(profile);
+  +     return $core.tools.asyncCredentials(profile);
+    };
+  ```
 
-   * **\[Test Updates]**
-      * If you use `loadProfile(process)` to set up environment variables, move it **inside `it()` blocks** and `await` the call
+### 3.2 Client Initialization
 
-      ```ts
-      it('should initialize credentials', async () => {
-        const PROFILE = await loadProfile(process);
-        const credentials = await asyncCredentials(PROFILE);
-        expect(credentials).toBeDefined();
-      });
-      ```
+Use `awsConfig($engine, region)` for v3 clients:
 
-2. **Client Initialization**
+```ts
+import { SQSClient } from '@aws-sdk/client-sqs';
+import $engine, { awsConfig } from 'lemon-core';
 
-   * Use `awsConfig($engine, region)` for initializing v3 clients.
-   * Example:
-
-     ```ts
-     import { SQSClient } from '@aws-sdk/client-sqs';
-     import $engine, { awsConfig } from 'lemon-core';
-
-     async function createSqsClient() {
-       const region = 'ap-northeast-2';
-       return new SQSClient(awsConfig($engine, region));
-     }
-     ```
+const client = new SQSClient(awsConfig($engine, 'ap-northeast-2'));
+```
 
 ---
 
@@ -154,23 +127,58 @@ To update the src/cores directory in your project using the latest version from 
 2. From lemon-templates-api: Copy the entire src/cores directory.
 3. In your project: Paste the copied src/cores directory into the same path (src/cores).
 
+## 5. DynamoDB IAM Permissions (v4.1.x)
+
+Starting from `lemon-core@4.1.x`, batch operations require additional IAM permissions.
+
+### Required Permissions
+
+```yaml
+iamRoleStatements:
+  - Effect: Allow
+    Action:
+      # Existing permissions
+      - dynamodb:GetItem
+      - dynamodb:PutItem
+      - dynamodb:UpdateItem
+      - dynamodb:DeleteItem
+      - dynamodb:Query
+      - dynamodb:Scan
+      # NEW: v4.1.x batch operations
+      - dynamodb:BatchGetItem
+      - dynamodb:BatchWriteItem
+    Resource:
+      - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:custom.tables.main}"
+      - "arn:aws:dynamodb:${aws:region}:${aws:accountId}:table/${self:custom.tables.main}/index/*"
+```
+
+### New Batch Methods
+
+| Method | Description | Required Permission |
+|--------|-------------|---------------------|
+| `mreadItem` | Batch read (max 100 items/request) | `BatchGetItem` |
+| `msaveItem` | Batch save (max 25 items/request) | `BatchWriteItem` |
+| `mupdateItem` | Batch update (max 25 items/request) | `BatchWriteItem` |
+| `saveAllUpdates({ useBatch: true })` | AbstractProxy batch mode | `BatchWriteItem` |
+
 ---
 
 ## At-a-Glance Checklist
 
-* [ ] **Upgrade lemon-core**
+* [ ] **Upgrade lemon-core** to `^4.1.7`
 * [ ] **Upgrade to Node.js 22**
-  * Change `nvm` version, update `.nvmrc`
-  * Change node.js runtime version of your profile, update `config.js`
-  * Update plugins in serverless.yml
+  * Update `.nvmrc`
+  * Update `config.js` runtime
+  * Comment out `serverless-offline` plugin
 * [ ] **Install lemon-devkit** (devDependency)
-* [ ] **Review AWS SDK v3 migration changes**
-
-  * **Credentials**: Replace old `credentials` code with `asyncCredentials()`
-  * **Client Initialization**: Use `awsConfig($engine, region)`
-* [ ] **Update src/cores**
+* [ ] **Migrate AWS SDK v2 → v3**
+  * `credentials()` → `asyncCredentials()`
+  * Use `awsConfig($engine, region)`
+* [ ] **Update src/cores** from lemon-templates-api
+* [ ] **Add DynamoDB IAM Permissions** (v4.1.x)
+  * `dynamodb:BatchGetItem`
+  * `dynamodb:BatchWriteItem`
 * [ ] **Review CI/CD environments**
-
-  * Ensure Node.js 22 is set in `serverless.yml`, `Dockerfile`, etc.
+  * Ensure Node.js 22 in `serverless.yml`, `Dockerfile`, etc.
 
 ---

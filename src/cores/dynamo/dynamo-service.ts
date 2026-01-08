@@ -65,16 +65,26 @@ interface BatchWriteRequest {
 }
 
 /**
+ * type: FailedItem - item with error message
+ */
+export type FailedItem<T> = T & { error: string };
+
+/**
  * type: BatchResult for batch operation results
  */
 export interface BatchResult<T> {
     /** successfully saved items */
     success: T[];
-    /** failed items */
-    failed: T[];
+    /** failed items (with error field) */
+    failed: FailedItem<T>[];
     /** total number of items */
     total: number;
 }
+
+//* Batch operation constants
+const BATCH_GET_CHUNK = 100; // DynamoDB BatchGetItem limit
+const BATCH_WRITE_CHUNK = 25; // DynamoDB BatchWriteItem limit
+const MAX_RETRIES = 3; // Maximum retry attempts for unprocessed items
 
 //* create(or get) instance.
 const instance = () => {
@@ -452,13 +462,10 @@ export class DynamoService<T extends GeneralItem> {
 
         //* Maps to preserve original order
         const successMap = new Map<string, T>();
-        const failedMap = new Map<string, T>();
+        const failedMap = new Map<string, FailedItem<T>>();
 
-        //* process in chunks of 100 (DynamoDB BatchGetItem limit)
-        const CHUNK_SIZE = 100;
-
-        for (let i = 0; i < total; i += CHUNK_SIZE) {
-            const chunk = list?.slice(i, i + CHUNK_SIZE) ?? [];
+        for (let i = 0; i < total; i += BATCH_GET_CHUNK) {
+            const chunk = list?.slice(i, i + BATCH_GET_CHUNK) ?? [];
             const chunkKeyMap = new Map<string, DynamoKey>();
 
             const chunkKeys = chunk.map(item => {
@@ -468,7 +475,6 @@ export class DynamoService<T extends GeneralItem> {
                 return key;
             });
 
-            const MAX_RETRIES = 3;
             const _doBatchGet = async (
                 keys: DynamoKey[],
                 attempt: number,
@@ -496,22 +502,38 @@ export class DynamoService<T extends GeneralItem> {
             };
 
             try {
-                const { items } = await _doBatchGet(chunkKeys, 1, []);
+                const { items, unprocessed } = await _doBatchGet(chunkKeys, 1, []);
                 items.forEach(item => {
                     const sig = _convertItemToSig(item);
                     successMap.set(sig, item);
                 });
 
+                //* Handle unprocessed items (failed after retries)
+                if (unprocessed.length > 0) {
+                    const error = `UNPROCESSED after ${MAX_RETRIES} retries`;
+                    _err(NS, `! mreadItem unprocessed:`, { count: unprocessed.length, error });
+                    unprocessed.forEach(key => {
+                        const sig = _convertKeyToSig(key);
+                        const failedItem = { ...key, error } as FailedItem<T>;
+                        failedMap.set(sig, failedItem);
+                    });
+                }
+
+                //* Identify items not found (404)
                 const received = new Set(items.map(item => _convertItemToSig(item)));
-                const missing = Array.from(chunkKeyMap.entries())
-                    .filter(([sig]) => !received.has(sig))
-                    .map(([sig, key]) => {
-                        failedMap.set(sig, key as T);
-                        return key as T;
+                const unprocessedSigs = new Set(unprocessed.map(key => _convertKeyToSig(key)));
+                Array.from(chunkKeyMap.entries())
+                    .filter(([sig]) => !received.has(sig) && !unprocessedSigs.has(sig))
+                    .forEach(([sig, key]) => {
+                        const failedItem = { ...key, error: '404 NOT FOUND' } as FailedItem<T>;
+                        failedMap.set(sig, failedItem);
                     });
             } catch (e) {
+                const error = e instanceof Error ? e.message : `${e}`;
+                _err(NS, `! mreadItem batch failed:`, error);
                 Array.from(chunkKeyMap.entries()).forEach(([sig, key]) => {
-                    failedMap.set(sig, key as T);
+                    const failedItem = { ...key, error } as FailedItem<T>;
+                    failedMap.set(sig, failedItem);
                 });
             }
         }
@@ -529,6 +551,15 @@ export class DynamoService<T extends GeneralItem> {
             }
         });
 
+        if (result.failed.length > 0) {
+            _err(NS, `! mreadItem.failed =`, {
+                failed: result.failed.length,
+                sample_failed: result.failed.slice(0, 3).map((item: any) => ({
+                    id: item?._id ?? item?.id,
+                    error: item?.error,
+                })),
+            });
+        }
         _log(NS, `> mreadItem.res =`, {
             success: result.success.length,
             failed: result.failed.length,
@@ -579,14 +610,10 @@ export class DynamoService<T extends GeneralItem> {
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
 
-        // _log(NS, `msaveItem(${tableName})[${list.length}]...`);
         const dynamodoc = await DynamoService.instance().dynamodoc();
 
-        //* process in chunks of 25 (DynamoDB BatchWriteItem limit)
-        const CHUNK_SIZE = 25;
-
-        for (let i = 0; i < total; i += CHUNK_SIZE) {
-            const chunk = list?.slice(i, i + CHUNK_SIZE) ?? [];
+        for (let i = 0; i < total; i += BATCH_WRITE_CHUNK) {
+            const chunk = list?.slice(i, i + BATCH_WRITE_CHUNK) ?? [];
             const chunkItems: T[] = [];
 
             //* prepare batch write requests
@@ -602,7 +629,6 @@ export class DynamoService<T extends GeneralItem> {
             });
 
             //* execute batch write with retry for unprocessed items
-            const MAX_RETRIES = 3;
             const _doBatchWrite = async (
                 requests: BatchWriteRequest[],
                 attempt: number,
@@ -630,19 +656,56 @@ export class DynamoService<T extends GeneralItem> {
 
             try {
                 const unprocessed = await _doBatchWrite(putRequests, 1);
+
+                //* Handle unprocessed items (failed after retries)
+                const unprocessedIds = new Set<string>();
                 if (unprocessed?.length > 0) {
-                    //* partial failure: some items unprocessed after retries
-                    result.failed.push(...chunkItems);
-                } else {
-                    //* all items in chunk succeeded
-                    result.success.push(...chunkItems);
+                    const error = `UNPROCESSED after ${MAX_RETRIES} retries`;
+                    _err(NS, `! msaveItem unprocessed:`, { count: unprocessed.length, error });
+                    unprocessed.forEach(req => {
+                        const item = req.PutRequest?.Item;
+                        if (item) {
+                            const itemId = String((item as any)[this.options.idName] || (item as any).id);
+                            unprocessedIds.add(itemId);
+                            const chunkItem = chunkItems.find(ci => {
+                                const chunkItemId = String((ci as any)[this.options.idName] || (ci as any).id);
+                                return chunkItemId === itemId;
+                            });
+                            if (chunkItem) {
+                                const failedItem = { ...chunkItem, error };
+                                result.failed.push(failedItem);
+                            }
+                        }
+                    });
                 }
+
+                //* Add successfully written items
+                chunkItems.forEach(item => {
+                    const itemId = String((item as any)[this.options.idName] || (item as any).id);
+                    if (!unprocessedIds.has(itemId)) {
+                        result.success.push(item);
+                    }
+                });
             } catch (e) {
-                //* chunk failed completely
-                result.failed.push(...chunkItems);
+                //* Handle complete batch failure
+                const error = e instanceof Error ? e.message : `${e}`;
+                _err(NS, `! msaveItem batch failed:`, error);
+                chunkItems.forEach(item => {
+                    const failedItem = { ...item, error };
+                    result.failed.push(failedItem);
+                });
             }
         }
 
+        if (result.failed.length > 0) {
+            _err(NS, `! msaveItem.failed =`, {
+                failed: result.failed.length,
+                sample_failed: result.failed.slice(0, 3).map((item: any) => ({
+                    id: item?._id ?? item?.id,
+                    error: item?.error,
+                })),
+            });
+        }
         _log(NS, `> msaveItem.res =`, {
             success: result.success.length,
             failed: result.failed.length,
@@ -722,24 +785,20 @@ export class DynamoService<T extends GeneralItem> {
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
 
-        // _log(NS, `mupdateItem(${tableName})[${list.length}]...`);
         const dynamodoc = await DynamoService.instance().dynamodoc();
 
         //* Maps to preserve original order
         const successMap = new Map<string, T>();
-        const failedMap = new Map<string, T>();
+        const failedMap = new Map<string, FailedItem<T>>();
 
-        //* process in chunks of 25 (DynamoDB BatchWriteItem limit)
-        const CHUNK_SIZE = 25;
-
-        for (let i = 0; i < total; i += CHUNK_SIZE) {
-            const chunk = list?.slice(i, i + CHUNK_SIZE) ?? [];
+        for (let i = 0; i < total; i += BATCH_WRITE_CHUNK) {
+            const chunk = list?.slice(i, i + BATCH_WRITE_CHUNK) ?? [];
             const chunkItemMap = new Map<string, T>();
 
             //* prepare batch write requests
             const putRequests = chunk.map(item => {
                 const { id, ...rest } = item;
-                // Use _id if available (partition key), otherwise use id
+                //* Use partition key field if available, otherwise use id
                 const actualId = (rest as any)[this.options.idName] || id;
                 const payload = this.prepareSaveItem(actualId, rest as unknown as T);
                 chunkItemMap.set(id, payload.Item as T);
@@ -751,7 +810,6 @@ export class DynamoService<T extends GeneralItem> {
             });
 
             //* execute batch write with retry for unprocessed items
-            const MAX_RETRIES = 3;
             const _doBatchWrite = async (
                 requests: BatchWriteRequest[],
                 attempt: number,
@@ -779,21 +837,44 @@ export class DynamoService<T extends GeneralItem> {
 
             try {
                 const unprocessed = await _doBatchWrite(putRequests, 1);
+
+                //* Handle unprocessed items (failed after retries)
+                const unprocessedIds = new Set<string>();
                 if (unprocessed?.length > 0) {
-                    //* partial failure: some items unprocessed after retries
-                    chunkItemMap.forEach((item, id) => {
-                        failedMap.set(id, item);
-                    });
-                } else {
-                    //* all items in chunk succeeded
-                    chunkItemMap.forEach((item, id) => {
-                        successMap.set(id, item);
+                    const error = `UNPROCESSED after ${MAX_RETRIES} retries`;
+                    _err(NS, `! mupdateItem unprocessed:`, { count: unprocessed.length, error });
+                    unprocessed.forEach(req => {
+                        const item = req.PutRequest?.Item;
+                        if (item) {
+                            const itemId = String((item as any)[this.options.idName] || (item as any).id);
+                            for (const [id, chunkItem] of chunkItemMap.entries()) {
+                                const chunkItemId = String(
+                                    (chunkItem as any)[this.options.idName] || (chunkItem as any).id,
+                                );
+                                if (chunkItemId === itemId) {
+                                    unprocessedIds.add(id);
+                                    const failedItem = { ...chunkItem, error };
+                                    failedMap.set(id, failedItem);
+                                    break;
+                                }
+                            }
+                        }
                     });
                 }
-            } catch (e) {
-                //* chunk failed completely
+
+                //* Add successfully written items
                 chunkItemMap.forEach((item, id) => {
-                    failedMap.set(id, item);
+                    if (!unprocessedIds.has(id)) {
+                        successMap.set(id, item);
+                    }
+                });
+            } catch (e) {
+                //* Handle complete batch failure
+                const error = e instanceof Error ? e.message : `${e}`;
+                _err(NS, `! mupdateItem batch failed:`, error);
+                chunkItemMap.forEach((item, id) => {
+                    const failedItem = { ...item, error };
+                    failedMap.set(id, failedItem);
                 });
             }
         }
@@ -810,6 +891,15 @@ export class DynamoService<T extends GeneralItem> {
             }
         });
 
+        if (result.failed.length > 0) {
+            _err(NS, `! mupdateItem.failed =`, {
+                failed: result.failed.length,
+                sample_failed: result.failed.slice(0, 3).map((item: any) => ({
+                    id: item?._id ?? item?.id,
+                    error: item?.error,
+                })),
+            });
+        }
         _log(NS, `> mupdateItem.res =`, {
             success: result.success.length,
             failed: result.failed.length,
@@ -882,15 +972,26 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         for (const item of list) {
             const data: T = this.buffer[item.id];
             if (data === undefined) {
-                const key = sortName
-                    ? ({ [idName]: item.id, [sortName]: item.sort } as T)
-                    : ({ [idName]: item.id } as T);
-                result.failed.push(key);
+                const failedItem = (
+                    sortName
+                        ? { [idName]: item.id, [sortName]: item.sort, error: '404 NOT FOUND' }
+                        : { [idName]: item.id, error: '404 NOT FOUND' }
+                ) as FailedItem<T>;
+                result.failed.push(failedItem);
                 continue;
             }
             result.success.push({ [idName]: item.id, ...data } as T);
         }
 
+        if (result.failed.length > 0) {
+            _err(NS, `! mreadItem.failed =`, {
+                failed: result.failed.length,
+                sample_failed: result.failed.slice(0, 3).map((item: any) => ({
+                    id: item?._id ?? item?.id ?? item?.[idName],
+                    error: item?.error,
+                })),
+            });
+        }
         _log(NS, `> mreadItem.res =`, {
             success: result.success.length,
             failed: result.failed.length,
@@ -911,7 +1012,6 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
 
-        // _log(NS, `msaveItem(dummy)[${list.length}]...`);
         //* process all saves using the in-memory buffer (overwrites entire items)
         for (const item of list) {
             try {
@@ -919,11 +1019,22 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
                 this.buffer[id] = normalize(rest as T);
                 result.success.push({ [idName]: id, ...this.buffer[id] } as T);
             } catch (e) {
-                _err(NS, `! msaveItem failed for id=${item?.id}:`, e);
-                result.failed.push(item as T);
+                const error = e instanceof Error ? e.message : `${e}`;
+                _err(NS, `! msaveItem failed for id=${item?.id}:`, error);
+                const failedItem = { ...item, error };
+                result.failed.push(failedItem);
             }
         }
 
+        if (result.failed.length > 0) {
+            _err(NS, `! msaveItem.failed =`, {
+                failed: result.failed.length,
+                sample_failed: result.failed.slice(0, 3).map((item: any) => ({
+                    id: item?._id ?? item?.id ?? item?.[idName],
+                    error: item?.error,
+                })),
+            });
+        }
         _log(NS, `> msaveItem.res =`, {
             success: result.success.length,
             failed: result.failed.length,
@@ -951,7 +1062,6 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
 
-        // _log(NS, `mupdateItem(dummy)[${list.length}]...`);
         //* process all updates using the in-memory buffer (overwrites entire items)
         for (const item of list) {
             try {
@@ -960,11 +1070,22 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
                 this.buffer[id] = normalize(rest as any);
                 result.success.push({ [idName]: id, ...this.buffer[id] } as any);
             } catch (e) {
-                _err(NS, `! mupdateItem failed for id=${item?.id}:`, e);
-                result.failed.push({ [idName]: item.id } as T);
+                const error = e instanceof Error ? e.message : `${e}`;
+                _err(NS, `! mupdateItem failed for id=${item?.id}:`, error);
+                const failedItem = { [idName]: item.id, error } as FailedItem<T>;
+                result.failed.push(failedItem);
             }
         }
 
+        if (result.failed.length > 0) {
+            _err(NS, `! mupdateItem.failed =`, {
+                failed: result.failed.length,
+                sample_failed: result.failed.slice(0, 3).map((item: any) => ({
+                    id: item?._id ?? item?.id ?? item?.[idName],
+                    error: item?.error,
+                })),
+            });
+        }
         _log(NS, `> mupdateItem.res =`, {
             success: result.success.length,
             failed: result.failed.length,
