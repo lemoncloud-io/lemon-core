@@ -9,11 +9,13 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { _log, _inf, _err, $U } from '../../engine/';
+import { _log, _inf, _err, $U, doReportError } from '../../engine/';
+import { NextContext } from 'lemon-model';
 import { Elastic6SimpleQueriable, CoreModel, CORE_FIELDS } from 'lemon-model';
 import { NUL404 } from '../../common/test-helper';
 import { StorageService, DummyStorageService, DynamoStorageService } from './storage-service';
 import { GeneralAPIController } from '../../controllers/general-api-controller';
+import { BatchResult } from '../dynamo/dynamo-service';
 const NS = $U.NS('PSTR', 'blue'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -495,6 +497,108 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     }
 
     /**
+     * recursively remove undefined values from object.
+     * - used internally for doUpdate and doUpdateMulti
+     *
+     * @param obj           object to clean
+     * @param onlyValid     flag to skip if false (default true)
+     */
+    private removeUndefined<U extends Record<string, any>>(obj: U, onlyValid = true): U {
+        if (onlyValid === false) return obj;
+        if (obj === null || obj === undefined) return obj;
+        if (typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) {
+            return obj.filter(item => item !== undefined).map(item => this.removeUndefined(item, onlyValid)) as any;
+        }
+
+        const result: any = {};
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const value = obj[key];
+                if (value !== undefined) {
+                    result[key] =
+                        typeof value === 'object' && value !== null ? this.removeUndefined(value, onlyValid) : value;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * report batch operation error via Slack notification.
+     * - used internally for doReadMulti and doUpdateMulti
+     *
+     * @param operation     operation name (e.g., 'read', 'update')
+     * @param total         total count of items
+     * @param failed        list of failed items
+     * @param context       (optional) next-context for reporting
+     */
+    private async reportBatchError(
+        operation: string,
+        total: number,
+        failed: any[],
+        context?: NextContext,
+    ): Promise<void> {
+        const totalFailed = failed?.length ?? 0;
+        if (totalFailed <= 0) return;
+
+        const successCount = total - totalFailed;
+        const error = new Error(`Batch ${operation} failed: ${totalFailed}/${total} items`);
+        const data = {
+            dt: $U.dt(),
+            total_count: total,
+            failed_count: totalFailed,
+            success_count: successCount,
+            failed_items: failed
+                .filter((item: any) => item != null)
+                .map((item: any) => ({
+                    id: item?.id ?? item?._id ?? 'unknown',
+                    error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
+                })),
+        };
+
+        await doReportError(error, context, null, data).catch(e => {
+            _err(NS, `! failed to report ${operation} error via SNS:`, e);
+        });
+    }
+
+    /**
+     * read multiple models by key + ids
+     *
+     * @param type      model-type
+     * @param ids       node-ids
+     * @param options   (optional) options for batch read error reporting
+     */
+    public async doReadMulti(
+        type: ModelType,
+        ids: string[],
+        options?: { context?: NextContext },
+    ): Promise<BatchResult<T>> {
+        const total = ids?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!ids || total === 0) return result;
+
+        const _ids = ids.map(id => this.asKey(type, id));
+        const res = await (this.storage as any).mread(_ids);
+
+        result.success = (res.success || []).map((model: T) => {
+            const res = this.filters.afterRead(model);
+            return res;
+        });
+        result.failed = (res.failed || []).map((model: T) => {
+            const res = this.filters.afterRead(model);
+            return res;
+        });
+
+        //* send Slack notification if there are failed items
+        if (result.failed.length > 0) {
+            await this.reportBatchError('read', total, result.failed, options?.context);
+        }
+
+        return result;
+    }
+
+    /**
      * delete model by id.
      *
      * @param type      model-type
@@ -518,18 +622,68 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      * @param node      model
      * @param incrementals (optional) fields to increment
+     * @param options   (optional) options for update
      */
-    public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T) {
-        const $inc: T = { ...incrementals }; //* make copy.
+    public async doUpdate(type: ModelType, id: string, node: T, incrementals?: T, options?: { onlyValid?: boolean }) {
+        const onlyValid = options?.onlyValid ?? true;
+        const $inc: T = this.removeUndefined({ ...incrementals }, onlyValid); //* make copy & clean.
         const _id = this.asKey(type, id);
         // const $key = this.service.asKey$(type, id);
         const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, $inc);
         delete node2['_id'];
         const { updatedAt } = this.asTime();
-        const model = await this.update(_id, { ...node2, updatedAt }, $inc);
-        //* make sure it has `_id`
-        (model as any)[this.idName] = _id;
+        // remove undefined values before saving to DynamoDB
+        const cleaned = this.removeUndefined({ ...node2, updatedAt }, onlyValid);
+        const model = await this.update(_id, cleaned, $inc);
         return this.filters.afterUpdate(model);
+    }
+
+    /**
+     * update multiple models (or it will create automatically)
+     *
+     * @param type      model-type
+     * @param list      list of models (should include id)
+     * @param options   (optional) options for batch update
+     */
+    public async doUpdateMulti(
+        type: ModelType,
+        list: Array<T & { id: string }>,
+        options?: { onlyValid?: boolean; context?: NextContext },
+    ): Promise<BatchResult<T>> {
+        const onlyValid = options?.onlyValid ?? true;
+        const total = list?.length ?? 0;
+        const result: BatchResult<T> = { success: [], failed: [], total };
+        if (!list || total === 0) return result;
+
+        const { updatedAt } = this.asTime();
+        const items = list.map((node: T & { id: string }) => {
+            const id = node.id;
+            if (!id) throw new Error('@id is required!');
+            const _id = this.asKey(type, id);
+            const node2 = this.filters.beforeUpdate({ ...node, [this.idName]: _id }, undefined);
+            delete node2['_id'];
+            // remove undefined values before saving to DynamoDB
+            const cleaned = this.removeUndefined({ ...node2, [this.idName]: _id, updatedAt }, onlyValid);
+            return cleaned;
+        });
+
+        const res = await (this.storage as any).mupdate(items);
+
+        result.success = (res.success || []).map((model: T) => {
+            const res = this.filters.afterUpdate(model);
+            return res;
+        });
+        result.failed = (res.failed || []).map((model: T) => {
+            const res = this.filters.afterUpdate(model);
+            return res;
+        });
+
+        //* send Slack notification if there are failed items
+        if (result.failed.length > 0) {
+            await this.reportBatchError('update', total, result.failed, options?.context);
+        }
+
+        return result;
     }
 
     /**
@@ -542,8 +696,6 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         const _id = this.asKey(type, id);
         const { updatedAt } = this.asTime();
         const model = await this.increment(_id, { ...$inc }, { ...$up, updatedAt });
-        //* make sure it has `_id`
-        (model as any)[this.idName] = _id;
         return this.filters.afterUpdate(model);
     }
 
@@ -556,8 +708,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      * @param node      node to save (or update)
      * @param $create   (optional) initial creation model if not found.
+     * @param options   (optional) options for save
      */
-    public async doSave(type: ModelType, id: string, node: T, $create?: T) {
+    public async doSave(type: ModelType, id: string, node: T, $create?: T, options?: { onlyValid?: boolean }) {
+        const onlyValid = options?.onlyValid ?? true;
+
         //* read origin model w/o error.
         const $org: T = (await this.doRead(type, id, null).catch(e => {
             if (`${e.message}`.startsWith('404 NOT FOUND')) return null as T; // mark null to create later.
@@ -583,12 +738,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         const { createdAt, updatedAt } = this.asTime();
         if ($org) {
             const $save = { ...$ups, updatedAt };
-            const res = await this.doUpdate(type, id, $save);
+            const res = await this.doUpdate(type, id, $save, undefined, { onlyValid });
             return this.filters.afterSave(res, $org); //* `$org` should be valid if update.
         } else {
             const $key: T = this.service.asKey$(type, id) as T;
             const $save = { ...$ups, ...$create, ...$key, createdAt, updatedAt: createdAt, deletedAt: 0 };
-            const res = await this.storage.save(_id, $save);
+            // remove undefined values before saving to DynamoDB
+            const cleaned = this.removeUndefined($save, onlyValid);
+            const res = await this.storage.save(_id, cleaned);
             return this.filters.afterSave(res, null); //* `$org` should be null if create.
         }
     }
@@ -758,9 +915,25 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      * @param model     model to update
      * @param incrementals (optional) fields to increment.
+     * @param options   (optional) options for update
      */
-    public update = (id: string | number, model: T, incrementals?: T): Promise<T> =>
-        this.storage.doUpdate(this.type, `${id || ''}`, model, incrementals) as Promise<T>;
+    public update = (id: string | number, model: T, incrementals?: T, options?: { onlyValid?: boolean }): Promise<T> =>
+        this.storage.doUpdate(this.type, `${id || ''}`, model, incrementals, options) as Promise<T>;
+
+    /**
+     * update multiple models in batch (or it will create automatically)
+     * - automatically removes undefined values (DynamoDB does not support undefined)
+     *
+     * @param list      list of models (should include id)
+     * @param options   (optional) options for batch update error reporting
+     */
+    public mupdate = (
+        list: Array<T & { id: string }>,
+        options?: {
+            onlyValid?: boolean;
+            context?: NextContext;
+        },
+    ): Promise<BatchResult<T>> => this.storage.doUpdateMulti(this.type, list, options);
 
     /**
      * insert model w/ auto generated id

@@ -184,6 +184,7 @@ export class AWSKMSService implements CoreKmsService {
             MessageType: 'RAW',
             Signature: typeof signature === 'string' ? Buffer.from(signature, 'base64') : signature,
         };
+        //TODO retry error handling(jitter) in case of getaddrinfo EBUSY error. @251212.
         const result = await this.instance()
             .send(new VerifyCommand(params))
             .catch(e => {

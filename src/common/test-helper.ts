@@ -41,6 +41,15 @@ export const NUL404 = (e: Error) => {
     throw e;
 };
 
+/** returns only defined */
+export const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
+    N && typeof N === 'object'
+        ? Object.entries(N).reduce<T>((N, [k, v]) => {
+              if (v !== undefined) N[k as keyof T] = v;
+              return N;
+          }, {} as T)
+        : ($def as T);
+
 /**
  * improve expect() function with projection field.
  *
@@ -157,3 +166,66 @@ export const waited = async (t: number = 200) =>
             resolve(undefined);
         }, t);
     });
+
+/**
+ * error payload type
+ */
+type ErrorPayload = { 'stack-trace'?: any; message: string; error: string; errors?: any[] };
+
+/**
+ * convert Error to payload.
+ */
+export const asErrorPayload = (e: any, data?: string | object): ErrorPayload => {
+    const _msg = (e: any): string => {
+        const m = (e && (e.message || e.statusMessage)) || e;
+        return typeof m == 'object' ? JSON.stringify(m) : `${m}`;
+    };
+    const _pack = (e: any, depth = 0): { error: string; stack?: string; errors?: any[] } => {
+        if (e === undefined || e === null) return { error: e };
+        const stack = e instanceof Error ? e?.stack : undefined;
+        const error =
+            e === undefined || e === null
+                ? e
+                : typeof e == 'string'
+                ? e
+                : e instanceof Error
+                ? `${e.message}`
+                : JSON.stringify(e);
+
+        // make sure of no infinite recursion.
+        if (depth > 5) return { stack, error };
+
+        // check nested errors.
+        const errors = e?.errors || e?.body?.errors || (e as any)?.cause;
+        if (errors && typeof errors == 'object') {
+            if (Array.isArray(errors)) {
+                const errs = errors.map((ee: any) => _pack(ee, depth + 1));
+                return { stack, error, errors: errs };
+            }
+            const errs = _pack(errors, depth + 1);
+            return { stack, error, errors: [errs] };
+        } else if (errors === undefined || errors === null) {
+            return { stack, error };
+        }
+
+        // no nested errors.
+        return { stack, error, errors: [errors] };
+    };
+
+    //* prepare payload
+    const $base = data && typeof data == 'object' ? data : {};
+    const message = data && typeof data == 'string' ? data : _msg(e);
+    const E = _pack(e);
+    const payload: ErrorPayload = Object.assign(
+        $base,
+        onlyDefined({
+            'stack-trace': E?.stack,
+            message,
+            error: E?.error,
+            errors: E?.errors,
+        }),
+    );
+
+    //* returns payload for sns error
+    return payload;
+};

@@ -16,8 +16,11 @@ const NS = $U.NS('SNS', 'blue');
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
+
+import { asErrorPayload } from '../../common/test-helper';
 import { CoreSnsService } from '../core-services';
 import { awsConfig, AwsConfigParams } from '../../tools';
+
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
 /**
@@ -190,33 +193,6 @@ export class AWSSNSService implements CoreSnsService {
      * convert Error to payload.
      */
     public asPayload = (e: any, data: string | object) => {
-        //TODO - optimize message extractor.
-        const $message = (e: any) => {
-            const m = (e && (e.message || e.statusMessage)) || e;
-            return typeof m == 'object' ? $U.json(m) : `${m}`;
-        };
-        //* prepare payload
-        const e2: any = e;
-        const base = data && typeof data == 'object' ? data : {};
-        const message = data && typeof data == 'string' ? data : $message(e);
-        const stack = e instanceof Error ? e.stack : undefined;
-        const error = typeof e == 'string' ? e : e instanceof Error ? `${e.message}` : JSON.stringify(e);
-        const errors = e2.errors || (e2.body && e2.body.errors) || undefined;
-        const payload: { 'stack-trace'?: any; message: string; error: string; errorss?: any[] } = Object.assign(base, {
-            'stack-trace': stack,
-            message,
-            error,
-            errors,
-        });
-
-        //* root of errors.
-        const error0 = (errors && errors[0]) || undefined;
-        if (error0) {
-            payload.message = $message(payload.error);
-            payload.error = error0 instanceof Error ? `${e.message}` : JSON.stringify(error0);
-        }
-
-        //* returns payload for sns error
-        return payload;
+        return asErrorPayload(e, data);
     };
 }

@@ -190,6 +190,14 @@ export class AWSS3Service implements CoreS3Service {
     public bucket = (target?: string): string => environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
 
     /**
+     * get S3Client instance
+     * @return S3Client
+     */
+    protected instance(): S3Client {
+        return instance();
+    }
+
+    /**
      * retrieve metadata without returning the object
      *
      * @param {string} key
@@ -202,7 +210,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         // call s3.headObject.
-        const s3 = instance();
+        const s3 = this.instance();
         try {
             const data = await s3.send(new HeadObjectCommand(params));
             _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
@@ -270,7 +278,7 @@ export class AWSS3Service implements CoreS3Service {
         _log(NS, `> params.Tagging =`, params.Tagging);
 
         // call s3.upload()
-        const s3 = instance();
+        const s3 = this.instance();
         try {
             const data = await s3.send(new PutObjectCommand(params));
             delete (data as any).key; // NOTE: remove undeclared property 'key' returned from aws-sdk
@@ -305,7 +313,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.getObject.
-        const s3 = instance();
+        const s3 = this.instance();
         try {
             const data = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
@@ -333,7 +341,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.getObject.
-        const s3 = instance();
+        const s3 = this.instance();
         try {
             const data: GetObjectCommandOutput = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
@@ -358,7 +366,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.getObjectTagging.
-        const s3 = instance();
+        const s3 = this.instance();
         try {
             const data = await s3.send(new GetObjectTaggingCommand(params));
             _log(NS, `> data =`, $U.json(data));
@@ -385,7 +393,7 @@ export class AWSS3Service implements CoreS3Service {
         const params = { Bucket, Key: key };
 
         //* call s3.deleteObject.
-        const s3 = instance();
+        const s3 = this.instance();
         try {
             const data = await s3.send(new DeleteObjectCommand(params));
             _log(NS, '> data =', $U.json(data));
@@ -431,7 +439,7 @@ export class AWSS3Service implements CoreS3Service {
         if (nextToken) params.ContinuationToken = nextToken;
 
         //* call s3.listObjectsV2.
-        const s3 = instance();
+        const s3 = this.instance();
         const result: ListObjectResult = {
             Contents: null,
             MaxKeys,

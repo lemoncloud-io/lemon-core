@@ -28,8 +28,8 @@ import {
 } from 'lemon-model';
 import { ProtocolParam } from './../core-services';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
-import { loadJsonSync, onlyDefined } from '../../tools/';
-import { GETERR } from '../../common/test-helper';
+import { GETERR, onlyDefined } from '../../common/test-helper';
+import { loadJsonSync } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
@@ -97,12 +97,15 @@ export const buildResponse = (
     const origin = options?.origin === undefined ? '*' : options?.origin;
     const credentials = options?.credentials === undefined ? true : options?.credentials;
     const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
+    const _isXml = (body: string) => body.startsWith('<?xml ') && body.trim().endsWith('>');
     const _isHtml = (body: string) =>
         body.startsWith('<!DOCTYPE html>') || (body.startsWith('<') && body.endsWith('>'));
     const _type = () => {
         if (contentType) return contentType;
         return typeof body === 'string'
-            ? _isHtml(body)
+            ? _isXml(body)
+                ? 'application/xml; charset=utf-8'
+                : _isHtml(body)
                 ? 'text/html; charset=utf-8'
                 : 'text/plain; charset=utf-8'
             : 'application/json; charset=utf-8';
@@ -326,6 +329,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public async handleProtocol<TResult = any>(param: ProtocolParam, event?: APIGatewayProxyEvent): Promise<TResult> {
         if (!param) throw new Error(`@param (protocol-param) is required!`);
+        //TODO [Steve] id, cmd can (or should) be null or empty! (support for `/{cmd+}` pattern) @251212
         const TYPE = `${param.type || ''}`;
         const MODE: NextMode = `${param.mode || 'GET'}` as NextMode;
         const ID = `${param.id || ''}`;

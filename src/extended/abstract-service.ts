@@ -39,12 +39,13 @@ import $cores, {
     ProxyStorageService,
     SearchBody,
     StorageMakeable,
+    TypedStorageService,
 } from '../cores/';
 import { $U, _err, _log } from '../engine/';
 import { GETERR, NUL404 } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
-import { credentials, CrendentialForAWS } from '../environ';
+import { CrendentialForAWS } from '../environ';
 import REQUEST from 'request';
 import queryString from 'query-string';
 import elasticsearch from '@elastic/elasticsearch';
@@ -504,6 +505,93 @@ export class ManagerProxy<
     }
 
     /**
+     * read multiple nodes.
+     * @param ids list of object-ids
+     * @param throwable (optional) flag to throw error if not found
+     * @param options (optional) options for batch read error reporting
+     */
+    public async mget(ids: string[], throwable = true, options?: { context?: NextContext }): Promise<(Model | null)[]> {
+        if (!ids || ids.length === 0) return [];
+
+        const result: (Model | null)[] = [];
+        const toFetch: string[] = [];
+        const indexMap: { [key: string]: number[] } = {};
+
+        //* STEP.1 check cached items
+        ids.forEach((id, index) => {
+            const err404 = `404 NOT FOUND - proxy/${this.$mgr.type}/id:${id}`;
+            //* already marked as null (404)
+            if (this._org[id] === null) {
+                if (throwable) throw new Error(err404);
+                result[index] = null;
+                return;
+            }
+            //* found in _new
+            const N = this._new[id];
+            if (N !== undefined) {
+                result[index] = N;
+                return;
+            }
+            //* need to fetch
+            if (!indexMap[id]) {
+                indexMap[id] = [];
+                toFetch.push(id);
+            }
+            indexMap[id].push(index);
+        });
+
+        //* STEP.2 batch read from storage
+        if (toFetch.length > 0) {
+            const res = await this.$mgr.storage.storage.doReadMulti(this.$mgr.type, toFetch, options);
+            const successMap: { [key: string]: Model } = {};
+            (res.success || []).forEach((model: Model) => {
+                const id = (model as any).id;
+                if (id) successMap[id] = model;
+            });
+
+            //* STEP.3 save to cache and build result
+            toFetch.forEach(id => {
+                const M = successMap[id];
+                if (M) {
+                    const M2 = this.normal(M);
+                    this._org[id] = M2;
+                    const M3 = JSON.parse($U.json(M2)) as Model;
+                    this._new[id] = M3;
+                    indexMap[id].forEach(index => {
+                        result[index] = M3;
+                    });
+                } else {
+                    this._org[id] = null;
+                    const err404 = `404 NOT FOUND - proxy/${this.$mgr.type}/id:${id}`;
+                    indexMap[id].forEach(index => {
+                        if (throwable) throw new Error(err404);
+                        result[index] = null;
+                    });
+                }
+            });
+        }
+
+        return result;
+    }
+
+    /**
+     * update multiple nodes.
+     * @param updates list of models (should include id)
+     */
+    public async mset(updates: Array<Model & { id: string }>): Promise<Model[]> {
+        if (!updates || updates.length === 0) return [];
+
+        const result: Model[] = [];
+        for (const model of updates) {
+            const id = model.id;
+            if (!id) throw new Error(`@id is required - proxy/${this.$mgr.type}/mset()!`);
+            const O = await this.get(id);
+            result.push(this.override(O, model));
+        }
+        return result;
+    }
+
+    /**
      * increment the field of Object[id]
      * !WARN! this incremented properties should NOT be updated later.
      */
@@ -615,30 +703,106 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         parrallel?: number;
         /** (optional) flag to use only valid value (not null) (default true) */
         onlyValid?: boolean;
-    }) {
+        /** (optional) flag to use batch update (default false) */
+        useBatch?: boolean;
+    }): Promise<CoreModel<any>[]> {
         const parrallel = $U.N(options?.parrallel, this.parrallel);
-        type Model = CoreModel<U>;
-        type TYPE = { id: string; N: Model; _: () => Promise<Model> };
+        const useBatch = options?.useBatch ?? false;
+        const onlyValid = options?.onlyValid ?? true;
+        const errScope = `saveAllUpdates(${parrallel})`;
 
-        // STEP.1 prepare the list of updater.
+        type Model = CoreModel<any>;
+        type TYPE = {
+            /** id of model */
+            id: string;
+            /** updated properties */
+            N: Model;
+            /** callback updater */
+            _?: (M: TYPE, i?: number) => Promise<Model>;
+            /** type of model */
+            type?: string;
+            /** storage service */
+            storage?: TypedStorageService<Model, any>;
+        };
+
+        /**
+         * custom error class
+         * - to wrap the root cause error
+         */
+        class MyError extends Error {
+            constructor(message: string, public readonly cause?: unknown) {
+                super(message);
+                this.name = 'MyError';
+            }
+        }
+        /**
+         * factory to create custom error
+         */
+        const $err = (e: any, M?: TYPE) =>
+            new MyError(
+                `Failed to update ${M?.type ?? M?.storage?.type ?? 'unknown'}/${M?.id ?? ''}: ${
+                    e?.message ?? '-'
+                } @${errScope}`,
+                M?.N,
+            );
+
+        // STEP.1 prepare the list of updater (collect type and storage info for batch mode)
         const list = this.allProxies.reduce((L: TYPE[], $p: ManagerProxy<any, CoreManager<any, any, any>>) => {
-            const $set = $p.alls(true, options?.onlyValid);
+            // batch mode needs full model, legacy mode needs only diff
+            const $set = $p.alls(!useBatch, options?.onlyValid);
             return Object.entries($set).reduce((L: TYPE[], [id, N]) => {
                 const hasUpdate = Object.keys(N).length > 0;
                 if (hasUpdate) {
                     _log(NS, `>> ${$p.$mgr.type}/${id} =`, $U.json(N));
-                    const _ = () => $p.$mgr.storage.update(id, N);
-                    L.push({ id, N, _ });
+                    //* callback updater
+                    const _ = (M: TYPE, i?: number) => {
+                        const storage = M?.storage ?? $p.$mgr.storage;
+                        const type = M?.type ?? $p.$mgr.type;
+                        M = { ...M, type, storage };
+                        try {
+                            return storage
+                                .update(id, M.N, undefined, { onlyValid })
+                                .catch(e => Promise.reject($err(e, M)));
+                        } catch (e) {
+                            throw $err(e, M);
+                        }
+                    };
+                    L.push({ id, N, _, type: $p.$mgr.type, storage: $p.$mgr.storage });
                 }
                 return L;
             }, L);
         }, []);
 
         // STEP.2 finally update storage.
+        if (useBatch) {
+            //* NEW: batch update mode
+            _log(NS, `> ${errScope}: using batch mode (${list.length} items)`);
+
+            //* group by storage instance
+            const grouped = new Map<TypedStorageService<Model, any>, Array<Model & { id: string }>>();
+            list.forEach(({ id, N, storage }) => {
+                const group = grouped.get(storage);
+                group ? group.push({ ...(N as Model), id }) : grouped.set(storage, [{ ...(N as Model), id }]);
+            });
+
+            //* execute batch updates (slack notification is handled in doUpdateMulti)
+            const results = await Promise.all(
+                Array.from(grouped.entries()).map(([storage, items]) =>
+                    storage.mupdate(items, { onlyValid, context: this.context }),
+                ),
+            );
+
+            //* flatten BatchResult[] to Model[]
+            const allItems = results.reduce<Model[]>((acc, result) => [...acc, ...(result?.success ?? [])], []);
+
+            return allItems;
+        }
+
+        //* LEGACY: original parallel update (default behavior)
         return my_parrallel(
             list,
-            async (N: any) => {
-                return typeof N._ === 'function' ? N._() : null;
+            async (M: TYPE, i?: number) => {
+                return typeof M._ === 'function' ? M._(M, i) : null;
             },
             parrallel,
         );

@@ -8,7 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { expect2, marshal, Filter, _it, environ, waited, GETERR, GETERR$, NUL404 } from './test-helper';
+import { expect2, marshal, Filter, _it, environ, waited, GETERR, GETERR$, NUL404, asErrorPayload } from './test-helper';
 
 //! main test body.
 describe('TestHelper', () => {
@@ -72,12 +72,12 @@ describe('TestHelper', () => {
         expect2(marshal({ a: [1, 'b'] }, defFilter)).toEqual(['a.0=1', 'a.1=b']);
         expect2(marshal({ a: [1, 'b'] }, defFilter)).toEqual(['a.0=1', 'a.1=b']);
         expect2(marshal({ a: [1, { b: 1 }] }, defFilter)).toEqual(['a.0=1', 'a.1.b=1']);
-        expect2(() => marshal({ a: [1, { b: 1 }] }, null)).toEqual('filter is required!');
+        expect2(() => marshal({ a: [1, { b: 1 }] }, null as any)).toEqual('filter is required!');
         expect2(marshal(['a', 2], defFilter)).toEqual(['0=a', '1=2']);
 
         //* test simple filter
         if (1) {
-            const filter: Filter<string> = (name, val) => (name.startsWith('a.1') ? `${name}=${val}` : null);
+            const filter: Filter<string> = (name, val) => (name.startsWith('a.1') ? `${name}=${val}` : null)!;
             expect2(marshal({ a: [1, { b: 1 }] }, filter)).toEqual(['a.1.b=1']);
         }
 
@@ -86,8 +86,8 @@ describe('TestHelper', () => {
             const origin = { a: [1, { b: 1 }] }; // origin
             const target = JSON.parse(JSON.stringify(origin)); // deep copy
             const filter: Filter<string> = (name, val, thiz, key) => {
-                if (name == 'a.0') thiz[key] = 3; // replace origin.
-                if (name == 'a.1.b') thiz[key] = 5; // replace origin.
+                if (name == 'a.0') thiz[key!] = 3; // replace origin.
+                if (name == 'a.1.b') thiz[key!] = 5; // replace origin.
                 return `${name}=${val}`;
             };
             expect2(target).toEqual(origin);
@@ -153,5 +153,69 @@ describe('TestHelper', () => {
         expect2($next).toEqual({ next: 6 });
         expect2(await func('hello', null, echo).catch(GETERR)).toEqual({ name: 'hello', i: 2 });
         expect2($next).toEqual({ next: 7 });
+    });
+
+    //* test fially()
+    it('should pass fianlly()', async () => {
+        expect2(() => asErrorPayload(null as any, null as any)).toEqual({
+            error: null,
+            errors: undefined,
+            message: 'null',
+            'stack-trace': undefined,
+        });
+        expect2(() => asErrorPayload(new Error('test'), null as any)).toEqual({
+            message: 'test',
+            error: 'test',
+            errors: undefined,
+            'stack-trace': expect.any(String),
+        });
+        expect2(() => asErrorPayload({ message: 'test' }, null as any)).toEqual({
+            message: 'test',
+            error: '{"message":"test"}',
+            errors: undefined,
+            'stack-trace': undefined,
+        });
+
+        //* test with nested errors
+        class AppError extends Error {
+            constructor(message: string, public readonly cause?: unknown) {
+                super(message);
+                this.name = 'AppError';
+            }
+        }
+        const E1 = new AppError(
+            'level1',
+            new AppError('level2', [
+                new AppError('level3-1', new Error('level4')),
+                new Error('level3-2'),
+                { hello: 'world' } as any,
+            ]),
+        );
+        expect2(() => asErrorPayload(E1, null as any)).toEqual({
+            message: 'level1',
+            error: 'level1',
+            errors: [
+                {
+                    error: 'level2',
+                    errors: [
+                        {
+                            error: 'level3-1',
+                            stack: expect.any(String),
+                            errors: [{ error: 'level4', stack: expect.any(String) }],
+                        },
+                        {
+                            error: 'level3-2',
+                            stack: expect.any(String),
+                            errors: undefined,
+                        },
+                        {
+                            error: '{"hello":"world"}',
+                        },
+                    ],
+                    stack: expect.any(String),
+                },
+            ],
+            'stack-trace': expect.any(String),
+        });
     });
 });
