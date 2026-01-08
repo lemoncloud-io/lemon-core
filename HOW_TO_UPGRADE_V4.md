@@ -5,7 +5,7 @@
 ## 0. Update lemon-core Version
 
 ```sh
-npm install lemon-core@^4.1.7 --save
+npm install lemon-core@^4.1.8 --save
 ```
 
 ---
@@ -78,7 +78,8 @@ npm install --save-dev lemon-devkit
 +    "lemon-core": "^4.x",
    },
    "devDependencies": {
-+    "lemon-devkit": "^0.0.3",
+-    "lemon-devkit": "^0.0.3",
++    "lemon-devkit": "^0.0.8",
    }
  }
 ```
@@ -165,7 +166,7 @@ iamRoleStatements:
 
 ## At-a-Glance Checklist
 
-* [ ] **Upgrade lemon-core** to `^4.1.7`
+* [ ] **Upgrade lemon-core** to `^4.1.8`
 * [ ] **Upgrade to Node.js 22**
   * Update `.nvmrc`
   * Update `config.js` runtime
