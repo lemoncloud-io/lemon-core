@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "4.1.8",
+  "version": "4.1.9",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

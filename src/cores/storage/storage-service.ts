@@ -35,6 +35,13 @@ export interface StorageService<T extends StorageModel> {
     read(id: string): Promise<T>;
 
     /**
+     * read multiple models.
+     *
+     * @param ids       ids
+     */
+    mread?(ids: string[]): Promise<BatchResult<T>>;
+
+    /**
      * read or create if not-found.
      *
      * @param id        unique-id
@@ -60,6 +67,13 @@ export interface StorageService<T extends StorageModel> {
      * @param incrementals (optional) incrementals like `count = count + 1`
      */
     update(id: string, model: T, incrementals?: T): Promise<T>;
+
+    /**
+     * update multiple models.
+     *
+     * @param ids       ids
+     */
+    mupdate?(list: T[]): Promise<BatchResult<T>>;
 
     /**
      * increment number attribute (or overwrite string field)

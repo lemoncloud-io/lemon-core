@@ -359,6 +359,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public read = (_id: string): Promise<T> => this.storage.read(_id) as Promise<T>;
 
     /**
+     * read multiple models.
+     */
+    public mread = (ids: string[]): Promise<BatchResult<T>> => this.storage.mread(ids);
+
+    /**
      * read or create by _id
      */
     public readOrCreate = (_id: string, model: T): Promise<T> => this.storage.readOrCreate(_id, model) as Promise<T>;
@@ -373,6 +378,11 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      */
     public update = (_id: string, model: T, incrementals?: T): Promise<T> =>
         this.storage.update(_id, model, incrementals) as Promise<T>;
+
+    /**
+     * update multiple models.
+     */
+    public mupdate = (list: T[]): Promise<BatchResult<T>> => this.storage.mupdate(list);
 
     /**
      * increment by _id
@@ -579,7 +589,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         if (!ids || total === 0) return result;
 
         const _ids = ids.map(id => this.asKey(type, id));
-        const res = await (this.storage as any).mread(_ids);
+        const res = await this.storage.mread(_ids);
 
         result.success = (res.success || []).map((model: T) => {
             const res = this.filters.afterRead(model);
@@ -667,7 +677,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             return cleaned;
         });
 
-        const res = await (this.storage as any).mupdate(items);
+        const res = await this.storage.mupdate(items);
 
         result.success = (res.success || []).map((model: T) => {
             const res = this.filters.afterUpdate(model);
@@ -899,6 +909,13 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param id        node-id
      */
     public read = (id: string | number): Promise<T> => this.storage.doRead(this.type, `${id || ''}`);
+
+    /**
+     * read multiple models (batch).
+     *
+     * @param ids       list of node-id
+     */
+    public mread = (ids: string[]): Promise<BatchResult<T>> => this.storage.doReadMulti(this.type, ids);
 
     /**
      * read model by key + id with optional auto creation.

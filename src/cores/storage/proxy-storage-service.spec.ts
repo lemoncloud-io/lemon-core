@@ -555,7 +555,7 @@ describe('ProxyStorageService', () => {
 
     //* test doReadMulti
     it('should pass doReadMulti()', async () => {
-        const { storage, current } = instance('dummy-account-data.yml');
+        const { storage, current } = instance('TestCoreTable');
         const $test = storage.makeTypedStorageService('test');
 
         const createdAt = current + 10;
@@ -637,6 +637,27 @@ describe('ProxyStorageService', () => {
             });
         });
 
+        // 404 error test
+        // 1. 404 에러 재현 - mread에서 404 반환 시 failed에 포함되는지 확인
+        await $test.delete('not-found-404-1').catch(GETERR);
+        await $test.delete('not-found-404-2').catch(GETERR);
+        const notFoundResult404 = await storage.doReadMulti('test', ['not-found-404-1', 'not-found-404-2']);
+        expect2(() => notFoundResult404.total).toEqual(2);
+        expect2(() => notFoundResult404.success.length).toEqual(0);
+        expect2(() => notFoundResult404.failed.length).toEqual(2);
+        expect2(() => (notFoundResult404.failed[0] as any).error).toEqual('404 NOT FOUND - _id:TT:test:not-found-404-1');
+        expect2(() => (notFoundResult404.failed[1] as any).error).toEqual('404 NOT FOUND - _id:TT:test:not-found-404-2');
+
+        // 2. mixed 404 + success - 일부만 404
+        await $test.save('mixed-success-1', { name: 'Success Item' });
+        const mixedResult404 = await storage.doReadMulti('test', ['mixed-success-1', 'not-found-mixed']);
+        expect2(() => mixedResult404.total).toEqual(2);
+        expect2(() => mixedResult404.success.length).toEqual(1);
+        expect2(() => mixedResult404.failed.length).toEqual(1);
+        expect2(() => mixedResult404.success[0], 'id,name').toEqual({ id: 'mixed-success-1', name: 'Success Item' });
+        expect2(() => (mixedResult404.failed[0] as any).error).toEqual('404 NOT FOUND - _id:TT:test:not-found-mixed');
+        await $test.delete('mixed-success-1').catch(GETERR);
+
         //* cleanup
         await $test.delete('multi-read-1').catch(GETERR);
         await $test.delete('multi-read-2').catch(GETERR);
@@ -645,7 +666,7 @@ describe('ProxyStorageService', () => {
 
     //* test doUpdateMulti
     it('should pass doUpdateMulti()', async () => {
-        const { storage, current } = instance('dummy-account-data.yml');
+        const { storage, current } = instance('TestCoreTable');
         const $test = storage.makeTypedStorageService('test');
 
         //* doUpdateMulti test
@@ -767,6 +788,28 @@ describe('ProxyStorageService', () => {
             updatedAt,
         });
 
+        // 404 error test
+        // 1. if item not exist, doUpdateMulti automatically create item
+        const notFoundResult404 = await storage.doUpdateMulti('test', [{ id: 'not-found-404-3', name: 'Auto Created' }]);
+        expect2(() => notFoundResult404.total).toEqual(1);
+        expect2(() => notFoundResult404.success.length).toEqual(1);
+        expect2(() => notFoundResult404.failed.length).toEqual(0);
+        await $test.delete('not-found-404-3').catch(GETERR);
+
+        // 2. mixed 404 + success - both of them success
+        await $test.save('mixed-success-1', { name: 'Success Item' });
+        const mixedUpdateResult404 = await storage.doUpdateMulti('test', [
+            { id: 'mixed-success-1', name: 'Auto Created' },
+            { id: 'not-found-mixed', name: 'Auto Created' },
+        ]);
+        expect2(() => mixedUpdateResult404.total).toEqual(2);
+        expect2(() => mixedUpdateResult404.success.length).toEqual(2);
+        expect2(() => mixedUpdateResult404.failed.length).toEqual(0);
+        expect2(() => mixedUpdateResult404.success[0], '_id,name').toEqual({ _id: 'TT:test:mixed-success-1', name: 'Auto Created' });
+        expect2(() => mixedUpdateResult404.success[1], '_id,name').toEqual({ _id: 'TT:test:not-found-mixed', name: 'Auto Created' });
+        await $test.delete('mixed-success-1').catch(GETERR);
+        await $test.delete('not-found-mixed').catch(GETERR);
+
         //* cleanup
         await $test.delete('multi-update-1').catch(GETERR);
         await $test.delete('multi-update-2').catch(GETERR);
@@ -777,7 +820,7 @@ describe('ProxyStorageService', () => {
 
     //* LAYER EQUIVALENCE: batch vs legacy methods for ProxyStorageService
     it('should have equivalent results for doRead/doReadMulti and doUpdate/doUpdateMulti', async () => {
-        const { storage, current } = instance('dummy-account-data.yml');
+        const { storage, current } = instance('TestCoreTable');
         const $test = storage.makeTypedStorageService('test');
 
         const createdAt = current + 10;

@@ -67,7 +67,7 @@ interface BatchWriteRequest {
 /**
  * type: FailedItem - item with error message
  */
-export type FailedItem<T> = T & { error: string };
+export type FailedItem<T> = T & { error?: string };
 
 /**
  * type: BatchResult for batch operation results
@@ -525,7 +525,7 @@ export class DynamoService<T extends GeneralItem> {
                 Array.from(chunkKeyMap.entries())
                     .filter(([sig]) => !received.has(sig) && !unprocessedSigs.has(sig))
                     .forEach(([sig, key]) => {
-                        const failedItem = { ...key, error: '404 NOT FOUND' } as FailedItem<T>;
+                        const failedItem = { ...key, error: `404 NOT FOUND - ${idName}:${key[idName]}` } as FailedItem<T>;
                         failedMap.set(sig, failedItem);
                     });
             } catch (e) {
