@@ -35,6 +35,13 @@ export interface StorageService<T extends StorageModel> {
     read(id: string): Promise<T>;
 
     /**
+     * read multiple models.
+     *
+     * @param ids       ids
+     */
+    mread(ids: string[]): Promise<BatchResult<T>>;
+
+    /**
      * read or create if not-found.
      *
      * @param id        unique-id
@@ -62,6 +69,13 @@ export interface StorageService<T extends StorageModel> {
     update(id: string, model: T, incrementals?: T): Promise<T>;
 
     /**
+     * update multiple models.
+     *
+     * @param ids       ids
+     */
+    mupdate(list: T[]): Promise<BatchResult<T>>;
+
+    /**
      * increment number attribute (or overwrite string field)
      * - NOTE! increments only number type.
      *
@@ -85,7 +99,7 @@ export interface StorageService<T extends StorageModel> {
 import { DynamoService, KEY_TYPE, BatchResult, FailedItem } from '../dynamo/';
 import { loadDataYml } from '../../tools/';
 
-interface MyGeneral extends GeneralItem, StorageModel {}
+interface MyGeneral extends GeneralItem, StorageModel { }
 
 const clearDuplicated = (arr: string[]) =>
     arr.sort().reduce((L, val) => {
