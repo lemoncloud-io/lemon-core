@@ -99,7 +99,7 @@ export interface StorageService<T extends StorageModel> {
 import { DynamoService, KEY_TYPE, BatchResult, FailedItem } from '../dynamo/';
 import { loadDataYml } from '../../tools/';
 
-interface MyGeneral extends GeneralItem, StorageModel { }
+interface MyGeneral extends GeneralItem, StorageModel {}
 
 const clearDuplicated = (arr: string[]) =>
     arr.sort().reduce((L, val) => {
