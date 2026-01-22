@@ -517,6 +517,7 @@ export class ManagerProxy<
         options?: { context?: NextContext; errNoti?: boolean },
     ): Promise<(Model | null)[]> {
         if (!ids || ids.length === 0) return [];
+        const errNoti = options?.errNoti ?? false;
 
         const result: (Model | null)[] = [];
         const toFetch: string[] = [];
@@ -549,7 +550,7 @@ export class ManagerProxy<
         if (toFetch.length > 0) {
             const res = await this.$mgr.storage.storage.doReadMulti(this.$mgr.type, toFetch, {
                 context: options?.context,
-                throwable: options?.errNoti,
+                throwable: errNoti,
             });
             const successMap: { [key: string]: Model } = {};
             (res.success || []).forEach((model: Model) => {
