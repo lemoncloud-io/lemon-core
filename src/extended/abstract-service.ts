@@ -509,9 +509,15 @@ export class ManagerProxy<
      * @param ids list of object-ids
      * @param throwable (optional) flag to throw error if not found
      * @param options (optional) options for batch read error reporting
+     * @param options.errNoti flag to notify error via Slack if error occurs
      */
-    public async mget(ids: string[], throwable = true, options?: { context?: NextContext }): Promise<(Model | null)[]> {
+    public async mget(
+        ids: string[],
+        throwable = true,
+        options?: { context?: NextContext; errNoti?: boolean },
+    ): Promise<(Model | null)[]> {
         if (!ids || ids.length === 0) return [];
+        const errNoti = options?.errNoti ?? false;
 
         const result: (Model | null)[] = [];
         const toFetch: string[] = [];
@@ -542,7 +548,10 @@ export class ManagerProxy<
 
         //* STEP.2 batch read from storage
         if (toFetch.length > 0) {
-            const res = await this.$mgr.storage.storage.doReadMulti(this.$mgr.type, toFetch, options);
+            const res = await this.$mgr.storage.storage.doReadMulti(this.$mgr.type, toFetch, {
+                context: options?.context,
+                throwable: errNoti,
+            });
             const successMap: { [key: string]: Model } = {};
             (res.success || []).forEach((model: Model) => {
                 const id = (model as any).id;
@@ -705,6 +714,8 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         onlyValid?: boolean;
         /** (optional) flag to use batch update (default false) */
         useBatch?: boolean;
+        /** (optional) flag to notify error via Slack if error occurs */
+        throwable?: boolean;
     }): Promise<CoreModel<any>[]> {
         const parrallel = $U.N(options?.parrallel, this.parrallel);
         const useBatch = options?.useBatch ?? false;
@@ -788,7 +799,7 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
             //* execute batch updates (slack notification is handled in doUpdateMulti)
             const results = await Promise.all(
                 Array.from(grouped.entries()).map(([storage, items]) =>
-                    storage.mupdate(items, { onlyValid, context: this.context }),
+                    storage.mupdate(items, { onlyValid, context: this.context, throwable: options?.throwable }),
                 ),
             );
 

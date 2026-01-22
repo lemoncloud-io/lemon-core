@@ -582,8 +582,9 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public async doReadMulti(
         type: ModelType,
         ids: string[],
-        options?: { context?: NextContext },
+        options?: { context?: NextContext; throwable?: boolean },
     ): Promise<BatchResult<T>> {
+        const throwable = options?.throwable ?? false;
         const total = ids?.length ?? 0;
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!ids || total === 0) return result;
@@ -601,7 +602,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         });
 
         //* send Slack notification if there are failed items
-        if (result.failed.length > 0) {
+        if (result.failed.length > 0 && throwable) {
             await this.reportBatchError('read', total, result.failed, options?.context);
         }
 
@@ -658,9 +659,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
     public async doUpdateMulti(
         type: ModelType,
         list: Array<T & { id: string }>,
-        options?: { onlyValid?: boolean; context?: NextContext },
+        options?: { onlyValid?: boolean; context?: NextContext; throwable?: boolean },
     ): Promise<BatchResult<T>> {
         const onlyValid = options?.onlyValid ?? true;
+        const throwable = options?.throwable ?? false;
         const total = list?.length ?? 0;
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
@@ -689,7 +691,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         });
 
         //* send Slack notification if there are failed items
-        if (result.failed.length > 0) {
+        if (result.failed.length > 0 && throwable) {
             await this.reportBatchError('update', total, result.failed, options?.context);
         }
 
@@ -914,8 +916,10 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
      * read multiple models (batch).
      *
      * @param ids       list of node-id
+     * @param options   (optional) options for batch read error reporting
      */
-    public mread = (ids: string[]): Promise<BatchResult<T>> => this.storage.doReadMulti(this.type, ids);
+    public mread = (ids: string[], options?: { throwable?: boolean }): Promise<BatchResult<T>> =>
+        this.storage.doReadMulti(this.type, ids, options);
 
     /**
      * read model by key + id with optional auto creation.
@@ -949,6 +953,7 @@ export class TypedStorageService<T extends CoreModel<ModelType>, ModelType exten
         options?: {
             onlyValid?: boolean;
             context?: NextContext;
+            throwable?: boolean;
         },
     ): Promise<BatchResult<T>> => this.storage.doUpdateMulti(this.type, list, options);
 

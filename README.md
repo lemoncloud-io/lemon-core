@@ -69,6 +69,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 4.1.10    | optimized `proxy.mget` w/ `error-reporting` option.
 | 4.1.9     | optimized `proxy.mget` w/ `getaddrinfo` error.
 | 4.1.5     | optimized `saveAllUpdates` w/ failed model as cause.
 | 4.1.2     | optimized `asErrorPayload` w/ env[`MY_PARALLEL_THROW`].
