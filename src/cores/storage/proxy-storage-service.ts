@@ -584,7 +584,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         ids: string[],
         options?: { context?: NextContext; throwable?: boolean },
     ): Promise<BatchResult<T>> {
-        const throwable = options?.throwable ?? false;
+        const throwable = options?.throwable ?? true;
         const total = ids?.length ?? 0;
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!ids || total === 0) return result;
@@ -662,7 +662,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         options?: { onlyValid?: boolean; context?: NextContext; throwable?: boolean },
     ): Promise<BatchResult<T>> {
         const onlyValid = options?.onlyValid ?? true;
-        const throwable = options?.throwable ?? false;
+        const throwable = options?.throwable ?? true;
         const total = list?.length ?? 0;
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
