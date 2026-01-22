@@ -39,7 +39,7 @@ export interface StorageService<T extends StorageModel> {
      *
      * @param ids       ids
      */
-    mread(ids: string[]): Promise<BatchResult<T>>;
+    mread?(ids: string[]): Promise<BatchResult<T>>;
 
     /**
      * read or create if not-found.
@@ -73,7 +73,7 @@ export interface StorageService<T extends StorageModel> {
      *
      * @param ids       ids
      */
-    mupdate(list: T[]): Promise<BatchResult<T>>;
+    mupdate?(list: T[]): Promise<BatchResult<T>>;
 
     /**
      * increment number attribute (or overwrite string field)
