@@ -210,14 +210,15 @@ describe('abstract-service', () => {
         expect2(() => service.buildProxy({}).hello()).toEqual('manager-proxy:TT/dummy-data.yml');
 
         //* build base model.
-        const _base = <T extends Model>(type: ModelType, N?: T): T => ({
-            ns: 'TT',
-            updatedAt: current,
-            createdAt: current,
-            deletedAt: 0,
-            type,
-            ...N,
-        });
+        const _base = <T extends Model>(type: ModelType, N?: T): T =>
+            ({
+                ns: 'TT',
+                updatedAt: current,
+                createdAt: current,
+                deletedAt: 0,
+                type,
+                ...N,
+            } as T);
 
         //* get w/o default.
         expect2(

@@ -42,7 +42,7 @@ import $cores, {
     TypedStorageService,
 } from '../cores/';
 import { $U, _err, _log } from '../engine/';
-import { GETERR, NUL404 } from '../common/test-helper';
+import { GETERR, NUL404, onlyDefined } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
 import { CrendentialForAWS } from '../environ';
@@ -936,17 +936,19 @@ export class Elastic6Synchronizer {
 
     /**
      * constructor
-     * @param elastic       elastic6-service instance
-     * @param dynamoOptions dynamo options
+     * @param elastic       (optional) elastic6-service instance
+     * @param dynamoOptions (optional) dynamo config options
      */
-    public constructor(elastic: Elastic6Service, dynamoOptions: DynamoOption | { tableName: string }) {
-        if (!elastic) throw new Error(`@elastic (elastic-service) is required!`);
-        if (!dynamoOptions) throw new Error(`@dynamoOptions (object) is required!`);
+    public constructor(elastic?: Elastic6Service, dynamoOptions?: DynamoOption | { tableName: string }) {
+        //NOTE - can be created without elastic instance (just to prepare synchronizer map)
+        // if (!elastic) throw new Error(`@elastic (elastic-service) is required!`);
+        // if (!dynamoOptions) throw new Error(`@dynamoOptions (object) is required!`);
+
         //* build dynamo-options as default.
-        const options: DynamoOption = {
+        const options = onlyDefined<DynamoOption>({
             ...dynamoOptions,
-            idName: (dynamoOptions as DynamoOption).idName || '_id', // id (global) of dynamo-table. should be `_id`.
-        };
+            idName: (dynamoOptions as DynamoOption)?.idName || '_id', // id (global) of dynamo-table. should be `_id`.
+        });
 
         //* create sync-handler w/ this.
         const listener = LambdaDynamoStreamHandler.createSyncToElastic6<{ type?: string; stereo?: string }>(
@@ -962,8 +964,8 @@ export class Elastic6Synchronizer {
         this.synchronizerMap = new Map();
         this.defModelSynchronizer = new (class implements ModelSynchronizer {
             public filter(id: string, item: CoreModel<string>): boolean {
-                const type = `${item?.type || ''}`;
-                const stereo = `${item?.stereo || ''}`;
+                const type = `${item?.type ?? ''}`;
+                const stereo = `${item?.stereo ?? ''}`;
                 return !(type.startsWith('#') || stereo.startsWith('#')); // special purpose item. do not index.
             }
         })();
@@ -1083,8 +1085,9 @@ export abstract class AbstractElastic6Instance {
             this.elastic = new Elastic6Service<any>(options);
             this.client = this.elastic.client;
             this.query = new Elastic6QueryService<any>(this.elastic);
-            this.synchronizer = new Elastic6Synchronizer(this.elastic, { tableName });
         }
+        // WARN `this.elastic` can be null!
+        this.synchronizer = new Elastic6Synchronizer(this.elastic, { tableName });
     }
 
     /** say hello */

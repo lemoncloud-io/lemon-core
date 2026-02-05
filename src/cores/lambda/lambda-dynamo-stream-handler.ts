@@ -141,14 +141,14 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
      *  - procedure: (filter) -> (onBeforeSync) -> synchronization -> (onAfterSync)
      *
      * @param options       options of dynamo table.
-     * @param service       Elastic6Service instance
-     * @param filter        filter function
-     * @param onBeforeSync  callback function invoked before synchronization
-     * @param onAfterSync   callback function invoked after synchronization
+     * @param service?      (optional) Elastic6Service instance
+     * @param filter        (optional) filter function
+     * @param onBeforeSync  (optional) callback function invoked before synchronization
+     * @param onAfterSync   (optional) callback function invoked after synchronization
      */
     public static createSyncToElastic6<T extends Elastic6Item>(
         options: DynamoOption,
-        service: Elastic6Service<T>,
+        service?: Elastic6Service<T>,
         filter?: DynamoStreamFilter<T>,
         onBeforeSync?: DynamoStreamCallback<T>,
         onAfterSync?: DynamoStreamCallback<T>,
@@ -191,7 +191,8 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             if (onBeforeSync) await onBeforeSync(_id, eventName, item, diff, prev);
 
             //* update or save.
-            if (false) {
+            if (!service) {
+                // ignore if no service.
             } else if (eventName == 'REMOVE') {
                 //* clear data.
                 const res = await service.deleteItem(_id); // ignore error.
