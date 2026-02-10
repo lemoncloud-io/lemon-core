@@ -247,13 +247,6 @@ export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) =>
 };
 
 /**
- * build default JWT secret from AWS account id + magic key.
- */
-export const buildJwtSecret = (): string => {
-    const accountNo = $U.env('AWS_ACCOUNT_ID', '000000000000');
-    return $U.hmac(`${accountNo}:${JWT_MAGIC_KEY}`, 'jwt-magic-key', 'sha256', 'base64');
-};
-/**
  * class: LambdaWEBHandler
  * - default WEB Handler w/ event-listeners.
  */
@@ -510,6 +503,14 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
     protected headers: HttpHeaderSet;
 
     /**
+     * build default JWT secret from AWS account id + magic key.
+     */
+    public static buildJwtSecret = (): string => {
+        const accountNo = $U.env('AWS_ACCOUNT_ID', '000000000000');
+        return $U.hmac(`${accountNo}:${JWT_MAGIC_KEY}`, 'jwt-magic-key', 'sha256', 'base64');
+    };
+
+    /**
      * default constructor.
      * @param headers
      */
@@ -654,7 +655,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         const current = params?.current ?? $U.current_time_ms();
         const alias = params?.alias ?? null;
         // secret: false means use KMS, undefined means use default derived secret.
-        const secret = params?.secret === false ? null : params?.secret ?? (alias ? buildJwtSecret() : null);
+        const secret =
+            params?.secret === false ? null : params?.secret ?? (alias ? MyHttpHeaderTool.buildJwtSecret() : null);
         const useHmac = !!secret;
         const payload = {
             ...identity,
@@ -741,7 +743,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             return data as T;
         } else if (typeof iss === 'string') {
             // HS256 verification (default: derived secret)
-            const secret = params?.secret ?? buildJwtSecret();
+            const secret = params?.secret ?? MyHttpHeaderTool.buildJwtSecret();
             // Verify HMAC-SHA256 signature manually
             const message = [header, payload].join('.');
             const expectedSig = fromBase64(crypto.createHmac('sha256', secret).update(message).digest('base64'));
