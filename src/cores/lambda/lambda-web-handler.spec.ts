@@ -169,6 +169,57 @@ describe('LambdaWEBHandler', () => {
             );
         }
 
+        //* test HS256 JWT encode/decode
+        {
+            const $t = service.tools({}) as MyHttpHeaderTool;
+            const identity: NextIdentity = { sid: 'test-sid', uid: 'U123', gid: 'G456', roles: ['admin'] };
+            const current = ($U.dt('2022-05-10 11:22:33', 9) as Date).getTime();
+            const secret = 'my-secret-key-for-testing';
+            const alias = 'my-service'; // issuer name (like service name)
+
+            // encode with HS256 - iss is alias directly (not 'hs256/alias')
+            const $enc = await $t.encodeIdentityJWT(identity, { current, secret, alias });
+            expect2(() => $enc.token.split('.').length).toEqual(3);
+            expect2(() => $U.jwt().decode($enc.token)).toEqual({
+                iss: alias, // iss is alias directly
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+
+            // parse without verify
+            expect2(await $t.parseIdentityJWT($enc.token, { current, verify: false })).toEqual({
+                iss: alias,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+
+            // parse with HS256 verify - wrong secret
+            expect2(await $t.parseIdentityJWT($enc.token, { current, secret: 'wrong-secret' }).catch(GETERR)).toEqual(
+                '@signature[] is invalid (hs256: invalid signature) - verifyJWT(http)',
+            );
+
+            // parse with HS256 verify - correct secret
+            expect2(await $t.parseIdentityJWT($enc.token, { current, secret })).toEqual({
+                iss: alias,
+                exp: 1652235753,
+                iat: 1652149353,
+                ...identity,
+            });
+
+            // test expiration
+            expect2(
+                await $t
+                    .parseIdentityJWT($enc.token, { current: current + 24 * 60 * 60 * 1000 + 1, secret })
+                    .catch(GETERR),
+            ).toEqual('.exp[2022-05-11 11:22:33] is invalid (expired) - verifyJWT(http)');
+
+            // encode with HS256 without alias - iss is null
+            const $enc2 = await $t.encodeIdentityJWT(identity, { current, secret });
+            expect2(() => $U.jwt().decode($enc2.token), 'iss').toEqual({ iss: null });
+        }
+
         //* test with valid profile
         if (PROFILE) {
             const $t = service.tools({}) as MyHttpHeaderTool;
