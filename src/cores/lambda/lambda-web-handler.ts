@@ -35,7 +35,6 @@ import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEv
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 
 import $protocol from '../protocol/';
-import * as crypto from 'crypto';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 //* header definitions by environment.
@@ -746,7 +745,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             const secret = params?.secret ?? MyHttpHeaderTool.buildJwtSecret();
             // Verify HMAC-SHA256 signature manually
             const message = [header, payload].join('.');
-            const expectedSig = fromBase64(crypto.createHmac('sha256', secret).update(message).digest('base64'));
+            const expectedSig = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
             if (signature !== expectedSig)
                 throw new Error(`@signature[] is invalid (hs256: invalid signature) - ${errScope}`);
             if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
