@@ -433,8 +433,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         }
 
         // STEP.2 use internal identity json data via python lambda call.
-        const $tool = this.tools(headers);
-        const $toolV2 = this.toolsV2(headers, reqContext);
+        const $tool = this.toolsV2(headers, reqContext);
         const identity = await $tool.parseIdentityHeader();
         const _prepare = (): NextContext => {
             const cookie = $tool.parseCookiesHeader();
