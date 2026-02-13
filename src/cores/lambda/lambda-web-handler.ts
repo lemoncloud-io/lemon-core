@@ -900,11 +900,13 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         //* it must be JWT Token. verify signature, and load.
         if (typeof token !== 'string' || !token)
             throw new Error(`@token (string) is required (but ${typeof token}) - ${errScope}`);
-        // STEP.1 decode jwt, and extract { iss, iat, exp }
-        const current = params?.current ?? $U.current_time_ms();
         const sections = token.split('.');
         if (sections.length !== 3) throw new Error(`@token[${token}] is invalid (format) - ${errScope}`);
+
+        // STEP.1 decode jwt, and extract { iss, iat, exp }
+        const current = params?.current ?? $U.current_time_ms();
         const [header, payload, signature] = sections;
+        const message = [header, payload].join('.');
         const $jwt = $U.jwt();
         const data = $jwt.decode(token, { complete: false, json: true });
         if (!data) throw new Error(`@token[${token}] is invalid (failed to decode) - ${errScope}`);
@@ -915,27 +917,61 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required - ${errScope}`);
         if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required - ${errScope}`);
 
-        // STEP.2 validate signature by KMS(iss).verify() or HMAC-SHA256(secret).verify()
-        const _alias = (iss: string, prefix = 'kms/') =>
-            iss.includes(',') ? iss.substring(prefix.length, iss.indexOf(',')) : iss.substring(prefix.length);
-        if (!isVerify) {
-            return data as T;
-        } else if (typeof iss === 'string' && iss.startsWith('kms/')) {
-            const alias = _alias(iss);
-            const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
-            const message = [header, payload].join('.');
-            const verified = $kms
-                ? await $kms.verify(message, signature, { throwable: true }).catch(e => {
-                      throw new Error(`@signature[] is invalid (kms: ${GETERR(e)}) - ${errScope}`);
-                  })
-                : false;
-            if (!verified) throw new Error(`@signature[] is invalid (failed to verify by iss:${iss}) - ${errScope}`);
-            if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
-            if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
-            return data as T;
-        } else if (typeof iss === 'string' && iss.startsWith('api/')) {
-            // verify by api-service via protocol.
-            const issuer = iss?.substring(4); //* issuer name. (must be api-name)
+        //* skip verification if not required
+        if (!isVerify) return data as T;
+
+        // STEP.2 verify signature by iss
+        const verified = await this.verifyToken(iss, message, signature, { token }).catch(e => {
+            throw new Error(`@signature[] is invalid (${GETERR(e)}) - ${errScope}`);
+        });
+        if (!verified) throw new Error(`@signature[] is invalid (failed to verify by ${iss}) - ${errScope}`);
+
+        // STEP.3 validate expiration
+        if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
+        if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
+
+        return data as T;
+    }
+    /**
+     * verify token signature by iss.
+     * - `kms/*`: verify by KMS (RS256)
+     * - `api/*`: verify by HS256 (local) or protocol (remote)
+     */
+    public async verifyToken(
+        iss: string,
+        message: string,
+        signature: string,
+        options?: { token?: string },
+    ): Promise<boolean> {
+        const errScope = `verifyToken(${iss ?? ''})`;
+        const _alias = (iss: string, prefix: string) => {
+            const value = iss.substring(prefix.length);
+            return value.includes(',') ? value.substring(0, value.indexOf(',')) : value;
+        };
+
+        // KMS verification (RS256) - iss starts with 'kms/'
+        if (typeof iss === 'string' && iss.startsWith('kms/')) {
+            const alias = _alias(iss, 'kms/');
+            if (!alias) throw new Error(`@alias (string) is required - ${errScope}`);
+            const $kms = this.findKMSService(`alias/${alias}`);
+            return $kms.verify(message, signature, { throwable: true });
+        }
+
+        // API verification - iss starts with 'api/'
+        if (typeof iss === 'string' && iss.startsWith('api/')) {
+            const issuer = iss.substring(4);
+            const currentService = $config?.config?.getService?.();
+
+            // verify if issued by current service
+            if (issuer === currentService) {
+                const secret = this.buildJwtSecret();
+                const expected = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
+                return expected === signature;
+            }
+
+            // verify via protocol
+            const token = options?.token;
+            if (!token) throw new Error(`@token (string) is required - ${errScope}`);
             const payload: ProtocolParam = {
                 service: issuer,
                 type: 'oauth',
@@ -945,17 +981,15 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
                 context: {},
             };
             const $res = await $protocol.service.execute<{ valid?: boolean; error?: string }>(payload);
-            if ($res?.valid) return data as T;
-            throw new Error(
-                `.token[${token}] is invalid (failed to verify by issuer:${issuer}): ${$res?.error} - ${errScope}`,
-            );
+            if ($res?.valid) return true;
+            throw new Error(`.token[] is invalid (failed to verify by issuer:${issuer}): ${$res?.error} - ${errScope}`);
         }
-        //* or throw
+
         throw new Error(`@iss[${iss}] is invalid (unsupportable issuer) - ${errScope}`);
     }
     /**
      * sign the message w/ alias
-     * - JWT_MAGIC_KEY 환경변수가 있으면 HS256, 없으면 KMS 사용
+     * - `alias`가 있으면 KMS(RS256), 없으면 HS256 사용
      *
      * @param alias kms key alias
      * @param message the jwt message string

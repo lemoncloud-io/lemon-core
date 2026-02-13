@@ -647,15 +647,15 @@ describe('LambdaWEBHandler', () => {
         expect2(() => $t2.buildJwtSecret()).toEqual(expect.any(String));
 
         //* test of validation - encodeIdentityJWT
-        // 1. null 검증
+        // 1. null validation
         expect2(await $t.encodeIdentityJWT(null as any).catch(GETERR)).toEqual(
             '@identity (object) is required - but object',
         );
-        // 2. undefined 검증
+        // 2. undefined validation
         expect2(await $t.encodeIdentityJWT(undefined as any).catch(GETERR)).toEqual(
             '@identity (object) is required - but undefined',
         );
-        // 3. 타입 오류 검증 - string
+        // 3. type error validation - string
         expect2(await $t.encodeIdentityJWT('abc' as any).catch(GETERR)).toEqual(
             '@identity (object) is required - but string',
         );
@@ -679,25 +679,25 @@ describe('LambdaWEBHandler', () => {
         expect2(() => decoded?.exp).toEqual(Math.floor(current / 1000) + 24 * 60 * 60);
 
         //* test of validation - parseIdentityJWT
-        // 1. null 검증
+        // 1. null validation
         expect2(await $t.parseIdentityJWT(null as any).catch(GETERR)).toEqual(
             '@token (string) is required (but object) - verifyJWT(http)',
         );
-        // 2. undefined 검증
+        // 2. undefined validation
         expect2(await $t.parseIdentityJWT(undefined as any).catch(GETERR)).toEqual(
             '@token (string) is required (but undefined) - verifyJWT(http)',
         );
-        // 3. 빈 문자열 검증
+        // 3. empty string validation
         expect2(await $t.parseIdentityJWT('').catch(GETERR)).toEqual(
             '@token (string) is required (but string) - verifyJWT(http)',
         );
 
         //* match err cases - parseIdentityJWT
-        // 1. 잘못된 형식 (3 sections이 아닌 경우)
+        // 1. invalid format (not 3 sections)
         expect2(await $t.parseIdentityJWT('abc.def').catch(GETERR)).toEqual(
             '@token[abc.def] is invalid (format) - verifyJWT(http)',
         );
-        // 2. 잘못된 형식 (4 sections)
+        // 2. invalid format (4 sections)
         expect2(await $t.parseIdentityJWT('a.b.c.d').catch(GETERR)).toEqual(
             '@token[a.b.c.d] is invalid (format) - verifyJWT(http)',
         );
@@ -705,13 +705,25 @@ describe('LambdaWEBHandler', () => {
         //* test of parseIdentityJWT with verify: false
         const $parsed = await $t.parseIdentityJWT($enc.token, { verify: false });
         expect2(() => $parsed, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
+        const $parsed2 = await $t.parseIdentityJWT($enc.token, { current });
+        expect2(() => $parsed2, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
+
+        //* tampered signature should fail (HS256)
+        const $decoded = $U.jwt().decode($enc.token) as { iss: string };
+        const badSignature = `${$enc.signature.substring(0, $enc.signature.length - 1)}${
+            $enc.signature.endsWith('A') ? 'B' : 'A'
+        }`;
+        const tamperedToken = `${$enc.message}.${badSignature}`;
+        expect2(await $t.parseIdentityJWT(tamperedToken, { current }).catch(GETERR)).toEqual(
+            `@signature[] is invalid (failed to verify by ${$decoded.iss}) - verifyJWT(http)`,
+        );
 
         //* test of signToken - HS256 (without KMS)
-        // 1. 빈 메시지 검증
+        // 1. empty message validation
         expect2(await $t.signToken('', '').catch(GETERR)).toEqual('@message (string) is required - signToken()');
         expect2(await $t.signToken('abc', '').catch(GETERR)).toEqual('@message (string) is required - signToken(abc)');
 
-        // 2. 정상적인 서명 생성 (HS256)
+        // 2. valid signature generation (HS256)
         const testMessage = 'test.message';
         const signature = await $t.signToken('', testMessage);
         expect2(() => signature).toEqual(expect.any(String));
@@ -723,7 +735,7 @@ describe('LambdaWEBHandler', () => {
         const secret3 = $t3.buildJwtSecret();
         expect2(() => secret1).toEqual(expect.any(String));
         expect2(() => secret3).toEqual(expect.any(String));
-        // 다른 accountId는 다른 secret을 생성해야 함
+        // different accountId should generate different secret
         expect2(() => secret1 !== secret3).toEqual(true);
 
         //* test of isExternal() inheritance
@@ -740,5 +752,68 @@ describe('LambdaWEBHandler', () => {
         });
         expect2(() => $t6.getHeader('X-Custom-Header')).toEqual('custom-value');
         expect2(() => $t6.parseLanguageHeader()).toEqual('ko');
+
+        //* test of verifyToken
+        // 1. unsupportable issuer (null)
+        expect2(await $t.verifyToken(null as any, 'msg', 'sig').catch(GETERR)).toEqual(
+            '@iss[null] is invalid (unsupportable issuer) - verifyToken()',
+        );
+        // 2. unsupportable issuer (undefined)
+        expect2(await $t.verifyToken(undefined as any, 'msg', 'sig').catch(GETERR)).toEqual(
+            '@iss[undefined] is invalid (unsupportable issuer) - verifyToken()',
+        );
+        // 3. unsupportable issuer (invalid prefix)
+        expect2(await $t.verifyToken('invalid/issuer', 'msg', 'sig').catch(GETERR)).toEqual(
+            '@iss[invalid/issuer] is invalid (unsupportable issuer) - verifyToken(invalid/issuer)',
+        );
+        // 4. kms/ prefix but empty alias
+        expect2(await $t.verifyToken('kms/', 'msg', 'sig').catch(GETERR)).toEqual(
+            '@alias (string) is required - verifyToken(kms/)',
+        );
+
+        //* test of verifyToken - api/ prefix (current service - HS256 local verify)
+        const $enc2 = await $t.encodeIdentityJWT(identity, { current });
+        const [header2, payload2, sig2] = $enc2.token.split('.');
+        const message2 = `${header2}.${payload2}`;
+        const iss2 = ($U.jwt().decode($enc2.token) as { iss: string }).iss;
+
+        // valid verification
+        expect2(await $t.verifyToken(iss2, message2, sig2)).toEqual(true);
+        // invalid signature
+        const badSig2 = sig2.endsWith('A') ? sig2.slice(0, -1) + 'B' : sig2.slice(0, -1) + 'A';
+        expect2(await $t.verifyToken(iss2, message2, badSig2)).toEqual(false);
+
+        //* test of verifyToken - api/ prefix (remote service - protocol verify)
+        // error when called without token
+        expect2(await $t.verifyToken('api/other-service', 'msg', 'sig').catch(GETERR)).toEqual(
+            '@token (string) is required - verifyToken(api/other-service)',
+        );
+
+        //* test of parseIdentityJWT - expiration
+        const expiredCurrent = current + 24 * 60 * 60 * 1000 + 1; // 1ms after expiration
+        expect2(await $t.parseIdentityJWT($enc.token, { current: expiredCurrent }).catch(GETERR)).toEqual(
+            '.exp[2026-02-13 20:00:00] is invalid (expired) - verifyJWT(http)',
+        );
+        // just before expiration is OK
+        const justBeforeExpire = current + 24 * 60 * 60 * 1000;
+        expect2(await $t.parseIdentityJWT($enc.token, { current: justBeforeExpire }), 'sid').toEqual({ sid: 'S' });
+
+        //* test of parseIdentityJWT - unsupportable issuer via verifyToken
+        const base64url = (t: string) => Buffer.from(t).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const invalidIssToken = (() => {
+            const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+            const payload = base64url(
+                JSON.stringify({
+                    sid: 'S',
+                    iss: 'unknown/issuer',
+                    iat: Math.floor(current / 1000),
+                    exp: Math.floor(current / 1000) + 3600,
+                }),
+            );
+            return `${header}.${payload}.fakesig`;
+        })();
+        expect2(await $t.parseIdentityJWT(invalidIssToken, { current }).catch(GETERR)).toEqual(
+            '@signature[] is invalid (@iss[unknown/issuer] is invalid (unsupportable issuer) - verifyToken(unknown/issuer)) - verifyJWT(http)',
+        );
     });
 });
