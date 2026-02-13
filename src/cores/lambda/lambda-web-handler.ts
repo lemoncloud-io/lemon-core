@@ -960,10 +960,10 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
      * @param alias kms key alias
      * @param message the jwt message string
      */
-    public async signToken(alias: string, message: string, options?: { useKms?: boolean }): Promise<string> {
+    public async signToken(alias: string, message: string): Promise<string> {
         const errScope = `signToken(${alias ?? ''})`;
         if (!message) throw new Error(`@message (string) is required - ${errScope}`);
-        const useKms = options?.useKms ?? false;
+        const useKms = !!alias;
 
         if (useKms) {
             // KMS verification (RS256)
