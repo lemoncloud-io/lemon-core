@@ -308,9 +308,16 @@ describe(`core/utilities.ts`, () => {
         const data = 'hello lemon!';
 
         // 1. basic encrypt/decrypt (like crypto2 pattern)
+        const nonce = 1 ? 'a1b2c3d4' : $U.uuid().replace(/-/g, '').substring(0, 8);
+        const current = 1 ? 1700000000000 : $U.current_time_ms();
+
+        expect2(() => nonce).toEqual('a1b2c3d4');
+        expect2(() => current).toEqual(1700000000000);
+
         const $crypt = $U.crypto3(secret);
-        const encrypted = $crypt.encrypt(data);
-        expect2(() => $crypt.decrypt($crypt.encrypt(data))).toEqual(data);
+        const encrypted = $crypt.encrypt(data, { nonce, current });
+        expect2(() => encrypted).toEqual('a1b2c3d417000000000000SHDORRLL64BZCXdKGi7qlgoO/VYvplL0lOYG1vilQAmfqXh');
+        expect2(() => $crypt.decrypt(encrypted)).toEqual(data);
 
         // 2. wrong secret should fail to decrypt correctly
         const $cryptWrong = $U.crypto3('wrong-secret-key');
@@ -328,10 +335,9 @@ describe(`core/utilities.ts`, () => {
         expect2(() => $crypt.decrypt(encrypted5)).toEqual(data);
 
         // 6. timestamp maxAge validation
-        const baseCurrent = 1700000000000;
-        const encryptedByTime = $crypt.encrypt(data, { current: baseCurrent });
-        expect2(() => $crypt.decrypt(encryptedByTime, { current: baseCurrent + 1000, maxAge: 5000 })).toEqual(data);
-        expect2(() => $crypt.decrypt(encryptedByTime, { current: baseCurrent + 6001, maxAge: 5000 })).toEqual(
+        const encryptedByTime = $crypt.encrypt(data, { current });
+        expect2(() => $crypt.decrypt(encryptedByTime, { current: current + 1000, maxAge: 5000 })).toEqual(data);
+        expect2(() => $crypt.decrypt(encryptedByTime, { current: current + 6001, maxAge: 5000 })).toEqual(
             '400 INVALID DATA - expired timestamp!',
         );
 

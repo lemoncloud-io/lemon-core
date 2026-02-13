@@ -870,9 +870,9 @@ export class Utilities {
         const makeNonce = () => this.uuid().replace(/-/g, '').substring(0, 8);
 
         return new (class {
-            public encrypt = (val: string, options?: { current?: number }): string => {
+            public encrypt = (val: string, options?: { current?: number; nonce?: string }): string => {
                 val = val === undefined ? null : val;
-                const nonce = makeNonce();
+                const nonce = options?.nonce ?? makeNonce();
                 const timestamp = String(options?.current ?? currentMs()).padStart(13, '0');
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
                 const buffer = Buffer.from(`${HEADER}${JSON.stringify({ d: val })}`, 'utf8');
