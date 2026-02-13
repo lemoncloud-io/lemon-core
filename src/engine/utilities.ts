@@ -852,6 +852,83 @@ export class Utilities {
     };
 
     /**
+     * get crypto3 object (with nonce + timestamp based IV).
+     * - supports versioned encryption with header padding (16 bytes)
+     * - decrypt validates version before decryption
+     * - format: {nonce:8}{timestamp:13}{encryptedBase64}
+     *
+     * @param passwd    password to crypt
+     * @param algorithm (default as `aes-256-ctr`)
+     */
+    public readonly crypto3 = (passwd: string, algorithm?: string) => {
+        algorithm = algorithm || 'aes-256-ctr';
+        const VERSION = '0001';
+        const HEADER = `LM!#${VERSION}`.padEnd(16, '0'); // "LM!#0001" (16 bytes)
+        const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
+        const hmac = (data: string, sig: string) => this.hmac(data, sig, 'sha256', 'hex');
+        const currentMs = () => this.current_time_ms();
+        const makeNonce = () => this.uuid().replace(/-/g, '').substring(0, 8);
+
+        return new (class {
+            public encrypt = (val: string, options?: { current?: number }): string => {
+                val = val === undefined ? null : val;
+                const nonce = makeNonce();
+                const timestamp = String(options?.current ?? currentMs()).padStart(13, '0');
+                const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
+                const buffer = Buffer.from(`${HEADER}${JSON.stringify({ d: val })}`, 'utf8');
+                const cipher = crypto.createCipheriv(algorithm, key, iv);
+                const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
+                return `${nonce}${timestamp}${crypted.toString('base64')}`;
+            };
+            public decrypt = (msg: string, options?: { current?: number; maxAge?: number }): string => {
+                if (!msg) throw new Error('@msg (string) is required!');
+                if (msg.length < 31) throw new Error('400 INVALID DATA - data too short!');
+                const nonce = msg.substring(0, 8);
+                const timestamp = msg.substring(8, 21);
+                const encryptedBase64 = msg.substring(21);
+                if (!/^\d+$/.test(timestamp)) throw new Error('400 INVALID DATA - invalid timestamp!');
+                if (options?.maxAge !== undefined) {
+                    const current = options?.current ?? currentMs();
+                    if (current - parseInt(timestamp, 10) > options.maxAge)
+                        throw new Error('400 INVALID DATA - expired timestamp!');
+                }
+                const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
+                const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                const dec = Buffer.concat([
+                    decipher.update(Buffer.from(encryptedBase64, 'base64')),
+                    decipher.final(),
+                ]).toString('utf8');
+                if (!dec.startsWith('LM!#')) throw new Error('400 INVALID PASSWD - invalid magic string!');
+                const version = dec.substring(4, 8);
+                if (version !== VERSION) throw new Error(`400 INVALID VERSION - expected ${VERSION}, got ${version}!`);
+                const data = dec.substring(16);
+                if (!data.startsWith('{') || !data.endsWith('}'))
+                    throw new Error('400 INVALID PASSWD - invalid json string!');
+                const $msg = JSON.parse(data) || {};
+                return $msg.d;
+            };
+        })();
+    };
+
+    /**
+     * encrypt shorthand using crypto3
+     */
+    public readonly encrypt = (data: string, secret: string, options?: { current?: number }): string => {
+        return this.crypto3(secret).encrypt(data, options);
+    };
+
+    /**
+     * decrypt shorthand using crypto3
+     */
+    public readonly decrypt = (
+        data: string,
+        secret: string,
+        options?: { current?: number; maxAge?: number },
+    ): string => {
+        return this.crypto3(secret).decrypt(data, options);
+    };
+
+    /**
      * builder for `JWTHelper`
      * @param passcode string for verification.
      * @param current_ms (optional) current time in millisecond (required to verify `exp`)

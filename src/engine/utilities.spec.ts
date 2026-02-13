@@ -299,4 +299,56 @@ describe(`core/utilities.ts`, () => {
         const jwt3A = $U.jwt('!', curr + 5000);
         expect2(() => jwt3A.verify(token3)).toEqual(`jwt expired at ${$U.ts(expected3.exp * 1000)}`); //* due to real current-time.
     });
+
+    //* test crypto3()
+    test('check crypto3()', async () => {
+        const { $U } = instance();
+
+        const secret = 'my-secret-key-12345';
+        const data = 'hello lemon!';
+
+        // 1. basic encrypt/decrypt (like crypto2 pattern)
+        const $crypt = $U.crypto3(secret);
+        const encrypted = $crypt.encrypt(data);
+        expect2(() => $crypt.decrypt($crypt.encrypt(data))).toEqual(data);
+
+        // 2. wrong secret should fail to decrypt correctly
+        const $cryptWrong = $U.crypto3('wrong-secret-key');
+        expect2(() => $cryptWrong.decrypt(encrypted)).toEqual('400 INVALID PASSWD - invalid magic string!');
+
+        // 4. error cases
+        expect2(() => $crypt.decrypt('')).toEqual('@msg (string) is required!');
+        expect2(() => $crypt.decrypt('abc')).toEqual('400 INVALID DATA - data too short!');
+
+        // 5. each encryption should produce different result (due to nonce)
+        const encrypted4 = $crypt.encrypt(data);
+        const encrypted5 = $crypt.encrypt(data);
+        expect2(() => encrypted4 !== encrypted5).toEqual(true); // different nonce each time
+        expect2(() => $crypt.decrypt(encrypted4)).toEqual(data);
+        expect2(() => $crypt.decrypt(encrypted5)).toEqual(data);
+
+        // 6. timestamp maxAge validation
+        const baseCurrent = 1700000000000;
+        const encryptedByTime = $crypt.encrypt(data, { current: baseCurrent });
+        expect2(() => $crypt.decrypt(encryptedByTime, { current: baseCurrent + 1000, maxAge: 5000 })).toEqual(data);
+        expect2(() => $crypt.decrypt(encryptedByTime, { current: baseCurrent + 6001, maxAge: 5000 })).toEqual(
+            '400 INVALID DATA - expired timestamp!',
+        );
+
+        // 7. test with various data types
+        const jsonData = JSON.stringify({ name: 'test', value: 123 });
+        const encryptedJson = $crypt.encrypt(jsonData);
+        expect2(() => $crypt.decrypt(encryptedJson)).toEqual(jsonData);
+        expect2(() => JSON.parse($crypt.decrypt(encryptedJson))).toEqual({ name: 'test', value: 123 });
+
+        // 8. custom algorithm
+        const $cryptAes = $U.crypto3(secret, 'aes-256-cbc');
+        const encryptedAes = $cryptAes.encrypt(data);
+        expect2(() => $cryptAes.decrypt(encryptedAes)).toEqual(data);
+
+        // 9. $U.encrypt / $U.decrypt shorthand
+        const encrypted6 = $U.encrypt(data, secret);
+        expect2(() => $U.decrypt(encrypted6, secret)).toEqual(data);
+        expect2(() => $U.crypto3(secret).decrypt(encrypted6)).toEqual(data); // compatible with crypto3
+    });
 });

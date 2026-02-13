@@ -33,6 +33,7 @@ import { loadJsonSync } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
+import $config from '../config';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
@@ -402,7 +403,13 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public tools = (headers: HttpHeaderSet): HttpHeaderTool<APIGatewayEventRequestContext> =>
         new MyHttpHeaderTool(headers);
-
+    /**
+     * builder of tools without kms.
+     */
+    public toolsV2 = (
+        headers: HttpHeaderSet,
+        reqContext?: APIGatewayEventRequestContext,
+    ): HttpHeaderTool<APIGatewayEventRequestContext> => new MyHttpHeaderToolV2(headers, reqContext);
     /**
      * pack the request context for Http request.
      *
@@ -427,6 +434,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         // STEP.2 use internal identity json data via python lambda call.
         const $tool = this.tools(headers);
+        const $toolV2 = this.toolsV2(headers, reqContext);
         const identity = await $tool.parseIdentityHeader();
         const _prepare = (): NextContext => {
             const cookie = $tool.parseCookiesHeader();
@@ -506,12 +514,12 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
      * build default JWT secret from AWS account id + magic key.
      */
     public static buildJwtSecret = (): string => {
-        //TODO load automatically the correct `accountNo` @claire.
-        const accountNo = $U.env('AWS_ACCOUNT_ID', '000000000000');
+        //TODO load automatically the correct `accountId` @claire.
+        const accountId = $U.env('AWS_ACCOUNT_ID', '000000000000');
         const secret = JWT_MAGIC_KEY; // 유출되면 피곤함.
         const _hmac = (msg: string, key = secret) => $U.hmac(msg, key, 'sha256', 'base64'); // 기본 로직
         // return _hmac([_hmac(accountNo), JWT_SIGN_KEY].join(':'));
-        return _hmac(_hmac(accountNo, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
+        return _hmac(_hmac(accountId, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
     };
 
     /**
@@ -643,12 +651,10 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
     public async encodeIdentityJWT(
         identity: NextIdentity,
         params?: {
-            /** KMS alias to use (for RS256) or issuer name (for HS256) */
+            /** KMS alias to use */
             alias?: string;
             /** current ms */
             current?: number;
-            /** secret for HS256 (default: env.PASSCODE, set false to use KMS) */
-            secret?: string | false;
         },
     ) {
         // STEP.0 validate paramters.
@@ -657,37 +663,29 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
 
         // STEP.1 prepare payload data
         const current = params?.current ?? $U.current_time_ms();
-        const alias = params?.alias ?? null;
-        // secret: false means use KMS, undefined means use default derived secret.
-        const secret =
-            params?.secret === false ? null : params?.secret ?? (alias ? MyHttpHeaderTool.buildJwtSecret() : null);
-        const useHmac = !!secret;
+        const alias = params?.alias;
         const payload = {
             ...identity,
-            iss: useHmac ? alias : alias ? `kms/${alias}` : null, //* issuer name
+            iss: alias ? `kms/${alias}` : null, //* issuer name. (must be alias of KMS)
             iat: Math.floor(current / 1000), //* issued at
             exp: Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
         };
         const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
-        const alg = useHmac ? 'HS256' : 'RS256';
         const data = {
-            header: base64url(JSON.stringify({ alg, typ: 'JWT' })),
+            header: base64url(
+                JSON.stringify({
+                    alg: 'RS256',
+                    typ: 'JWT',
+                }),
+            ),
             payload: base64url(JSON.stringify(payload)),
         };
         // STEP.2 encode and calc signature.
         const message = [data.header, data.payload].join('.');
-        if (useHmac) {
-            // HS256: sign directly with secret
-            const token = $U.jwt(secret).encode(payload, 'HS256');
-            const signature = token.split('.')[2];
-            return { signature, message, token };
-        } else {
-            // RS256: existing KMS logic
-            const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
-            const signature = $kms ? await $kms.sign(message, true) : '';
-            const token = [message, signature].join('.');
-            return { signature, message, token };
-        }
+        const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
+        const signature = $kms ? await $kms.sign(message, true) : '';
+        const token = [message, signature].join('.');
+        return { signature, message, token };
     }
 
     /**
@@ -700,8 +698,6 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             current?: number;
             /** flag to verify JWT (default true) */
             verify?: boolean;
-            /** secret for HS256 verification */
-            secret?: string;
         },
     ): Promise<T> {
         const isVerify = params?.verify ?? true;
@@ -725,15 +721,14 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required - ${errScope}`);
         if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required - ${errScope}`);
 
-        // STEP.2 validate signature by KMS(iss).verify() or HMAC-SHA256(secret).verify()
+        // STEP.2 validate signature by KMS(iss).verify()
         //TODO - iss 에 인증제공자의 api 넣기 (ex: api/lemon-backend-dev?)
-        const _alias = (iss: string, prefix: string) =>
+        const _alias = (iss: string, prefix = 'kms/') =>
             iss.includes(',') ? iss.substring(prefix.length, iss.indexOf(',')) : iss.substring(prefix.length);
         if (!isVerify) {
             return data as T;
         } else if (typeof iss === 'string' && iss.startsWith('kms/')) {
-            // KMS verification (RS256)
-            const alias = _alias(iss, 'kms/');
+            const alias = _alias(iss);
             const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
             const message = [header, payload].join('.');
             const verified = $kms
@@ -742,17 +737,6 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
                   })
                 : false;
             if (!verified) throw new Error(`@signature[] is invalid (failed to verify by iss:${iss}) - ${errScope}`);
-            if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
-            if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
-            return data as T;
-        } else if (typeof iss === 'string') {
-            // HS256 verification (default: derived secret)
-            const secret = params?.secret ?? MyHttpHeaderTool.buildJwtSecret();
-            // Verify HMAC-SHA256 signature manually
-            const message = [header, payload].join('.');
-            const expectedSig = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
-            if (signature !== expectedSig)
-                throw new Error(`@signature[] is invalid (hs256: invalid signature) - ${errScope}`);
             if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
             if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
             return data as T;
@@ -817,5 +801,184 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         //* save into headers and returns.
         const context: NextContext = { ...$org, userAgent, clientIp, requestId, accountId, domain };
         return context;
+    }
+}
+
+export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
+    protected reqContext?: APIGatewayEventRequestContext;
+
+    public constructor(headers: HttpHeaderSet, reqContext?: APIGatewayEventRequestContext) {
+        super(headers);
+        this.reqContext = reqContext;
+    }
+
+    public hello(): string {
+        return 'header-tool-v2';
+    }
+
+    /**
+     * build default JWT secret from AWS account id + magic key.
+     */
+    public buildJwtSecret = (): string => {
+        const accountId = this.reqContext?.accountId ?? '000000000000';
+        const secret = JWT_MAGIC_KEY; // 유출되면 피곤함.
+        const _hmac = (msg: string, key = secret) => $U.hmac(msg, key, 'sha256', 'base64'); // 기본 로직
+        return _hmac(_hmac(accountId, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
+    };
+
+    /**
+     * encode as JWT string.
+     */
+    public async encodeIdentityJWT(
+        identity: NextIdentity,
+        params?: {
+            /** KMS alias to use (for RS256) or issuer name (for HS256) */
+            alias?: string;
+            /** current ms */
+            current?: number;
+            /** expiration time in seconds */
+            exp?: number;
+        },
+    ) {
+        // STEP.0 validate paramters.
+        if (!identity || typeof identity !== 'object')
+            throw new Error(`@identity (object) is required - but ${typeof identity}`);
+
+        // STEP.1 prepare payload data
+        const current = params?.current ?? $U.current_time_ms();
+        const alias = params?.alias;
+        const useKms = !!params?.alias;
+        const service = $config?.config?.getService?.();
+        const payload = {
+            ...identity,
+            iss: useKms ? `kms/${alias}` : `api/${service}`, //* issuer name. (must be alias of KMS or api-name)
+            iat: Math.floor(current / 1000), //* issued at
+            exp: params?.exp ?? Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
+        };
+        const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
+        const alg = useKms ? 'RS256' : 'HS256';
+        const data = {
+            header: base64url(
+                JSON.stringify({
+                    alg,
+                    typ: 'JWT',
+                }),
+            ),
+            payload: base64url(JSON.stringify(payload)),
+        };
+        // STEP.2 encode and calc signature.
+        const message = [data.header, data.payload].join('.');
+        if (useKms) {
+            // KMS verification (RS256)
+            const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
+            const signature = $kms ? await $kms.sign(message, true) : '';
+            const token = [message, signature].join('.');
+            return { signature, message, token };
+        } else {
+            // HS256: sign directly with secret
+            const secret = this.buildJwtSecret();
+            const signature = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
+            const token = [message, signature].join('.');
+            return { signature, message, token };
+        }
+    }
+
+    /**
+     * parse as jwt-token, and validate the signature.
+     */
+    public async parseIdentityJWT<T extends NextIdentityJwt = NextIdentityJwt>(
+        token: string,
+        params?: {
+            /** current ms */
+            current?: number;
+            /** flag to verify JWT (default true) */
+            verify?: boolean;
+        },
+    ): Promise<T> {
+        const isVerify = params?.verify ?? true;
+        const errScope = `verifyJWT(http)`;
+
+        //* it must be JWT Token. verify signature, and load.
+        if (typeof token !== 'string' || !token)
+            throw new Error(`@token (string) is required (but ${typeof token}) - ${errScope}`);
+        // STEP.1 decode jwt, and extract { iss, iat, exp }
+        const current = params?.current ?? $U.current_time_ms();
+        const sections = token.split('.');
+        if (sections.length !== 3) throw new Error(`@token[${token}] is invalid (format) - ${errScope}`);
+        const [header, payload, signature] = sections;
+        const $jwt = $U.jwt();
+        const data = $jwt.decode(token, { complete: false, json: true });
+        if (!data) throw new Error(`@token[${token}] is invalid (failed to decode) - ${errScope}`);
+        const { iss, iat, exp } = data;
+
+        // STEP.1-1 validate parameters.
+        if (typeof iss !== 'string' && iss !== null) throw new Error(`.iss (string) is required - ${errScope}`);
+        if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required - ${errScope}`);
+        if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required - ${errScope}`);
+
+        // STEP.2 validate signature by KMS(iss).verify() or HMAC-SHA256(secret).verify()
+        const _alias = (iss: string, prefix = 'kms/') =>
+            iss.includes(',') ? iss.substring(prefix.length, iss.indexOf(',')) : iss.substring(prefix.length);
+        if (!isVerify) {
+            return data as T;
+        } else if (typeof iss === 'string' && iss.startsWith('kms/')) {
+            const alias = _alias(iss);
+            const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
+            const message = [header, payload].join('.');
+            const verified = $kms
+                ? await $kms.verify(message, signature, { throwable: true }).catch(e => {
+                      throw new Error(`@signature[] is invalid (kms: ${GETERR(e)}) - ${errScope}`);
+                  })
+                : false;
+            if (!verified) throw new Error(`@signature[] is invalid (failed to verify by iss:${iss}) - ${errScope}`);
+            if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
+            if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
+            return data as T;
+        } else if (typeof iss === 'string' && iss.startsWith('api/')) {
+            // verify by api-service via protocol.
+            const issuer = iss?.substring(4); //* issuer name. (must be api-name)
+            const payload: ProtocolParam = {
+                service: issuer,
+                type: 'oauth',
+                mode: 'POST',
+                id: 'verify-token',
+                body: { token },
+                context: {},
+            };
+            const $res = await $protocol.service.execute<{ valid?: boolean; error?: string }>(payload);
+            if ($res?.valid) return data as T;
+            throw new Error(
+                `.token[${token}] is invalid (failed to verify by issuer:${issuer}): ${$res?.error} - ${errScope}`,
+            );
+        }
+        //* or throw
+        throw new Error(`@iss[${iss}] is invalid (unsupportable issuer) - ${errScope}`);
+    }
+    /**
+     * sign the message w/ alias
+     * - JWT_MAGIC_KEY 환경변수가 있으면 HS256, 없으면 KMS 사용
+     *
+     * @param alias kms key alias
+     * @param message the jwt message string
+     */
+    public async signToken(alias: string, message: string, options?: { useKms?: boolean }): Promise<string> {
+        const errScope = `signToken(${alias ?? ''})`;
+        if (!message) throw new Error(`@message (string) is required - ${errScope}`);
+        const useKms = options?.useKms ?? false;
+
+        if (useKms) {
+            // KMS verification (RS256)
+            if (!alias) return '';
+            const $kms = new AWSKMSService(`alias/${alias}`);
+            const signature = await $kms.sign(message, true);
+            _inf(NS, `> signature[${alias}] with KMS =`, signature);
+            return signature;
+        } else {
+            // HS256: sign directly with secret
+            const secret = this.buildJwtSecret();
+            const signature = $U.hmac(message, secret, 'sha256', 'base64');
+            _inf(NS, `> signature[${alias}] with HS256 =`, signature);
+            return signature;
+        }
     }
 }

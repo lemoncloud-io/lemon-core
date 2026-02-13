@@ -14,7 +14,13 @@ import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
 import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { ProtocolParam } from './../core-services';
-import { LambdaWEBHandler, CoreWEBController, MyHttpHeaderTool, buildResponse } from './lambda-web-handler';
+import {
+    LambdaWEBHandler,
+    CoreWEBController,
+    MyHttpHeaderTool,
+    MyHttpHeaderToolV2,
+    buildResponse,
+} from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
 import * as $lambda from './lambda-handler.spec';
 import { NextIdentity } from '..';
@@ -167,57 +173,6 @@ describe('LambdaWEBHandler', () => {
             expect2(await $t.parseIdentityJWT(`${expectedHead}.`).catch(GETERR)).toEqual(
                 '@iss[null] is invalid (unsupportable issuer) - verifyJWT(http)',
             );
-        }
-
-        //* test HS256 JWT encode/decode
-        {
-            const $t = service.tools({}) as MyHttpHeaderTool;
-            const identity: NextIdentity = { sid: 'test-sid', uid: 'U123', gid: 'G456', roles: ['admin'] };
-            const current = ($U.dt('2022-05-10 11:22:33', 9) as Date).getTime();
-            const secret = 'my-secret-key-for-testing';
-            const alias = 'my-service'; // issuer name (like service name)
-
-            // encode with HS256 - iss is alias directly (not 'hs256/alias')
-            const $enc = await $t.encodeIdentityJWT(identity, { current, secret, alias });
-            expect2(() => $enc.token.split('.').length).toEqual(3);
-            expect2(() => $U.jwt().decode($enc.token)).toEqual({
-                iss: alias, // iss is alias directly
-                exp: 1652235753,
-                iat: 1652149353,
-                ...identity,
-            });
-
-            // parse without verify
-            expect2(await $t.parseIdentityJWT($enc.token, { current, verify: false })).toEqual({
-                iss: alias,
-                exp: 1652235753,
-                iat: 1652149353,
-                ...identity,
-            });
-
-            // parse with HS256 verify - wrong secret
-            expect2(await $t.parseIdentityJWT($enc.token, { current, secret: 'wrong-secret' }).catch(GETERR)).toEqual(
-                '@signature[] is invalid (hs256: invalid signature) - verifyJWT(http)',
-            );
-
-            // parse with HS256 verify - correct secret
-            expect2(await $t.parseIdentityJWT($enc.token, { current, secret })).toEqual({
-                iss: alias,
-                exp: 1652235753,
-                iat: 1652149353,
-                ...identity,
-            });
-
-            // test expiration
-            expect2(
-                await $t
-                    .parseIdentityJWT($enc.token, { current: current + 24 * 60 * 60 * 1000 + 1, secret })
-                    .catch(GETERR),
-            ).toEqual('.exp[2022-05-11 11:22:33] is invalid (expired) - verifyJWT(http)');
-
-            // encode with HS256 without alias - iss is null
-            const $enc2 = await $t.encodeIdentityJWT(identity, { current, secret });
-            expect2(() => $U.jwt().decode($enc2.token), 'iss').toEqual({ iss: null });
         }
 
         //* test with valid profile
@@ -675,5 +630,115 @@ describe('LambdaWEBHandler', () => {
         const body = JSON.parse(response.body);
         expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
         expect2(body.context, '').toEqual(context);
+    });
+
+    //* test MyHttpHeaderToolV2
+    it('should pass MyHttpHeaderToolV2 tests', async () => {
+        //* test of hello()
+        const $t = new MyHttpHeaderToolV2({});
+        expect2(() => $t.hello()).toEqual('header-tool-v2');
+
+        //* test of buildJwtSecret() - without reqContext
+        expect2(() => $t.buildJwtSecret()).toEqual(expect.any(String));
+
+        //* test with reqContext
+        const $t2 = new MyHttpHeaderToolV2({ Host: 'localhost' }, { accountId: '123456789012' } as any);
+        expect2(() => $t2.hello()).toEqual('header-tool-v2');
+        expect2(() => $t2.buildJwtSecret()).toEqual(expect.any(String));
+
+        //* test of validation - encodeIdentityJWT
+        // 1. null 검증
+        expect2(await $t.encodeIdentityJWT(null as any).catch(GETERR)).toEqual(
+            '@identity (object) is required - but object',
+        );
+        // 2. undefined 검증
+        expect2(await $t.encodeIdentityJWT(undefined as any).catch(GETERR)).toEqual(
+            '@identity (object) is required - but undefined',
+        );
+        // 3. 타입 오류 검증 - string
+        expect2(await $t.encodeIdentityJWT('abc' as any).catch(GETERR)).toEqual(
+            '@identity (object) is required - but string',
+        );
+
+        //* test of encodeIdentityJWT - HS256 (without alias)
+        const identity: NextIdentity = { sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] };
+        const current = ($U.dt('2026-02-12 20:00:00', 9) as Date).getTime();
+
+        const $enc = await $t.encodeIdentityJWT(identity, { current });
+        expect2(() => $enc, 'message,signature').toEqual({
+            message: expect.any(String),
+            signature: expect.any(String),
+        });
+        expect2(() => $enc.token).toEqual(`${$enc.message}.${$enc.signature}`);
+
+        //* verify JWT structure (HS256)
+        const decoded = $U.jwt().decode($enc.token);
+        expect2(() => decoded, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
+        expect2(() => decoded?.iss?.startsWith('api/')).toEqual(true);
+        expect2(() => decoded?.iat).toEqual(Math.floor(current / 1000));
+        expect2(() => decoded?.exp).toEqual(Math.floor(current / 1000) + 24 * 60 * 60);
+
+        //* test of validation - parseIdentityJWT
+        // 1. null 검증
+        expect2(await $t.parseIdentityJWT(null as any).catch(GETERR)).toEqual(
+            '@token (string) is required (but object) - verifyJWT(http)',
+        );
+        // 2. undefined 검증
+        expect2(await $t.parseIdentityJWT(undefined as any).catch(GETERR)).toEqual(
+            '@token (string) is required (but undefined) - verifyJWT(http)',
+        );
+        // 3. 빈 문자열 검증
+        expect2(await $t.parseIdentityJWT('').catch(GETERR)).toEqual(
+            '@token (string) is required (but string) - verifyJWT(http)',
+        );
+
+        //* match err cases - parseIdentityJWT
+        // 1. 잘못된 형식 (3 sections이 아닌 경우)
+        expect2(await $t.parseIdentityJWT('abc.def').catch(GETERR)).toEqual(
+            '@token[abc.def] is invalid (format) - verifyJWT(http)',
+        );
+        // 2. 잘못된 형식 (4 sections)
+        expect2(await $t.parseIdentityJWT('a.b.c.d').catch(GETERR)).toEqual(
+            '@token[a.b.c.d] is invalid (format) - verifyJWT(http)',
+        );
+
+        //* test of parseIdentityJWT with verify: false
+        const $parsed = await $t.parseIdentityJWT($enc.token, { verify: false });
+        expect2(() => $parsed, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
+
+        //* test of signToken - HS256 (without KMS)
+        // 1. 빈 메시지 검증
+        expect2(await $t.signToken('', '').catch(GETERR)).toEqual('@message (string) is required - signToken()');
+        expect2(await $t.signToken('abc', '').catch(GETERR)).toEqual('@message (string) is required - signToken(abc)');
+
+        // 2. 정상적인 서명 생성 (HS256)
+        const testMessage = 'test.message';
+        const signature = await $t.signToken('', testMessage);
+        expect2(() => signature).toEqual(expect.any(String));
+        expect2(() => signature.length > 0).toEqual(true);
+
+        //* test with different reqContext accountId
+        const $t3 = new MyHttpHeaderToolV2({}, { accountId: '000000000001' } as any);
+        const secret1 = $t.buildJwtSecret();
+        const secret3 = $t3.buildJwtSecret();
+        expect2(() => secret1).toEqual(expect.any(String));
+        expect2(() => secret3).toEqual(expect.any(String));
+        // 다른 accountId는 다른 secret을 생성해야 함
+        expect2(() => secret1 !== secret3).toEqual(true);
+
+        //* test of isExternal() inheritance
+        const $t4 = new MyHttpHeaderToolV2({ Host: 'api.example.com' });
+        expect2(() => $t4.isExternal()).toEqual(true);
+
+        const $t5 = new MyHttpHeaderToolV2({});
+        expect2(() => $t5.isExternal()).toEqual(false);
+
+        //* test of getHeader() inheritance
+        const $t6 = new MyHttpHeaderToolV2({
+            'X-Custom-Header': 'custom-value',
+            'x-lemon-language': 'ko',
+        });
+        expect2(() => $t6.getHeader('X-Custom-Header')).toEqual('custom-value');
+        expect2(() => $t6.parseLanguageHeader()).toEqual('ko');
     });
 });
