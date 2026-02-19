@@ -867,19 +867,9 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         };
         // STEP.2 encode and calc signature.
         const message = [data.header, data.payload].join('.');
-        if (useKms) {
-            // KMS verification (RS256)
-            const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
-            const signature = $kms ? await $kms.sign(message, true) : '';
-            const token = [message, signature].join('.');
-            return { signature, message, token };
-        } else {
-            // HS256: sign directly with secret
-            const secret = this.buildJwtSecret();
-            const signature = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
-            const token = [message, signature].join('.');
-            return { signature, message, token };
-        }
+        const signature = await this.signToken(alias, message);
+        const token = [message, signature].join('.');
+        return { signature, message, token };
     }
 
     /**
