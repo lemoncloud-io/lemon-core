@@ -671,8 +671,8 @@ describe('LambdaWEBHandler', () => {
         });
         expect2(() => $enc.token).toEqual(`${$enc.message}.${$enc.signature}`);
 
-        //* verify JWT structure (HS256)
-        const decoded = $U.jwt().decode($enc.token);
+        //* verify JWT structure (HS256) - use parseIdentityJWT with verify: false
+        const decoded = await $t.parseIdentityJWT($enc.token, { verify: false });
         expect2(() => decoded, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
         expect2(() => decoded?.iss?.startsWith('api/')).toEqual(true);
         expect2(() => decoded?.iat).toEqual(Math.floor(current / 1000));
@@ -709,7 +709,7 @@ describe('LambdaWEBHandler', () => {
         expect2(() => $parsed2, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
 
         //* tampered signature should fail (HS256)
-        const $decoded = $U.jwt().decode($enc.token) as { iss: string };
+        const $decoded = await $t.parseIdentityJWT($enc.token, { verify: false });
         const badSignature = `${$enc.signature.substring(0, $enc.signature.length - 1)}${
             $enc.signature.endsWith('A') ? 'B' : 'A'
         }`;
@@ -770,6 +770,18 @@ describe('LambdaWEBHandler', () => {
         expect2(await $t.verifyToken('kms/', 'msg', 'sig').catch(GETERR)).toEqual(
             '@alias (string) is required - verifyToken(kms/)',
         );
+        // 5. api/ prefix with invalid issuer format (starts with uppercase)
+        expect2(await $t.verifyToken('api/Abc', 'msg', 'sig').catch(GETERR)).toEqual(
+            '@issuer[Abc] is invalid - verifyToken(api/Abc)',
+        );
+        // 6. api/ prefix with invalid issuer format (contains slash)
+        expect2(await $t.verifyToken('api/abc/def', 'msg', 'sig').catch(GETERR)).toEqual(
+            '@issuer[abc/def] is invalid - verifyToken(api/abc/def)',
+        );
+        // 7. api/ prefix with invalid issuer format (contains special char)
+        expect2(await $t.verifyToken('api/abc@def', 'msg', 'sig').catch(GETERR)).toEqual(
+            '@issuer[abc@def] is invalid - verifyToken(api/abc@def)',
+        );
 
         //* test of verifyToken - api/ prefix (current service - HS256 local verify)
         const $enc2 = await $t.encodeIdentityJWT(identity, { current });
@@ -815,5 +827,143 @@ describe('LambdaWEBHandler', () => {
         expect2(await $t.parseIdentityJWT(invalidIssToken, { current }).catch(GETERR)).toEqual(
             '@signature[] is invalid (@iss[unknown/issuer] is invalid (unsupportable issuer) - verifyToken(unknown/issuer)) - verifyJWT(http)',
         );
+    });
+
+    //* MyHttpHeaderToolV2 compatibility tests
+    it('should pass MyHttpHeaderToolV2 compatibility tests', async () => {
+        const PROFILE = loadProfile(process);
+
+        //* Test 2: V1 KMS token → V2 can parse (backward compatibility)
+        //* V2 should be able to parse tokens with kms/* issuer created by V1
+        if (PROFILE) {
+            const $v1 = new MyHttpHeaderTool({});
+            const $v2 = new MyHttpHeaderToolV2({});
+            const identity: NextIdentity = { sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] };
+            const current = ($U.dt('2026-02-12 20:00:00', 9) as unknown as Date).getTime();
+            const alias = 'lemon-identity-key';
+
+            // V1 encodes with KMS
+            const $encV1 = await $v1.encodeIdentityJWT(identity, { current, alias });
+            expect2(() => $encV1.token.split('.').length).toEqual(3);
+
+            // V2 can parse V1's KMS token
+            const $parsedByV2 = await $v2.parseIdentityJWT($encV1.token, { current });
+            expect2(() => $parsedByV2, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
+            expect2(() => $parsedByV2?.iss).toEqual(`kms/${alias}`);
+
+            // V1 can also parse V1's KMS token (baseline)
+            const $parsedByV1 = await $v1.parseIdentityJWT($encV1.token, { current });
+            expect2(() => $parsedByV1, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
+        }
+
+        //* Test 3: V2 api/* token → V1 rejects
+        //* V1 does not support api/* issuer, should reject
+        if (1) {
+            const $v1 = new MyHttpHeaderTool({});
+            const $v2 = new MyHttpHeaderToolV2({});
+            const identity: NextIdentity = { sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] };
+            const current = ($U.dt('2026-02-12 20:00:00', 9) as unknown as Date).getTime();
+
+            // V2 encodes without alias (HS256, api/* issuer)
+            const $encV2 = await $v2.encodeIdentityJWT(identity, { current });
+            expect2(() => $encV2.token.split('.').length).toEqual(3);
+
+            // V2 token should have api/* issuer
+            const decodedV2 = await $v2.parseIdentityJWT($encV2.token, { verify: false });
+            expect2(() => decodedV2?.iss?.startsWith('api/')).toEqual(true);
+
+            // V1 should reject api/* issuer (unsupportable issuer)
+            expect2(await $v1.parseIdentityJWT($encV2.token, { current }).catch(GETERR)).toEqual(
+                `@iss[${decodedV2.iss}] is invalid (unsupportable issuer) - verifyJWT(http)`,
+            );
+        }
+
+        //* Test 4: Inherited methods should work identically
+        if (1) {
+            const headers = {
+                Host: 'api.example.com',
+                'X-Custom-Header': 'custom-value',
+                'x-lemon-language': 'ko',
+                Cookie: 'session=abc123; user=test',
+            };
+            const $v1 = new MyHttpHeaderTool(headers);
+            const $v2 = new MyHttpHeaderToolV2(headers);
+
+            // getHeader should return same result
+            expect2(() => $v1.getHeader('X-Custom-Header')).toEqual($v2.getHeader('X-Custom-Header'));
+            expect2(() => $v1.getHeader('X-Custom-Header')).toEqual('custom-value');
+
+            // getHeaders should return same result
+            expect2(() => $v1.getHeaders('x-lemon-language')).toEqual($v2.getHeaders('x-lemon-language'));
+            expect2(() => $v1.getHeaders('x-lemon-language')).toEqual(['ko']);
+
+            // parseLanguageHeader should return same result
+            expect2(() => $v1.parseLanguageHeader()).toEqual($v2.parseLanguageHeader());
+            expect2(() => $v1.parseLanguageHeader()).toEqual('ko');
+
+            // isExternal should return same result
+            expect2(() => $v1.isExternal()).toEqual($v2.isExternal());
+            expect2(() => $v1.isExternal()).toEqual(true);
+
+            // parseCookiesHeader should return same result
+            expect2(() => $v1.parseCookiesHeader()).toEqual($v2.parseCookiesHeader());
+            expect2(() => $v1.parseCookiesHeader()).toEqual({ session: 'abc123', user: 'test' });
+        }
+
+        //* Test 5: Edge cases
+        //* 5-1: null iss token
+        if (1) {
+            const $v1 = new MyHttpHeaderTool({});
+            const identity: NextIdentity = { sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] };
+            const current = ($U.dt('2026-02-12 20:00:00', 9) as unknown as Date).getTime();
+
+            // V1 without alias creates token with null iss and empty signature
+            const $encV1NoAlias = await $v1.encodeIdentityJWT(identity, { current });
+            const decodedV1 = $U.jwt().decode($encV1NoAlias.token);
+            expect2(() => decodedV1, 'iss').toEqual({ iss: null });
+            expect2(() => $encV1NoAlias.signature).toEqual('');
+            expect2(() => $encV1NoAlias.token.endsWith('.')).toEqual(true);
+
+            // V1 should reject null iss token during verification
+            expect2(await $v1.parseIdentityJWT($encV1NoAlias.token, { current }).catch(GETERR)).toEqual(
+                '@iss[null] is invalid (unsupportable issuer) - verifyJWT(http)',
+            );
+        }
+
+        //* 5-2: Header cloning
+        if (1) {
+            const originalHeaders = { Host: 'api.example.com', 'X-Test': 'original' };
+            const $v1 = new MyHttpHeaderTool(originalHeaders);
+            const $v2 = new MyHttpHeaderToolV2(originalHeaders);
+
+            // modify original headers
+            originalHeaders['X-Test'] = 'modified';
+
+            // V1 and V2 should have the original value (cloned)
+            expect2(() => $v1.getHeader('X-Test')).toEqual('original');
+            expect2(() => $v2.getHeader('X-Test')).toEqual('original');
+        }
+
+        //* Test 6: KMS token interoperability (V2 creates KMS token → V1 can verify)
+        if (PROFILE) {
+            const $v1 = new MyHttpHeaderTool({});
+            const $v2 = new MyHttpHeaderToolV2({});
+            const identity: NextIdentity = { sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] };
+            const current = ($U.dt('2026-02-12 20:00:00', 9) as unknown as Date).getTime();
+            const alias = 'lemon-identity-key';
+
+            // V2 encodes with KMS (alias provided)
+            const $encV2Kms = await $v2.encodeIdentityJWT(identity, { current, alias });
+            expect2(() => $encV2Kms.token.split('.').length).toEqual(3);
+
+            // decoded token should have kms/* issuer
+            const decodedV2Kms = await $v2.parseIdentityJWT($encV2Kms.token, { verify: false });
+            expect2(() => decodedV2Kms?.iss).toEqual(`kms/${alias}`);
+
+            // V1 can parse V2's KMS token
+            const $parsedByV1 = await $v1.parseIdentityJWT($encV2Kms.token, { current });
+            expect2(() => $parsedByV1, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
+            expect2(() => $parsedByV1?.iss).toEqual(`kms/${alias}`);
+        }
     });
 });

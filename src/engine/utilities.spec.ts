@@ -316,16 +316,23 @@ describe(`core/utilities.ts`, () => {
 
         const $crypt = $U.crypto3(secret);
         const encrypted = $crypt.encrypt(data, { nonce, current });
-        expect2(() => encrypted).toEqual('a1b2c3d417000000000000SHDORRLL64BZCXdKGi7qlgoO/VYvplL0lOYG1vilQAmfqXh');
+        // format: [VERSION_HEADER:16][nonce:8][timestamp:13][encryptedBase64]
+        expect2(() => encrypted).toEqual('LM!#V00300000000a1b2c3d417000000000005k6GOB5Zd/pdOHrNdD3m9U0rfao=');
         expect2(() => $crypt.decrypt(encrypted)).toEqual(data);
 
         // 2. wrong secret should fail to decrypt correctly
         const $cryptWrong = $U.crypto3('wrong-secret-key');
-        expect2(() => $cryptWrong.decrypt(encrypted)).toEqual('400 INVALID PASSWD - invalid magic string!');
+        expect2(() => $cryptWrong.decrypt(encrypted)).toEqual('400 INVALID PASSWD - invalid json string!');
 
         // 4. error cases
         expect2(() => $crypt.decrypt('')).toEqual('@msg (string) is required!');
         expect2(() => $crypt.decrypt('abc')).toEqual('400 INVALID DATA - data too short!');
+        expect2(() => $crypt.decrypt('XX!#V00300000000a1b2c3d417000000000005k6GOB5Zd/pdOHrNdD3m9U0rfao=')).toEqual(
+            '400 INVALID MAGIC - invalid magic string!',
+        );
+        expect2(() => $crypt.decrypt('LM!#999900000000a1b2c3d417000000000005k6GOB5Zd/pdOHrNdD3m9U0rfao=')).toEqual(
+            '400 INVALID VERSION - expected V003, got 9999!',
+        );
 
         // 5. each encryption should produce different result (due to nonce)
         const encrypted4 = $crypt.encrypt(data);

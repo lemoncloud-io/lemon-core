@@ -853,17 +853,16 @@ export class Utilities {
 
     /**
      * get crypto3 object (with nonce + timestamp based IV).
-     * - supports versioned encryption with header padding (16 bytes)
-     * - decrypt validates version before decryption
-     * - format: {nonce:8}{timestamp:13}{encryptedBase64}
+     * - version header (16 bytes, plaintext)
+     * - format: {versionHeader:16}{nonce:8}{timestamp:13}{encryptedBase64}
      *
      * @param passwd    password to crypt
      * @param algorithm (default as `aes-256-ctr`)
      */
     public readonly crypto3 = (passwd: string, algorithm?: string) => {
         algorithm = algorithm || 'aes-256-ctr';
-        const VERSION = '0001';
-        const HEADER = `LM!#${VERSION}`.padEnd(16, '0'); // "LM!#0001" (16 bytes)
+        const VERSION = 'V003';
+        const VERSION_HEADER = `LM!#${VERSION}`.padEnd(16, '0'); // "LM!#V00300000000" (16 bytes, plaintext)
         const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
         const hmac = (data: string, sig: string) => this.hmac(data, sig, 'sha256', 'hex');
         const currentMs = () => this.current_time_ms();
@@ -875,36 +874,39 @@ export class Utilities {
                 const nonce = options?.nonce ?? makeNonce();
                 const timestamp = String(options?.current ?? currentMs()).padStart(13, '0');
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
-                const buffer = Buffer.from(`${HEADER}${JSON.stringify({ d: val })}`, 'utf8');
+                const buffer = Buffer.from(JSON.stringify({ d: val }), 'utf8');
                 const cipher = crypto.createCipheriv(algorithm, key, iv);
                 const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
-                return `${nonce}${timestamp}${crypted.toString('base64')}`;
+                return `${VERSION_HEADER}${nonce}${timestamp}${crypted.toString('base64')}`;
             };
             public decrypt = (msg: string, options?: { current?: number; maxAge?: number }): string => {
                 if (!msg) throw new Error('@msg (string) is required!');
-                if (msg.length < 31) throw new Error('400 INVALID DATA - data too short!');
-                const nonce = msg.substring(0, 8);
-                const timestamp = msg.substring(8, 21);
-                const encryptedBase64 = msg.substring(21);
+                if (msg.length < 37) throw new Error('400 INVALID DATA - data too short!');
+                // 1. read version header
+                const versionHeader = msg.substring(0, 16);
+                if (!versionHeader.startsWith('LM!#')) throw new Error('400 INVALID MAGIC - invalid magic string!');
+                const version = versionHeader.substring(4, 8);
+                if (version !== VERSION) throw new Error(`400 INVALID VERSION - expected ${VERSION}, got ${version}!`);
+                // 2. parse nonce, timestamp, encrypted data
+                const nonce = msg.substring(16, 24);
+                const timestamp = msg.substring(24, 37);
+                const encryptedBase64 = msg.substring(37);
                 if (!/^\d+$/.test(timestamp)) throw new Error('400 INVALID DATA - invalid timestamp!');
                 if (options?.maxAge !== undefined) {
                     const current = options?.current ?? currentMs();
                     if (current - parseInt(timestamp, 10) > options.maxAge)
                         throw new Error('400 INVALID DATA - expired timestamp!');
                 }
+                // 3. decrypt
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
                 const decipher = crypto.createDecipheriv(algorithm, key, iv);
                 const dec = Buffer.concat([
                     decipher.update(Buffer.from(encryptedBase64, 'base64')),
                     decipher.final(),
                 ]).toString('utf8');
-                if (!dec.startsWith('LM!#')) throw new Error('400 INVALID PASSWD - invalid magic string!');
-                const version = dec.substring(4, 8);
-                if (version !== VERSION) throw new Error(`400 INVALID VERSION - expected ${VERSION}, got ${version}!`);
-                const data = dec.substring(16);
-                if (!data.startsWith('{') || !data.endsWith('}'))
+                if (!dec.startsWith('{') || !dec.endsWith('}'))
                     throw new Error('400 INVALID PASSWD - invalid json string!');
-                const $msg = JSON.parse(data) || {};
+                const $msg = JSON.parse(dec) || {};
                 return $msg.d;
             };
         })();

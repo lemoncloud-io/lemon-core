@@ -510,18 +510,6 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
     protected headers: HttpHeaderSet;
 
     /**
-     * build default JWT secret from AWS account id + magic key.
-     */
-    public static buildJwtSecret = (): string => {
-        //TODO load automatically the correct `accountId` @claire.
-        const accountId = $U.env('AWS_ACCOUNT_ID', '000000000000');
-        const secret = JWT_MAGIC_KEY; // 유출되면 피곤함.
-        const _hmac = (msg: string, key = secret) => $U.hmac(msg, key, 'sha256', 'base64'); // 기본 로직
-        // return _hmac([_hmac(accountNo), JWT_SIGN_KEY].join(':'));
-        return _hmac(_hmac(accountId, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
-    };
-
-    /**
      * default constructor.
      * @param headers
      */
@@ -848,6 +836,10 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         const alias = params?.alias;
         const useKms = !!params?.alias;
         const service = $config?.config?.getService?.();
+        // validate service format
+        if (!useKms && service && !/^[a-z][a-zA-Z0-9-]*$/.test(service)) {
+            throw new Error(`@service[${service}] is invalid - encodeIdentityJWT()`);
+        }
         const payload = {
             ...identity,
             iss: useKms ? `kms/${alias}` : `api/${service}`, //* issuer name. (must be alias of KMS or api-name)
@@ -897,8 +889,7 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         const current = params?.current ?? $U.current_time_ms();
         const [header, payload, signature] = sections;
         const message = [header, payload].join('.');
-        const $jwt = $U.jwt();
-        const data = $jwt.decode(token, { complete: false, json: true });
+        const data = $U.jwt().decode(token, { complete: false, json: true });
         if (!data) throw new Error(`@token[${token}] is invalid (failed to decode) - ${errScope}`);
         const { iss, iat, exp } = data;
 
@@ -950,6 +941,10 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         // API verification - iss starts with 'api/'
         if (typeof iss === 'string' && iss.startsWith('api/')) {
             const issuer = iss.substring(4);
+            // validate issuer format
+            if (!/^[a-z][a-zA-Z0-9-]*$/.test(issuer)) {
+                throw new Error(`@issuer[${issuer}] is invalid - ${errScope}`);
+            }
             const currentService = $config?.config?.getService?.();
 
             // verify if issued by current service
@@ -999,7 +994,7 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         } else {
             // HS256: sign directly with secret
             const secret = this.buildJwtSecret();
-            const signature = $U.hmac(message, secret, 'sha256', 'base64');
+            const signature = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
             _inf(NS, `> signature[${alias}] with HS256 =`, signature);
             return signature;
         }
