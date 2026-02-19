@@ -755,33 +755,40 @@ describe('LambdaWEBHandler', () => {
 
         //* test of verifyToken
         // 1. unsupportable issuer (null)
-        expect2(await $t.verifyToken(null as any, 'msg', 'sig').catch(GETERR)).toEqual(
-            '@iss[null] is invalid (unsupportable issuer) - verifyToken()',
-        );
+        expect2(await $t.verifyToken(null as any, 'msg', 'sig')).toEqual({
+            valid: false,
+            error: '@iss[null] is invalid (unsupportable issuer) - verifyToken()',
+        });
         // 2. unsupportable issuer (undefined)
-        expect2(await $t.verifyToken(undefined as any, 'msg', 'sig').catch(GETERR)).toEqual(
-            '@iss[undefined] is invalid (unsupportable issuer) - verifyToken()',
-        );
+        expect2(await $t.verifyToken(undefined as any, 'msg', 'sig')).toEqual({
+            valid: false,
+            error: '@iss[undefined] is invalid (unsupportable issuer) - verifyToken()',
+        });
         // 3. unsupportable issuer (invalid prefix)
-        expect2(await $t.verifyToken('invalid/issuer', 'msg', 'sig').catch(GETERR)).toEqual(
-            '@iss[invalid/issuer] is invalid (unsupportable issuer) - verifyToken(invalid/issuer)',
-        );
+        expect2(await $t.verifyToken('invalid/issuer', 'msg', 'sig')).toEqual({
+            valid: false,
+            error: '@iss[invalid/issuer] is invalid (unsupportable issuer) - verifyToken(invalid/issuer)',
+        });
         // 4. kms/ prefix but empty alias
-        expect2(await $t.verifyToken('kms/', 'msg', 'sig').catch(GETERR)).toEqual(
-            '@alias (string) is required - verifyToken(kms/)',
-        );
+        expect2(await $t.verifyToken('kms/', 'msg', 'sig')).toEqual({
+            valid: false,
+            error: '@alias (string) is required - verifyToken(kms/)',
+        });
         // 5. api/ prefix with invalid issuer format (starts with uppercase)
-        expect2(await $t.verifyToken('api/Abc', 'msg', 'sig').catch(GETERR)).toEqual(
-            '@issuer[Abc] is invalid - verifyToken(api/Abc)',
-        );
+        expect2(await $t.verifyToken('api/Abc', 'msg', 'sig')).toEqual({
+            valid: false,
+            error: '@issuer[Abc] is invalid - verifyToken(api/Abc)',
+        });
         // 6. api/ prefix with invalid issuer format (contains slash)
-        expect2(await $t.verifyToken('api/abc/def', 'msg', 'sig').catch(GETERR)).toEqual(
-            '@issuer[abc/def] is invalid - verifyToken(api/abc/def)',
-        );
+        expect2(await $t.verifyToken('api/abc/def', 'msg', 'sig')).toEqual({
+            valid: false,
+            error: '@issuer[abc/def] is invalid - verifyToken(api/abc/def)',
+        });
         // 7. api/ prefix with invalid issuer format (contains special char)
-        expect2(await $t.verifyToken('api/abc@def', 'msg', 'sig').catch(GETERR)).toEqual(
-            '@issuer[abc@def] is invalid - verifyToken(api/abc@def)',
-        );
+        expect2(await $t.verifyToken('api/abc@def', 'msg', 'sig')).toEqual({
+            valid: false,
+            error: '@issuer[abc@def] is invalid - verifyToken(api/abc@def)',
+        });
 
         //* test of verifyToken - api/ prefix (current service - HS256 local verify)
         const $enc2 = await $t.encodeIdentityJWT(identity, { current });
@@ -790,16 +797,16 @@ describe('LambdaWEBHandler', () => {
         const iss2 = ($U.jwt().decode($enc2.token) as { iss: string }).iss;
 
         // valid verification
-        expect2(await $t.verifyToken(iss2, message2, sig2)).toEqual(true);
-        // invalid signature
+        expect2(await $t.verifyToken(iss2, message2, sig2)).toEqual({ valid: true });
+        // invalid signature 
         const badSig2 = sig2.endsWith('A') ? sig2.slice(0, -1) + 'B' : sig2.slice(0, -1) + 'A';
-        expect2(await $t.verifyToken(iss2, message2, badSig2)).toEqual(false);
+        expect2(await $t.verifyToken(iss2, message2, badSig2)).toEqual({ valid: false });
 
         //* test of verifyToken - api/ prefix (remote service - protocol verify)
-        // error when called without token
-        expect2(await $t.verifyToken('api/other-service', 'msg', 'sig').catch(GETERR)).toEqual(
-            '@token (string) is required - verifyToken(api/other-service)',
-        );
+        // error when called with other service (protocol error expected)
+        const remoteResult = await $t.verifyToken('api/other-service', 'msg', 'sig');
+        expect2(remoteResult.valid).toEqual(false);
+        expect2(remoteResult.error).toEqual('{"code":"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING_FLAG"}');
 
         //* test of parseIdentityJWT - expiration
         const expiredCurrent = current + 24 * 60 * 60 * 1000 + 1; // 1ms after expiration

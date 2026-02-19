@@ -463,6 +463,30 @@ export interface HttpHeaderSet {
 }
 
 /**
+ * type: `VerifyTokenBody`
+ */
+export interface VerifyTokenBody {
+    /**
+     * JWT token to verify (issued by this backend)
+     */
+    token: string;
+}
+
+/**
+ * type: `VerifyTokenResult`
+ */
+export interface VerifyTokenResult {
+    /**
+     * whether the token is valid
+     */
+    valid: boolean;
+    /**
+     * error message if invalid
+     */
+    error?: string;
+}
+
+/**
  * class: `HttpHeaderTool`
  * - parse header and extract identity.
  */
@@ -905,7 +929,10 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         const verified = await this.verifyToken(iss, message, signature, { token }).catch(e => {
             throw new Error(`@signature[] is invalid (${GETERR(e)}) - ${errScope}`);
         });
-        if (!verified) throw new Error(`@signature[] is invalid (failed to verify by ${iss}) - ${errScope}`);
+        if (!verified?.valid) {
+            const errMsg = verified?.error || `failed to verify by ${iss}`;
+            throw new Error(`@signature[] is invalid (${errMsg}) - ${errScope}`);
+        }
 
         // STEP.3 validate expiration
         if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
@@ -923,54 +950,58 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
         message: string,
         signature: string,
         options?: { token?: string },
-    ): Promise<boolean> {
+    ): Promise<VerifyTokenResult> {
         const errScope = `verifyToken(${iss ?? ''})`;
         const _alias = (iss: string, prefix: string) => {
             const value = iss.substring(prefix.length);
             return value.includes(',') ? value.substring(0, value.indexOf(',')) : value;
         };
-
-        // KMS verification (RS256) - iss starts with 'kms/'
-        if (typeof iss === 'string' && iss.startsWith('kms/')) {
-            const alias = _alias(iss, 'kms/');
-            if (!alias) throw new Error(`@alias (string) is required - ${errScope}`);
-            const $kms = this.findKMSService(`alias/${alias}`);
-            return $kms.verify(message, signature, { throwable: true });
-        }
-
-        // API verification - iss starts with 'api/'
-        if (typeof iss === 'string' && iss.startsWith('api/')) {
-            const issuer = iss.substring(4);
-            // validate issuer format
-            if (!/^[a-z][a-zA-Z0-9-]*$/.test(issuer)) {
-                throw new Error(`@issuer[${issuer}] is invalid - ${errScope}`);
-            }
-            const currentService = $config?.config?.getService?.();
-
-            // verify if issued by current service
-            if (issuer === currentService) {
-                const secret = this.buildJwtSecret();
-                const expected = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
-                return expected === signature;
+        try {
+            // KMS verification (RS256) - iss starts with 'kms/'
+            if (typeof iss === 'string' && iss.startsWith('kms/')) {
+                const alias = _alias(iss, 'kms/');
+                if (!alias) throw new Error(`@alias (string) is required - ${errScope}`);
+                const $kms = this.findKMSService(`alias/${alias}`);
+                const valid = await $kms.verify(message, signature, { throwable: true });
+                return { valid };
             }
 
-            // verify via protocol
-            const token = options?.token;
-            if (!token) throw new Error(`@token (string) is required - ${errScope}`);
-            const payload: ProtocolParam = {
-                service: issuer,
-                type: 'oauth',
-                mode: 'POST',
-                id: 'verify-token',
-                body: { token },
-                context: {},
-            };
-            const $res = await $protocol.service.execute<{ valid?: boolean; error?: string }>(payload);
-            if ($res?.valid) return true;
-            throw new Error(`.token[] is invalid (failed to verify by issuer:${issuer}): ${$res?.error} - ${errScope}`);
-        }
+            // API verification - iss starts with 'api/'
+            if (typeof iss === 'string' && iss.startsWith('api/')) {
+                const issuer = iss.substring(4);
+                // validate issuer format
+                if (!/^[a-z][a-zA-Z0-9-]*$/.test(issuer)) {
+                    throw new Error(`@issuer[${issuer}] is invalid - ${errScope}`);
+                }
+                const currentService = $config?.config?.getService?.();
 
-        throw new Error(`@iss[${iss}] is invalid (unsupportable issuer) - ${errScope}`);
+                // verify if issued by current service
+                if (issuer === currentService) {
+                    const secret = this.buildJwtSecret();
+                    const expected = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
+                    const valid = expected === signature;
+                    return { valid };
+                }
+
+                // verify via protocol
+                const token = options?.token ?? `${message}.${signature}`;
+                const body: VerifyTokenBody = { token };
+                const payload: ProtocolParam = {
+                    service: issuer,
+                    type: 'oauth',
+                    mode: 'POST',
+                    id: 'verify-token',
+                    body,
+                    context: {},
+                };
+                const res = await $protocol.service.execute<VerifyTokenResult>(payload);
+                return res;
+            }
+
+            throw new Error(`@iss[${iss}] is invalid (unsupportable issuer) - ${errScope}`);
+        } catch (e) {
+            return { valid: false, error: GETERR(e) };
+        }
     }
     /**
      * sign the message w/ alias
