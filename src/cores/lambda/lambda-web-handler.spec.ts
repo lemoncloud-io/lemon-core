@@ -639,12 +639,12 @@ describe('LambdaWEBHandler', () => {
         expect2(() => $t.hello()).toEqual('header-tool-v2');
 
         //* test of buildJwtSecret() - without reqContext
-        expect2(() => $t.buildJwtSecret()).toEqual(expect.any(String));
+        expect2(await $t.buildJwtSecret()).toEqual(expect.any(String));
 
-        //* test with reqContext
-        const $t2 = new MyHttpHeaderToolV2({ Host: 'localhost' }, { accountId: '123456789012' } as any);
+        //* test with headers
+        const $t2 = new MyHttpHeaderToolV2({ Host: 'localhost' });
         expect2(() => $t2.hello()).toEqual('header-tool-v2');
-        expect2(() => $t2.buildJwtSecret()).toEqual(expect.any(String));
+        expect2(await $t2.buildJwtSecret()).toEqual(expect.any(String));
 
         //* test of validation - encodeIdentityJWT
         // 1. null validation
@@ -729,14 +729,14 @@ describe('LambdaWEBHandler', () => {
         expect2(() => signature).toEqual(expect.any(String));
         expect2(() => signature.length > 0).toEqual(true);
 
-        //* test with different reqContext accountId
-        const $t3 = new MyHttpHeaderToolV2({}, { accountId: '000000000001' } as any);
-        const secret1 = $t.buildJwtSecret();
-        const secret3 = $t3.buildJwtSecret();
+        //* test with different instance
+        const $t3 = new MyHttpHeaderToolV2({});
+        const secret1 = await $t.buildJwtSecret();
+        const secret3 = await $t3.buildJwtSecret();
         expect2(() => secret1).toEqual(expect.any(String));
         expect2(() => secret3).toEqual(expect.any(String));
-        // different accountId should generate different secret
-        expect2(() => secret1 !== secret3).toEqual(true);
+        // shared accountId should generate same secret
+        expect2(() => secret1 === secret3).toEqual(true);
 
         //* test of isExternal() inheritance
         const $t4 = new MyHttpHeaderToolV2({ Host: 'api.example.com' });

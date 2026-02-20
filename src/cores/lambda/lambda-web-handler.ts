@@ -33,6 +33,7 @@ import { loadJsonSync } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
+import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import $config from '../config';
 
 import $protocol from '../protocol/';
@@ -406,10 +407,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     /**
      * builder of tools without kms.
      */
-    public toolsV2 = (
-        headers: HttpHeaderSet,
-        reqContext?: APIGatewayEventRequestContext,
-    ): HttpHeaderTool<APIGatewayEventRequestContext> => new MyHttpHeaderToolV2(headers, reqContext);
+    public toolsV2 = (headers: HttpHeaderSet): HttpHeaderTool<APIGatewayEventRequestContext> =>
+        new MyHttpHeaderToolV2(headers);
     /**
      * pack the request context for Http request.
      *
@@ -433,7 +432,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         }
 
         // STEP.2 use internal identity json data via python lambda call.
-        const $tool = this.toolsV2(headers, reqContext);
+        const $tool = this.toolsV2(headers);
         const identity = await $tool.parseIdentityHeader();
         const _prepare = (): NextContext => {
             const cookie = $tool.parseCookiesHeader();
@@ -816,11 +815,11 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
 }
 
 export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
-    protected reqContext?: APIGatewayEventRequestContext;
+    protected static _accountId?: string;
+    protected static _accountIdPromise?: Promise<string>;
 
-    public constructor(headers: HttpHeaderSet, reqContext?: APIGatewayEventRequestContext) {
+    public constructor(headers: HttpHeaderSet) {
         super(headers);
-        this.reqContext = reqContext;
     }
 
     public hello(): string {
@@ -830,11 +829,33 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
     /**
      * build default JWT secret from AWS account id + magic key.
      */
-    public buildJwtSecret = (): string => {
-        const accountId = this.reqContext?.accountId ?? '000000000000';
+    public buildJwtSecret = async (): Promise<string> => {
+        const accountId = await this.getAccountId();
         const secret = JWT_MAGIC_KEY; // 유출되면 피곤함.
         const _hmac = (msg: string, key = secret) => $U.hmac(msg, key, 'sha256', 'base64'); // 기본 로직
         return _hmac(_hmac(accountId, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
+    };
+
+    /**
+     * get current aws account-id via STS. (once)
+     */
+    protected getAccountId = async (): Promise<string> => {
+        if (MyHttpHeaderToolV2._accountId) return MyHttpHeaderToolV2._accountId;
+        if (!MyHttpHeaderToolV2._accountIdPromise) {
+            MyHttpHeaderToolV2._accountIdPromise = new Promise((resolve, reject) => {
+                const sts = new STSClient({});
+                sts.send(new GetCallerIdentityCommand({}))
+                    .then(data => resolve(data?.Account))
+                    .catch(err => reject(err));
+            })
+                .then(accountId => `${accountId || '000000000000'}`)
+                .catch(err => {
+                    _err(NS, '! err@jwt.accountId =', err);
+                    return '000000000000';
+                });
+        }
+        MyHttpHeaderToolV2._accountId = await MyHttpHeaderToolV2._accountIdPromise;
+        return MyHttpHeaderToolV2._accountId;
     };
 
     /**
@@ -977,7 +998,7 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
 
                 // verify if issued by current service
                 if (issuer === currentService) {
-                    const secret = this.buildJwtSecret();
+                    const secret = await this.buildJwtSecret();
                     const expected = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
                     const valid = expected === signature;
                     return { valid };
@@ -1024,7 +1045,7 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
             return signature;
         } else {
             // HS256: sign directly with secret
-            const secret = this.buildJwtSecret();
+            const secret = await this.buildJwtSecret();
             const signature = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
             _inf(NS, `> signature[${alias}] with HS256 =`, signature);
             return signature;
