@@ -856,12 +856,19 @@ export class Utilities {
      * - version header (16 bytes, plaintext)
      * - format: {versionHeader:16}{nonce:8}{timestamp:13}{encryptedBase64}
      *
+     * format details, see `crypto3` tests.
+     * 1. nonce = random string with length ?? (like `1a2b3c4d`)
+     * 2. head = `LM!#${VERSION}:${nonce}:${timestamp}` -> base64 encode with constant length ??? w/ padding.
+     * 3. body = JSON({d: data}) -> encrypted by AES-256-CTR with key = passwd
+     * 4. final = [head, body].join('')
+     *
      * @param passwd    password to crypt
      * @param algorithm (default as `aes-256-ctr`)
      */
-    public readonly crypto3 = (passwd: string, algorithm?: string) => {
+    public readonly crypto3 = <T = string>(passwd: string, algorithm?: string) => {
         algorithm = algorithm || 'aes-256-ctr';
         const VERSION = 'V003';
+        const errScope = `crypto3(${algorithm}#${VERSION})`;
         const VERSION_HEADER = `LM!#${VERSION}`.padEnd(16, '0'); // "LM!#V00300000000" (16 bytes, plaintext)
         const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
         const hmac = (data: string, sig: string) => this.hmac(data, sig, 'sha256', 'hex');
@@ -869,33 +876,37 @@ export class Utilities {
         const makeNonce = () => this.uuid().replace(/-/g, '').substring(0, 8);
 
         return new (class {
-            public encrypt = (val: string, options?: { current?: number; nonce?: string }): string => {
+            public encrypt = (val: T, options?: { current?: number; nonce?: string }): string => {
                 val = val === undefined ? null : val;
                 const nonce = options?.nonce ?? makeNonce();
                 const timestamp = String(options?.current ?? currentMs()).padStart(13, '0');
+                //TODO `.substring(0, 32)` is required? @claire.
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
                 const buffer = Buffer.from(JSON.stringify({ d: val }), 'utf8');
                 const cipher = crypto.createCipheriv(algorithm, key, iv);
                 const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
                 return `${VERSION_HEADER}${nonce}${timestamp}${crypted.toString('base64')}`;
             };
-            public decrypt = (msg: string, options?: { current?: number; maxAge?: number }): string => {
-                if (!msg) throw new Error('@msg (string) is required!');
-                if (msg.length < 37) throw new Error('400 INVALID DATA - data too short!');
+            public decrypt = (msg: string, options?: { current?: number; maxAge?: number }): T => {
+                if (!msg) throw new Error(`@msg (string) is required - ${errScope}`);
+                if (msg.length < 37) throw new Error(`400 INVALID DATA - data too short! @${errScope}`);
                 // 1. read version header
                 const versionHeader = msg.substring(0, 16);
-                if (!versionHeader.startsWith('LM!#')) throw new Error('400 INVALID MAGIC - invalid magic string!');
+                //TODO use const MAGIC_KEY in front. @claire
+                if (!versionHeader.startsWith('LM!#'))
+                    throw new Error(`400 INVALID MAGIC - invalid magic string! @${errScope}`);
                 const version = versionHeader.substring(4, 8);
-                if (version !== VERSION) throw new Error(`400 INVALID VERSION - expected ${VERSION}, got ${version}!`);
+                if (version !== VERSION)
+                    throw new Error(`400 INVALID VERSION - expected ${VERSION}, got ${version}! @${errScope}`);
                 // 2. parse nonce, timestamp, encrypted data
                 const nonce = msg.substring(16, 24);
                 const timestamp = msg.substring(24, 37);
                 const encryptedBase64 = msg.substring(37);
-                if (!/^\d+$/.test(timestamp)) throw new Error('400 INVALID DATA - invalid timestamp!');
+                if (!/^\d+$/.test(timestamp)) throw new Error(`400 INVALID DATA - invalid timestamp! @${errScope}`);
                 if (options?.maxAge !== undefined) {
                     const current = options?.current ?? currentMs();
                     if (current - parseInt(timestamp, 10) > options.maxAge)
-                        throw new Error('400 INVALID DATA - expired timestamp!');
+                        throw new Error(`400 INVALID DATA - expired timestamp! @${errScope}`);
                 }
                 // 3. decrypt
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
@@ -905,9 +916,9 @@ export class Utilities {
                     decipher.final(),
                 ]).toString('utf8');
                 if (!dec.startsWith('{') || !dec.endsWith('}'))
-                    throw new Error('400 INVALID PASSWD - invalid json string!');
+                    throw new Error(`400 INVALID PASSWD - invalid json string @${errScope}`);
                 const $msg = JSON.parse(dec) || {};
-                return $msg.d;
+                return $msg?.d as T;
             };
         })();
     };
