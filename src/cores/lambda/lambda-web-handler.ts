@@ -405,11 +405,6 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     public tools = (headers: HttpHeaderSet): HttpHeaderTool<APIGatewayEventRequestContext> =>
         new MyHttpHeaderTool(headers);
     /**
-     * builder of tools without kms.
-     */
-    public toolsV2 = (headers: HttpHeaderSet): HttpHeaderTool<APIGatewayEventRequestContext> =>
-        new MyHttpHeaderToolV2(headers);
-    /**
      * pack the request context for Http request.
      *
      * @param event origin Event.
@@ -432,7 +427,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         }
 
         // STEP.2 use internal identity json data via python lambda call.
-        const $tool = this.toolsV2(headers);
+        const $tool = this.tools(headers);
         const identity = await $tool.parseIdentityHeader();
         const _prepare = (): NextContext => {
             const cookie = $tool.parseCookiesHeader();
@@ -531,6 +526,8 @@ export interface HttpHeaderTool<RequestContext> {
  */
 export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestContext> {
     protected headers: HttpHeaderSet;
+    protected static _accountId?: string;
+    protected static _accountIdPromise?: Promise<string>;
 
     /**
      * default constructor.
@@ -547,6 +544,48 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
 
     /** expose `onlyDefined` */
     public onlyDefined = onlyDefined;
+
+    /**
+     * build default JWT secret from AWS account id + magic key.
+     */
+    public buildJwtSecret = async (): Promise<string> => {
+        const accountId = await this.getAccountId();
+        const secret = JWT_MAGIC_KEY; // 유출되면 피곤함.
+        const _hmac = (msg: string, key = secret) => $U.hmac(msg, key, 'sha256', 'base64'); // 기본 로직
+        return _hmac(_hmac(accountId, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
+    };
+
+    /**
+     * get current aws account-id via STS. (once)
+     */
+    protected getAccountId = async (): Promise<string> => {
+        if (MyHttpHeaderTool._accountId) return MyHttpHeaderTool._accountId;
+        if (!MyHttpHeaderTool._accountIdPromise) {
+            MyHttpHeaderTool._accountIdPromise = (async () => {
+                // 1. getHelloArn()에서 ARN을 통해 accountId 추출 시도
+                try {
+                    const arn = getHelloArn(null, NS);
+                    if (arn && arn.startsWith('arn:aws:')) {
+                        const accountId = arn.split(':')[4];
+                        if (accountId) return accountId;
+                    }
+                } catch (e) {
+                    _log(NS, '! getHelloArn failed, fallback to STS');
+                }
+
+                // 2. fallback: STS 호출 (awsConfig 사용)
+                const cfg = awsConfig($engine);
+                const sts = new STSClient(cfg);
+                const data = await sts.send(new GetCallerIdentityCommand({}));
+                return data?.Account || '000000000000';
+            })().catch(err => {
+                _err(NS, '! err@jwt.accountId =', err);
+                return '000000000000';
+            });
+        }
+        MyHttpHeaderTool._accountId = await MyHttpHeaderTool._accountIdPromise;
+        return MyHttpHeaderTool._accountId;
+    };
 
     /**
      * get values by name
@@ -665,6 +704,10 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             alias?: string;
             /** current ms */
             current?: number;
+            /** expiration time in seconds */
+            exp?: number;
+            /** if true, use HS256 */
+            useHs256?: boolean;
         },
     ) {
         // STEP.0 validate paramters.
@@ -674,32 +717,42 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         // STEP.1 prepare payload data
         const current = params?.current ?? $U.current_time_ms();
         const alias = params?.alias;
+        const useHs256 = params?.useHs256 ?? false;
+        const service = $config?.config?.getService?.();
+
+        // service 검증 (useHs256 + alias 없을 때만)
+        if (useHs256 && !alias && service && !/^[a-z][a-zA-Z0-9-]*$/.test(service)) {
+            throw new Error(`@service[${service}] is invalid - encodeIdentityJWT()`);
+        }
+
+        // issuer 결정
+        const iss = alias ? `kms/${alias}` : useHs256 ? `api/${service}` : null;
+
+        // alg 헤더 결정
+        const alg = alias ? 'RS256' : useHs256 ? 'HS256' : 'RS256';
+
         const payload = {
             ...identity,
-            iss: alias ? `kms/${alias}` : null, //* issuer name. (must be alias of KMS)
+            iss, //* issuer name.
             iat: Math.floor(current / 1000), //* issued at
-            exp: Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
+            exp: params?.exp ?? Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
         };
         const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
         const data = {
-            header: base64url(
-                JSON.stringify({
-                    alg: 'RS256',
-                    typ: 'JWT',
-                }),
-            ),
+            header: base64url(JSON.stringify({ alg, typ: 'JWT' })),
             payload: base64url(JSON.stringify(payload)),
         };
+
         // STEP.2 encode and calc signature.
         const message = [data.header, data.payload].join('.');
-        const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
-        const signature = $kms ? await $kms.sign(message, true) : '';
+        const signature = alias || useHs256 ? await this.signToken(alias, message) : '';
         const token = [message, signature].join('.');
         return { signature, message, token };
     }
 
     /**
      * parse as jwt-token, and validate the signature.
+     * - supports both `kms/*` and `api/*` issuers via verifyToken()
      */
     public async parseIdentityJWT<T extends NextIdentityJwt = NextIdentityJwt>(
         token: string,
@@ -716,13 +769,14 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         //* it must be JWT Token. verify signature, and load.
         if (typeof token !== 'string' || !token)
             throw new Error(`@token (string) is required (but ${typeof token}) - ${errScope}`);
-        // STEP.1 decode jwt, and extract { iss, iat, exp }
-        const current = params?.current ?? $U.current_time_ms();
         const sections = token.split('.');
         if (sections.length !== 3) throw new Error(`@token[${token}] is invalid (format) - ${errScope}`);
+
+        // STEP.1 decode jwt, and extract { iss, iat, exp }
+        const current = params?.current ?? $U.current_time_ms();
         const [header, payload, signature] = sections;
-        const $jwt = $U.jwt();
-        const data = $jwt.decode(token, { complete: false, json: true });
+        const message = [header, payload].join('.');
+        const data = $U.jwt().decode(token, { complete: false, json: true });
         if (!data) throw new Error(`@token[${token}] is invalid (failed to decode) - ${errScope}`);
         const { iss, iat, exp } = data;
 
@@ -731,28 +785,23 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required - ${errScope}`);
         if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required - ${errScope}`);
 
-        // STEP.2 validate signature by KMS(iss).verify()
-        //TODO - iss 에 인증제공자의 api 넣기 (ex: api/lemon-backend-dev?)
-        const _alias = (iss: string, prefix = 'kms/') =>
-            iss.includes(',') ? iss.substring(prefix.length, iss.indexOf(',')) : iss.substring(prefix.length);
-        if (!isVerify) {
-            return data as T;
-        } else if (typeof iss === 'string' && iss.startsWith('kms/')) {
-            const alias = _alias(iss);
-            const $kms = alias ? this.findKMSService(`alias/${alias}`) : null;
-            const message = [header, payload].join('.');
-            const verified = $kms
-                ? await $kms.verify(message, signature, { throwable: true }).catch(e => {
-                      throw new Error(`@signature[] is invalid (kms: ${GETERR(e)}) - ${errScope}`);
-                  })
-                : false;
-            if (!verified) throw new Error(`@signature[] is invalid (failed to verify by iss:${iss}) - ${errScope}`);
-            if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
-            if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
-            return data as T;
+        //* skip verification if not required
+        if (!isVerify) return data as T;
+
+        // STEP.2 verify signature by iss (supports kms/* and api/*)
+        const verified = await this.verifyToken(iss, message, signature, { token }).catch(e => {
+            throw new Error(`@signature[] is invalid (${GETERR(e)}) - ${errScope}`);
+        });
+        if (!verified?.valid) {
+            const errMsg = verified?.error || `failed to verify by ${iss}`;
+            throw new Error(`@signature[] is invalid (${errMsg}) - ${errScope}`);
         }
-        //* or throw
-        throw new Error(`@iss[${iss}] is invalid (unsupportable issuer) - ${errScope}`);
+
+        // STEP.3 validate expiration
+        if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
+        if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
+
+        return data as T;
     }
 
     /**
@@ -811,165 +860,6 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         //* save into headers and returns.
         const context: NextContext = { ...$org, userAgent, clientIp, requestId, accountId, domain };
         return context;
-    }
-}
-
-export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
-    protected static _accountId?: string;
-    protected static _accountIdPromise?: Promise<string>;
-
-    public constructor(headers: HttpHeaderSet) {
-        super(headers);
-    }
-
-    public hello(): string {
-        return 'header-tool-v2';
-    }
-
-    /**
-     * build default JWT secret from AWS account id + magic key.
-     */
-    public buildJwtSecret = async (): Promise<string> => {
-        const accountId = await this.getAccountId();
-        const secret = JWT_MAGIC_KEY; // 유출되면 피곤함.
-        const _hmac = (msg: string, key = secret) => $U.hmac(msg, key, 'sha256', 'base64'); // 기본 로직
-        return _hmac(_hmac(accountId, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
-    };
-
-    /**
-     * get current aws account-id via STS. (once)
-     */
-    protected getAccountId = async (): Promise<string> => {
-        if (MyHttpHeaderToolV2._accountId) return MyHttpHeaderToolV2._accountId;
-        if (!MyHttpHeaderToolV2._accountIdPromise) {
-            MyHttpHeaderToolV2._accountIdPromise = (async () => {
-                // 1. getHelloArn()에서 ARN을 통해 accountId 추출 시도
-                try {
-                    const arn = getHelloArn(null, NS);
-                    if (arn && arn.startsWith('arn:aws:')) {
-                        const accountId = arn.split(':')[4];
-                        if (accountId) return accountId;
-                    }
-                } catch (e) {
-                    _log(NS, '! getHelloArn failed, fallback to STS');
-                }
-
-                // 2. fallback: STS 호출 (awsConfig 사용)
-                const cfg = awsConfig($engine);
-                const sts = new STSClient(cfg);
-                const data = await sts.send(new GetCallerIdentityCommand({}));
-                return data?.Account || '000000000000';
-            })().catch(err => {
-                _err(NS, '! err@jwt.accountId =', err);
-                return '000000000000';
-            });
-        }
-        MyHttpHeaderToolV2._accountId = await MyHttpHeaderToolV2._accountIdPromise;
-        return MyHttpHeaderToolV2._accountId;
-    };
-
-    /**
-     * encode as JWT string.
-     */
-    public async encodeIdentityJWT(
-        identity: NextIdentity,
-        params?: {
-            /** KMS alias to use (for RS256) or issuer name (for HS256) */
-            alias?: string;
-            /** current ms */
-            current?: number;
-            /** expiration time in seconds */
-            exp?: number;
-        },
-    ) {
-        // STEP.0 validate paramters.
-        if (!identity || typeof identity !== 'object')
-            throw new Error(`@identity (object) is required - but ${typeof identity}`);
-
-        // STEP.1 prepare payload data
-        const current = params?.current ?? $U.current_time_ms();
-        const alias = params?.alias;
-        const useKms = !!params?.alias;
-        const service = $config?.config?.getService?.();
-        // validate service format
-        if (!useKms && service && !/^[a-z][a-zA-Z0-9-]*$/.test(service)) {
-            throw new Error(`@service[${service}] is invalid - encodeIdentityJWT()`);
-        }
-        const payload = {
-            ...identity,
-            iss: useKms ? `kms/${alias}` : `api/${service}`, //* issuer name. (must be alias of KMS or api-name)
-            iat: Math.floor(current / 1000), //* issued at
-            exp: params?.exp ?? Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
-        };
-        const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
-        const alg = useKms ? 'RS256' : 'HS256';
-        const data = {
-            header: base64url(
-                JSON.stringify({
-                    alg,
-                    typ: 'JWT',
-                }),
-            ),
-            payload: base64url(JSON.stringify(payload)),
-        };
-        // STEP.2 encode and calc signature.
-        const message = [data.header, data.payload].join('.');
-        const signature = await this.signToken(alias, message);
-        const token = [message, signature].join('.');
-        return { signature, message, token };
-    }
-
-    /**
-     * parse as jwt-token, and validate the signature.
-     */
-    public async parseIdentityJWT<T extends NextIdentityJwt = NextIdentityJwt>(
-        token: string,
-        params?: {
-            /** current ms */
-            current?: number;
-            /** flag to verify JWT (default true) */
-            verify?: boolean;
-        },
-    ): Promise<T> {
-        const isVerify = params?.verify ?? true;
-        const errScope = `verifyJWT(http)`;
-
-        //* it must be JWT Token. verify signature, and load.
-        if (typeof token !== 'string' || !token)
-            throw new Error(`@token (string) is required (but ${typeof token}) - ${errScope}`);
-        const sections = token.split('.');
-        if (sections.length !== 3) throw new Error(`@token[${token}] is invalid (format) - ${errScope}`);
-
-        // STEP.1 decode jwt, and extract { iss, iat, exp }
-        const current = params?.current ?? $U.current_time_ms();
-        const [header, payload, signature] = sections;
-        const message = [header, payload].join('.');
-        const data = $U.jwt().decode(token, { complete: false, json: true });
-        if (!data) throw new Error(`@token[${token}] is invalid (failed to decode) - ${errScope}`);
-        const { iss, iat, exp } = data;
-
-        // STEP.1-1 validate parameters.
-        if (typeof iss !== 'string' && iss !== null) throw new Error(`.iss (string) is required - ${errScope}`);
-        if (typeof iat !== 'number' && iat !== null) throw new Error(`.iat (number) is required - ${errScope}`);
-        if (typeof exp !== 'number' && exp !== null) throw new Error(`.exp (number) is required - ${errScope}`);
-
-        //* skip verification if not required
-        if (!isVerify) return data as T;
-
-        // STEP.2 verify signature by iss
-        const verified = await this.verifyToken(iss, message, signature, { token }).catch(e => {
-            throw new Error(`@signature[] is invalid (${GETERR(e)}) - ${errScope}`);
-        });
-        if (!verified?.valid) {
-            const errMsg = verified?.error || `failed to verify by ${iss}`;
-            throw new Error(`@signature[] is invalid (${errMsg}) - ${errScope}`);
-        }
-
-        // STEP.3 validate expiration
-        if (!exp) throw new Error(`.exp[${exp}] is invalid (empty) - ${errScope}`);
-        if (exp * 1000 < current) throw new Error(`.exp[${$U.ts(exp * 1000)}] is invalid (expired) - ${errScope}`);
-
-        return data as T;
     }
     /**
      * verify token signature by iss.
