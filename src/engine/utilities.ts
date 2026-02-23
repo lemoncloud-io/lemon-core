@@ -853,12 +853,10 @@ export class Utilities {
 
     /**
      * get crypto3 object (with nonce + timestamp based IV).
-     * - version header (16 bytes, plaintext)
-     * - format: {versionHeader:16}{nonce:8}{timestamp:13}{encryptedBase64}
      *
      * format details, see `crypto3` tests.
-     * 1. nonce = random string with length ?? (like `1a2b3c4d`)
-     * 2. head = `LM!#${VERSION}:${nonce}:${timestamp}` -> base64 encode with constant length ??? w/ padding.
+     * 1. nonce = random hex string with length 13 (like `a1b2c3d4e5f67`)
+     * 2. head = `LM!#${VERSION}:${nonce}:${timestamp}` -> base64 encode with constant length 48 (no padding)
      * 3. body = JSON({d: data}) -> encrypted by AES-256-CTR with key = passwd
      * 4. final = [head, body].join('')
      *
@@ -867,52 +865,56 @@ export class Utilities {
      */
     public readonly crypto3 = <T = string>(passwd: string, algorithm?: string) => {
         algorithm = algorithm || 'aes-256-ctr';
+        const MAGIC = 'LM!#';
         const VERSION = 'V003';
+        const HEAD_B64_LEN = 48; // 36 bytes -> 48 base64 (no padding)
         const errScope = `crypto3(${algorithm}#${VERSION})`;
-        const VERSION_HEADER = `LM!#${VERSION}`.padEnd(16, '0'); // "LM!#V00300000000" (16 bytes, plaintext)
         const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
         const hmac = (data: string, sig: string) => this.hmac(data, sig, 'sha256', 'hex');
-        const currentMs = () => this.current_time_ms();
-        const makeNonce = () => this.uuid().replace(/-/g, '').substring(0, 8);
+        const currentMs = () => this.current_time_ms(); // 13 digits timestamp
+        const makeNonce = () => this.uuid().replace(/-/g, '').substring(0, 13); // 13 chars (52-bit entropy)
 
         return new (class {
             public encrypt = (val: T, options?: { current?: number; nonce?: string }): string => {
                 val = val === undefined ? null : val;
                 const nonce = options?.nonce ?? makeNonce();
                 const timestamp = String(options?.current ?? currentMs()).padStart(13, '0');
-                //TODO `.substring(0, 32)` is required? @claire.
-                const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
+                const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex'); // AES IV must be 16 bytes.
                 const buffer = Buffer.from(JSON.stringify({ d: val }), 'utf8');
                 const cipher = crypto.createCipheriv(algorithm, key, iv);
                 const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
-                return `${VERSION_HEADER}${nonce}${timestamp}${crypted.toString('base64')}`;
+                const headRaw = `${MAGIC}${VERSION}:${nonce}:${timestamp}`;
+                const head = Buffer.from(headRaw).toString('base64');
+                const body = crypted.toString('base64');
+                return [head, body].join('');
             };
             public decrypt = (msg: string, options?: { current?: number; maxAge?: number }): T => {
                 if (!msg) throw new Error(`@msg (string) is required - ${errScope}`);
-                if (msg.length < 37) throw new Error(`400 INVALID DATA - data too short! @${errScope}`);
-                // 1. read version header
-                const versionHeader = msg.substring(0, 16);
-                //TODO use const MAGIC_KEY in front. @claire
-                if (!versionHeader.startsWith('LM!#'))
-                    throw new Error(`400 INVALID MAGIC - invalid magic string! @${errScope}`);
-                const version = versionHeader.substring(4, 8);
+                if (msg.length < HEAD_B64_LEN) throw new Error(`400 INVALID DATA - data too short! @${errScope}`);
+                // 1. decode base64 header (48 chars -> 36 bytes)
+                const headBase64 = msg.substring(0, HEAD_B64_LEN);
+                const head = Buffer.from(headBase64, 'base64').toString('utf8');
+                if (head.length !== 36) throw new Error(`400 INVALID DATA - invalid header! @${errScope}`);
+                // 2. validate magic and version
+                if (!head.startsWith(MAGIC)) throw new Error(`400 INVALID MAGIC - invalid magic! @${errScope}`);
+                const version = head.substring(4, 8);
                 if (version !== VERSION)
                     throw new Error(`400 INVALID VERSION - expected ${VERSION}, got ${version}! @${errScope}`);
-                // 2. parse nonce, timestamp, encrypted data
-                const nonce = msg.substring(16, 24);
-                const timestamp = msg.substring(24, 37);
-                const encryptedBase64 = msg.substring(37);
-                if (!/^\d+$/.test(timestamp)) throw new Error(`400 INVALID DATA - invalid timestamp! @${errScope}`);
+                // 3. parse nonce, timestamp (format: LM!#V003:nonce:timestamp)
+                const [, nonce, timestamp] = head.substring(8).split(':');
+                if (!nonce || nonce.length !== 13) throw new Error(`400 INVALID DATA - invalid nonce! @${errScope}`);
+                if (!timestamp || !/^\d+$/.test(timestamp))
+                    throw new Error(`400 INVALID DATA - invalid timestamp! @${errScope}`);
                 if (options?.maxAge !== undefined) {
                     const current = options?.current ?? currentMs();
                     if (current - parseInt(timestamp, 10) > options.maxAge)
                         throw new Error(`400 INVALID DATA - expired timestamp! @${errScope}`);
                 }
-                // 3. decrypt
+                // 4. decrypt
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
                 const decipher = crypto.createDecipheriv(algorithm, key, iv);
                 const dec = Buffer.concat([
-                    decipher.update(Buffer.from(encryptedBase64, 'base64')),
+                    decipher.update(Buffer.from(msg.substring(HEAD_B64_LEN), 'base64')),
                     decipher.final(),
                 ]).toString('utf8');
                 if (!dec.startsWith('{') || !dec.endsWith('}'))

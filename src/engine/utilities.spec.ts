@@ -307,61 +307,70 @@ describe(`core/utilities.ts`, () => {
         const secret = 'my-secret-key-12345';
         const data = 'hello lemon!';
 
-        // 1. basic encrypt/decrypt (like crypto2 pattern)
-        const nonce = 1 ? 'a1b2c3d4' : $U.uuid().replace(/-/g, '').substring(0, 8);
-        const current = 1 ? 1700000000000 : $U.current_time_ms();
+        // 1. basic encrypt/decrypt
+        const nonce = 'a1b2c3d4e5f67'; // 13 chars (52-bit entropy)
+        const current = 1700000000000;
 
-        expect2(() => nonce).toEqual('a1b2c3d4');
-        expect2(() => current).toEqual(1700000000000);
+        expect2(() => nonce.length).toEqual(13);
 
         const $crypt = $U.crypto3(secret);
         const encrypted = $crypt.encrypt(data, { nonce, current });
-        // format: [VERSION_HEADER:16][nonce:8][timestamp:13][encryptedBase64]
-        expect2(() => encrypted).toEqual('LM!#V00300000000a1b2c3d417000000000005k6GOB5Zd/pdOHrNdD3m9U0rfao=');
+
+        // format: base64 header (48 chars) + encrypted body
+        // Header raw: "LM!#V003:a1b2c3d4e5f67:1700000000000" = 36 bytes -> 48 base64 chars
+        const headerBase64 = encrypted.substring(0, 48);
+        const headerRaw = Buffer.from(headerBase64, 'base64').toString('utf8');
+        expect2(() => headerBase64.length).toEqual(48);
+        expect2(() => headerRaw.length).toEqual(36);
+        expect2(() => headerRaw).toEqual('LM!#V003:a1b2c3d4e5f67:1700000000000');
         expect2(() => $crypt.decrypt(encrypted)).toEqual(data);
 
-        // 2. wrong secret should fail to decrypt correctly
+        // 2. wrong secret should fail
         const $cryptWrong = $U.crypto3('wrong-secret-key');
-        expect2(() => $cryptWrong.decrypt(encrypted)).toEqual('400 INVALID PASSWD - invalid json string!');
+        expect2(() => $cryptWrong.decrypt(encrypted)).toEqual('400 INVALID PASSWD - invalid json string @crypto3(aes-256-ctr#V003)');
 
-        // 4. error cases
-        expect2(() => $crypt.decrypt('')).toEqual('@msg (string) is required!');
-        expect2(() => $crypt.decrypt('abc')).toEqual('400 INVALID DATA - data too short!');
-        expect2(() => $crypt.decrypt('XX!#V00300000000a1b2c3d417000000000005k6GOB5Zd/pdOHrNdD3m9U0rfao=')).toEqual(
-            '400 INVALID MAGIC - invalid magic string!',
-        );
-        expect2(() => $crypt.decrypt('LM!#999900000000a1b2c3d417000000000005k6GOB5Zd/pdOHrNdD3m9U0rfao=')).toEqual(
-            '400 INVALID VERSION - expected V003, got 9999!',
-        );
+        // 3. error cases
+        expect2(() => $crypt.decrypt('')).toEqual('@msg (string) is required - crypto3(aes-256-ctr#V003)');
+        expect2(() => $crypt.decrypt('abc')).toEqual('400 INVALID DATA - data too short! @crypto3(aes-256-ctr#V003)');
+        // Invalid magic
+        const badMagic = Buffer.from('XX!#V003:a1b2c3d4e5f67:1700000000000').toString('base64');
+        expect2(() => $crypt.decrypt(badMagic + 'body')).toEqual('400 INVALID MAGIC - invalid magic! @crypto3(aes-256-ctr#V003)');
+        // Invalid version
+        const badVersion = Buffer.from('LM!#V999:a1b2c3d4e5f67:1700000000000').toString('base64');
+        expect2(() => $crypt.decrypt(badVersion + 'body')).toEqual('400 INVALID VERSION - expected V003, got V999! @crypto3(aes-256-ctr#V003)');
+        // Invalid header (35 bytes instead of 36)
+        const badHeader = Buffer.from('LM!#V003:a1b2c3d4e5f6:1700000000000').toString('base64');
+        expect2(() => $crypt.decrypt(badHeader + 'body')).toEqual('400 INVALID DATA - invalid header! @crypto3(aes-256-ctr#V003)');
 
-        // 5. each encryption should produce different result (due to nonce)
+        // 4. each encryption should produce different result (due to nonce)
         const encrypted4 = $crypt.encrypt(data);
         const encrypted5 = $crypt.encrypt(data);
-        expect2(() => encrypted4 !== encrypted5).toEqual(true); // different nonce each time
+        expect2(() => encrypted4 !== encrypted5).toEqual(true);
         expect2(() => $crypt.decrypt(encrypted4)).toEqual(data);
         expect2(() => $crypt.decrypt(encrypted5)).toEqual(data);
 
-        // 6. timestamp maxAge validation
+        // 5. timestamp maxAge validation
         const encryptedByTime = $crypt.encrypt(data, { current });
         expect2(() => $crypt.decrypt(encryptedByTime, { current: current + 1000, maxAge: 5000 })).toEqual(data);
         expect2(() => $crypt.decrypt(encryptedByTime, { current: current + 6001, maxAge: 5000 })).toEqual(
-            '400 INVALID DATA - expired timestamp!',
+            '400 INVALID DATA - expired timestamp! @crypto3(aes-256-ctr#V003)',
         );
 
-        // 7. test with various data types
+        // 6. test with various data types
         const jsonData = JSON.stringify({ name: 'test', value: 123 });
         const encryptedJson = $crypt.encrypt(jsonData);
         expect2(() => $crypt.decrypt(encryptedJson)).toEqual(jsonData);
         expect2(() => JSON.parse($crypt.decrypt(encryptedJson))).toEqual({ name: 'test', value: 123 });
 
-        // 8. custom algorithm
+        // 7. custom algorithm
         const $cryptAes = $U.crypto3(secret, 'aes-256-cbc');
         const encryptedAes = $cryptAes.encrypt(data);
         expect2(() => $cryptAes.decrypt(encryptedAes)).toEqual(data);
 
-        // 9. $U.encrypt / $U.decrypt shorthand
+        // 8. $U.encrypt / $U.decrypt shorthand
         const encrypted6 = $U.encrypt(data, secret);
         expect2(() => $U.decrypt(encrypted6, secret)).toEqual(data);
-        expect2(() => $U.crypto3(secret).decrypt(encrypted6)).toEqual(data); // compatible with crypto3
+        expect2(() => $U.crypto3(secret).decrypt(encrypted6)).toEqual(data);
     });
+
 });
