@@ -16,7 +16,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { $U, _log, _inf, _err, doReportError } from '../../engine/';
+import { $U, _log, _inf, _err, doReportError, getHelloArn, $engine } from '../../engine/';
 import {
     NextDecoder,
     NextHandler,
@@ -29,7 +29,7 @@ import {
 import { ProtocolParam } from './../core-services';
 import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from './lambda-handler';
 import { GETERR, onlyDefined } from '../../common/test-helper';
-import { loadJsonSync } from '../../tools/';
+import { loadJsonSync, awsConfig } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
@@ -842,17 +842,27 @@ export class MyHttpHeaderToolV2 extends MyHttpHeaderTool {
     protected getAccountId = async (): Promise<string> => {
         if (MyHttpHeaderToolV2._accountId) return MyHttpHeaderToolV2._accountId;
         if (!MyHttpHeaderToolV2._accountIdPromise) {
-            MyHttpHeaderToolV2._accountIdPromise = new Promise((resolve, reject) => {
-                const sts = new STSClient({});
-                sts.send(new GetCallerIdentityCommand({}))
-                    .then(data => resolve(data?.Account))
-                    .catch(err => reject(err));
-            })
-                .then(accountId => `${accountId || '000000000000'}`)
-                .catch(err => {
-                    _err(NS, '! err@jwt.accountId =', err);
-                    return '000000000000';
-                });
+            MyHttpHeaderToolV2._accountIdPromise = (async () => {
+                // 1. getHelloArn()에서 ARN을 통해 accountId 추출 시도
+                try {
+                    const arn = getHelloArn(null, NS);
+                    if (arn && arn.startsWith('arn:aws:')) {
+                        const accountId = arn.split(':')[4];
+                        if (accountId) return accountId;
+                    }
+                } catch (e) {
+                    _log(NS, '! getHelloArn failed, fallback to STS');
+                }
+
+                // 2. fallback: STS 호출 (awsConfig 사용)
+                const cfg = awsConfig($engine);
+                const sts = new STSClient(cfg);
+                const data = await sts.send(new GetCallerIdentityCommand({}));
+                return data?.Account || '000000000000';
+            })().catch(err => {
+                _err(NS, '! err@jwt.accountId =', err);
+                return '000000000000';
+            });
         }
         MyHttpHeaderToolV2._accountId = await MyHttpHeaderToolV2._accountIdPromise;
         return MyHttpHeaderToolV2._accountId;
