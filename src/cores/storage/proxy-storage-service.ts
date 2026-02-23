@@ -12,7 +12,7 @@
 import { _log, _inf, _err, $U, doReportError } from '../../engine/';
 import { NextContext } from 'lemon-model';
 import { Elastic6SimpleQueriable, CoreModel, CORE_FIELDS } from 'lemon-model';
-import { NUL404 } from '../../common/test-helper';
+import { GETERR, NUL404 } from '../../common/test-helper';
 import { StorageService, DummyStorageService, DynamoStorageService } from './storage-service';
 import { GeneralAPIController } from '../../controllers/general-api-controller';
 import { BatchResult } from '../dynamo/dynamo-service';
@@ -542,13 +542,14 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
      * @param total         total count of items
      * @param failed        list of failed items
      * @param context       (optional) next-context for reporting
+     * @returns notify message-id (or error)
      */
     private async reportBatchError(
         operation: string,
         total: number,
         failed: any[],
         context?: NextContext,
-    ): Promise<void> {
+    ): Promise<string> {
         const totalFailed = failed?.length ?? 0;
         if (totalFailed <= 0) return;
 
@@ -559,16 +560,22 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
             total_count: total,
             failed_count: totalFailed,
             success_count: successCount,
-            failed_items: failed
-                .filter((item: any) => item != null)
-                .map((item: any) => ({
-                    id: item?.id ?? item?._id ?? 'unknown',
-                    error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
-                })),
+            failed_items:
+                failed && Array.isArray(failed)
+                    ? failed
+                          .filter((item: any) => item != null)
+                          .map<CoreModel>((item: CoreModel) => ({
+                              id: item?.id ?? item?._id ?? 'unknown',
+                              error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
+                          }))
+                    : failed,
+            context,
         };
 
-        await doReportError(error, context, null, data).catch(e => {
+        // report error
+        return doReportError(error, context, null, data).catch(e => {
             _err(NS, `! failed to report ${operation} error via SNS:`, e);
+            return `ERR: ${GETERR(e)}`;
         });
     }
 
