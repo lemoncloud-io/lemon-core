@@ -51,7 +51,7 @@ export class GeneralController implements CoreWEBController {
      * decode to target `next-handler`
      * - use pattern `<mode><type?><cmd?>`
      */
-    public decode(mode: NextMode, id: string, cmd: string) {
+    public decode(mode: NextMode, id: string, cmd: string): NextHandler {
         const funcName = this.asFuncName(mode, this.type(), cmd);
         const handler = (this as any)[funcName];
         const find1 = typeof handler == 'function' ? handler : null;
@@ -124,7 +124,7 @@ export class GeneralWEBController extends GeneralController {
     /**
      * decode func from self to base.
      */
-    public decode(mode: NextMode, id: string, cmd: string) {
+    public decode(mode: NextMode, id: string, cmd: string): NextHandler {
         //* find handler from self
         const ret = super.decode(mode, id, cmd);
         //* if not found, then find via base.

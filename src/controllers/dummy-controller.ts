@@ -54,7 +54,7 @@ export class DummyController extends GeneralController {
      * decode to target `next-handler`
      * - use pattern `do_<mode>_<cmd?>`
      */
-    public decode(mode: NextMode, id: string, cmd: string) {
+    public decode(mode: NextMode, id: string, cmd: string): NextHandler {
         //WARN - if like to use `super.` in here. must use function style.
         const fx = super.decode(mode, id, cmd);
         if (fx) return fx;
