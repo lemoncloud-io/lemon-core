@@ -95,7 +95,7 @@ describe('ProxyStorageService', () => {
     const PROFILE = loadProfile(process); // override process.env.
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
-    jest.setTimeout(30000);
+    vi.setConfig({ testTimeout: 30000 });
 
     //* test w/ service
     it('should pass basic service', async () => {

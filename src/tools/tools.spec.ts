@@ -17,7 +17,7 @@ import { AWSSNSService } from '../cores/aws/aws-sns-service';
 
 //! main test body.
 describe('Test tools/shared', () => {
-    jest.setTimeout(10000);
+    vi.setConfig({ testTimeout: 10000 });
 
     beforeAll(() => {
         loadEnviron(global.process);

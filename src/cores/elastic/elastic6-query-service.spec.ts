@@ -27,7 +27,7 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
         const PROFILE = loadProfile(process); // override process.env.
         if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
-        jest.setTimeout(120000);
+        vi.setConfig({ testTimeout: 120000 });
 
         // service identity
         it(`should pass basic CRUD w/ dummy`, async () => {

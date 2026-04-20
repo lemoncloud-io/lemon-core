@@ -27,7 +27,7 @@ const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHt
 
 //! main test body.
 describe('APIService', () => {
-    jest.setTimeout(10000);
+    vi.setConfig({ testTimeout: 10000 });
 
     //* via direct request.
     it('should pass API w/ direct request', async () => {

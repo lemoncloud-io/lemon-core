@@ -54,7 +54,43 @@ export interface TestModel extends Model {
     extra?: string;
     keepMe?: string;
 }
-const TEST_FIELDS = filterFields(keys<TestModel>());
+const testModelKeys = <T extends object>() => {
+    try {
+        const transformed = keys<T>();
+        if (Array.isArray(transformed) && transformed.length) return transformed;
+    } catch {
+        // keys<T>() only returns runtime values when a custom transformer rewrites it.
+    }
+    return [
+        'name',
+        'test',
+        'A',
+        'AB',
+        'A_B',
+        'Model',
+        '$model',
+        'object$',
+        'extra',
+        'keepMe',
+        '$',
+        'ns',
+        'type',
+        'stereo',
+        'sid',
+        'uid',
+        'gid',
+        'lock',
+        'next',
+        'meta',
+        'createdAt',
+        'updatedAt',
+        'deletedAt',
+        'error',
+        'id',
+        '_id',
+    ] as Array<Extract<keyof T, string>>;
+};
+const TEST_FIELDS = filterFields(testModelKeys<TestModel>());
 
 /**
  * class: `BackendService`
@@ -626,7 +662,7 @@ describe('abstract-service', () => {
 
     //* LAYER EQUIVALENCE: test existing data update (diff vs fullModel)
     it('should have equivalent results when updating existing data (diff vs fullModel)', async () => {
-        jest.setTimeout(60000);
+        vi.setConfig({ testTimeout: 60000 });
 
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
@@ -818,7 +854,7 @@ describe('abstract-service', () => {
     });
 
     _it('should pass saveAllUpdates() performance test with child replication', async () => {
-        jest.setTimeout(300000);
+        vi.setConfig({ testTimeout: 300000 });
 
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {

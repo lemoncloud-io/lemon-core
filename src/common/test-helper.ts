@@ -9,6 +9,11 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 
+// Keep test runner access indirect. This module is exported from the public package API,
+// so importing Vitest here would leak a devDependency into runtime consumers.
+const $expect = (): any => (globalThis as any).expect;
+const $it = (): any => (globalThis as any).it;
+
 /**
  * catch error as string
  *
@@ -80,12 +85,12 @@ export const expect2 = (test: any, view?: string): any => {
     try {
         const ret = typeof test == 'function' ? test() : test;
         if (ret instanceof Promise) {
-            return expect(ret.then(project).catch(GETERR)).resolves;
+            return $expect()(ret.then(project).catch(GETERR)).resolves;
         } else {
-            return expect(project(ret));
+            return $expect()(project(ret));
         }
     } catch (e) {
-        return expect(GETERR(e));
+        return $expect()(GETERR(e));
     }
 };
 
@@ -96,7 +101,7 @@ export const expect2 = (test: any, view?: string): any => {
  * @param callback
  */
 export const _it = (name: string, callback?: (done?: any) => any) => {
-    it(`ignore! ${name}`, (done: any) => done?.());
+    $it()(`ignore! ${name}`, (): void => undefined);
 };
 
 /**

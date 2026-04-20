@@ -749,7 +749,7 @@ describe('DynamoService', () => {
         });
 
         it('should pass mutiple crud operations with real DynamoDB', async () => {
-            jest.setTimeout(30000); // Increase timeout for equivalence tests
+            vi.setConfig({ testTimeout: 30000 }); // Increase timeout for equivalence tests
             if (!PROFILE) return;
 
             //* basic CRUD

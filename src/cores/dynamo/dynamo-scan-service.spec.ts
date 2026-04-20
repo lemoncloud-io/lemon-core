@@ -40,7 +40,7 @@ describe('DynamoScanService', () => {
 
     const data: AccountItem[] = loadDataYml('dummy-dynamo-scan-data.yml').data;
     const dataMap = new Map<string, AccountItem>();
-    jest.setTimeout(100000);
+    vi.setConfig({ testTimeout: 100000 });
 
     // Setup test
     beforeAll(async () => {

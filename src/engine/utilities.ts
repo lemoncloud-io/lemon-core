@@ -491,6 +491,7 @@ export class Utilities {
      */
     protected isEqual(obj1: any, obj2: any) {
         const keys = Object.keys;
+        const toString = Object.prototype.toString;
         function tagTester(name: string) {
             return function (obj: any) {
                 return toString.call(obj) === '[object ' + name + ']';

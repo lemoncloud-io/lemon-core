@@ -1948,7 +1948,7 @@ describe('Elastic6Service', () => {
     //* test with real server
     it('should pass basic CRUD w/ real server (6.2)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(1200000);
+        vi.setConfig({ testTimeout: 1200000 });
 
         //* load dummy storage service.
         const { service } = await initService('6.2');
@@ -1970,7 +1970,7 @@ describe('Elastic6Service', () => {
 
     //* elastic storage service.
     it('should pass basic CRUD w/ real server(7.1)', async () => {
-        jest.setTimeout(1200000);
+        vi.setConfig({ testTimeout: 1200000 });
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.1');
@@ -1992,7 +1992,7 @@ describe('Elastic6Service', () => {
 
     //* elastic storage service.
     it('should pass basic CRUD w/ real server(7.2)', async () => {
-        jest.setTimeout(1200000);
+        vi.setConfig({ testTimeout: 1200000 });
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.2');
@@ -2014,7 +2014,7 @@ describe('Elastic6Service', () => {
 
     //* elastic storage service.
     it('should pass basic CRUD w/ real server(7.10)', async () => {
-        jest.setTimeout(1200000);
+        vi.setConfig({ testTimeout: 1200000 });
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('7.10');
@@ -2036,7 +2036,7 @@ describe('Elastic6Service', () => {
 
     //* elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.1)', async () => {
-        jest.setTimeout(1200000);
+        vi.setConfig({ testTimeout: 1200000 });
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.1');
@@ -2058,7 +2058,7 @@ describe('Elastic6Service', () => {
 
     //* elastic storage service.
     it('should pass basic CRUD w/ open-search server(1.2)', async () => {
-        jest.setTimeout(1200000);
+        vi.setConfig({ testTimeout: 1200000 });
         // if (!PROFILE) return; // ignore w/o profile
         //* load dummy storage service.
         const { service } = await initService('1.2');
@@ -2081,7 +2081,7 @@ describe('Elastic6Service', () => {
     //* elastic storage service.
     it('should pass basic CRUD w/ open-search server(2.13)', async () => {
         // if (!PROFILE) return; // ignore w/o profile
-        jest.setTimeout(1200000);
+        vi.setConfig({ testTimeout: 1200000 });
         //* load dummy storage service.
         const { service } = await initService('2.13');
 
