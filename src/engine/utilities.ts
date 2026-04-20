@@ -679,19 +679,21 @@ export class Utilities {
     /**
      * get md5 hash
      */
-    public md5(data: any, digest: 'latin1' | 'hex' | 'base64') {
+    public md5(data: any, digest: 'latin1' | 'binary' | 'hex' | 'base64') {
         digest = digest === undefined ? 'hex' : digest;
-        return crypto.createHash('md5').update(data).digest(digest);
+        const _digest = digest === 'latin1' ? 'binary' : digest;
+        return crypto.createHash('md5').update(data).digest(_digest);
     }
 
     /**
      * get hmac hash
      */
-    public hmac(data: any, KEY?: string, algorithm?: string, encoding?: 'latin1' | 'hex' | 'base64') {
+    public hmac(data: any, KEY?: string, algorithm?: string, encoding?: 'latin1' | 'binary' | 'hex' | 'base64') {
         KEY = KEY || 'XENI';
         encoding = encoding || 'base64';
         algorithm = algorithm || 'sha256';
-        return crypto.createHmac(algorithm, KEY).update(data).digest(encoding);
+        const _encoding = encoding === 'latin1' ? 'binary' : encoding;
+        return crypto.createHmac(algorithm, KEY).update(data).digest(_encoding);
     }
 
     /**
