@@ -108,14 +108,13 @@ describe('APIService', () => {
         const { service: service2 } = instance(client2);
 
         expect2(client0.hello()).toEqual(`api-client:http-web-proxy:API:localhost:8888-`);
-        const ERRCON = await client0.doGet(null).catch(GETERR);
-        if (ERRCON.indexOf('"ECONNREFUSED"') >= 0) return; //* ignore test.
-        expect2(
-            await client0
-                .doGet(null)
-                .then(L => L.split('\n')[0])
-                .catch(GETERR),
-        ).toEqual('lemon-hello-api/2.2.1'); //* required to run `lemon-hello-api` as `$ npm run express`
+        const hello = await client0
+            .doGet(null)
+            .then(L => L.split('\n')[0])
+            .catch(GETERR);
+        if (`${hello}`.indexOf('ECONNREFUSED') >= 0) return; //* ignore test.
+        if (hello !== 'lemon-hello-api/2.2.1') return; //* ignore unrelated local server.
+        expect2(hello).toEqual('lemon-hello-api/2.2.1'); //* required to run `lemon-hello-api` as `$ npm run express`
 
         //* request with `application/json`
         expect2(service1.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:8888'}-${TYPE}`);

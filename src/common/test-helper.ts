@@ -23,8 +23,13 @@ const $it = (): any => (globalThis as any).it;
  * ```
  * @param e
  */
-export const GETERR = (e: any) =>
-    e instanceof Error ? `${e.message}` : e && typeof e == 'object' ? JSON.stringify(e) : `${e}`;
+export const GETERR = (e: any): string => {
+    if (e instanceof Error) {
+        const errors = Array.isArray((e as any).errors) ? ((e as any).errors as any[]).map(GETERR) : [];
+        return [`${e.message}`, ...errors].filter(_ => _).join('\n');
+    }
+    return e && typeof e == 'object' ? JSON.stringify(e) : `${e}`;
+};
 
 /**
  * catch error as { error: string }

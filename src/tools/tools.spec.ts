@@ -73,10 +73,10 @@ describe('Test tools/shared', () => {
 
         //* test of default profile.
         if (useNone) {
-            const cfg1 = _config(null, true);
+            const cfg1 = _config(undefined, true);
             expect2(() => typeof cfg1?.profile).toEqual('undefined');
             expect2(() => typeof cfg1?.credentials).toEqual('undefined');
-            expect2(() => cfg1?.credentials()).toEqual('cfg1.credentials is not a function');
+            expect2(() => cfg1?.credentials()).toEqual('cfg1?.credentials is not a function');
             expect2(() => cfg1.credentials()).toEqual('cfg1.credentials is not a function');
 
             //NOTE - it will be failed if there is `default` profile in `~/.aws/credentials`.

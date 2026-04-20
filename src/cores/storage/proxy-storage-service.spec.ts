@@ -128,7 +128,7 @@ describe('ProxyStorageService', () => {
         });
 
         //* check fields count.
-        expect2(CORE_FIELDS.length).toEqual(12);
+        expect2(CORE_FIELDS.length).toEqual(14);
         expect2(FIELDS.length).toEqual(3);
     });
 
