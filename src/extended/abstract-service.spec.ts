@@ -10,10 +10,10 @@
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../environ';
-import { keys } from 'ts-transformer-keys';
 import { CoreModel, NextContext, SearchBody } from '../cores/';
 import { _it, expect2, GETERR } from '../common/test-helper';
 import { $U, _log } from '../engine';
+import { fieldKeys } from '../generated/field-registry';
 import {
     $ES6,
     _ES6,
@@ -54,43 +54,7 @@ export interface TestModel extends Model {
     extra?: string;
     keepMe?: string;
 }
-const testModelKeys = <T extends object>() => {
-    try {
-        const transformed = keys<T>();
-        if (Array.isArray(transformed) && transformed.length) return transformed;
-    } catch {
-        // keys<T>() only returns runtime values when a custom transformer rewrites it.
-    }
-    return [
-        'name',
-        'test',
-        'A',
-        'AB',
-        'A_B',
-        'Model',
-        '$model',
-        'object$',
-        'extra',
-        'keepMe',
-        '$',
-        'ns',
-        'type',
-        'stereo',
-        'sid',
-        'uid',
-        'gid',
-        'lock',
-        'next',
-        'meta',
-        'createdAt',
-        'updatedAt',
-        'deletedAt',
-        'error',
-        'id',
-        '_id',
-    ] as Array<Extract<keyof T, string>>;
-};
-const TEST_FIELDS = filterFields(testModelKeys<TestModel>());
+const TEST_FIELDS = filterFields(fieldKeys.testModel<TestModel>());
 
 /**
  * class: `BackendService`
@@ -218,7 +182,7 @@ describe('abstract-service', () => {
         } else {
             //NOTE - improve..
             //@see https://www.npmjs.com/package/ts-transformer-keys
-            console.warn('check ts-transformer-keys!');
+            console.warn('check lemon-devkit!');
         }
 
         //* test CoreService()

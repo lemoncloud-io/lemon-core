@@ -20,11 +20,6 @@
                 "src/types/*"
             ]
         },
-        "plugins": [
-            {
-                "transform": "ts-transformer-keys/transformer"
-            }
-        ],
         "declaration": true,
         "incremental": false
     },
