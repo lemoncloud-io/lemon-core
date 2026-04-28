@@ -11,8 +11,8 @@
 
 // Keep test runner access indirect. This module is exported from the public package API,
 // so importing Vitest here would leak a devDependency into runtime consumers.
-const $expect = (): any => (globalThis as any).expect;
-const $it = (): any => (globalThis as any).it;
+const $expect = (): any => (globalThis as any)?.expect;
+const $it = (): any => (globalThis as any)?.it;
 
 /**
  * catch error as string
@@ -52,7 +52,7 @@ export const NUL404 = (e: Error) => {
 };
 
 /** returns only defined */
-export const onlyDefined = <T extends object>(N: T, $def: T = null): T =>
+export const onlyDefined = <T extends object>(N: T, $def: T | null = null): T | null =>
     N && typeof N === 'object'
         ? Object.entries(N).reduce<T>((N, [k, v]) => {
               if (v !== undefined) N[k as keyof T] = v;

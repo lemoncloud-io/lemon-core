@@ -8,6 +8,8 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { vi, describe, it, expect } from 'vitest';
 import { expect2, marshal, Filter, _it, environ, waited, GETERR, GETERR$, NUL404, asErrorPayload } from './test-helper';
 
 //! main test body.
@@ -81,9 +83,9 @@ describe('TestHelper', () => {
             error: 'outer error\nchild error',
         });
 
-        expect2(() => read('').catch(NUL404)).toEqual('@a (string) is required!');
-        expect2(() => read('0').catch(NUL404)).toEqual(null);
-        expect2(() => read('1').catch(NUL404)).toEqual({ id: '1' });
+        expect2(await read('').catch(GETERR)).toEqual('@a (string) is required!');
+        expect2(await read('0').catch(NUL404)).toEqual(null);
+        expect2(await read('1').catch(GETERR)).toEqual({ id: '1' });
     });
 
     //* test marshal()

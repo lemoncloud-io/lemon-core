@@ -7,6 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { vi, describe, it } from 'vitest';
 import $engine, { $U } from '../../engine';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
@@ -85,13 +86,13 @@ describe('APIService', () => {
         const service = $api.buildSubTypeClient('hello');
 
         //* check sub-typed request.
-        expect2(() => service.doGet(undefined)).toEqual({
+        expect2(await service.doGet(undefined)).toEqual({
             list: [{ name: 'lemon' }, { name: 'cloud' }],
             name: 'lemon',
         });
-        expect2(() => service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
-        expect2(() => service.doGet('0')).toEqual({ name: 'lemon' });
-        expect2(() => service.doGet('99').catch(GETERR)).toEqual('404 NOT FOUND - id:99');
+        expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
+        expect2(await service.doGet('0')).toEqual({ name: 'lemon' });
+        expect2(await service.doGet('99').catch(GETERR)).toEqual('404 NOT FOUND - id:99');
     });
 
     //* via direct request /w header
