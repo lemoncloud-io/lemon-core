@@ -11,7 +11,10 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, $U, _log, _inf, _err, getHelloArn, LemonEngine } from '../../engine';
-const NS = () => $U.NS('SNS', 'blue');
+const NS = (() => {
+    let ns: string | undefined;
+    return () => (ns ??= $U.NS('SNS', 'blue'));
+})();
 
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
