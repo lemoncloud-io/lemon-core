@@ -8,6 +8,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { expect2, _it } from '../../common/test-helper';
 import { loadDataYml } from '../../tools';
@@ -40,7 +41,7 @@ describe('DynamoScanService', () => {
 
     const data: AccountItem[] = loadDataYml('dummy-dynamo-scan-data.yml').data;
     const dataMap = new Map<string, AccountItem>();
-    jest.setTimeout(100000);
+    vi.setConfig({ testTimeout: 100000 });
 
     // Setup test
     beforeAll(async () => {

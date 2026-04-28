@@ -256,7 +256,7 @@ describe('GeneralController', () => {
         const $pack = loadJsonSync('package.json');
         const endpoint = '#';
 
-        expect2(() => $api.doNotifyServiceEvent({}, 'test', '_', null, undefined, endpoint)).toEqual(
+        expect2(await $api.doNotifyServiceEvent({}, 'test', '_', null, undefined, endpoint)).toEqual(
             $U.json({
                 endpoint,
                 subject: 'event://lemon-core-local',
@@ -269,7 +269,7 @@ describe('GeneralController', () => {
             }),
         );
 
-        expect2(() => $api.doNotifyServiceEvent({}, 'TST!', '_', 'ok', { a: 1, b: 'c' }, endpoint)).toEqual(
+        expect2(await $api.doNotifyServiceEvent({}, 'TST!', '_', 'ok', { a: 1, b: 'c' }, endpoint)).toEqual(
             $U.json({
                 endpoint,
                 subject: 'event://lemon-core-local',

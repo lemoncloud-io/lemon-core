@@ -8,6 +8,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, waited } from '../..';
 import { Elastic6QueryService } from './elastic6-query-service';
@@ -27,7 +28,7 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
         const PROFILE = loadProfile(process); // override process.env.
         if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
-        jest.setTimeout(120000);
+        vi.setConfig({ testTimeout: 120000 });
 
         // service identity
         it(`should pass basic CRUD w/ dummy`, async () => {

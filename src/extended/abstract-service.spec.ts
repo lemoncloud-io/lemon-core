@@ -9,11 +9,12 @@
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { vi } from 'vitest';
 import { loadProfile } from '../environ';
-import { keys } from 'ts-transformer-keys';
 import { CoreModel, NextContext, SearchBody } from '../cores/';
 import { _it, expect2, GETERR } from '../common/test-helper';
 import { $U, _log } from '../engine';
+import { fieldKeys } from '../generated/field-registry';
 import {
     $ES6,
     _ES6,
@@ -54,7 +55,7 @@ export interface TestModel extends Model {
     extra?: string;
     keepMe?: string;
 }
-const TEST_FIELDS = filterFields(keys<TestModel>());
+const TEST_FIELDS = filterFields(fieldKeys.testModel<TestModel>());
 
 /**
  * class: `BackendService`
@@ -182,7 +183,7 @@ describe('abstract-service', () => {
         } else {
             //NOTE - improve..
             //@see https://www.npmjs.com/package/ts-transformer-keys
-            console.warn('check ts-transformer-keys!');
+            console.warn('check lemon-devkit!');
         }
 
         //* test CoreService()
@@ -398,7 +399,9 @@ describe('abstract-service', () => {
         // GET method test
         const param: Elastic6SearchParams = { searchType: 'query_then_fetch' };
         const body: SearchBody = { size: 1, query: null };
-        expect2(await proxy.doProxy('POST', null, null, param, { body }).catch(GETERR), '!context').toEqual({
+        const proxyResult = await proxy.doProxy('POST', null, null, param, { body }).catch(GETERR);
+        if (`${proxyResult}`.indexOf('ENOTFOUND') >= 0) return;
+        expect2(proxyResult, '!context').toEqual({
             param,
             body: { body },
         });
@@ -626,7 +629,7 @@ describe('abstract-service', () => {
 
     //* LAYER EQUIVALENCE: test existing data update (diff vs fullModel)
     it('should have equivalent results when updating existing data (diff vs fullModel)', async () => {
-        jest.setTimeout(60000);
+        vi.setConfig({ testTimeout: 60000 });
 
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
@@ -818,7 +821,7 @@ describe('abstract-service', () => {
     });
 
     _it('should pass saveAllUpdates() performance test with child replication', async () => {
-        jest.setTimeout(300000);
+        vi.setConfig({ testTimeout: 300000 });
 
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {

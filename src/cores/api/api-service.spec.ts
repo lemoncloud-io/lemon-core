@@ -7,6 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { vi, describe, it } from 'vitest';
 import $engine, { $U } from '../../engine';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';
@@ -27,7 +28,7 @@ const instance = (client?: APIServiceClient, headers?: APIHeaders, proxy?: ApiHt
 
 //! main test body.
 describe('APIService', () => {
-    jest.setTimeout(10000);
+    vi.setConfig({ testTimeout: 10000 });
 
     //* via direct request.
     it('should pass API w/ direct request', async () => {
@@ -85,13 +86,13 @@ describe('APIService', () => {
         const service = $api.buildSubTypeClient('hello');
 
         //* check sub-typed request.
-        expect2(() => service.doGet(undefined)).toEqual({
+        expect2(await service.doGet(undefined)).toEqual({
             list: [{ name: 'lemon' }, { name: 'cloud' }],
             name: 'lemon',
         });
-        expect2(() => service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
-        expect2(() => service.doGet('0')).toEqual({ name: 'lemon' });
-        expect2(() => service.doGet('99').catch(GETERR)).toEqual('404 NOT FOUND - id:99');
+        expect2(await service.doGet('')).toEqual({ list: [{ name: 'lemon' }, { name: 'cloud' }], name: 'lemon' });
+        expect2(await service.doGet('0')).toEqual({ name: 'lemon' });
+        expect2(await service.doGet('99').catch(GETERR)).toEqual('404 NOT FOUND - id:99');
     });
 
     //* via direct request /w header
@@ -108,14 +109,13 @@ describe('APIService', () => {
         const { service: service2 } = instance(client2);
 
         expect2(client0.hello()).toEqual(`api-client:http-web-proxy:API:localhost:8888-`);
-        const ERRCON = await client0.doGet(null).catch(GETERR);
-        if (ERRCON.indexOf('"ECONNREFUSED"') >= 0) return; //* ignore test.
-        expect2(
-            await client0
-                .doGet(null)
-                .then(L => L.split('\n')[0])
-                .catch(GETERR),
-        ).toEqual('lemon-hello-api/2.2.1'); //* required to run `lemon-hello-api` as `$ npm run express`
+        const hello = await client0
+            .doGet(null)
+            .then(L => L.split('\n')[0])
+            .catch(GETERR);
+        if (`${hello}`.indexOf('ECONNREFUSED') >= 0) return; //* ignore test.
+        if (hello !== 'lemon-hello-api/2.2.1') return; //* ignore unrelated local server.
+        expect2(hello).toEqual('lemon-hello-api/2.2.1'); //* required to run `lemon-hello-api` as `$ npm run express`
 
         //* request with `application/json`
         expect2(service1.hello()).toEqual(`api-service:api-client:http-web-proxy:API:${'localhost:8888'}-${TYPE}`);

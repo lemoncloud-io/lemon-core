@@ -8,6 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it } from '../../common/test-helper';
 import { loadDataYml } from '../../tools/';
@@ -749,7 +750,7 @@ describe('DynamoService', () => {
         });
 
         it('should pass mutiple crud operations with real DynamoDB', async () => {
-            jest.setTimeout(30000); // Increase timeout for equivalence tests
+            vi.setConfig({ testTimeout: 30000 }); // Increase timeout for equivalence tests
             if (!PROFILE) return;
 
             //* basic CRUD

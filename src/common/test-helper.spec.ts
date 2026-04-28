@@ -8,6 +8,8 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { vi, describe, it, expect } from 'vitest';
 import { expect2, marshal, Filter, _it, environ, waited, GETERR, GETERR$, NUL404, asErrorPayload } from './test-helper';
 
 //! main test body.
@@ -17,9 +19,11 @@ describe('TestHelper', () => {
         expect2(() => {
             throw new Error('HI Error');
         }).toEqual('HI Error');
-        expect2(async () => {
-            throw new Error('HI Error');
-        }).toEqual('HI Error');
+        expect2(
+            await (async () => {
+                throw new Error('HI Error');
+            })().catch(GETERR),
+        ).toEqual('HI Error');
         expect2(() => ({ i: 1, n: 'hi' }), 'n').toEqual({ n: 'hi' });
         expect2(() => ({ i: 1, n: 'hi' }), '!i').toEqual({ n: 'hi' });
         expect2(() => [{ i: 1, n: 'hi', j: 2 }], 'i,n').toEqual([{ i: 1, n: 'hi' }]);
@@ -58,9 +62,32 @@ describe('TestHelper', () => {
         expect2(await read('0').catch(GETERR$)).toEqual({ error: '404 NOT FOUND - id:0' });
         expect2(await read('1').catch(GETERR$)).toEqual({ id: '1' });
 
-        expect2(() => read('').catch(NUL404)).toEqual('@a (string) is required!');
-        expect2(() => read('0').catch(NUL404)).toEqual(null);
-        expect2(() => read('1').catch(NUL404)).toEqual({ id: '1' });
+        expect2(
+            GETERR(
+                new AggregateError(
+                    [new Error('connect ECONNREFUSED ::1:8113'), new Error('connect ECONNREFUSED 127.0.0.1:8113')],
+                    '',
+                ),
+            ),
+        ).toEqual('connect ECONNREFUSED ::1:8113\nconnect ECONNREFUSED 127.0.0.1:8113');
+        expect2(GETERR(new AggregateError([new Error('child error')], 'outer error'))).toEqual(
+            'outer error\nchild error',
+        );
+        expect2(
+            GETERR(
+                new AggregateError(
+                    [new AggregateError([new Error('leaf error')], 'nested error'), new Error('peer error')],
+                    'outer error',
+                ),
+            ),
+        ).toEqual('outer error\nnested error\nleaf error\npeer error');
+        expect2(GETERR$(new AggregateError([new Error('child error')], 'outer error'))).toEqual({
+            error: 'outer error\nchild error',
+        });
+
+        expect2(await read('').catch(GETERR)).toEqual('@a (string) is required!');
+        expect2(await read('0').catch(NUL404)).toEqual(null);
+        expect2(await read('1').catch(GETERR)).toEqual({ id: '1' });
     });
 
     //* test marshal()

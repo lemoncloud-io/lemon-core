@@ -338,9 +338,9 @@ describe('StorageService', () => {
         });
 
         //* error cases.
-        expect2(() => $account.increment('', { type: 'test', slot: 1 })).toEqual('@id is required!');
-        expect2(() => $account.increment(' ', { type: 'test', slot: 1 })).toEqual('@id (string) is required!');
-        expect2(() => $account.increment('B00001', null)).toEqual('@item is required!');
+        expect2(await $account.increment('', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id is required!');
+        expect2(await $account.increment(' ', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id (string) is required!');
+        expect2(await $account.increment('B00001', null).catch(GETERR)).toEqual('@item is required!');
         expect2(await $account.increment('B00001', { type: 'test', slot: 1 })).toEqual({
             id: 'B00001',
             type: 'test',
@@ -423,9 +423,9 @@ describe('StorageService', () => {
         });
 
         //* error cases.
-        expect2(() => $account.increment('', { type: 'test', slot: 1 })).toEqual('@id is required!');
-        expect2(() => $account.increment(' ', { type: 'test', slot: 1 })).toEqual('@id (string) is required!');
-        expect2(() => $account.increment('B00001', null)).toEqual('@item is required!');
+        expect2(await $account.increment('', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id is required!');
+        expect2(await $account.increment(' ', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id (string) is required!');
+        expect2(await $account.increment('B00001', null).catch(GETERR)).toEqual('@item is required!');
         expect2(await $account.increment('B00001', { type: 'test', slot: 1 })).toEqual({
             _id: 'B00001',
             type: 'test',
@@ -772,7 +772,7 @@ describe('StorageService', () => {
         //* bypass test if ECONNREFUSED
         // expect2(await $http.read('0').catch(GETERR)).toEqual($U.json({ errno:'ECONNREFUSED', code:'ECONNREFUSED',syscall:'connect',address:'127.0.0.1', port:8113}));
         const ERRCON = await $http.read('0').catch(GETERR);
-        if (typeof ERRCON == 'string' && ERRCON.indexOf('"ECONNREFUSED"') >= 0) return;
+        if (typeof ERRCON == 'string' && ERRCON.indexOf('ECONNREFUSED') >= 0) return;
 
         //* make sure deleted.
         await $http.delete('A00000').catch(GETERR);

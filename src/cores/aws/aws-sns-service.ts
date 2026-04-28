@@ -11,7 +11,10 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, $U, _log, _inf, _err, getHelloArn, LemonEngine } from '../../engine';
-const NS = $U.NS('SNS', 'blue');
+const NS = (() => {
+    let ns: string | undefined;
+    return () => (ns ??= $U.NS('SNS', 'blue'));
+})();
 
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
@@ -73,7 +76,7 @@ export class AWSSNSService implements CoreSnsService {
         const REGION = region();
         //* via hello-arn(see env.REPORT_ERROR_ARN), build arn.
         try {
-            const arn: string = getHelloArn(null, NS);
+            const arn: string = getHelloArn(null, NS());
             if (arn && arn.startsWith('arn:aws:sns:')) {
                 const arns = arn.split(':');
                 arns[3] = REGION;
@@ -81,13 +84,13 @@ export class AWSSNSService implements CoreSnsService {
                 return arns.join(':');
             }
         } catch (e) {
-            _log(NS, `! ignored.err =`, e);
+            _log(NS(), `! ignored.err =`, e);
         }
 
         // # suggested by https://groups.google.com/forum/#!topic/boto-users/QhASXlNBm40
         // # account_id = boto.connect_iam().get_user().arn.split(':')[4]
         return this.accountID().then(_ => {
-            _log(NS, '> account-id =', _);
+            _log(NS(), '> account-id =', _);
             const arn = ['arn', 'aws', 'sns', REGION, _, target].join(':');
             return arn;
         });
@@ -116,7 +119,7 @@ export class AWSSNSService implements CoreSnsService {
                             .catch(e => reject(e));
                     }
                     //* otherwise, call internal resource. (ECS, EC2)
-                    _err(NS, '! err@1 =', err);
+                    _err(NS(), '! err@1 =', err);
                     //NOTE! - below will be fail in lambda.
                     // MetadataService ia deprecated.
                     // const metadata = new AWS.MetadataService();
@@ -124,7 +127,7 @@ export class AWSSNSService implements CoreSnsService {
                     //     if (err) reject(err);
                     //     else resolve(JSON.parse(data).InstanceProfileArn.split(':')[4]);
                     // });
-                    _err(NS, '! err@2 =', err);
+                    _err(NS(), '! err@2 =', err);
                     reject(err);
                 });
         });
@@ -136,10 +139,10 @@ export class AWSSNSService implements CoreSnsService {
      * @return {string | object}     message-id
      */
     public publish = async (target: string, subject: string, payload: any): Promise<string> => {
-        _inf(NS, `publish(${target}, ${subject})...`);
+        _inf(NS(), `publish(${target}, ${subject})...`);
         const arn = await this.endpoint(target);
         if (!arn) throw new Error(`.arn is required! target:${target}`);
-        _log(NS, `> payload[${arn}] =`, $U.json(payload));
+        _log(NS(), `> payload[${arn}] =`, $U.json(payload));
         const params = {
             TopicArn: arn,
             Subject: subject,
@@ -157,11 +160,11 @@ export class AWSSNSService implements CoreSnsService {
         return sns
             .send(new PublishCommand(params))
             .then(res => {
-                _log(NS, `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
+                _log(NS(), `> result[${arn}] =`, typeof res === 'string' ? res : $U.json(res));
                 return (res && res.MessageId) || '';
             })
             .catch(e => {
-                _err(NS, '! err=', e);
+                _err(NS(), '! err=', e);
                 throw e;
             });
     };
@@ -176,14 +179,14 @@ export class AWSSNSService implements CoreSnsService {
      */
     public reportError = async (e: Error, data: any, target?: string): Promise<string> => {
         if (!e) return 'N/A';
-        _inf(NS, `reportError(${data}, target=${target || ''})...`);
-        _err(NS, '> error =', e);
+        _inf(NS(), `reportError(${data}, target=${target || ''})...`);
+        _err(NS(), '> error =', e);
 
         //* find out endpoint.
         target = environ(target, 'REPORT_ERROR_ARN', 'lemon-hello-sns');
         const payload = this.asPayload(e, data);
 
-        // _log(NS, '> payload =', $U.json(payload));
+        // _log(NS(), '> payload =', $U.json(payload));
         return this.publish(target, 'error', payload).catch(e => {
             return `ERROR - ${(e && e.message) || e}`;
         });
