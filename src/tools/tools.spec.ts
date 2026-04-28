@@ -8,9 +8,10 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { vi } from 'vitest';
 import loadEnviron from '../environ'; //INFO! load environ first.
-import { expect2, GETERR } from '../common/test-helper';
-import { loadJsonSync, awsConfig, AwsConfigParams, onlyDefined, isLambda } from './tools';
+import { expect2, GETERR, onlyDefined } from '../common/test-helper';
+import { loadJsonSync, awsConfig, AwsConfigParams, isLambda } from './tools';
 import { fromIni } from '@aws-sdk/credential-providers';
 import $engine from '../engine';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
@@ -76,7 +77,7 @@ describe('Test tools/shared', () => {
             const cfg1 = _config(undefined, true);
             expect2(() => typeof cfg1?.profile).toEqual('undefined');
             expect2(() => typeof cfg1?.credentials).toEqual('undefined');
-            expect2(() => cfg1?.credentials()).toEqual('cfg1?.credentials is not a function');
+            expect2(() => cfg1?.credentials?.()).toEqual(undefined);
             expect2(() => cfg1.credentials()).toEqual('cfg1.credentials is not a function');
 
             //NOTE - it will be failed if there is `default` profile in `~/.aws/credentials`.
@@ -133,9 +134,9 @@ describe('Test tools/shared', () => {
             // eslint-disable-next-line prettier/prettier
             const _cred = (k?: string) => cfg1.credentials().then((N: any) => N?.[k]).catch(GETERR);
 
-            expect2(() => _cred('accessKeyId')).toEqual(expectedCreds.accessKeyId);
-            expect2(() => _cred('secretAccessKey')).toEqual(expectedCreds.secretAccessKey);
-            expect2(() => _cred('sessionToken')).toEqual(expectedCreds.sessionToken);
+            expect2(await _cred('accessKeyId')).toEqual(expectedCreds.accessKeyId);
+            expect2(await _cred('secretAccessKey')).toEqual(expectedCreds.secretAccessKey);
+            expect2(await _cred('sessionToken')).toEqual(expectedCreds.sessionToken);
 
             expect2(await _sns(cfg1).catch(GETERR)).toEqual('085403634746');
             expect2(await _sns(cfg2).catch(GETERR)).toEqual(

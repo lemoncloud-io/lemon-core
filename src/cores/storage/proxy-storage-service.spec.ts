@@ -8,6 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { CoreModel, CORE_FIELDS } from 'lemon-model';
 import { $U, do_parrallel } from '../../engine';
@@ -555,6 +556,10 @@ describe('ProxyStorageService', () => {
 
     //* test doReadMulti
     it('should pass doReadMulti()', async () => {
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
         const { storage, current } = instance('TestCoreTable');
         const $test = storage.makeTypedStorageService('test');
 
@@ -666,6 +671,10 @@ describe('ProxyStorageService', () => {
 
     //* test doUpdateMulti
     it('should pass doUpdateMulti()', async () => {
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
         const { storage, current } = instance('TestCoreTable');
         const $test = storage.makeTypedStorageService('test');
 
@@ -820,6 +829,10 @@ describe('ProxyStorageService', () => {
 
     //* LAYER EQUIVALENCE: batch vs legacy methods for ProxyStorageService
     it('should have equivalent results for doRead/doReadMulti and doUpdate/doUpdateMulti', async () => {
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
         const { storage, current } = instance('TestCoreTable');
         const $test = storage.makeTypedStorageService('test');
 

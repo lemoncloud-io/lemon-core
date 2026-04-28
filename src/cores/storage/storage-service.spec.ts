@@ -338,9 +338,9 @@ describe('StorageService', () => {
         });
 
         //* error cases.
-        expect2(() => $account.increment('', { type: 'test', slot: 1 })).toEqual('@id is required!');
-        expect2(() => $account.increment(' ', { type: 'test', slot: 1 })).toEqual('@id (string) is required!');
-        expect2(() => $account.increment('B00001', null)).toEqual('@item is required!');
+        expect2(await $account.increment('', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id is required!');
+        expect2(await $account.increment(' ', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id (string) is required!');
+        expect2(await $account.increment('B00001', null).catch(GETERR)).toEqual('@item is required!');
         expect2(await $account.increment('B00001', { type: 'test', slot: 1 })).toEqual({
             id: 'B00001',
             type: 'test',
@@ -423,9 +423,9 @@ describe('StorageService', () => {
         });
 
         //* error cases.
-        expect2(() => $account.increment('', { type: 'test', slot: 1 })).toEqual('@id is required!');
-        expect2(() => $account.increment(' ', { type: 'test', slot: 1 })).toEqual('@id (string) is required!');
-        expect2(() => $account.increment('B00001', null)).toEqual('@item is required!');
+        expect2(await $account.increment('', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id is required!');
+        expect2(await $account.increment(' ', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id (string) is required!');
+        expect2(await $account.increment('B00001', null).catch(GETERR)).toEqual('@item is required!');
         expect2(await $account.increment('B00001', { type: 'test', slot: 1 })).toEqual({
             _id: 'B00001',
             type: 'test',

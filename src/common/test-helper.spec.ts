@@ -19,9 +19,11 @@ describe('TestHelper', () => {
         expect2(() => {
             throw new Error('HI Error');
         }).toEqual('HI Error');
-        expect2(async () => {
-            throw new Error('HI Error');
-        }).toEqual('HI Error');
+        expect2(
+            await (async () => {
+                throw new Error('HI Error');
+            })().catch(GETERR),
+        ).toEqual('HI Error');
         expect2(() => ({ i: 1, n: 'hi' }), 'n').toEqual({ n: 'hi' });
         expect2(() => ({ i: 1, n: 'hi' }), '!i').toEqual({ n: 'hi' });
         expect2(() => [{ i: 1, n: 'hi', j: 2 }], 'i,n').toEqual([{ i: 1, n: 'hi' }]);

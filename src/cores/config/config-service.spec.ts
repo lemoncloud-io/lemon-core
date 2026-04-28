@@ -9,7 +9,7 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { loadProfile } from '../../environ';
-import { expect2 } from '../../common/test-helper';
+import { expect2, GETERR } from '../../common/test-helper';
 import { $U } from '../../engine/';
 import { loadJsonSync } from '../../tools/';
 import { AWSKMSService } from './../aws/aws-kms-service';
@@ -26,9 +26,11 @@ describe('ConfigService', () => {
         expect2(() => {
             throw new Error('HI Error');
         }).toBe('HI Error');
-        expect2(async () => {
-            throw new Error('HI Error');
-        }).toBe('HI Error');
+        expect2(
+            await (async () => {
+                throw new Error('HI Error');
+            })().catch(GETERR),
+        ).toBe('HI Error');
     });
 
     //* test marshal

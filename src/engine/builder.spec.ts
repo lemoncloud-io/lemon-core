@@ -60,7 +60,7 @@ describe(`core/builder.ts`, () => {
 
         expect2($engine.module('mod1')).toEqual(undefined);
         expect2($engine.module('mod2').getModuleName()).toEqual('mod2');
-        expect2($engine.module('mod4').initModule()).toEqual(4);
+        expect2(await $engine.module('mod4').initModule()).toEqual(4);
 
         //* initialize.
         expect2(await ($engine as any).initialize(true, true)).toEqual([2, 4]);

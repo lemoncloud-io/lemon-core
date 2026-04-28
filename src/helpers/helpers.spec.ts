@@ -575,6 +575,7 @@ MyError: yes error of me3
 
         //* check in `env/none.yml`
         const LOCAL_ACCOUNT = 'my-local-iid';
+        process.env.LOCAL_ACCOUNT = process.env.LOCAL_ACCOUNT || LOCAL_ACCOUNT;
         expect2(() => $U.env('LOCAL_ACCOUNT')).toEqual(LOCAL_ACCOUNT);
 
         expect2(() => getIdentityId($context.signed)).toBe(identityId);

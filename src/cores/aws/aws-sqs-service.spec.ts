@@ -11,7 +11,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { loadProfile } from '../../environ';
-import { expect2, _it } from '../../common/test-helper';
+import { expect2, GETERR, _it } from '../../common/test-helper';
 import { AWSSQSService, MyDummySQSService } from './aws-sqs-service';
 
 //! main test body.
@@ -42,7 +42,9 @@ describe('AWSSQSService', () => {
         if (ENDPOINT) {
             const service = new AWSSQSService(ENDPOINT);
             expect2(() => service.hello()).toEqual(`aws-sqs-service:${ENDPOINT}`);
-            expect2(() => service.sendMessage(null, null)).toEqual('@data(object) is required - sqs.sendMessage()');
+            expect2(await service.sendMessage(null, null).catch(GETERR)).toEqual(
+                '@data(object) is required - sqs.sendMessage()',
+            );
 
             //* read origin stats
             const timeout = 1; //NOTE - 1 sec.
@@ -119,7 +121,7 @@ describe('AWSSQSService', () => {
 
         const service = new MyDummySQSService(ENDPOINT);
         expect2(() => service.hello()).toEqual(`dummy-sqs-service:${ENDPOINT}`);
-        expect2(() => service.sendMessage(null, null)).toEqual('@data(object) is required!');
+        expect2(await service.sendMessage(null, null).catch(GETERR)).toEqual('@data(object) is required!');
 
         //* read origin stats
         const stats = await service.statistics();
