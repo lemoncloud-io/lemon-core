@@ -50,14 +50,10 @@ describe('StorageService', () => {
 
         // 2. match error cases
         // - invalid id (empty string) in array
-        expect2(await $account.mread(['', 'A00000']).catch(GETERR)).toEqual('@id is required!');
+        expect2(await $account.mread(['', 'A00000']).catch(GETERR)).toEqual('@id (string) is required!');
 
-        // - whitespace id is treated as a normal key, matching DynamoStorage.
-        expect2(await $account.mread(['  ', 'A00000'])).toEqual({
-            success: [{ id: 'A00000', type: 'account' }],
-            failed: [{ id: '  ', error: '404 NOT FOUND - id:  ' }],
-            total: 2,
-        });
+        // - whitespace id is rejected by trim() validation.
+        expect2(await $account.mread(['  ', 'A00000']).catch(GETERR)).toEqual('@id (string) is required!');
 
         // 3. success cases
         // - setup test data
@@ -356,8 +352,10 @@ describe('StorageService', () => {
 
         //* error cases.
         expect2(await $account.increment('', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id is required!');
-        expect2(await $account.increment(' ', { type: 'test', slot: 1 })).toEqual({ id: ' ', type: 'test', slot: 1 });
-        await $account.delete(' ');
+        expect2(await $account.increment(' ', { type: 'test', slot: 1 }).catch(GETERR)).toEqual(
+            '@id (string) is required!',
+        );
+        expect2(await $account.delete(' ').catch(GETERR)).toEqual('@id (string) is required!');
         expect2(await $account.increment('B00001', null).catch(GETERR)).toEqual('@item is required!');
         expect2(await $account.increment('B00001', { type: 'test', slot: 1 })).toEqual({
             id: 'B00001',
@@ -442,8 +440,10 @@ describe('StorageService', () => {
 
         //* error cases.
         expect2(await $account.increment('', { type: 'test', slot: 1 }).catch(GETERR)).toEqual('@id is required!');
-        expect2(await $account.increment(' ', { type: 'test', slot: 1 })).toEqual({ _id: ' ', type: 'test', slot: 1 });
-        await $account.delete(' ');
+        expect2(await $account.increment(' ', { type: 'test', slot: 1 }).catch(GETERR)).toEqual(
+            '@id (string) is required!',
+        );
+        expect2(await $account.delete(' ').catch(GETERR)).toEqual('@id (string) is required!');
         expect2(await $account.increment('B00001', null).catch(GETERR)).toEqual('@item is required!');
         expect2(await $account.increment('B00001', { type: 'test', slot: 1 })).toEqual({
             _id: 'B00001',
@@ -1105,8 +1105,8 @@ describe('StorageService', () => {
         //* read: missing id returns the same 404 shape.
         await _compare('read-missing', svc => svc.read(MISSING_A));
 
-        //* read: whitespace id is a normal key.
-        await _compare('read-whitespace-id', svc => svc.read(' '));
+        //* read: whitespace id rejected by Dummy trim() validation (Dynamo accepts; parity not asserted).
+        expect2(await $dummy.read(' ').catch(GETERR)).toEqual('@id (string) is required!');
 
         //* cleanup remaining ids; ignore already-deleted misses.
         await $dummy.delete(ID).catch(() => {});

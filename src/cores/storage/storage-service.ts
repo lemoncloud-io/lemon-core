@@ -398,9 +398,8 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
             : `dummy-storage-service:${this.name}/${this.idName}`;
 
     public async read(id: string): Promise<T> {
-        //* disabled for DynamoStorage parity: whitespace id is a normal key.
-        // //* note: dummy-only validation; Dynamo's read does not short-circuit whitespace ids.
-        // if (!id.trim()) throw new Error('@id (string) is required!');
+        //* note: dummy-only validation; Dynamo's read does not short-circuit whitespace ids.
+        if (!id.trim()) throw new Error('@id (string) is required!');
         const item = this.buffer[id];
         if (!item) throw new Error(`404 NOT FOUND - ${this.idName}:${id}`);
         return Object.assign(this.pick(item), { [this.idName]: id }) as unknown as T;
@@ -412,9 +411,8 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         if (!ids || total === 0) return result;
 
         for (const id of ids) {
-            //* disabled for DynamoStorage parity: whitespace id is a normal key.
-            // //* note: dummy-only validation; Dynamo's mread does not short-circuit whitespace ids.
-            // if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
+            //* note: dummy-only validation; Dynamo's mread does not short-circuit whitespace ids.
+            if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
             const item = this.buffer[id];
             if (!item) {
                 result.failed.push({
@@ -448,6 +446,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
 
     public async save(id: string, item: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         if (!item) throw new Error('@item is required!');
         if (typeof (item as any).lock == 'number') this.$locks[id] = (item as any).lock;
         const data = this.pick(item);
@@ -458,6 +457,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
     private $locks: any = {}; //* only for lock.
     public async update(id: string, item: T, $inc?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         if (!item) throw new Error('@item is required!');
         //* atomic operation for `.lock` — dummy-only deviation; DynamoDB has no equivalent here.
         const lock = (() => {
@@ -499,6 +499,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         for (const item of list) {
             const _id = (item as any)[this.idName] || (item as any).id;
             if (!_id) throw new Error('@id is required!');
+            if (!_id || !`${_id}`.trim()) throw new Error('@id (string) is required!');
             if (typeof (item as any).lock == 'number') this.$locks[_id] = (item as any).lock;
             const cleaned = this.idName !== 'id' ? (({ id: _drop, ...rest }) => rest)(item as any) : item;
             const data = this.pick(cleaned);
@@ -511,6 +512,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
 
     public async increment(id: string, $inc: T, $upt?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         if (!$inc && !$upt) throw new Error('@item is required!');
         if (!$inc) throw new TypeError('Cannot convert undefined or null to object');
         //* atomic operation for `.lock` — dummy-only deviation; DynamoDB has no equivalent here.
@@ -561,6 +563,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
     }
 
     public async delete(id: string): Promise<T> {
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         const $org = await this.read(id);
         delete this.buffer[id];
         delete this.$locks[id];
