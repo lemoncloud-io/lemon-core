@@ -93,9 +93,9 @@ const instance = () => {
 };
 
 //* normalize dynamo properties.
-const normalize = <T = any>(data: T): T => {
-    if (data === '') return null;
-    if (!data) return data;
+const normalize = <T = any>(data?: T | null): T => {
+    if (data === '') return null as T;
+    if (!data) return data as T;
     if (Array.isArray(data)) return data.map(normalize) as T;
     if (typeof data == 'object') {
         return Object.keys(data).reduce((O: any, key) => {
@@ -243,12 +243,16 @@ export class DynamoService<T extends GeneralItem> {
      */
     public prepareSaveItem(id: string, item: T) {
         const { tableName, idName, sortName } = this.options;
+        const errScope = `prepareSaveItem(${idName}:${id})`;
         // _log(NS, `prepareSaveItem(${tableName})...`);
         // item && _log(NS, '> item =', item);
-        if (sortName && item[sortName] === undefined) throw new Error(`.${sortName} is required. ${idName}:${id}`);
+        if (sortName && item[sortName] === undefined) throw new Error(`.${sortName} is required - ${errScope}`);
         delete item[idName]; // clear the saved id.
         const node: T = Object.assign({ [idName]: id }, item); // copy
         const data = normalize(node);
+        //TODO [Steve] check if how works for undefined | null in real dynamo?!
+        // if (data === null) throw new Error(`@data[null] is invalid  - ${errScope}`);
+        // if (data === undefined) throw new Error(`@data[null] is invalid  - ${errScope}`);
         //* prepare payload.
         const payload = {
             TableName: tableName,
@@ -265,7 +269,8 @@ export class DynamoService<T extends GeneralItem> {
      */
     public prepareItemKey(id: string, sort: any) {
         const { tableName, idName, sortName } = this.options;
-        if (!id) throw new Error(`@id is required - prepareItemKey(${tableName}/${idName})`);
+        const errScope = `prepareItemKey(${tableName}/${idName}/${id ?? ''})`;
+        if (!id?.trim()) throw new Error(`@id (string) is required - ${errScope}`);
         // _log(NS, `prepareItemKey(${tableName}/${id}/${sort || ''})...`);
         //* prepare payload.
         const payload = {
@@ -275,7 +280,7 @@ export class DynamoService<T extends GeneralItem> {
             },
         };
         if (sortName) {
-            if (sort === undefined) throw new Error(`@sort is required. ${idName}:${id}`);
+            if (sort === undefined) throw new Error(`@sort (any) is required - ${errScope}`);
             payload.Key[sortName] = sort;
         }
         return payload;
@@ -525,7 +530,10 @@ export class DynamoService<T extends GeneralItem> {
                 Array.from(chunkKeyMap.entries())
                     .filter(([sig]) => !received.has(sig) && !unprocessedSigs.has(sig))
                     .forEach(([sig, key]) => {
-                        const failedItem = { ...key, error: `404 NOT FOUND - ${idName}:${key[idName]}` } as FailedItem<T>;
+                        const failedItem = {
+                            ...key,
+                            error: `404 NOT FOUND - ${idName}:${key[idName]}`,
+                        } as FailedItem<T>;
                         failedMap.set(sig, failedItem);
                     });
             } catch (e) {
@@ -642,7 +650,7 @@ export class DynamoService<T extends GeneralItem> {
                     });
 
                 //* check for unprocessed items
-                const unprocessed = response.UnprocessedItems?.[tableName];
+                const unprocessed: any = response.UnprocessedItems?.[tableName];
                 if (unprocessed && unprocessed?.length > 0) {
                     if (attempt >= MAX_RETRIES) {
                         return unprocessed;
@@ -823,7 +831,7 @@ export class DynamoService<T extends GeneralItem> {
                     });
 
                 //* check for unprocessed items
-                const unprocessed = response.UnprocessedItems?.[tableName];
+                const unprocessed: any = response.UnprocessedItems?.[tableName];
                 if (unprocessed && unprocessed?.length > 0) {
                     if (attempt >= MAX_RETRIES) {
                         return unprocessed;
@@ -925,7 +933,7 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         this.load(dummy.data as any);
     }
 
-    private buffer: { [id: string]: T } = {};
+    private buffer: { [id: string]: T | null } = {};
     public load(data: T[]) {
         const { idName } = this.options;
         if (!data || !Array.isArray(data)) throw new Error('@data should be array!');
@@ -958,9 +966,9 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
 
     public async readItem(id: string, sort?: string | number): Promise<T> {
         const { idName } = this.options;
-        const item: T = this.buffer[id];
+        const item = this.buffer[id];
         if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
-        return { [idName]: id, ...item };
+        return { [idName]: id, ...item } as T;
     }
 
     public async mreadItem(list: Array<{ id: string; sort?: string | number }>): Promise<BatchResult<T>> {
@@ -970,7 +978,7 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         if (!list || total === 0) return result;
 
         for (const item of list) {
-            const data: T = this.buffer[item.id];
+            const data = this.buffer[item.id];
             if (data === undefined) {
                 const failedItem = (
                     sortName
@@ -1003,7 +1011,7 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
     public async saveItem(id: string, item: T): Promise<T> {
         const { idName } = this.options;
         this.buffer[id] = normalize(item);
-        return { [idName]: id, ...this.buffer[id] };
+        return { [idName]: id, ...this.buffer[id] } as T;
     }
 
     public async msaveItem(list: Array<T & { id: string; sort?: string | number }>): Promise<BatchResult<T>> {
@@ -1045,14 +1053,14 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
 
     public async deleteItem(id: string, sort?: string | number): Promise<T> {
         delete this.buffer[id];
-        return null;
+        return null as any;
     }
 
     public async updateItem(id: string, sort: string | number, updates: T, increments?: Incrementable): Promise<T> {
         const { idName } = this.options;
-        const item: T = this.buffer[id];
+        const item = this.buffer[id];
         if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
-        this.buffer[id] = { ...item, ...normalize(updates) };
+        this.buffer[id] = { ...item, ...normalize(updates) } as T;
         return { [idName]: id, ...this.buffer[id] };
     }
 
