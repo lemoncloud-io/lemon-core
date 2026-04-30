@@ -51,14 +51,17 @@ export const NUL404 = (e: Error) => {
     throw e;
 };
 
-/** returns only defined */
-export const onlyDefined = <T extends object>(N: T, $def: T | null = null): T | null =>
+/**
+ * extract only the defined attribute.
+ * ex) `{ a:1, b: undefined }` -> `{ a:1 }`
+ */
+export const onlyDefined = <T>(N: T) =>
     N && typeof N === 'object'
         ? Object.entries(N).reduce<T>((N, [k, v]) => {
               if (v !== undefined) N[k as keyof T] = v;
               return N;
           }, {} as T)
-        : ($def as T);
+        : (null as T);
 
 /**
  * improve expect() function with projection field.
