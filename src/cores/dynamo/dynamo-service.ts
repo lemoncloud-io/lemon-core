@@ -93,9 +93,9 @@ const instance = () => {
 };
 
 //* normalize dynamo properties.
-const normalize = <T = any>(data?: T | null): T | null => {
-    if (data === '') return null;
-    if (!data) return null;
+const normalize = <T = any>(data?: T | null): T => {
+    if (data === '') return null as T;
+    if (!data) return data as T;
     if (Array.isArray(data)) return data.map(normalize) as T;
     if (typeof data == 'object') {
         return Object.keys(data).reduce((O: any, key) => {
@@ -250,7 +250,9 @@ export class DynamoService<T extends GeneralItem> {
         delete item[idName]; // clear the saved id.
         const node: T = Object.assign({ [idName]: id }, item); // copy
         const data = normalize(node);
-        if (data === null) throw new Error(`@data[null] is invalid  - ${errScope}`);
+        //TODO [Steve] check if how works for undefined | null in real dynamo?!
+        // if (data === null) throw new Error(`@data[null] is invalid  - ${errScope}`);
+        // if (data === undefined) throw new Error(`@data[null] is invalid  - ${errScope}`);
         //* prepare payload.
         const payload = {
             TableName: tableName,
