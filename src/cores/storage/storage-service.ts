@@ -399,7 +399,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
 
     public async read(id: string): Promise<T> {
         //* note: dummy-only validation; Dynamo's read does not short-circuit whitespace ids.
-        if (!id.trim()) throw new Error('@id (string) is required!');
+        if (!id?.trim()) throw new Error('@id (string) is required!');
         const item = this.buffer[id];
         if (!item) throw new Error(`404 NOT FOUND - ${this.idName}:${id}`);
         return Object.assign(this.pick(item), { [this.idName]: id }) as unknown as T;
