@@ -1436,6 +1436,14 @@ describe('StorageService', () => {
         expect2(new Set(dummyB.tags).size).toEqual(100);
         await $dummy.delete(B_DUMMY).catch(() => {});
 
+        //* string[] append with exact membership.
+        const C_DUMMY = 'AT0007';
+        const elements = 'abcdefghijklmnopqrstuvwxyz';
+        await Promise.all(elements.split('').map(s => $dummy.increment(C_DUMMY, { tags: [s] } as any)));
+        const dummyC: any = await $dummy.read(C_DUMMY);
+        expect2(dummyC.tags.sort().join('')).toEqual(elements);
+        await $dummy.delete(C_DUMMY).catch(() => {});
+
         if (useDynamo) {
             const B_DYN = 'AT0002D';
             testDataIds.add(B_DYN);
@@ -1449,6 +1457,13 @@ describe('StorageService', () => {
             expect2(dynB.tags.length).toEqual(100);
             expect2(new Set(dynB.tags).size).toEqual(100);
             await $dynamo.delete(B_DYN).catch(() => {});
+
+            const C_DYN = 'AT0007D';
+            testDataIds.add(C_DYN);
+            await Promise.all(elements.split('').map(s => $dynamo.increment(C_DYN, { tags: [s] } as any)));
+            const dynC: any = await $dynamo.read(C_DYN);
+            expect2(dynC.tags.sort().join('')).toEqual(elements);
+            await $dynamo.delete(C_DYN).catch(() => {});
         }
 
         //* increment() must remain atomic when number/string/array/object parameters are mixed.

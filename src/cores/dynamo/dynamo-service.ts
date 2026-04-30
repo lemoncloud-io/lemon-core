@@ -1060,7 +1060,20 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
         const { idName } = this.options;
         const item = this.buffer[id];
         if (item === undefined) throw new Error(`404 NOT FOUND - ${idName}:${id}`);
-        this.buffer[id] = { ...item, ...normalize(updates) } as T;
+        const updated = { ...item, ...normalize(updates) } as any;
+        const incremented = Object.entries(increments || {}).reduce((memo: any, [key, value]) => {
+            const org = updated[key];
+            if (Array.isArray(value)) {
+                if (org !== undefined && !Array.isArray(org)) throw new Error(`.${key} (${value}) should be array!`);
+                memo[key] = [...(org || []), ...normalize(value)];
+            } else {
+                if (org !== undefined && typeof org !== 'number') throw new Error(`.${key} (${value}) should be number!`);
+                memo[key] = $U.N(org, 0) + (value as number);
+            }
+            updated[key] = memo[key];
+            return memo;
+        }, {});
+        this.buffer[id] = updated as T;
         return { [idName]: id, ...this.buffer[id] };
     }
 
