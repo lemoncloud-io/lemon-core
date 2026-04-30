@@ -7,6 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { describe, expect, it } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageModel } from './storage-service';
@@ -1147,6 +1148,215 @@ describe('StorageService', () => {
         expect2(await $dummy.read('Z99999').catch(GETERR)).toEqual('404 NOT FOUND - _id:Z99999');
         await $dummy.delete('Z00001');
     });
+
+    //* array increment and string overwrite.
+    it('should support shape-driven array increment while keeping string overwrite', async () => {
+        const FIELDS = ['name', 'slot', 'balance', 'tags'];
+        const $dummy = new DummyStorageService<AccountModel>('ticketing-dummy-data', 'memory', 'no', FIELDS);
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', FIELDS, 'no');
+        const useDynamo = PROFILE === 'lemon';
+
+        const _compare = async <R>(_label: string, runner: (svc: any) => Promise<R>): Promise<R> => {
+            const dummyRes = await runner($dummy).catch(GETERR);
+            if (useDynamo) {
+                const dynamoRes = await runner($dynamo).catch(GETERR);
+                expect2(() => dynamoRes, undefined as any).toEqual(dummyRes);
+            }
+            return dummyRes as R;
+        };
+        const _readBoth = async (id: string, expected: any) => {
+            expect2(await $dummy.read(id)).toEqual(expected);
+            if (useDynamo) expect2(await $dynamo.read(id)).toEqual(expected);
+        };
+        const _rejectBoth = async (label: string, runner: (svc: any) => Promise<any>, expectedDummy: string) => {
+            const dummyErr = await runner($dummy).catch(GETERR);
+            expect2(dummyErr).toEqual(expectedDummy);
+            if (useDynamo) {
+                const dynamoErr = await runner($dynamo).catch(GETERR);
+                expect(typeof dynamoErr, `[shape-inc:${label}] dynamo should reject`).toEqual('string');
+            }
+        };
+
+        //* create by increment.
+        const T1 = 'TI0001';
+        testDataIds.add(T1);
+        expect2(
+            await _compare('typed-inc-initial', svc =>
+                svc.increment(T1, { name: 'a', slot: 1, tags: ['a', 'b'], extra: 'drop' } as any),
+            ),
+        ).toEqual({ no: T1, name: 'a', slot: 1, tags: ['a', 'b'] });
+        await _readBoth(T1, { no: T1, name: 'a', slot: 1, tags: ['a', 'b'] });
+
+        //* append arrays, add numbers, and overwrite strings in one increment call.
+        const T2 = 'TI0002';
+        testDataIds.add(T2);
+        await _compare('typed-inc-seed', svc =>
+            svc.save(T2, { type: 'account', name: 'b', slot: 7, balance: 100, tags: ['x'] } as any),
+        );
+        expect2(
+            await _compare('typed-inc-append', svc =>
+                svc.increment(T2, { name: 'a', slot: 3, balance: -25, tags: ['a', 'b'], extra: 'drop' } as any),
+            ),
+        ).toEqual({ no: T2, name: 'a', slot: 10, balance: 75, tags: ['x', 'a', 'b'] });
+        await _readBoth(T2, {
+            no: T2,
+            type: 'account',
+            name: 'a',
+            slot: 10,
+            balance: 75,
+            tags: ['x', 'a', 'b'],
+        });
+        expect2(
+            await _compare('typed-inc-append-again', svc => svc.increment(T2, { name: 'c', tags: ['c'] } as any)),
+        ).toEqual({
+            no: T2,
+            name: 'c',
+            tags: ['x', 'a', 'b', 'c'],
+        });
+        await _readBoth(T2, {
+            no: T2,
+            type: 'account',
+            name: 'c',
+            slot: 10,
+            balance: 75,
+            tags: ['x', 'a', 'b', 'c'],
+        });
+
+        //* $update can be combined with shape-driven increment on different fields.
+        const T4 = 'TI0004';
+        testDataIds.add(T4);
+        await _compare('typed-inc-update-seed', svc =>
+            svc.save(T4, { type: 'account', name: 'old', slot: 1, tags: ['seed'] } as any),
+        );
+        expect2(
+            await _compare('typed-inc-with-update', svc =>
+                svc.increment(
+                    T4,
+                    { name: 'inc-name', slot: 4, tags: ['inc'] } as any,
+                    {
+                        balance: 50,
+                    } as any,
+                ),
+            ),
+        ).toEqual({ no: T4, name: 'inc-name', slot: 5, balance: 50, tags: ['seed', 'inc'] });
+        await _readBoth(T4, {
+            no: T4,
+            type: 'account',
+            name: 'inc-name',
+            slot: 5,
+            balance: 50,
+            tags: ['seed', 'inc'],
+        });
+
+        //* type mismatch.
+        const T3 = 'TI0003';
+        testDataIds.add(T3);
+        await $dummy.save(T3, { type: 'account', name: 'foo', slot: 1, tags: ['a'] } as any);
+        if (useDynamo) await $dynamo.save(T3, { type: 'account', name: 'foo', slot: 1, tags: ['a'] } as any);
+
+        await _rejectBoth(
+            'number-field-string',
+            svc => svc.increment(T3, { slot: 'x' } as any),
+            '.slot (x) should be number!',
+        );
+        await _readBoth(T3, { no: T3, type: 'account', name: 'foo', slot: 1, tags: ['a'] });
+        await _rejectBoth(
+            'string-field-number',
+            svc => svc.increment(T3, { name: 1 } as any),
+            '.name (1) should be string!',
+        );
+        await _rejectBoth(
+            'array-field-string',
+            svc => svc.increment(T3, { tags: 'b' } as any),
+            '.tags (b) should be array!',
+        );
+        await _rejectBoth(
+            'string-field-array',
+            svc => svc.increment(T3, { name: ['x'] } as any),
+            '.name (x) should be string!',
+        );
+        await _readBoth(T3, { no: T3, type: 'account', name: 'foo', slot: 1, tags: ['a'] });
+
+        //* cleanup
+        await $dummy.delete(T1).catch(() => {});
+        await $dummy.delete(T2).catch(() => {});
+        await $dummy.delete(T3).catch(() => {});
+        await $dummy.delete(T4).catch(() => {});
+        if (useDynamo) {
+            await $dynamo.delete(T1).catch(() => {});
+            await $dynamo.delete(T2).catch(() => {});
+            await $dynamo.delete(T3).catch(() => {});
+            await $dynamo.delete(T4).catch(() => {});
+        }
+    });
+
+    //* atomic additive operations with Promise.all.
+    it('should preserve additive increment results under Promise.all concurrency', async () => {
+        const FIELDS = ['name', 'slot', 'balance', 'tags'];
+        const $dummy = new DummyStorageService<AccountModel>('ticketing-dummy-data', 'memory', 'no', FIELDS);
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', FIELDS, 'no');
+        const useDynamo = PROFILE === 'lemon';
+
+        //* number add.
+        const A_DUMMY = 'AT0001';
+        await Promise.all(Array.from({ length: 100 }, (_, i) => $dummy.increment(A_DUMMY, { slot: i + 1 } as any)));
+        expect2((await $dummy.read(A_DUMMY)).slot).toEqual(5050);
+        await $dummy.delete(A_DUMMY).catch(() => {});
+
+        if (useDynamo) {
+            const A_DYN = 'AT0001D';
+            testDataIds.add(A_DYN);
+            await Promise.all(Array.from({ length: 100 }, (_, i) => $dynamo.increment(A_DYN, { slot: i + 1 } as any)));
+            expect2((await $dynamo.read(A_DYN)).slot).toEqual(5050);
+            await $dynamo.delete(A_DYN).catch(() => {});
+        }
+
+        //* update(..., increments) shares the same per-id queue in Dummy.
+        const U_DUMMY = 'AT0003';
+        await Promise.all(Array.from({ length: 100 }, (_, i) => $dummy.update(U_DUMMY, {}, { slot: i + 1 } as any)));
+        expect2((await $dummy.read(U_DUMMY)).slot).toEqual(5050);
+        await $dummy.delete(U_DUMMY).catch(() => {});
+
+        //* update(..., increments) and increment(...) should not lose additive writes when interleaved.
+        const MIX_DUMMY = 'AT0004';
+        await Promise.all(
+            Array.from({ length: 100 }, (_, i) =>
+                i % 2 === 0
+                    ? $dummy.increment(MIX_DUMMY, { slot: i + 1 } as any)
+                    : $dummy.update(MIX_DUMMY, {}, { slot: i + 1 } as any),
+            ),
+        );
+        expect2((await $dummy.read(MIX_DUMMY)).slot).toEqual(5050);
+        await $dummy.delete(MIX_DUMMY).catch(() => {});
+
+        //* number add with array append.
+        const B_DUMMY = 'AT0002';
+        await Promise.all(
+            Array.from({ length: 100 }, (_, i) =>
+                $dummy.increment(B_DUMMY, { slot: i + 1, tags: [`${i + 1}`] } as any),
+            ),
+        );
+        const dummyB: any = await $dummy.read(B_DUMMY);
+        expect2(dummyB.slot).toEqual(5050);
+        expect2(dummyB.tags.length).toEqual(100);
+        expect2(new Set(dummyB.tags).size).toEqual(100);
+        await $dummy.delete(B_DUMMY).catch(() => {});
+
+        if (useDynamo) {
+            const B_DYN = 'AT0002D';
+            testDataIds.add(B_DYN);
+            await Promise.all(
+                Array.from({ length: 100 }, (_, i) =>
+                    $dynamo.increment(B_DYN, { slot: i + 1, tags: [`${i + 1}`] } as any),
+                ),
+            );
+            const dynB: any = await $dynamo.read(B_DYN);
+            expect2(dynB.slot).toEqual(5050);
+            expect2(dynB.tags.length).toEqual(100);
+            expect2(new Set(dynB.tags).size).toEqual(100);
+            await $dynamo.delete(B_DYN).catch(() => {});
+        }
+    }, 60_000);
 
     afterAll(async () => {
         if (PROFILE !== 'lemon') return;
