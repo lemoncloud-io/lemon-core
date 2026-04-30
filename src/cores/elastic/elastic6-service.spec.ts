@@ -10,6 +10,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';

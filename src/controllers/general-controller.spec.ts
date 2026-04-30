@@ -7,6 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';

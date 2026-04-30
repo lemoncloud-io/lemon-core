@@ -8,6 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi, test } from 'vitest';
 import { GETERR, expect2 } from '../common/test-helper';
 

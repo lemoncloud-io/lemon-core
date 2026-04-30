@@ -9,6 +9,7 @@
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../environ';
 import { CoreModel, NextContext, SearchBody } from '../cores/';
