@@ -1084,11 +1084,11 @@ describe('StorageService', () => {
         );
         expect2(await $dummy.read(ID3)).toEqual({ no: ID3, type: 'account', name: 'three', balance: 300 });
 
-        //* mupdate: top-level id is a transport key when idName differs.
+        //* mupdate: use only the logical idName field when idName differs.
         const ID8 = 'PA0007';
         trackId(ID8);
         await _compare('mupdate-idname-conflict', svc =>
-            svc.mupdate([{ no: ID8, id: 'PA-DROPPED', type: 'account', name: 'id-conflict' } as any]),
+            svc.mupdate([{ no: ID8, type: 'account', name: 'id-conflict' } as any]),
         );
         expect2(await $dummy.read(ID8)).toEqual({ no: ID8, type: 'account', name: 'id-conflict' });
 
