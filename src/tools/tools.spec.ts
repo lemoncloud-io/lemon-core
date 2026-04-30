@@ -8,7 +8,8 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { vi } from 'vitest';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { describe, expect, it, vi, beforeAll, test } from 'vitest';
 import loadEnviron from '../environ'; //INFO! load environ first.
 import { expect2, GETERR, onlyDefined } from '../common/test-helper';
 import { loadJsonSync, awsConfig, AwsConfigParams, isLambda } from './tools';

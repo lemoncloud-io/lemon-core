@@ -7,6 +7,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { describe, expect, it, vi } from 'vitest';
 import { expect2, GETERR } from '../..';
 import { StorageModel } from './storage-service';
 import { RedisStorageService, DummyRedisStorageService } from './redis-storage-service';

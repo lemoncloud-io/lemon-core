@@ -7,6 +7,8 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageModel } from './storage-service';
@@ -1147,6 +1149,417 @@ describe('StorageService', () => {
         expect2(await $dummy.read('Z99999').catch(GETERR)).toEqual('404 NOT FOUND - _id:Z99999');
         await $dummy.delete('Z00001');
     });
+
+    //* array increment and string overwrite.
+    it('should support shape-driven array increment while keeping string overwrite', async () => {
+        const FIELDS = ['name', 'slot', 'balance', 'tags'];
+        const $dummy = new DummyStorageService<AccountModel>('ticketing-dummy-data', 'memory', 'no', FIELDS);
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', FIELDS, 'no');
+        const useDynamo = PROFILE === 'lemon';
+
+        const _compare = async <R>(_label: string, runner: (svc: any) => Promise<R>): Promise<R> => {
+            const dummyRes = await runner($dummy).catch(GETERR);
+            if (useDynamo) {
+                const dynamoRes = await runner($dynamo).catch(GETERR);
+                expect2(() => dynamoRes, undefined as any).toEqual(dummyRes);
+            }
+            return dummyRes as R;
+        };
+        const _readBoth = async (id: string, expected: any) => {
+            expect2(await $dummy.read(id)).toEqual(expected);
+            if (useDynamo) expect2(await $dynamo.read(id)).toEqual(expected);
+        };
+        const _rejectBoth = async (label: string, runner: (svc: any) => Promise<any>, expectedDummy: string) => {
+            const dummyErr = await runner($dummy).catch(GETERR);
+            expect2(dummyErr).toEqual(expectedDummy);
+            if (useDynamo) {
+                const dynamoErr = await runner($dynamo).catch(GETERR);
+                expect(typeof dynamoErr, `[shape-inc:${label}] dynamo should reject`).toEqual('string');
+            }
+        };
+
+        //* create by increment.
+        const T1 = 'TI0001';
+        testDataIds.add(T1);
+        expect2(
+            await _compare('typed-inc-initial', svc =>
+                svc.increment(T1, { name: 'a', slot: 1, tags: ['a', 'b'], extra: 'drop' } as any),
+            ),
+        ).toEqual({ no: T1, name: 'a', slot: 1, tags: ['a', 'b'] });
+        await _readBoth(T1, { no: T1, name: 'a', slot: 1, tags: ['a', 'b'] });
+
+        //* append arrays, add numbers, and overwrite strings in one increment call.
+        const T2 = 'TI0002';
+        testDataIds.add(T2);
+        await _compare('typed-inc-seed', svc =>
+            svc.save(T2, { type: 'account', name: 'b', slot: 7, balance: 100, tags: ['x'] } as any),
+        );
+        expect2(
+            await _compare('typed-inc-append', svc =>
+                svc.increment(T2, { name: 'a', slot: 3, balance: -25, tags: ['a', 'b'], extra: 'drop' } as any),
+            ),
+        ).toEqual({ no: T2, name: 'a', slot: 10, balance: 75, tags: ['x', 'a', 'b'] });
+        await _readBoth(T2, {
+            no: T2,
+            type: 'account',
+            name: 'a',
+            slot: 10,
+            balance: 75,
+            tags: ['x', 'a', 'b'],
+        });
+        expect2(
+            await _compare('typed-inc-append-again', svc => svc.increment(T2, { name: 'c', tags: ['c'] } as any)),
+        ).toEqual({
+            no: T2,
+            name: 'c',
+            tags: ['x', 'a', 'b', 'c'],
+        });
+        await _readBoth(T2, {
+            no: T2,
+            type: 'account',
+            name: 'c',
+            slot: 10,
+            balance: 75,
+            tags: ['x', 'a', 'b', 'c'],
+        });
+
+        //* $update can be combined with shape-driven increment on different fields.
+        const T4 = 'TI0004';
+        testDataIds.add(T4);
+        await _compare('typed-inc-update-seed', svc =>
+            svc.save(T4, { type: 'account', name: 'old', slot: 1, tags: ['seed'] } as any),
+        );
+        expect2(
+            await _compare('typed-inc-with-update', svc =>
+                svc.increment(
+                    T4,
+                    { name: 'inc-name', slot: 4, tags: ['inc'] } as any,
+                    {
+                        balance: 50,
+                    } as any,
+                ),
+            ),
+        ).toEqual({ no: T4, name: 'inc-name', slot: 5, balance: 50, tags: ['seed', 'inc'] });
+        await _readBoth(T4, {
+            no: T4,
+            type: 'account',
+            name: 'inc-name',
+            slot: 5,
+            balance: 50,
+            tags: ['seed', 'inc'],
+        });
+
+        //* null/object/empty-array values are handled by shape in the same increment API.
+        const T5 = 'TI0005';
+        testDataIds.add(T5);
+        await _compare('typed-inc-shape-seed', svc =>
+            svc.save(T5, {
+                type: 'account',
+                name: 'seed',
+                slot: 10,
+                balance: 5,
+                tags: ['root'],
+                meta: { origin: true },
+            } as any),
+        );
+        expect2(
+            await _compare('typed-inc-shape-mixed', svc =>
+                svc.increment(
+                    T5,
+                    {
+                        name: '',
+                        slot: -3,
+                        balance: 0,
+                        tags: [],
+                        meta: { nested: { ok: true }, step: 1 },
+                    } as any,
+                    { stereo: 'from-update' } as any,
+                ),
+            ),
+        ).toEqual({
+            no: T5,
+            name: null,
+            slot: 7,
+            balance: 5,
+            tags: ['root'],
+            meta: { nested: { ok: true }, step: 1 },
+            stereo: 'from-update',
+        });
+        await _readBoth(T5, {
+            no: T5,
+            type: 'account',
+            name: null,
+            slot: 7,
+            balance: 5,
+            tags: ['root'],
+            meta: { nested: { ok: true }, step: 1 },
+            stereo: 'from-update',
+        });
+        expect2(
+            await _compare('typed-inc-shape-null-object', svc =>
+                svc.increment(T5, { name: 'restored', meta: null, tags: ['tail'] } as any),
+            ),
+        ).toEqual({
+            no: T5,
+            name: 'restored',
+            tags: ['root', 'tail'],
+            meta: null,
+        });
+        await _readBoth(T5, {
+            no: T5,
+            type: 'account',
+            name: 'restored',
+            slot: 7,
+            balance: 5,
+            tags: ['root', 'tail'],
+            meta: null,
+            stereo: 'from-update',
+        });
+
+        //* type mismatch.
+        const T3 = 'TI0003';
+        testDataIds.add(T3);
+        await $dummy.save(T3, { type: 'account', name: 'foo', slot: 1, tags: ['a'] } as any);
+        if (useDynamo) await $dynamo.save(T3, { type: 'account', name: 'foo', slot: 1, tags: ['a'] } as any);
+
+        await _rejectBoth(
+            'number-field-string',
+            svc => svc.increment(T3, { slot: 'x' } as any),
+            '.slot (x) should be number!',
+        );
+        await _readBoth(T3, { no: T3, type: 'account', name: 'foo', slot: 1, tags: ['a'] });
+        await _rejectBoth(
+            'string-field-number',
+            svc => svc.increment(T3, { name: 1 } as any),
+            '.name (1) should be string!',
+        );
+        await _rejectBoth(
+            'array-field-string',
+            svc => svc.increment(T3, { tags: 'b' } as any),
+            '.tags (b) should be array!',
+        );
+        await _rejectBoth(
+            'string-field-array',
+            svc => svc.increment(T3, { name: ['x'] } as any),
+            '.name (x) should be string!',
+        );
+        await _readBoth(T3, { no: T3, type: 'account', name: 'foo', slot: 1, tags: ['a'] });
+
+        //* failed shape checks must not commit earlier valid fields from the same call.
+        await _rejectBoth(
+            'reject-keeps-state',
+            svc => svc.increment(T3, { balance: 5, tags: 'bad' } as any),
+            '.tags (bad) should be array!',
+        );
+        await _readBoth(T3, { no: T3, type: 'account', name: 'foo', slot: 1, tags: ['a'] });
+
+        //* cleanup
+        await $dummy.delete(T1).catch(() => {});
+        await $dummy.delete(T2).catch(() => {});
+        await $dummy.delete(T3).catch(() => {});
+        await $dummy.delete(T4).catch(() => {});
+        await $dummy.delete(T5).catch(() => {});
+        if (useDynamo) {
+            await $dynamo.delete(T1).catch(() => {});
+            await $dynamo.delete(T2).catch(() => {});
+            await $dynamo.delete(T3).catch(() => {});
+            await $dynamo.delete(T4).catch(() => {});
+            await $dynamo.delete(T5).catch(() => {});
+        }
+    });
+
+    //* atomic additive operations with Promise.all.
+    it('should preserve additive increment results under Promise.all concurrency', async () => {
+        const FIELDS = ['name', 'slot', 'balance', 'tags'];
+        const $dummy = new DummyStorageService<AccountModel>('ticketing-dummy-data', 'memory', 'no', FIELDS);
+        const $dynamo = new DynamoStorageService<AccountModel>('TestTable', FIELDS, 'no');
+        const useDynamo = PROFILE === 'lemon';
+
+        const expectMixedAtomicResult = (node: any, id: string, size: number) => {
+            expect2(node.no).toEqual(id);
+            expect2(node.type).toEqual('account');
+            expect2(node.slot).toEqual(size);
+            expect2(node.balance).toEqual(size * 2);
+            expect2(node.tags.length).toEqual(size);
+            expect2(new Set(node.tags).size).toEqual(size);
+            expect2([...node.tags].sort()).toEqual(Array.from({ length: size }, (_, i) => `tag-${i}`).sort());
+            expect(node.name, 'final string overwrite should be one complete concurrent value').toMatch(
+                /^inc-name-\d+$/,
+            );
+            expect2(node.meta?.kind).toEqual('inc');
+            expect(typeof node.meta?.index).toEqual('number');
+            expect(node.meta.index).toBeGreaterThanOrEqual(0);
+            expect(node.meta.index).toBeLessThan(size);
+        };
+
+        //* number add.
+        const A_DUMMY = 'AT0001';
+        await Promise.all(Array.from({ length: 100 }, (_, i) => $dummy.increment(A_DUMMY, { slot: i + 1 } as any)));
+        expect2((await $dummy.read(A_DUMMY)).slot).toEqual(5050);
+        await $dummy.delete(A_DUMMY).catch(() => {});
+
+        if (useDynamo) {
+            const A_DYN = 'AT0001D';
+            testDataIds.add(A_DYN);
+            await Promise.all(Array.from({ length: 100 }, (_, i) => $dynamo.increment(A_DYN, { slot: i + 1 } as any)));
+            expect2((await $dynamo.read(A_DYN)).slot).toEqual(5050);
+            await $dynamo.delete(A_DYN).catch(() => {});
+        }
+
+        //* update(..., increments) shares the same per-id queue in Dummy.
+        const U_DUMMY = 'AT0003';
+        await Promise.all(Array.from({ length: 100 }, (_, i) => $dummy.update(U_DUMMY, {}, { slot: i + 1 } as any)));
+        expect2((await $dummy.read(U_DUMMY)).slot).toEqual(5050);
+        await $dummy.delete(U_DUMMY).catch(() => {});
+
+        //* update(..., increments) and increment(...) should not lose additive writes when interleaved.
+        const MIX_DUMMY = 'AT0004';
+        await Promise.all(
+            Array.from({ length: 100 }, (_, i) =>
+                i % 2 === 0
+                    ? $dummy.increment(MIX_DUMMY, { slot: i + 1 } as any)
+                    : $dummy.update(MIX_DUMMY, {}, { slot: i + 1 } as any),
+            ),
+        );
+        expect2((await $dummy.read(MIX_DUMMY)).slot).toEqual(5050);
+        await $dummy.delete(MIX_DUMMY).catch(() => {});
+
+        //* number add with array append.
+        const B_DUMMY = 'AT0002';
+        await Promise.all(
+            Array.from({ length: 100 }, (_, i) =>
+                $dummy.increment(B_DUMMY, { slot: i + 1, tags: [`${i + 1}`] } as any),
+            ),
+        );
+        const dummyB: any = await $dummy.read(B_DUMMY);
+        expect2(dummyB.slot).toEqual(5050);
+        expect2(dummyB.tags.length).toEqual(100);
+        expect2(new Set(dummyB.tags).size).toEqual(100);
+        await $dummy.delete(B_DUMMY).catch(() => {});
+
+        //* string[] append with exact membership.
+        const C_DUMMY = 'AT0007';
+        const elements = 'abcdefghijklmnopqrstuvwxyz';
+        await Promise.all(elements.split('').map(s => $dummy.increment(C_DUMMY, { tags: [s] } as any)));
+        const dummyC: any = await $dummy.read(C_DUMMY);
+        expect2(dummyC.tags.sort().join('')).toEqual(elements);
+        await $dummy.delete(C_DUMMY).catch(() => {});
+
+        if (useDynamo) {
+            const B_DYN = 'AT0002D';
+            testDataIds.add(B_DYN);
+            await Promise.all(
+                Array.from({ length: 100 }, (_, i) =>
+                    $dynamo.increment(B_DYN, { slot: i + 1, tags: [`${i + 1}`] } as any),
+                ),
+            );
+            const dynB: any = await $dynamo.read(B_DYN);
+            expect2(dynB.slot).toEqual(5050);
+            expect2(dynB.tags.length).toEqual(100);
+            expect2(new Set(dynB.tags).size).toEqual(100);
+            await $dynamo.delete(B_DYN).catch(() => {});
+
+            const C_DYN = 'AT0007D';
+            testDataIds.add(C_DYN);
+            await Promise.all(elements.split('').map(s => $dynamo.increment(C_DYN, { tags: [s] } as any)));
+            const dynC: any = await $dynamo.read(C_DYN);
+            expect2(dynC.tags.sort().join('')).toEqual(elements);
+            await $dynamo.delete(C_DYN).catch(() => {});
+        }
+
+        //* increment() must remain atomic when number/string/array/object parameters are mixed.
+        const MIXED_DUMMY = 'AT0005';
+        const mixedSize = 80;
+        await $dummy.save(MIXED_DUMMY, {
+            type: 'account',
+            name: 'seed',
+            slot: 0,
+            balance: 0,
+            tags: [],
+            meta: { kind: 'seed' },
+        } as any);
+        await Promise.all(
+            Array.from({ length: mixedSize }, (_, i) =>
+                $dummy.increment(MIXED_DUMMY, {
+                    name: `inc-name-${i}`,
+                    slot: 1,
+                    balance: 2,
+                    tags: [`tag-${i}`],
+                    meta: { kind: 'inc', index: i },
+                } as any),
+            ),
+        );
+        expectMixedAtomicResult(await $dummy.read(MIXED_DUMMY), MIXED_DUMMY, mixedSize);
+        await $dummy.delete(MIXED_DUMMY).catch(() => {});
+
+        //* update(..., increments) and increment(...) share atomicity for numeric adds while strings/objects overwrite.
+        const MIXED_UPDATE_DUMMY = 'AT0006';
+        await $dummy.save(MIXED_UPDATE_DUMMY, {
+            type: 'account',
+            name: 'seed',
+            slot: 0,
+            balance: 0,
+            tags: [],
+            meta: { kind: 'seed' },
+        } as any);
+        await Promise.all(
+            Array.from({ length: mixedSize }, (_, i) =>
+                i % 2 === 0
+                    ? $dummy.increment(MIXED_UPDATE_DUMMY, {
+                          name: `inc-name-${i}`,
+                          slot: 1,
+                          balance: 2,
+                          tags: [`tag-${i}`],
+                          meta: { kind: 'inc', index: i },
+                      } as any)
+                    : $dummy.update(
+                          MIXED_UPDATE_DUMMY,
+                          { name: `update-name-${i}`, meta: { kind: 'update', index: i } } as any,
+                          { slot: 1, balance: 2 } as any,
+                      ),
+            ),
+        );
+        const mixedUpdateDummy: any = await $dummy.read(MIXED_UPDATE_DUMMY);
+        expect2(mixedUpdateDummy.no).toEqual(MIXED_UPDATE_DUMMY);
+        expect2(mixedUpdateDummy.type).toEqual('account');
+        expect2(mixedUpdateDummy.slot).toEqual(mixedSize);
+        expect2(mixedUpdateDummy.balance).toEqual(mixedSize * 2);
+        expect2(mixedUpdateDummy.tags.length).toEqual(mixedSize / 2);
+        expect2(new Set(mixedUpdateDummy.tags).size).toEqual(mixedSize / 2);
+        expect2([...mixedUpdateDummy.tags].sort()).toEqual(
+            Array.from({ length: mixedSize / 2 }, (_, i) => `tag-${i * 2}`).sort(),
+        );
+        expect(mixedUpdateDummy.name).toMatch(/^(inc|update)-name-\d+$/);
+        expect(['inc', 'update']).toContain(mixedUpdateDummy.meta?.kind);
+        expect(typeof mixedUpdateDummy.meta?.index).toEqual('number');
+        await $dummy.delete(MIXED_UPDATE_DUMMY).catch(() => {});
+
+        if (useDynamo) {
+            const MIXED_DYN = 'AT0005D';
+            testDataIds.add(MIXED_DYN);
+            await $dynamo.save(MIXED_DYN, {
+                type: 'account',
+                name: 'seed',
+                slot: 0,
+                balance: 0,
+                tags: [],
+                meta: { kind: 'seed' },
+            } as any);
+            await Promise.all(
+                Array.from({ length: mixedSize }, (_, i) =>
+                    $dynamo.increment(MIXED_DYN, {
+                        name: `inc-name-${i}`,
+                        slot: 1,
+                        balance: 2,
+                        tags: [`tag-${i}`],
+                        meta: { kind: 'inc', index: i },
+                    } as any),
+                ),
+            );
+            expectMixedAtomicResult(await $dynamo.read(MIXED_DYN), MIXED_DYN, mixedSize);
+            await $dynamo.delete(MIXED_DYN).catch(() => {});
+        }
+    }, 60_000);
 
     afterAll(async () => {
         if (PROFILE !== 'lemon') return;

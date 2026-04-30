@@ -7,6 +7,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
 import { loadJsonSync } from '../tools/';
