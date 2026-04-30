@@ -369,7 +369,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         if (!this._fields) return { ...obj };
         return this._fields.reduce((N: any, key) => {
             const val = (obj as any)[key];
-            if (val !== undefined) N[key] = val;
+            if (val !== undefined) N[key] = val ?? '';
             return N;
         }, {});
     }
