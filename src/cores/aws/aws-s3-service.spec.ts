@@ -8,6 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 const ENV_NAME = 'MY_S3_BUCKET';
 const DEF_BUCKET = 'lemon-hello-www';
 

@@ -7,6 +7,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 import net from 'net';
 import { expect2, GETERR, _it } from '../..';
 import { CacheService, DummyCacheService, sleep, toTTL, fromTTL } from './cache-service';

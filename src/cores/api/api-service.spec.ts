@@ -7,7 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { vi, describe, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import $engine, { $U } from '../../engine';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { APIService, APIServiceClient, APIHeaders, ApiHttpProxy, MocksAPIService } from './api-service';

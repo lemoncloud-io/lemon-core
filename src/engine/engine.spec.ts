@@ -8,6 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { describe, expect, it, vi, test } from 'vitest';
 import { do_parrallel, doReportError } from './engine';
 import { convDate, convDateToTime, convDateToTS } from './engine';
 import { GETERR, expect2, _it } from '../common/test-helper';

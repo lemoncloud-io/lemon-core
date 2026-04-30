@@ -7,6 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2024 - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 import { asyncCredentials } from '../../tools/tools';
 import { expect2, GETERR } from '../../common/test-helper';
 import { createSigV4Proxy } from '../../helpers/helpers';

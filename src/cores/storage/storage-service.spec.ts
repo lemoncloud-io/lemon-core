@@ -7,7 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2 } from '../../common/test-helper';
 import { DynamoStorageService, DummyStorageService, StorageModel } from './storage-service';

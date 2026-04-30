@@ -8,6 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { describe, expect, it, vi, test } from 'vitest';
 import { GETERR, expect2 } from '../common/test-helper';
 
 import { EngineModule, EngineOption, EngineScope, EngineConsole } from './types';

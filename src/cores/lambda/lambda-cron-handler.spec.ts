@@ -8,6 +8,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 import { expect2 } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { LambdaCronHandler } from './lambda-cron-handler';

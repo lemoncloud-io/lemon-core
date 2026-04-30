@@ -8,6 +8,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { expect2, GETERR } from '../../common/test-helper';
 import { $U } from '../../engine/';

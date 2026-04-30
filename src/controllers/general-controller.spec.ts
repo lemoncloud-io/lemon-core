@@ -7,6 +7,7 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
 import { ProtocolParam, NextHandler } from '../cores';

@@ -7,6 +7,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
 import { ProtocolParam, Elastic6QueryService } from '../cores';
 import { buildEngine } from '../engine';

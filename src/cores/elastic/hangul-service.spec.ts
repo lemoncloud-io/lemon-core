@@ -8,6 +8,7 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+import { describe, expect, it, vi } from 'vitest';
 import { expect2 } from '../..';
 import { HangulService } from './hangul-service';
 
