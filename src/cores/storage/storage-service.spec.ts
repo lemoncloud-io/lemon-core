@@ -1248,6 +1248,73 @@ describe('StorageService', () => {
             tags: ['seed', 'inc'],
         });
 
+        //* null/object/empty-array values are handled by shape in the same increment API.
+        const T5 = 'TI0005';
+        testDataIds.add(T5);
+        await _compare('typed-inc-shape-seed', svc =>
+            svc.save(T5, {
+                type: 'account',
+                name: 'seed',
+                slot: 10,
+                balance: 5,
+                tags: ['root'],
+                meta: { origin: true },
+            } as any),
+        );
+        expect2(
+            await _compare('typed-inc-shape-mixed', svc =>
+                svc.increment(
+                    T5,
+                    {
+                        name: '',
+                        slot: -3,
+                        balance: 0,
+                        tags: [],
+                        meta: { nested: { ok: true }, step: 1 },
+                    } as any,
+                    { stereo: 'from-update' } as any,
+                ),
+            ),
+        ).toEqual({
+            no: T5,
+            name: null,
+            slot: 7,
+            balance: 5,
+            tags: ['root'],
+            meta: { nested: { ok: true }, step: 1 },
+            stereo: 'from-update',
+        });
+        await _readBoth(T5, {
+            no: T5,
+            type: 'account',
+            name: null,
+            slot: 7,
+            balance: 5,
+            tags: ['root'],
+            meta: { nested: { ok: true }, step: 1 },
+            stereo: 'from-update',
+        });
+        expect2(
+            await _compare('typed-inc-shape-null-object', svc =>
+                svc.increment(T5, { name: 'restored', meta: null, tags: ['tail'] } as any),
+            ),
+        ).toEqual({
+            no: T5,
+            name: 'restored',
+            tags: ['root', 'tail'],
+            meta: null,
+        });
+        await _readBoth(T5, {
+            no: T5,
+            type: 'account',
+            name: 'restored',
+            slot: 7,
+            balance: 5,
+            tags: ['root', 'tail'],
+            meta: null,
+            stereo: 'from-update',
+        });
+
         //* type mismatch.
         const T3 = 'TI0003';
         testDataIds.add(T3);
@@ -1277,16 +1344,26 @@ describe('StorageService', () => {
         );
         await _readBoth(T3, { no: T3, type: 'account', name: 'foo', slot: 1, tags: ['a'] });
 
+        //* failed shape checks must not commit earlier valid fields from the same call.
+        await _rejectBoth(
+            'reject-keeps-state',
+            svc => svc.increment(T3, { balance: 5, tags: 'bad' } as any),
+            '.tags (bad) should be array!',
+        );
+        await _readBoth(T3, { no: T3, type: 'account', name: 'foo', slot: 1, tags: ['a'] });
+
         //* cleanup
         await $dummy.delete(T1).catch(() => {});
         await $dummy.delete(T2).catch(() => {});
         await $dummy.delete(T3).catch(() => {});
         await $dummy.delete(T4).catch(() => {});
+        await $dummy.delete(T5).catch(() => {});
         if (useDynamo) {
             await $dynamo.delete(T1).catch(() => {});
             await $dynamo.delete(T2).catch(() => {});
             await $dynamo.delete(T3).catch(() => {});
             await $dynamo.delete(T4).catch(() => {});
+            await $dynamo.delete(T5).catch(() => {});
         }
     });
 
@@ -1296,6 +1373,23 @@ describe('StorageService', () => {
         const $dummy = new DummyStorageService<AccountModel>('ticketing-dummy-data', 'memory', 'no', FIELDS);
         const $dynamo = new DynamoStorageService<AccountModel>('TestTable', FIELDS, 'no');
         const useDynamo = PROFILE === 'lemon';
+
+        const expectMixedAtomicResult = (node: any, id: string, size: number) => {
+            expect2(node.no).toEqual(id);
+            expect2(node.type).toEqual('account');
+            expect2(node.slot).toEqual(size);
+            expect2(node.balance).toEqual(size * 2);
+            expect2(node.tags.length).toEqual(size);
+            expect2(new Set(node.tags).size).toEqual(size);
+            expect2([...node.tags].sort()).toEqual(Array.from({ length: size }, (_, i) => `tag-${i}`).sort());
+            expect(node.name, 'final string overwrite should be one complete concurrent value').toMatch(
+                /^inc-name-\d+$/,
+            );
+            expect2(node.meta?.kind).toEqual('inc');
+            expect(typeof node.meta?.index).toEqual('number');
+            expect(node.meta.index).toBeGreaterThanOrEqual(0);
+            expect(node.meta.index).toBeLessThan(size);
+        };
 
         //* number add.
         const A_DUMMY = 'AT0001';
@@ -1355,6 +1449,99 @@ describe('StorageService', () => {
             expect2(dynB.tags.length).toEqual(100);
             expect2(new Set(dynB.tags).size).toEqual(100);
             await $dynamo.delete(B_DYN).catch(() => {});
+        }
+
+        //* increment() must remain atomic when number/string/array/object parameters are mixed.
+        const MIXED_DUMMY = 'AT0005';
+        const mixedSize = 80;
+        await $dummy.save(MIXED_DUMMY, {
+            type: 'account',
+            name: 'seed',
+            slot: 0,
+            balance: 0,
+            tags: [],
+            meta: { kind: 'seed' },
+        } as any);
+        await Promise.all(
+            Array.from({ length: mixedSize }, (_, i) =>
+                $dummy.increment(MIXED_DUMMY, {
+                    name: `inc-name-${i}`,
+                    slot: 1,
+                    balance: 2,
+                    tags: [`tag-${i}`],
+                    meta: { kind: 'inc', index: i },
+                } as any),
+            ),
+        );
+        expectMixedAtomicResult(await $dummy.read(MIXED_DUMMY), MIXED_DUMMY, mixedSize);
+        await $dummy.delete(MIXED_DUMMY).catch(() => {});
+
+        //* update(..., increments) and increment(...) share atomicity for numeric adds while strings/objects overwrite.
+        const MIXED_UPDATE_DUMMY = 'AT0006';
+        await $dummy.save(MIXED_UPDATE_DUMMY, {
+            type: 'account',
+            name: 'seed',
+            slot: 0,
+            balance: 0,
+            tags: [],
+            meta: { kind: 'seed' },
+        } as any);
+        await Promise.all(
+            Array.from({ length: mixedSize }, (_, i) =>
+                i % 2 === 0
+                    ? $dummy.increment(MIXED_UPDATE_DUMMY, {
+                          name: `inc-name-${i}`,
+                          slot: 1,
+                          balance: 2,
+                          tags: [`tag-${i}`],
+                          meta: { kind: 'inc', index: i },
+                      } as any)
+                    : $dummy.update(
+                          MIXED_UPDATE_DUMMY,
+                          { name: `update-name-${i}`, meta: { kind: 'update', index: i } } as any,
+                          { slot: 1, balance: 2 } as any,
+                      ),
+            ),
+        );
+        const mixedUpdateDummy: any = await $dummy.read(MIXED_UPDATE_DUMMY);
+        expect2(mixedUpdateDummy.no).toEqual(MIXED_UPDATE_DUMMY);
+        expect2(mixedUpdateDummy.type).toEqual('account');
+        expect2(mixedUpdateDummy.slot).toEqual(mixedSize);
+        expect2(mixedUpdateDummy.balance).toEqual(mixedSize * 2);
+        expect2(mixedUpdateDummy.tags.length).toEqual(mixedSize / 2);
+        expect2(new Set(mixedUpdateDummy.tags).size).toEqual(mixedSize / 2);
+        expect2([...mixedUpdateDummy.tags].sort()).toEqual(
+            Array.from({ length: mixedSize / 2 }, (_, i) => `tag-${i * 2}`).sort(),
+        );
+        expect(mixedUpdateDummy.name).toMatch(/^(inc|update)-name-\d+$/);
+        expect(['inc', 'update']).toContain(mixedUpdateDummy.meta?.kind);
+        expect(typeof mixedUpdateDummy.meta?.index).toEqual('number');
+        await $dummy.delete(MIXED_UPDATE_DUMMY).catch(() => {});
+
+        if (useDynamo) {
+            const MIXED_DYN = 'AT0005D';
+            testDataIds.add(MIXED_DYN);
+            await $dynamo.save(MIXED_DYN, {
+                type: 'account',
+                name: 'seed',
+                slot: 0,
+                balance: 0,
+                tags: [],
+                meta: { kind: 'seed' },
+            } as any);
+            await Promise.all(
+                Array.from({ length: mixedSize }, (_, i) =>
+                    $dynamo.increment(MIXED_DYN, {
+                        name: `inc-name-${i}`,
+                        slot: 1,
+                        balance: 2,
+                        tags: [`tag-${i}`],
+                        meta: { kind: 'inc', index: i },
+                    } as any),
+                ),
+            );
+            expectMixedAtomicResult(await $dynamo.read(MIXED_DYN), MIXED_DYN, mixedSize);
+            await $dynamo.delete(MIXED_DYN).catch(() => {});
         }
     }, 60_000);
 
