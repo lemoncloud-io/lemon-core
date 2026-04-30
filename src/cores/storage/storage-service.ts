@@ -364,8 +364,8 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
      * apply Dynamo-style field whitelist when configured; otherwise return a shallow copy.
      */
     private pick<S extends object>(obj: S): Partial<S> {
+        if (!this._fields) return { ...obj };
         const source = DynamoService.normalize(obj);
-        if (!this._fields) return { ...source };
         return this._fields.reduce((N: any, key) => {
             const val = (source as any)[key];
             if (val !== undefined) N[key] = val;
