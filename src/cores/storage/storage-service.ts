@@ -60,13 +60,39 @@ export interface StorageService<T extends StorageModel> {
 
     /**
      * update some attributes of model
-     * - NOTE! it will create if not exist.
+     * - partial update. only defined fields in `model` are applied.
+     * - unlike `save()`, this is not a full overwrite.
+     * - if the item does not exist yet, it may be created with the provided fields.
+     * - use `incrementals` when a numeric field should be atomically increased or decreased.
+     *
+     * Typical use cases:
+     * - patch a few mutable fields without resending the whole document.
+     * - update metadata such as `status`, `updatedAt`, or `deletedAt`.
+     * - increment counters while also setting other fields in the same request.
+     *
+     * Examples:
+     * ```ts
+     * await storage.update('A001', { name: 'Alice' });
+     * // => updates only `.name`
+     *
+     * await storage.update('A001', { status: 'done' });
+     * // => patches `.status` and `.updatedAt`
+     *
+     * await storage.update('A001', { tags: ['red', 'blue'] });
+     * // => replaces `.tags` with the given string[] value
+     *
+     * await storage.update('A001', { lastSeenAt: 1710000000000 }, { loginCount: 1 });
+     * // => sets `.lastSeenAt` and increments `.loginCount` by 1
+     *
+     * // string[] append is not handled by `incrementals`.
+     * // use `increment()` if you need list-append behavior like ['a'] -> ['a', 'b'].
+     * ```
      *
      * @param id        unique-id
-     * @param model     data
-     * @param incrementals (optional) incrementals like `count = count + 1`
+     * @param model     partial data to set on the target model
+     * @param incrementals (optional) numeric deltas like `count = count + 1`. array values are not supported here.
      */
-    update(id: string, model: T, incrementals?: T): Promise<T>;
+    update(id: string, model: Partial<T>, incrementals?: Partial<T>): Promise<T>;
 
     /**
      * update multiple models.
@@ -77,13 +103,38 @@ export interface StorageService<T extends StorageModel> {
 
     /**
      * increment number attribute (or overwrite string field)
-     * - NOTE! increments only number type.
+     * - behavior depends on the runtime shape of each field value in `model`.
+     * - `number` values are added to the current value.
+     * - `string` values are overwritten.
+     * - `string[]` values are appended like DynamoDB `list_append`.
+     * - if the item does not exist yet, the call may create it with the derived values.
+     * - `$update` is a plain patch set applied together with the increment-style changes.
+     *
+     * Typical use cases:
+     * - add counters such as `balance += 100` or `slot += 1`.
+     * - append tags or event markers such as `tags = tags + ['new']`.
+     * - update a display field while also incrementing numeric or array fields atomically.
+     *
+     * Examples:
+     * ```ts
+     * await storage.increment('A001', { balance: 100 });
+     * // => adds 100 to `.balance`
+     *
+     * await storage.increment('A001', { tags: ['vip'] });
+     * // => appends 'vip' to `.tags`
+     *
+     * await storage.increment('A001', { name: 'Alice', loginCount: 1, tags: ['seen'] });
+     * // => overwrites `.name`, adds 1 to `.loginCount`, appends to `.tags`
+     *
+     * await storage.increment('A001', { slot: 1, tags: ['inc'] }, { balance: 50 });
+     * // => adds 1 to `.slot`, appends `.tags`, and sets `.balance = 50`
+     * ```
      *
      * @param id        unique-id
-     * @param model     data (ONLY number is supportable)
-     * @param $update   (optional) update-set.
+     * @param model     shape-driven increment payload: numbers add, strings overwrite, arrays append
+     * @param $update   (optional) plain update-set applied with the same request
      */
-    increment(id: string, model: T, $update?: T): Promise<T>;
+    increment(id: string, model: Partial<T>, $update?: Partial<T>): Promise<T>;
 
     /**
      * delete item by id
@@ -101,8 +152,8 @@ import { loadDataYml } from '../../tools/';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
 
-const clearDuplicated = (arr: string[]) =>
-    arr.sort().reduce((L, val) => {
+const clearDuplicated = <T = unknown>(arr: T[]) =>
+    arr.sort().reduce<T[]>((L, val) => {
         if (L.indexOf(val) < 0) L.push(val);
         return L;
     }, []);
@@ -140,6 +191,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * Read whole model via database.
      *
      * @param id        id
+     * @override
      */
     public async read(id: string): Promise<T> {
         const data = await this.$dynamo.readItem(id);
@@ -156,6 +208,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * Read multiple models via database.
      *
      * @param ids       ids
+     * @override
      */
     public async mread(ids: string[]): Promise<BatchResult<T>> {
         const total = ids?.length ?? 0;
@@ -185,6 +238,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      *
      * @param id
      * @param model
+     * @override
      */
     public async readOrCreate(id: string, model: T): Promise<T> {
         return this.read(id).catch((e: Error) => {
@@ -198,6 +252,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      *
      * @param id        id
      * @param model     whole object.
+     * @override
      */
     public async save(id: string, model: T): Promise<T> {
         const fields = this._fields || [];
@@ -217,6 +272,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * @param id        id
      * @param model     attributes to update
      * @param incrementals (optional) attributes to increment
+     * @override
      */
     public async update(id: string, model: T, incrementals?: T): Promise<T> {
         const fields = this._fields || [];
@@ -226,7 +282,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             return N;
         }, {});
         /* eslint-disable prettier/prettier */
-        const $I: Incrementable = !incrementals
+        const $I: Incrementable | null = !incrementals
             ? null
             : Object.keys(incrementals).reduce((M: Incrementable, key) => {
                   const val = (incrementals as any)[key];
@@ -235,7 +291,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
                   return M;
               }, {});
         /* eslint-enable prettier/prettier */
-        const ret: any = await this.$dynamo.updateItem(id, undefined, $U, $I);
+        const ret: any = await this.$dynamo.updateItem(id, undefined!, $U, $I);
         return ret as T;
     }
 
@@ -243,6 +299,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * update multiple models
      *
      * @param list      list of models (should include id)
+     * @override
      */
     public async mupdate(list: T[]): Promise<BatchResult<T>> {
         const total = list?.length ?? 0;
@@ -274,6 +331,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * @param id        id
      * @param model     attributes of number.
      * @param $update   (optional) update-set.
+     * @override
      */
     public async increment(id: string, model: T, $update?: T): Promise<T> {
         if (!model && !$update) throw new Error('@item is required!');
@@ -307,7 +365,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             }
             return N;
         }, {});
-        const ret: any = await this.$dynamo.updateItem(id, undefined, $U, $I);
+        const ret: any = await this.$dynamo.updateItem(id, undefined!, $U, $I);
         return ret as T;
     }
 
@@ -500,7 +558,7 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         const filtered = this.pick(item) as Partial<T>;
         const $new: any = Object.assign($org, filtered);
         /* eslint-disable prettier/prettier */
-        const incremented: Incrementable = !$inc
+        const incremented: Incrementable | null = !$inc
             ? null
             : Object.keys($inc).reduce((M: Incrementable, key) => {
                   const val = ($inc as any)[key];

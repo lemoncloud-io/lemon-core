@@ -294,7 +294,7 @@ export class DynamoService<T extends GeneralItem> {
      * @param $update       update set
      * @param $increment    increment set.
      */
-    public prepareUpdateItem(id: string, sort: any, $update: Updatable, $increment?: Incrementable) {
+    public prepareUpdateItem(id: string, sort: any, $update: Updatable, $increment?: Incrementable | null) {
         const debug = 0 ? true : false;
         const { tableName, idName, sortName } = this.options;
         debug && _log(NS, `prepareUpdateItem(${tableName}/${id}/${sort || ''})...`);
@@ -758,7 +758,7 @@ export class DynamoService<T extends GeneralItem> {
         id: string,
         sort: string | number,
         updates: Updatable,
-        increments?: Incrementable,
+        increments?: Incrementable | null,
     ): Promise<T> {
         const { idName } = this.options;
         // _log(NS, `updateItem(${id})...`);

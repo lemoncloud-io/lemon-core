@@ -69,6 +69,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 4.2.2     | optimized `StorageService.increment()` w/ `string[]` parameters.
 | 4.2.1     | optimized `storage-service` w/ `dummy` service (+ audit fix).
 | 4.2.0     | optimized `node@24.15.0` w/o `ttypescript` + `jest`.
 | 4.1.12    | optimized `synchronizer` w/o `elastic` config.
