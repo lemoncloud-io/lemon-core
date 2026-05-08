@@ -69,6 +69,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 4.1.16    | optimized `doReportError` to ignore in local dev.
 | 4.1.12    | optimized `synchronizer` w/o `elastic` config.
 | 4.1.12    | optimized `@aws-sdk` w/ version `3.971.0`.
 | 4.1.11    | optimized `proxy.mget` w/ `error-reporting` option.
