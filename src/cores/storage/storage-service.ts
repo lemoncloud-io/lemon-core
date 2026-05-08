@@ -84,13 +84,13 @@ export interface StorageService<T extends StorageModel> {
      * await storage.update('A001', { lastSeenAt: 1710000000000 }, { loginCount: 1 });
      * // => sets `.lastSeenAt` and increments `.loginCount` by 1
      *
-     * // string[] append is not handled by `incrementals`.
-     * // use `increment()` if you need list-append behavior like ['a'] -> ['a', 'b'].
+     * // array append is supported via `incrementals` for array or absent fields.
+     * // string values belong in the `model`/update argument, not `incrementals`.
      * ```
      *
      * @param id        unique-id
      * @param model     partial data to set on the target model
-     * @param incrementals (optional) numeric deltas like `count = count + 1`. array values are not supported here.
+     * @param incrementals (optional) atomic deltas: numbers add, arrays append (list_append).
      */
     update(id: string, model: Partial<T>, incrementals?: Partial<T>): Promise<T>;
 
@@ -274,7 +274,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * @param incrementals (optional) attributes to increment
      * @override
      */
-    public async update(id: string, model: T, incrementals?: T): Promise<T> {
+    public async update(id: string, model: Partial<T>, incrementals?: Partial<T>): Promise<T> {
         const fields = this._fields || [];
         const $U: MyGeneral = fields.reduce((N: any, key) => {
             const val = (model as any)[key];
@@ -286,7 +286,8 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             ? null
             : Object.keys(incrementals).reduce((M: Incrementable, key) => {
                   const val = (incrementals as any)[key];
-                  if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
+                  if (typeof val !== 'number' && !Array.isArray(val))
+                      throw new Error(`.${key} (${val}) should be number or array!`);
                   M[key] = val;
                   return M;
               }, {});
@@ -537,14 +538,14 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         return run;
     }
 
-    public async update(id: string, item: T, $inc?: T): Promise<T> {
+    public async update(id: string, item: Partial<T>, $inc?: Partial<T>): Promise<T> {
         if (!id) throw new Error('@id is required!');
         if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         if (!item) throw new Error('@item is required!');
         return this.withLock(id, () => this._updateBody(id, item, $inc));
     }
 
-    private async _updateBody(id: string, item: T, $inc?: T): Promise<T> {
+    private async _updateBody(id: string, item: Partial<T>, $inc?: Partial<T>): Promise<T> {
         //* atomic operation for `.lock`.
         const lock = (() => {
             let lock = 0;
@@ -562,11 +563,12 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
             ? null
             : Object.keys($inc).reduce((M: Incrementable, key) => {
                   const val = ($inc as any)[key];
-                  if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
+                  if (typeof val !== 'number' && !Array.isArray(val))
+                      throw new Error(`.${key} (${val}) should be number or array!`);
                   if (key == 'lock') {
                       M[key] = lock;
                   } else {
-                      M[key] = this.applyDynamoAdd(key, ($new as any)[key], val) as number;
+                      M[key] = this.applyDynamoAdd(key, ($new as any)[key], val) as any;
                   }
                   return M;
               }, {});

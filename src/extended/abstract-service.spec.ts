@@ -279,6 +279,67 @@ describe('abstract-service', () => {
         });
     });
 
+    //* atomic inc() — number ADD and array list_append in parallel.
+    it('should atomically increment numbers and append arrays in inc()', async () => {
+        const { service } = instance();
+
+        //* number ADD: parallel 1..100 → 5050 (using existing `test` field)
+        const ID_N = 'inc-atom-num';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID_N, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+        await Promise.all(
+            Array.from({ length: 100 }, (_, i) =>
+                service.guardProxy({}, async proxy => {
+                    await proxy.tests.inc(ID_N, { test: i + 1 } as TestModel);
+                }),
+            ),
+        );
+        expect2((await service.$test.find(ID_N))?.test).toEqual(5050);
+
+        //* string[] append: parallel 'a'..'h' → 'abcdefgh' (reuse `A` field as array via `as any`)
+        const ID_L = 'inc-atom-list';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID_L, { type: 'test' as ModelType, A: [] as any } as TestModel);
+        });
+        await Promise.all(
+            'abcdefgh'.split('').map(s =>
+                service.guardProxy({}, async proxy => {
+                    await proxy.tests.inc(ID_L, { A: [s] } as any);
+                }),
+            ),
+        );
+        const node: any = await service.$test.find(ID_L);
+        expect2([...node.A].sort().join('')).toEqual('abcdefgh');
+    });
+
+    //* flush re-overwrite 회귀 보호 — stale-proxy의 saveAllUpdates가 atomic 결과를 덮지 않아야 함.
+    it('should not re-overwrite incremented fields on stale-proxy flush', async () => {
+        const { service } = instance();
+        const ID = 'inc-flush-stale';
+
+        //* seed test=0
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+
+        //* two proxies read the same node into their own _org/_new (both see test=0).
+        const proxyA = service.buildProxy({});
+        const proxyB = service.buildProxy({});
+        await proxyA.tests.get(ID);
+        await proxyB.tests.get(ID);
+
+        await proxyA.tests.inc(ID, { test: 5 } as TestModel); // storage 0→5, A's $org/$new = 5
+        await proxyB.tests.inc(ID, { test: 3 } as TestModel); // storage 5→8, B's $org/$new = 8
+
+        //* flush B (latest) FIRST, then A (older). If sync is broken, A's stale value
+        //* would SET test back, overriding the atomic sum.
+        await proxyB.saveAllUpdates();
+        await proxyA.saveAllUpdates();
+
+        expect2((await service.$test.find(ID))?.test).toEqual(8);
+    });
+
     //* check of `$ES6`
     it('should pass $ES6', async () => {
         expect2(() => $ES6.hello()).toEqual('Elastic6Instance');

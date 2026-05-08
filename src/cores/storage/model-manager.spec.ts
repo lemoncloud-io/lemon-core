@@ -185,7 +185,7 @@ describe('ModelManager', () => {
         expect2(await manager.retrieve('1').catch(GETERR), 'age,active').toEqual({ age: 34, active: 1 });
         // wrong increment field
         expect2(await manager.update('1', null, { name: '오함마' }).catch(GETERR), 'name').toBe(
-            `.name (오함마) should be number!`,
+            `.name (오함마) should be number or array!`,
         );
         // not existing model
         expect2(await manager.retrieve('2').catch(GETERR)).toBe('404 NOT FOUND - user:2');
@@ -209,7 +209,7 @@ describe('ModelManager', () => {
         expect2(await manager.retrieve('1').catch(GETERR), 'age,active').toEqual({ age: 34, active: 1 });
         // wrong increment field
         expect2(await manager.update('1', null, { name: '오함마' }).catch(GETERR), 'name').toBe(
-            `.name (오함마) should be number!`,
+            `.name (오함마) should be number or array!`,
         );
         // not existing model
         const expected = {
