@@ -316,28 +316,37 @@ describe('abstract-service', () => {
     //* flush re-overwrite 회귀 보호 — stale-proxy의 saveAllUpdates가 atomic 결과를 덮지 않아야 함.
     it('should not re-overwrite incremented fields on stale-proxy flush', async () => {
         const { service } = instance();
-        const ID = 'inc-flush-stale';
 
-        //* seed test=0
+        //* (1) number 필드 — A inc(5), B inc(3); B 먼저 flush, A 나중. sync 깨졌다면 A의 stale 5가 SET으로 8 덮음.
+        const ID = 'inc-flush-stale';
         await service.guardProxy({}, async proxy => {
             await proxy.tests.get(ID, { type: 'test' as ModelType, test: 0 } as TestModel);
         });
-
-        //* two proxies read the same node into their own _org/_new (both see test=0).
         const proxyA = service.buildProxy({});
         const proxyB = service.buildProxy({});
         await proxyA.tests.get(ID);
         await proxyB.tests.get(ID);
-
         await proxyA.tests.inc(ID, { test: 5 } as TestModel); // storage 0→5, A's $org/$new = 5
         await proxyB.tests.inc(ID, { test: 3 } as TestModel); // storage 5→8, B's $org/$new = 8
-
-        //* flush B (latest) FIRST, then A (older). If sync is broken, A's stale value
-        //* would SET test back, overriding the atomic sum.
         await proxyB.saveAllUpdates();
         await proxyA.saveAllUpdates();
-
         expect2((await service.$test.find(ID))?.test).toEqual(8);
+
+        //* (2) array 필드 — 동일 시나리오. sync 깨졌다면 마지막 flush A가 stale ['a']를 SET으로 ['a','b'] 덮음.
+        const ID2 = 'inc-flush-stale-list';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID2, { type: 'test' as ModelType, A: [] as any } as TestModel);
+        });
+        const proxyA2 = service.buildProxy({});
+        const proxyB2 = service.buildProxy({});
+        await proxyA2.tests.get(ID2);
+        await proxyB2.tests.get(ID2);
+        await proxyA2.tests.inc(ID2, { A: ['a'] } as any); // storage []→['a'], A's $org/$new = ['a']
+        await proxyB2.tests.inc(ID2, { A: ['b'] } as any); // storage ['a']→['a','b'], B's $org/$new = ['a','b']
+        await proxyB2.saveAllUpdates();
+        await proxyA2.saveAllUpdates();
+        const node2: any = await service.$test.find(ID2);
+        expect2([...node2.A].sort().join('')).toEqual('ab');
     });
 
     //* check of `$ES6`
