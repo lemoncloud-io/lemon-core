@@ -10,7 +10,7 @@
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { loadProfile } from '../environ';
 import { CoreModel, NextContext, SearchBody } from '../cores/';
 import { _it, expect2, GETERR } from '../common/test-helper';
@@ -278,6 +278,278 @@ describe('abstract-service', () => {
             name: 'hi a',
         });
     });
+
+    //* atomic inc() — number ADD and array list_append in parallel.
+    it('should atomically increment numbers and append arrays in inc()', async () => {
+        const { service } = instance();
+
+        //* number ADD: parallel 1..100 → 5050 (using existing `test` field)
+        const ID_N = 'inc-atom-num';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID_N, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+        await Promise.all(
+            Array.from({ length: 100 }, (_, i) =>
+                service.guardProxy({}, async proxy => {
+                    await proxy.tests.inc(ID_N, { test: i + 1 } as TestModel);
+                }),
+            ),
+        );
+        expect2((await service.$test.find(ID_N))?.test).toEqual(5050);
+
+        //* string[] append: parallel 'a'..'h' → 'abcdefgh' (reuse `A` field as array via `as any`)
+        const ID_L = 'inc-atom-list';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID_L, { type: 'test' as ModelType, A: [] as any } as TestModel);
+        });
+        await Promise.all(
+            'abcdefgh'.split('').map(s =>
+                service.guardProxy({}, async proxy => {
+                    await proxy.tests.inc(ID_L, { A: [s] } as any);
+                }),
+            ),
+        );
+        const node: any = await service.$test.find(ID_L);
+        expect2([...node.A].sort().join('')).toEqual('abcdefgh');
+    });
+
+    //* flush re-overwrite 회귀 보호 — stale-proxy의 saveAllUpdates가 atomic 결과를 덮지 않아야 함.
+    it('should not re-overwrite incremented fields on stale-proxy flush', async () => {
+        const { service } = instance();
+
+        //* (1) number 필드 — A inc(5), B inc(3); B 먼저 flush, A 나중. sync 깨졌다면 A의 stale 5가 SET으로 8 덮음.
+        const ID = 'inc-flush-stale';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+        const proxyA = service.buildProxy({});
+        const proxyB = service.buildProxy({});
+        await proxyA.tests.get(ID);
+        await proxyB.tests.get(ID);
+        await proxyA.tests.inc(ID, { test: 5 } as TestModel); // storage 0→5, A's $org/$new = 5
+        await proxyB.tests.inc(ID, { test: 3 } as TestModel); // storage 5→8, B's $org/$new = 8
+        await proxyB.saveAllUpdates();
+        await proxyA.saveAllUpdates();
+        expect2((await service.$test.find(ID))?.test).toEqual(8);
+
+        //* (2) array 필드 — 동일 시나리오. sync 깨졌다면 마지막 flush A가 stale ['a']를 SET으로 ['a','b'] 덮음.
+        const ID2 = 'inc-flush-stale-list';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID2, { type: 'test' as ModelType, A: [] as any } as TestModel);
+        });
+        const proxyA2 = service.buildProxy({});
+        const proxyB2 = service.buildProxy({});
+        await proxyA2.tests.get(ID2);
+        await proxyB2.tests.get(ID2);
+        await proxyA2.tests.inc(ID2, { A: ['a'] } as any); // storage []→['a'], A's $org/$new = ['a']
+        await proxyB2.tests.inc(ID2, { A: ['b'] } as any); // storage ['a']→['a','b'], B's $org/$new = ['a','b']
+        await proxyB2.saveAllUpdates();
+        await proxyA2.saveAllUpdates();
+        const node2: any = await service.$test.find(ID2);
+        expect2([...node2.A].sort().join('')).toEqual('ab');
+    });
+
+    //* atomic inc() against real DynamoDB — proves Dynamo `ADD` / `list_append` semantics through ManagerProxy.
+    it('should atomically inc() numbers and arrays against real DynamoDB', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        const { service } = instance('real');
+
+        //* unique IDs per run to avoid cross-run collisions on the shared real table.
+        const ts = Date.now();
+        const ID_N = `inc-atom-num-${ts}`;
+        const ID_L = `inc-atom-list-${ts}`;
+
+        //* pre-cleanup (paranoia in case a prior failed run left rows)
+        await Promise.all([ID_N, ID_L].map(id => service.$test.storage.delete(id, true).catch((): null => null)));
+
+        try {
+            //* (A) number ADD: parallel 1..100 → 5050.
+            await service.guardProxy({}, async proxy => {
+                await proxy.tests.get(ID_N, { type: 'test' as ModelType, test: 0 } as TestModel);
+            });
+            await Promise.all(
+                Array.from({ length: 100 }, (_, i) =>
+                    service.guardProxy({}, async proxy => {
+                        await proxy.tests.inc(ID_N, { test: i + 1 } as TestModel);
+                    }),
+                ),
+            );
+            expect2((await service.$test.find(ID_N))?.test).toEqual(5050);
+
+            //* (B) string[] list_append: parallel 'a'..'h' → 'abcdefgh'.
+            await service.guardProxy({}, async proxy => {
+                await proxy.tests.get(ID_L, { type: 'test' as ModelType, A: [] as any } as TestModel);
+            });
+            await Promise.all(
+                'abcdefgh'.split('').map(s =>
+                    service.guardProxy({}, async proxy => {
+                        await proxy.tests.inc(ID_L, { A: [s] } as any);
+                    }),
+                ),
+            );
+            const node: any = await service.$test.find(ID_L);
+            expect2([...node.A].sort().join('')).toEqual('abcdefgh');
+        } finally {
+            await Promise.all([ID_N, ID_L].map(id => service.$test.storage.delete(id, true).catch((): null => null)));
+        }
+    }, 60000);
+
+    //* flush re-overwrite 회귀 보호 (real DynamoDB) — stale-proxy의 saveAllUpdates가 atomic 결과를 덮지 않아야 함.
+    it('should not re-overwrite incremented fields on stale-proxy flush against real DynamoDB', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        const { service } = instance('real');
+
+        const ts = Date.now();
+        const ID_N = `inc-flush-stale-num-${ts}`;
+        const ID_L = `inc-flush-stale-list-${ts}`;
+
+        await Promise.all([ID_N, ID_L].map(id => service.$test.storage.delete(id, true).catch((): null => null)));
+
+        try {
+            //* (1) number 필드 — A inc(5), B inc(3); B 먼저 flush, A 나중. sync 깨졌다면 A의 stale 5가 SET으로 8 덮음.
+            await service.guardProxy({}, async proxy => {
+                await proxy.tests.get(ID_N, { type: 'test' as ModelType, test: 0 } as TestModel);
+            });
+            const proxyA = service.buildProxy({});
+            const proxyB = service.buildProxy({});
+            await proxyA.tests.get(ID_N);
+            await proxyB.tests.get(ID_N);
+            await proxyA.tests.inc(ID_N, { test: 5 } as TestModel); // storage 0→5, A's $org/$new = 5
+            await proxyB.tests.inc(ID_N, { test: 3 } as TestModel); // storage 5→8, B's $org/$new = 8
+            await proxyB.saveAllUpdates();
+            await proxyA.saveAllUpdates();
+            expect2((await service.$test.find(ID_N))?.test).toEqual(8);
+
+            //* (2) array 필드 — 동일 시나리오. sync 깨졌다면 마지막 flush A가 stale ['a']를 SET으로 ['a','b'] 덮음.
+            await service.guardProxy({}, async proxy => {
+                await proxy.tests.get(ID_L, { type: 'test' as ModelType, A: [] as any } as TestModel);
+            });
+            const proxyA2 = service.buildProxy({});
+            const proxyB2 = service.buildProxy({});
+            await proxyA2.tests.get(ID_L);
+            await proxyB2.tests.get(ID_L);
+            await proxyA2.tests.inc(ID_L, { A: ['a'] } as any); // storage []→['a'], A's $org/$new = ['a']
+            await proxyB2.tests.inc(ID_L, { A: ['b'] } as any); // storage ['a']→['a','b'], B's $org/$new = ['a','b']
+            await proxyB2.saveAllUpdates();
+            await proxyA2.saveAllUpdates();
+            const node: any = await service.$test.find(ID_L);
+            expect2([...node.A].sort().join('')).toEqual('ab');
+        } finally {
+            await Promise.all([ID_N, ID_L].map(id => service.$test.storage.delete(id, true).catch((): null => null)));
+        }
+    }, 60000);
+
+    //* inc() 반환값 시멘틱 + 단일 proxy 재-overwrite 방지 명시 검증.
+    //* "inc({count:1}) -> Y=N+1 이후 flush()에서 {count:Y} SET 하면 안 됨" 요구사항 직접 검증.
+    it('should return latest stored value from inc() and not re-SET on flush against real DynamoDB', async () => {
+        //* ignore if not in 'lemon'
+        if (PROFILE !== 'lemon') {
+            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+            return;
+        }
+
+        const { service } = instance('real');
+
+        const ts = Date.now();
+        const ID_N = `inc-return-num-${ts}`;
+        const ID_L = `inc-return-list-${ts}`;
+        const ID_M = `inc-return-mixed-${ts}`;
+
+        await Promise.all([ID_N, ID_L, ID_M].map(id => service.$test.storage.delete(id, true).catch((): null => null)));
+
+        try {
+            //* ─── (1) number 필드: inc() 반환값 == storage 최신값, flush는 no-op for inc'd field ───
+            await service.guardProxy({}, async proxy => {
+                await proxy.tests.get(ID_N, { type: 'test' as ModelType, test: 10 } as TestModel);
+            });
+
+            const proxy1 = service.buildProxy({});
+            //* single inc(+5): N=10 → Y=15. inc() must RETURN 15.
+            const r1: any = await proxy1.tests.inc(ID_N, { test: 5 } as TestModel);
+            expect2(() => r1.test).toEqual(15);
+            //* storage's actual latest value is 15.
+            expect2((await service.$test.find(ID_N))?.test).toEqual(15);
+            //* saveAllUpdates() must NOT re-SET test (no diff between _org and _new) → still 15.
+            await proxy1.saveAllUpdates();
+            expect2((await service.$test.find(ID_N))?.test).toEqual(15);
+
+            //* chained inc on the SAME proxy: 15 → 16 → 18 → 21. Each return must reflect storage.
+            const r1a: any = await proxy1.tests.inc(ID_N, { test: 1 } as TestModel);
+            expect2(() => r1a.test).toEqual(16);
+            const r1b: any = await proxy1.tests.inc(ID_N, { test: 2 } as TestModel);
+            expect2(() => r1b.test).toEqual(18);
+            const r1c: any = await proxy1.tests.inc(ID_N, { test: 3 } as TestModel);
+            expect2(() => r1c.test).toEqual(21);
+            //* second flush also must not re-SET → storage stays 21.
+            await proxy1.saveAllUpdates();
+            expect2((await service.$test.find(ID_N))?.test).toEqual(21);
+
+            //* ─── (2) array 필드: inc() 반환값 == storage 최신 배열, flush는 no-op ───
+            await service.guardProxy({}, async proxy => {
+                await proxy.tests.get(ID_L, { type: 'test' as ModelType, A: [] as any } as TestModel);
+            });
+
+            const proxy2 = service.buildProxy({});
+            //* single inc(['a']): [] → ['a']. inc() must RETURN ['a'].
+            const r2a: any = await proxy2.tests.inc(ID_L, { A: ['a'] } as any);
+            expect2(() => [...r2a.A].sort().join('')).toEqual('a');
+            //* chained inc on same proxy: ['a'] → ['a','b'] → ['a','b','c'].
+            const r2b: any = await proxy2.tests.inc(ID_L, { A: ['b'] } as any);
+            expect2(() => [...r2b.A].sort().join('')).toEqual('ab');
+            const r2c: any = await proxy2.tests.inc(ID_L, { A: ['c'] } as any);
+            expect2(() => [...r2c.A].sort().join('')).toEqual('abc');
+            //* storage's actual latest matches.
+            const beforeFlushList: any = await service.$test.find(ID_L);
+            expect2([...beforeFlushList.A].sort().join('')).toEqual('abc');
+            //* flush must NOT re-SET A (no diff). storage stays ['a','b','c'].
+            await proxy2.saveAllUpdates();
+            const afterFlushList: any = await service.$test.find(ID_L);
+            expect2([...afterFlushList.A].sort().join('')).toEqual('abc');
+
+            //* ─── (3) inc() + 일반 필드 SET 인터리브 — flush 시 inc'd 필드는 SET 제외, 일반 필드만 SET ───
+            await service.guardProxy({}, async proxy => {
+                await proxy.tests.get(ID_M, {
+                    type: 'test' as ModelType,
+                    test: 0,
+                    name: 'seed',
+                } as TestModel);
+            });
+
+            const proxy3 = service.buildProxy({});
+            //* load into proxy buffer, then mutate `name` (regular SET pending).
+            const m: any = await proxy3.tests.get(ID_M);
+            m.name = 'updated';
+            //* inc test=+7 → return.test === 7, AND return.name still reflects the pending SET.
+            const r3: any = await proxy3.tests.inc(ID_M, { test: 7 } as TestModel);
+            expect2(() => r3.test).toEqual(7);
+            expect2(() => r3.name).toEqual('updated');
+            //* flush: only `name` should be SET (inc'd `test` field stays at storage's atomic value 7).
+            await proxy3.saveAllUpdates();
+            const final: any = await service.$test.find(ID_M);
+            expect2(() => final.test).toEqual(7);
+            expect2(() => final.name).toEqual('updated');
+
+            //* sanity: another inc on the same proxy after flush must continue from storage's 7 → 12.
+            const r3b: any = await proxy3.tests.inc(ID_M, { test: 5 } as TestModel);
+            expect2(() => r3b.test).toEqual(12);
+            await proxy3.saveAllUpdates();
+            expect2((await service.$test.find(ID_M))?.test).toEqual(12);
+        } finally {
+            await Promise.all(
+                [ID_N, ID_L, ID_M].map(id => service.$test.storage.delete(id, true).catch((): null => null)),
+            );
+        }
+    }, 60000);
 
     //* check of `$ES6`
     it('should pass $ES6', async () => {
@@ -626,12 +898,10 @@ describe('abstract-service', () => {
 
         //* CLEANUP: delete all test items after test
         await deleteAllTestItems();
-    });
+    }, 80000);
 
     //* LAYER EQUIVALENCE: test existing data update (diff vs fullModel)
     it('should have equivalent results when updating existing data (diff vs fullModel)', async () => {
-        vi.setConfig({ testTimeout: 60000 });
-
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
             console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
@@ -819,202 +1089,204 @@ describe('abstract-service', () => {
             ...Array.from({ length: 3 }, (_, i) => `final-batch-${i}`),
         ];
         await Promise.all(cleanupIds.map(id => cleanupProxy.tests.storage.delete(id, true).catch(() => null)));
-    });
+    }, 60000);
 
-    _it('should pass saveAllUpdates() performance test with child replication', async () => {
-        vi.setConfig({ testTimeout: 300000 });
+    _it(
+        'should pass saveAllUpdates() performance test with child replication',
+        async () => {
+            //* ignore if not in 'lemon'
+            if (PROFILE !== 'lemon') {
+                console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
+                return;
+            }
 
-        //* ignore if not in 'lemon'
-        if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
-            return;
-        }
+            const { service } = instance('real'); // use real DynamoDB for accurate performance testing
 
-        const { service } = instance('real'); // use real DynamoDB for accurate performance testing
+            //* test scenario: replicate parent model into N children based on childNo parameter
+            //* test childNo values: 100, 1000, 2000
+            //* compare performance: batch mode (useBatch: true) vs legacy mode (useBatch: false)
+            //* verify: response time, error handling, data consistency
 
-        //* test scenario: replicate parent model into N children based on childNo parameter
-        //* test childNo values: 100, 1000, 2000
-        //* compare performance: batch mode (useBatch: true) vs legacy mode (useBatch: false)
-        //* verify: response time, error handling, data consistency
+            //* STEP.0: cleanup all test data before starting
+            const _cleanupAllTestData = async () => {
+                const testChildNos = [100, 1000]; // reduced from [100, 500, 1000, 1500, 2000] for faster test execution
+                const deletePromises = [];
 
-        //* STEP.0: cleanup all test data before starting
-        const _cleanupAllTestData = async () => {
-            const testChildNos = [100, 1000]; // reduced from [100, 500, 1000, 1500, 2000] for faster test execution
-            const deletePromises = [];
-
-            for (const childNo of testChildNos) {
-                // delete parent items
-                deletePromises.push(
-                    service.$test.storage.delete(`parent-batch-${childNo}`, true).catch(() => null),
-                    service.$test.storage.delete(`parent-legacy-${childNo}`, true).catch(() => null),
-                );
-
-                // delete child items
-                for (let i = 0; i < childNo; i++) {
+                for (const childNo of testChildNos) {
+                    // delete parent items
                     deletePromises.push(
-                        service.$test.storage.delete(`child-batch-${childNo}-${i}`, true).catch(() => null),
-                        service.$test.storage.delete(`child-legacy-${childNo}-${i}`, true).catch(() => null),
+                        service.$test.storage.delete(`parent-batch-${childNo}`, true).catch(() => null),
+                        service.$test.storage.delete(`parent-legacy-${childNo}`, true).catch(() => null),
                     );
+
+                    // delete child items
+                    for (let i = 0; i < childNo; i++) {
+                        deletePromises.push(
+                            service.$test.storage.delete(`child-batch-${childNo}-${i}`, true).catch(() => null),
+                            service.$test.storage.delete(`child-legacy-${childNo}-${i}`, true).catch(() => null),
+                        );
+                    }
                 }
+
+                await Promise.all(deletePromises);
+            };
+
+            await _cleanupAllTestData();
+
+            /* helper function: create parent and replicate children*/
+            const _replicateChildren = async (
+                childNo: number,
+                useBatch: boolean,
+            ): Promise<{ parent: TestModel; children: TestModel[]; elapsed: number; errors: number }> => {
+                const proxy = service.buildProxy({ domain: 'perf-test', source: 'child-replication' });
+
+                // STEP.1: create parent model
+                const parent = await proxy.tests.get(`parent-${useBatch ? 'batch' : 'legacy'}-${childNo}`, {});
+                parent.name = `Parent for ${childNo} children`;
+                parent.test = childNo;
+
+                // STEP.2: replicate children based on childNo
+                const children: TestModel[] = [];
+                for (let i = 0; i < childNo; i++) {
+                    const child = await proxy.tests.get(`child-${useBatch ? 'batch' : 'legacy'}-${childNo}-${i}`, {});
+                    child.name = `${parent.name}#${i}`;
+                    child.test = i;
+                    children.push(child);
+                }
+
+                // STEP.3: measure saveAllUpdates performance
+                const startTime = Date.now();
+                let errors = 0;
+
+                try {
+                    await proxy.saveAllUpdates({ useBatch });
+                } catch (err) {
+                    errors++;
+                }
+
+                const elapsed = Date.now() - startTime;
+
+                return { parent, children, elapsed, errors };
+            };
+
+            //* performance test results storage
+            const perfResults: PerfTestResult[] = [];
+
+            //* TEST.1: childNo = 100
+            if (1) {
+                const batchResult100 = await _replicateChildren(100, true);
+                const legacyResult100 = await _replicateChildren(100, false);
+
+                expect2(() => batchResult100.errors).toEqual(0);
+                expect2(() => legacyResult100.errors).toEqual(0);
+                expect2(() => batchResult100.children.length).toEqual(100);
+                expect2(() => legacyResult100.children.length).toEqual(100);
+
+                perfResults.push({
+                    childNo: 100,
+                    batchMode: { elapsed: batchResult100.elapsed, errors: batchResult100.errors },
+                    legacyMode: { elapsed: legacyResult100.elapsed, errors: legacyResult100.errors },
+                });
             }
 
-            await Promise.all(deletePromises);
-        };
+            //* TEST.2: childNo = 500 (SKIPPED for faster test execution)
+            if (0) {
+                const batchResult500 = await _replicateChildren(500, true);
+                const legacyResult500 = await _replicateChildren(500, false);
 
-        await _cleanupAllTestData();
+                expect2(() => batchResult500.errors).toEqual(0);
+                expect2(() => legacyResult500.errors).toEqual(0);
+                expect2(() => batchResult500.children.length).toEqual(500);
+                expect2(() => legacyResult500.children.length).toEqual(500);
 
-        /* helper function: create parent and replicate children*/
-        const _replicateChildren = async (
-            childNo: number,
-            useBatch: boolean,
-        ): Promise<{ parent: TestModel; children: TestModel[]; elapsed: number; errors: number }> => {
-            const proxy = service.buildProxy({ domain: 'perf-test', source: 'child-replication' });
-
-            // STEP.1: create parent model
-            const parent = await proxy.tests.get(`parent-${useBatch ? 'batch' : 'legacy'}-${childNo}`, {});
-            parent.name = `Parent for ${childNo} children`;
-            parent.test = childNo;
-
-            // STEP.2: replicate children based on childNo
-            const children: TestModel[] = [];
-            for (let i = 0; i < childNo; i++) {
-                const child = await proxy.tests.get(`child-${useBatch ? 'batch' : 'legacy'}-${childNo}-${i}`, {});
-                child.name = `${parent.name}#${i}`;
-                child.test = i;
-                children.push(child);
+                perfResults.push({
+                    childNo: 500,
+                    batchMode: { elapsed: batchResult500.elapsed, errors: batchResult500.errors },
+                    legacyMode: { elapsed: legacyResult500.elapsed, errors: legacyResult500.errors },
+                });
             }
 
-            // STEP.3: measure saveAllUpdates performance
-            const startTime = Date.now();
-            let errors = 0;
+            //* TEST.3: childNo = 1000
+            if (1) {
+                const batchResult1000 = await _replicateChildren(1000, true);
+                const legacyResult1000 = await _replicateChildren(1000, false);
 
-            try {
-                await proxy.saveAllUpdates({ useBatch });
-            } catch (err) {
-                errors++;
+                expect2(() => batchResult1000.errors).toEqual(0);
+                expect2(() => legacyResult1000.errors).toEqual(0);
+                expect2(() => batchResult1000.children.length).toEqual(1000);
+                expect2(() => legacyResult1000.children.length).toEqual(1000);
+
+                perfResults.push({
+                    childNo: 1000,
+                    batchMode: { elapsed: batchResult1000.elapsed, errors: batchResult1000.errors },
+                    legacyMode: { elapsed: legacyResult1000.elapsed, errors: legacyResult1000.errors },
+                });
             }
 
-            const elapsed = Date.now() - startTime;
+            //* TEST.4: childNo = 1500 (SKIPPED for faster test execution)
+            if (0) {
+                const batchResult1500 = await _replicateChildren(1500, true);
+                const legacyResult1500 = await _replicateChildren(1500, false);
 
-            return { parent, children, elapsed, errors };
-        };
+                expect2(() => batchResult1500.errors).toEqual(0);
+                expect2(() => legacyResult1500.errors).toEqual(0);
+                expect2(() => batchResult1500.children.length).toEqual(1500);
+                expect2(() => legacyResult1500.children.length).toEqual(1500);
 
-        //* performance test results storage
-        const perfResults: PerfTestResult[] = [];
+                perfResults.push({
+                    childNo: 1500,
+                    batchMode: { elapsed: batchResult1500.elapsed, errors: batchResult1500.errors },
+                    legacyMode: { elapsed: legacyResult1500.elapsed, errors: legacyResult1500.errors },
+                });
+            }
 
-        //* TEST.1: childNo = 100
-        if (1) {
-            const batchResult100 = await _replicateChildren(100, true);
-            const legacyResult100 = await _replicateChildren(100, false);
+            //* TEST.5: childNo = 2000
+            if (0) {
+                const batchResult2000 = await _replicateChildren(2000, true);
+                const legacyResult2000 = await _replicateChildren(2000, false);
 
-            expect2(() => batchResult100.errors).toEqual(0);
-            expect2(() => legacyResult100.errors).toEqual(0);
-            expect2(() => batchResult100.children.length).toEqual(100);
-            expect2(() => legacyResult100.children.length).toEqual(100);
+                expect2(() => batchResult2000.errors).toEqual(0);
+                expect2(() => legacyResult2000.errors).toEqual(0);
+                expect2(() => batchResult2000.children.length).toEqual(2000);
+                expect2(() => legacyResult2000.children.length).toEqual(2000);
 
-            perfResults.push({
-                childNo: 100,
-                batchMode: { elapsed: batchResult100.elapsed, errors: batchResult100.errors },
-                legacyMode: { elapsed: legacyResult100.elapsed, errors: legacyResult100.errors },
-            });
-        }
+                perfResults.push({
+                    childNo: 2000,
+                    batchMode: { elapsed: batchResult2000.elapsed, errors: batchResult2000.errors },
+                    legacyMode: { elapsed: legacyResult2000.elapsed, errors: legacyResult2000.errors },
+                });
+            }
 
-        //* TEST.2: childNo = 500 (SKIPPED for faster test execution)
-        if (0) {
-            const batchResult500 = await _replicateChildren(500, true);
-            const legacyResult500 = await _replicateChildren(500, false);
+            //* save performance report to JSON file
+            const reportPath = _savePerformanceReport('child-replication', perfResults);
 
-            expect2(() => batchResult500.errors).toEqual(0);
-            expect2(() => legacyResult500.errors).toEqual(0);
-            expect2(() => batchResult500.children.length).toEqual(500);
-            expect2(() => legacyResult500.children.length).toEqual(500);
+            //* verify data consistency between batch and legacy mode
 
-            perfResults.push({
-                childNo: 500,
-                batchMode: { elapsed: batchResult500.elapsed, errors: batchResult500.errors },
-                legacyMode: { elapsed: legacyResult500.elapsed, errors: legacyResult500.errors },
-            });
-        }
+            //* verify random samples from each test case
+            const proxyVerify = service.buildProxy({ domain: 'verify', source: 'consistency-check' });
 
-        //* TEST.3: childNo = 1000
-        if (1) {
-            const batchResult1000 = await _replicateChildren(1000, true);
-            const legacyResult1000 = await _replicateChildren(1000, false);
+            // verify 100 children case
+            const batchChild100Sample = await proxyVerify.tests.get('child-batch-100-50');
+            const legacyChild100Sample = await proxyVerify.tests.get('child-legacy-100-50');
+            expect2(() => batchChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
+            expect2(() => legacyChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
+            expect2(() => batchChild100Sample?.test).toEqual(50);
+            expect2(() => legacyChild100Sample?.test).toEqual(50);
 
-            expect2(() => batchResult1000.errors).toEqual(0);
-            expect2(() => legacyResult1000.errors).toEqual(0);
-            expect2(() => batchResult1000.children.length).toEqual(1000);
-            expect2(() => legacyResult1000.children.length).toEqual(1000);
+            // verify 1000 children case
+            const batchChild1000Sample = await proxyVerify.tests.get('child-batch-1000-500');
+            const legacyChild1000Sample = await proxyVerify.tests.get('child-legacy-1000-500');
+            expect2(() => batchChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
+            expect2(() => legacyChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
+            expect2(() => batchChild1000Sample?.test).toEqual(500);
+            expect2(() => legacyChild1000Sample?.test).toEqual(500);
 
-            perfResults.push({
-                childNo: 1000,
-                batchMode: { elapsed: batchResult1000.elapsed, errors: batchResult1000.errors },
-                legacyMode: { elapsed: legacyResult1000.elapsed, errors: legacyResult1000.errors },
-            });
-        }
-
-        //* TEST.4: childNo = 1500 (SKIPPED for faster test execution)
-        if (0) {
-            const batchResult1500 = await _replicateChildren(1500, true);
-            const legacyResult1500 = await _replicateChildren(1500, false);
-
-            expect2(() => batchResult1500.errors).toEqual(0);
-            expect2(() => legacyResult1500.errors).toEqual(0);
-            expect2(() => batchResult1500.children.length).toEqual(1500);
-            expect2(() => legacyResult1500.children.length).toEqual(1500);
-
-            perfResults.push({
-                childNo: 1500,
-                batchMode: { elapsed: batchResult1500.elapsed, errors: batchResult1500.errors },
-                legacyMode: { elapsed: legacyResult1500.elapsed, errors: legacyResult1500.errors },
-            });
-        }
-
-        //* TEST.5: childNo = 2000
-        if (0) {
-            const batchResult2000 = await _replicateChildren(2000, true);
-            const legacyResult2000 = await _replicateChildren(2000, false);
-
-            expect2(() => batchResult2000.errors).toEqual(0);
-            expect2(() => legacyResult2000.errors).toEqual(0);
-            expect2(() => batchResult2000.children.length).toEqual(2000);
-            expect2(() => legacyResult2000.children.length).toEqual(2000);
-
-            perfResults.push({
-                childNo: 2000,
-                batchMode: { elapsed: batchResult2000.elapsed, errors: batchResult2000.errors },
-                legacyMode: { elapsed: legacyResult2000.elapsed, errors: legacyResult2000.errors },
-            });
-        }
-
-        //* save performance report to JSON file
-        const reportPath = _savePerformanceReport('child-replication', perfResults);
-
-        //* verify data consistency between batch and legacy mode
-
-        //* verify random samples from each test case
-        const proxyVerify = service.buildProxy({ domain: 'verify', source: 'consistency-check' });
-
-        // verify 100 children case
-        const batchChild100Sample = await proxyVerify.tests.get('child-batch-100-50');
-        const legacyChild100Sample = await proxyVerify.tests.get('child-legacy-100-50');
-        expect2(() => batchChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
-        expect2(() => legacyChild100Sample, 'name').toEqual({ name: 'Parent for 100 children#50' });
-        expect2(() => batchChild100Sample?.test).toEqual(50);
-        expect2(() => legacyChild100Sample?.test).toEqual(50);
-
-        // verify 1000 children case
-        const batchChild1000Sample = await proxyVerify.tests.get('child-batch-1000-500');
-        const legacyChild1000Sample = await proxyVerify.tests.get('child-legacy-1000-500');
-        expect2(() => batchChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
-        expect2(() => legacyChild1000Sample, 'name').toEqual({ name: 'Parent for 1000 children#500' });
-        expect2(() => batchChild1000Sample?.test).toEqual(500);
-        expect2(() => legacyChild1000Sample?.test).toEqual(500);
-
-        //* verify report file was created
-        expect2(() => typeof reportPath).toEqual('string');
-        expect2(() => reportPath.includes('coverage/perf-child-replication')).toEqual(true);
-    });
+            //* verify report file was created
+            expect2(() => typeof reportPath).toEqual('string');
+            expect2(() => reportPath.includes('coverage/perf-child-replication')).toEqual(true);
+        },
+        300000,
+    );
 
     it('should reproduce undefined values error in saveAllUpdates()', async () => {
         //* ignore if not in 'lemon'

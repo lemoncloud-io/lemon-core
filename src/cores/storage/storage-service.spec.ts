@@ -1060,7 +1060,9 @@ describe('StorageService', () => {
         await _compare('array-inc-create', svc => svc.increment(ID6, { tags: ['a', 'b'] } as any));
         await _compare('array-inc-append', svc => svc.increment(ID6, { tags: ['c'] } as any));
         expect2(await $dummy.read(ID6)).toEqual({ no: ID6, tags: ['a', 'b', 'c'] });
-        await _rejectBoth('update-array-inc-rejects', svc => svc.update(ID6, {}, { tags: ['d'] } as any));
+        //* update($inc) also supports array list_append (parity with Dynamo).
+        await _compare('update-array-inc-appends', svc => svc.update(ID6, {}, { tags: ['d'] } as any));
+        expect2(await $dummy.read(ID6)).toEqual({ no: ID6, tags: ['a', 'b', 'c', 'd'] });
 
         //* increment: numeric ADD against string attr rejects.
         const ID7 = 'PA0006';
@@ -1445,6 +1447,14 @@ describe('StorageService', () => {
         expect2(dummyC.tags.sort().join('')).toEqual(elements);
         await $dummy.delete(C_DUMMY).catch(() => {});
 
+        //* update(..., increments) with string[] append (atomic via list_append).
+        const D_DUMMY = 'AT0008';
+        const dElements = 'abcdefgh';
+        await Promise.all(dElements.split('').map(s => $dummy.update(D_DUMMY, {} as any, { tags: [s] } as any)));
+        const dummyD: any = await $dummy.read(D_DUMMY);
+        expect2([...dummyD.tags].sort().join('')).toEqual(dElements);
+        await $dummy.delete(D_DUMMY).catch(() => {});
+
         if (useDynamo) {
             const B_DYN = 'AT0002D';
             testDataIds.add(B_DYN);
@@ -1465,6 +1475,15 @@ describe('StorageService', () => {
             const dynC: any = await $dynamo.read(C_DYN);
             expect2(dynC.tags.sort().join('')).toEqual(elements);
             await $dynamo.delete(C_DYN).catch(() => {});
+
+            const D_DYN = 'AT0008D';
+            testDataIds.add(D_DYN);
+            await Promise.all(
+                dElements.split('').map(s => $dynamo.update(D_DYN, {} as any, { tags: [s] } as any)),
+            );
+            const dynD: any = await $dynamo.read(D_DYN);
+            expect2([...dynD.tags].sort().join('')).toEqual(dElements);
+            await $dynamo.delete(D_DYN).catch(() => {});
         }
 
         //* increment() must remain atomic when number/string/array/object parameters are mixed.

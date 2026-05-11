@@ -607,13 +607,13 @@ export class ManagerProxy<
     public async inc(id: string, model: Model) {
         if (!model) throw new Error(`@model (object) is required - proxy/${this.$mgr.type}/id:${id}!`);
         const $inc = Object.entries(model).reduce<Model>((M, [k, v]) => {
-            if (typeof v === 'number') M[k as keyof Model] = v as any;
+            if (typeof v === 'number' || Array.isArray(v)) M[k as keyof Model] = v as any;
             return M;
         }, {} as any as Model);
         const keys: string[] = Object.keys($inc);
         if (!keys.length) throw new Error(`@model (object) is empty to inc() - proxy/${this.$mgr.type}/id:${id}!`);
         //* try to increment, and update the latest to both org and new.
-        const $res = await this.$mgr.storage.update(id, null, $inc);
+        const $res = await this.$mgr.storage.update(id, {} as Model, $inc);
         const $new = await this.get(id);
         const $org = this.org(id, true);
         return keys.reduce<Model>((N, k) => {
