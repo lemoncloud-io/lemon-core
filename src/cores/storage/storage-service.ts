@@ -620,6 +620,10 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         const $org: any = await this.readSafe(id);
         const inc: any = $inc ? DynamoService.normalize($inc) : {};
         const upt: any = $upt ? DynamoService.normalize($upt) : {};
+        //* seed AUTO_SEQUENCE on a fresh sequence record so ProxyStorageService.nextSeq()'s 2-step bootstrap
+        if (id.includes(':sequence:') && $org.next === undefined && typeof inc.next === 'number') {
+            $org.next = 1_000_000;
+        }
         //* use whitelist if exists.
         const keys: string[] = this._fields
             ? this._fields
