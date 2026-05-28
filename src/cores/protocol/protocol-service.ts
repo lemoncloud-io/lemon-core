@@ -603,11 +603,14 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         //* extract part
         const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
         const contType = `${headers['content-type'] || headers['Content-Type'] || ''}`.toLowerCase();
+        const isBase64Encoded = event.isBase64Encoded ?? false;
         _log(NS, `content-type =`, contType);
+        _log(NS, `isBase64Encoded =`, isBase64Encoded);
         //* the path format should be `/{type}/{id}/{cmd}`
         const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || {};
         const param = event.queryStringParameters;
-        const body = ((body: any, type: string): any => {
+        const body = ((body: any, type: string, isBase64Encoded: boolean): any => {
+            body = isBase64Encoded && typeof body == 'string' ? Buffer.from(body, 'base64').toString() : body;
             const isText = body && typeof body == 'string';
             const isJson = type.startsWith('application/json');
             const isForm = type.startsWith('application/x-www-form-urlencoded');
@@ -622,7 +625,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             // if (isText && isForm) return queryString.parse(body, { arrayFormat: 'bracket' });
             if (isText && isForm) return queryString.parse(body);
             return body;
-        })(event.body, contType);
+        })(event.body, contType, isBase64Encoded);
 
         //* determine execute mode.
         const service = '';
