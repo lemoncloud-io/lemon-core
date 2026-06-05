@@ -4,12 +4,12 @@
  *
  * Examples:
  * ```sh
- * npm run example:lambda
- * npm run example:lambda -- --target lemon-hello-api-dev-lambda --profile lemon
- * npm run example:lambda -- --target lemon-hello-api-dev-lambda --payload-json '{"httpMethod":"GET","path":"/hello"}'
- * npm run example:lambda -- --target lemon-hello-api-dev-lambda --raw-payload '{"ping":"pong"}'
- * npm run example:lambda -- --target lemon-hello-api-dev-lambda --payload-file ./data/samples/events/sample.event.web.api.json
- * npm run example:lambda -- --target lemon-hello-api-dev-lambda --use-event
+ * npx ts-node src/tools/aws-lambda-helper.example.ts
+ * npx ts-node src/tools/aws-lambda-helper.example.ts --target lemon-hello-api-dev-lambda --profile lemon
+ * npx ts-node src/tools/aws-lambda-helper.example.ts --target lemon-hello-api-dev-lambda --payload-json '{"httpMethod":"GET","path":"/hello"}'
+ * npx ts-node src/tools/aws-lambda-helper.example.ts --target lemon-hello-api-dev-lambda --raw-payload '{"ping":"pong"}'
+ * npx ts-node src/tools/aws-lambda-helper.example.ts --target lemon-hello-api-dev-lambda --payload-file ./data/samples/events/sample.event.web.api.json
+ * npx ts-node src/tools/aws-lambda-helper.example.ts --target lemon-hello-api-dev-lambda --use-event
  * ```
  */
 import fs from 'fs';
@@ -40,7 +40,7 @@ const DEFAULT_ARGS: ExampleArgs = {
 
 const HELP = `
 Usage:
-  npm run example:lambda -- [options]
+  npx ts-node src/tools/aws-lambda-helper.example.ts [options]
 
 Options:
   --target <name>         Lambda function name. default: ${DEFAULT_ARGS.target}
