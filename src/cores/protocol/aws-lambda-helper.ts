@@ -5,6 +5,14 @@ import { ProtocolParam } from '../core-services';
 import { AwsConfigParams } from '../../tools/tools';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
+const asPayloadText = (payload?: Uint8Array): string | undefined =>
+    payload ? Buffer.from(payload).toString() : undefined;
+
+const asInvokeLogData = (data: InvokeCommandOutput): Omit<InvokeCommandOutput, 'Payload'> & { Payload?: string } => ({
+    ...data,
+    Payload: asPayloadText(data.Payload),
+});
+
 /**
  * invoke lambda function with given payload.
  * - `param` is used for logging and error reporting.
@@ -43,11 +51,17 @@ export async function invokeLambda<T>(
             throw e;
         })
         .then((data: InvokeCommandOutput) => {
-            _log(NS, `! execute[${param?.service ?? ''}].res =`, $U.S(data, 320, 64, ' .... '));
-            const payload = data && data?.Payload ? JSON.parse(Buffer.from(data.Payload).toString()) : {};
+            const payloadText = asPayloadText(data?.Payload);
+            _log(NS, `! execute[${param?.service ?? ''}].res =`, $U.S(asInvokeLogData(data), 320, 64, ' .... '));
+            const payload = payloadText ? JSON.parse(payloadText) : {};
             const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
             _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
-            [200, 201].includes(statusCode) || _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(data)); // print whole data if not 200.
+            _log(NS, `> Lambda[${params.FunctionName}].ContentSize :=`, payloadText ? payloadText.length : 0);
+
+            //* for debug, print whole data if status code is not 200 or 201.
+            const hasWarn = ![200, 201].includes(statusCode);
+            if (hasWarn) _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(asInvokeLogData(data)));
+
             //* safe parse payload.body.
             const body = (() => {
                 try {
@@ -58,6 +72,7 @@ export async function invokeLambda<T>(
                     return payload.body;
                 }
             })();
+
             //* returns
             if (statusCode == 400 || statusCode == 404) return Promise.reject(new Error($U.S(body) || '404 NOT FOUND'));
             else if (statusCode != 200 && statusCode != 201) {

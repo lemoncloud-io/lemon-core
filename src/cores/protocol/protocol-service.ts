@@ -21,7 +21,6 @@ import {
 } from './../core-services';
 import { PublishCommand, PublishCommandInput, PublishCommandOutput, SNSClient } from '@aws-sdk/client-sns';
 import { SendMessageCommand, SendMessageCommandInput, SendMessageCommandOutput, SQSClient } from '@aws-sdk/client-sqs';
-import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } from '@aws-sdk/client-lambda';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
@@ -30,6 +29,7 @@ import URL from 'url';
 import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
 import queryString from 'qs';
+import { invokeLambda } from './aws-lambda-helper';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -329,56 +329,9 @@ export class MyProtocolService implements ProtocolService {
 
         // const url = new URL(uri);
         const url = URL.parse(uri);
-        const payload = this.transformEvent(uri, param);
-
-        //* prepare lambda payload.
-        const params: InvocationRequest = {
-            FunctionName: url.hostname,
-            Payload: payload ? new TextEncoder().encode($U.json(payload)) : undefined,
-            ClientContext: undefined,
-            // InvocationType: 'Event',
-        };
-        // _log(NS, `> params =`, $U.json(params));
-
-        //* call lambda.
-        const region = 'ap-northeast-2'; //TODO - optimize of aws region....
-        const lambda = new LambdaClient(awsConfig($engine, region));
-        const response = await lambda
-            .send(new InvokeCommand(params))
-            .catch((e: Error) => {
-                _err(NS, `! execute[${param.service || ''}].err =`, typeof e, e);
-                // return this.doReportError(e, param.context, null, { protocol: uri, param });
-                throw e;
-            })
-            .then((data: InvokeCommandOutput) => {
-                _log(NS, `! execute[${param.service || ''}].res =`, $U.S(data, 320, 64, ' .... '));
-                const payload = data && data?.Payload ? JSON.parse(Buffer.from(data.Payload).toString()) : {};
-                const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
-                _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
-                [200, 201].includes(statusCode) || _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(data)); // print whole data if not 200.
-                //* safe parse payload.body.
-                const body = (() => {
-                    try {
-                        if (payload.text && typeof payload.text == 'string') return payload.text;
-                        return payload.body && typeof payload.body == 'string'
-                            ? JSON.parse(payload.body)
-                            : payload.body;
-                    } catch (e) {
-                        _log(NS, `> WARN! payload.body =`, $U.S(payload.body));
-                        return payload.body;
-                    }
-                })();
-                //* returns
-                if (statusCode == 400 || statusCode == 404)
-                    return Promise.reject(new Error($U.S(body) || '404 NOT FOUND'));
-                else if (statusCode != 200 && statusCode != 201) {
-                    if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw new Error(body);
-                    throw new Error($U.S(body) || `Lambda Error. status:${statusCode}`);
-                }
-                return body;
-            });
-        const res: T = response as T;
-        return res;
+        const payload = this.transformEvent(uri, param) as APIGatewayProxyEvent;
+        const awsCfg = awsConfig($engine);
+        return invokeLambda<T>(url.hostname!, payload, { param, config: awsCfg });
     }
 
     /**

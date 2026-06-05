@@ -17,6 +17,7 @@
     "doc:publish": "npm run doc:html && gh-pages -m \"docs(gh-pages): publish gh-pages via typedoc\" -d dist/docs",
     "lint": "tsc --noEmit && eslint '*/**/*.{js,ts,jsx,tsx}' --fix",
     "format": "prettier --write \"src/**/*.ts\" \"src/**/*.js\"",
+    "example:lambda": "ts-node src/tools/aws-lambda-helper.example.ts",
     "!test": "------- run self-test with vitest -----",
     "test": "LS=1 vitest run",
     "test.lemon": "ENV=lemon npm run test",

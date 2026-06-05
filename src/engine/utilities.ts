@@ -168,7 +168,7 @@ export class Utilities {
                 });
             o = output;
         }
-        return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o || ''}`;
+        return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o ?? ''}`;
     }
 
     /**
@@ -404,7 +404,7 @@ export class Utilities {
      * convert and cut string like `abcd....z`
      */
     public S = (_: any, h?: number, t: number = 32, delim: string = '...'): string =>
-        [typeof _ == 'string' ? _ : `${this.json(_) || ''}`]
+        [typeof _ == 'string' ? _ : `${this.json(_) ?? ''}`]
             .map(s =>
                 h && s.length > h + t
                     ? s.substring(0, h) + delim + (s.length > h + t ? s.substring(s.length - t) : '')
