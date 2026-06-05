@@ -18,6 +18,7 @@ import {
     ProtocolTransformer,
     ProtocolBody,
     CallbackParam,
+    ProtocolExecuteOptions,
 } from './../core-services';
 import { PublishCommand, PublishCommandInput, PublishCommandOutput, SNSClient } from '@aws-sdk/client-sns';
 import { SendMessageCommand, SendMessageCommandInput, SendMessageCommandOutput, SQSClient } from '@aws-sdk/client-sqs';
@@ -318,20 +319,26 @@ export class MyProtocolService implements ProtocolService {
      * @param config    config service (for debug)
      * @param uri       (optional) if useing custom uri.
      */
-    public async execute<T>(param: ProtocolParam, config?: ConfigService, uri?: string): Promise<T> {
+    public async execute<T>(
+        param: ProtocolParam,
+        config?: ConfigService,
+        options?: string | ProtocolExecuteOptions,
+    ): Promise<T> {
         // const _log = console.info;
         config = config || this.config;
         _log(NS, `execute(${param.service || ''})..`);
+        const url = typeof options == 'string' ? options : options?.uri;
+        const useEvent = typeof options == 'object' ? options.useEvent : undefined;
 
         //* execute via lambda call.
-        uri = uri || this.asProtocolURI('web', param, config);
+        const uri = url || this.asProtocolURI('web', param, config);
         _inf(NS, `> uri =`, uri);
 
         // const url = new URL(uri);
-        const url = URL.parse(uri);
+        const $url = URL.parse(uri);
         const payload = this.transformEvent(uri, param) as APIGatewayProxyEvent;
         const awsCfg = awsConfig($engine);
-        return invokeLambda<T>(url.hostname!, payload, { param, config: awsCfg });
+        return invokeLambda<T>($url.hostname!, payload, { param, config: awsCfg, useEvent });
     }
 
     /**

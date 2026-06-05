@@ -9,6 +9,7 @@
  * npm run example:lambda -- --target lemon-hello-api-dev-lambda --payload-json '{"httpMethod":"GET","path":"/hello"}'
  * npm run example:lambda -- --target lemon-hello-api-dev-lambda --raw-payload '{"ping":"pong"}'
  * npm run example:lambda -- --target lemon-hello-api-dev-lambda --payload-file ./data/samples/events/sample.event.web.api.json
+ * npm run example:lambda -- --target lemon-hello-api-dev-lambda --use-event
  * ```
  */
 import fs from 'fs';
@@ -26,6 +27,7 @@ type ExampleArgs = {
     payloadJson?: string;
     payloadFile?: string;
     rawPayload?: string;
+    useEvent: boolean;
 };
 
 const NS = '[lambda-example]';
@@ -33,6 +35,7 @@ const DEFAULT_ARGS: ExampleArgs = {
     target: 'lemon-hello-api-dev-lambda',
     region: 'ap-northeast-2',
     profile: undefined,
+    useEvent: false,
 };
 
 const HELP = `
@@ -46,6 +49,7 @@ Options:
   --payload-json <json>   APIGatewayProxyEvent JSON payload
   --payload-file <path>   APIGatewayProxyEvent JSON file path
   --raw-payload <string>  Raw string payload
+  --use-event             Invoke asynchronously with InvocationType 'Event'. default: ${DEFAULT_ARGS.useEvent}
   --help                  Print this help
 `;
 
@@ -101,6 +105,9 @@ const parseArgs = (argv: string[]): ExampleArgs => {
         '--payload-file': 'payloadFile',
         '--raw-payload': 'rawPayload',
     };
+    const flags: Record<string, keyof ExampleArgs> = {
+        '--use-event': 'useEvent',
+    };
 
     for (let i = 0; i < argv.length; i++) {
         const token = argv[i];
@@ -111,6 +118,12 @@ const parseArgs = (argv: string[]): ExampleArgs => {
 
         const eqIndex = token.indexOf('=');
         const key = eqIndex > 0 ? token.substring(0, eqIndex) : token;
+        const flag = flags[key];
+        if (flag) {
+            (args[flag] as boolean) = eqIndex > 0 ? token.substring(eqIndex + 1) == 'true' : true;
+            continue;
+        }
+
         const prop = aliases[key];
         if (!prop) throw new Error(`Unknown option: ${token}`);
 
@@ -161,12 +174,13 @@ const main = async () => {
     console.info(NS, 'target =', target);
     console.info(NS, 'region =', config.region);
     console.info(NS, 'profile =', config.profile || '(default credential chain)');
+    console.info(NS, 'useEvent =', args.useEvent);
     console.info(NS, 'payload.type =', typeof payload);
     console.info(NS, 'payload.preview =', $U.S(payload, 720, 96, ' .... '));
 
     const startedAt = Date.now();
     try {
-        const result = await invokeLambda<unknown>(target, payload, { param, config });
+        const result = await invokeLambda<unknown>(target, payload, { param, config, useEvent: args.useEvent });
         console.info(NS, 'success = true');
         console.info(NS, 'elapsed.ms =', Date.now() - startedAt);
         console.info(NS, 'result =', $U.S(result, 1200, 128, ' .... '));

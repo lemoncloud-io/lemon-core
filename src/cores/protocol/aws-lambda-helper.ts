@@ -1,9 +1,10 @@
 import { _log, _inf, _err, $U } from '../../engine/';
-import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } from '@aws-sdk/client-lambda';
-import { APIGatewayProxyEvent } from 'aws-lambda';
+import { onlyDefined } from '../../common/test-helper';
 import { ProtocolParam } from '../core-services';
 import { AwsConfigParams } from '../../tools/tools';
-const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
+import { APIGatewayProxyEvent } from 'aws-lambda';
+import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } from '@aws-sdk/client-lambda';
+const NS = $U.NS('PRTL', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 const asPayloadText = (payload?: Uint8Array): string | undefined =>
     payload ? Buffer.from(payload).toString() : undefined;
@@ -23,22 +24,24 @@ export async function invokeLambda<T>(
     options?: {
         param?: ProtocolParam;
         config?: AwsConfigParams;
+        useEvent?: boolean; // if true, invoke lambda asynchronously with InvocationType 'Event'.
     },
 ): Promise<T> {
     const param: ProtocolParam | undefined = options?.param;
     const config: AwsConfigParams = options?.config ?? {};
+    const useEvent = options?.useEvent ?? false;
     const errScope = `invokeLambda(${target ?? ''})`;
     if (!target) throw new Error(`@target(function) is required - ${errScope}`);
 
     //* prepare lambda payload.
-    const params: InvocationRequest = {
+    const params = onlyDefined<InvocationRequest>({
         FunctionName: target,
         Payload: payload
             ? new TextEncoder().encode(typeof payload === 'string' ? payload : $U.json(payload))
             : undefined,
         ClientContext: undefined,
-        // InvocationType: 'Event',
-    };
+        InvocationType: useEvent ? 'Event' : undefined,
+    });
     // _log(NS, `> params =`, $U.json(params));
 
     //* call lambda.
@@ -57,6 +60,8 @@ export async function invokeLambda<T>(
             const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
             _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
             _log(NS, `> Lambda[${params.FunctionName}].ContentSize :=`, payloadText ? payloadText.length : 0);
+
+            if (useEvent && statusCode == 202) return asInvokeLogData(data);
 
             //* for debug, print whole data if status code is not 200 or 201.
             const hasWarn = ![200, 201].includes(statusCode);
