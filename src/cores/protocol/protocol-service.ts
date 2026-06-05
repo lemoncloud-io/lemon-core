@@ -328,7 +328,7 @@ export class MyProtocolService implements ProtocolService {
         config = config || this.config;
         _log(NS, `execute(${param.service || ''})..`);
         const url = typeof options == 'string' ? options : options?.uri;
-        const useEvent = typeof options == 'object' ? options.useEvent : undefined;
+        const useEvent = options != null && typeof options == 'object' ? options.useEvent : undefined;
 
         //* execute via lambda call.
         const uri = url || this.asProtocolURI('web', param, config);
