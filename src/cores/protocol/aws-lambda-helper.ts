@@ -61,6 +61,7 @@ export async function invokeLambda<T>(
             _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
             _log(NS, `> Lambda[${params.FunctionName}].ContentSize :=`, payloadText ? payloadText.length : 0);
 
+            //* if useEvent is true and status code is 202, then return directly without parsing payload.
             if (useEvent && statusCode == 202) return asInvokeLogData(data);
 
             //* for debug, print whole data if status code is not 200 or 201.

@@ -64,9 +64,9 @@ const parseJson = <T>(label: string, value: string): T => {
 
 const defaultEvent = (): APIGatewayProxyEvent =>
     ({
-        resource: '/hello',
-        path: '/hello',
-        httpMethod: 'GET',
+        resource: '/hello/public/slack',
+        path: '/hello/public/slack',
+        httpMethod: 'POST',
         headers: {
             'content-type': 'application/json',
             'x-protocol-context': JSON.stringify({ requestId: 'local-example', accountId: '' }),
@@ -74,23 +74,23 @@ const defaultEvent = (): APIGatewayProxyEvent =>
         multiValueHeaders: {},
         queryStringParameters: null,
         multiValueQueryStringParameters: null,
-        pathParameters: { type: 'hello', id: '', cmd: '' },
+        pathParameters: { type: 'hello', id: 'public', cmd: 'slack' },
         stageVariables: null,
         requestContext: {
             accountId: '',
             apiId: 'local-example',
             authorizer: undefined,
             protocol: 'HTTP/1.1',
-            httpMethod: 'GET',
+            httpMethod: 'POST',
             identity: null as any,
-            path: '/hello',
+            path: '/hello/public/slack',
             stage: '',
             requestId: 'local-example',
             requestTimeEpoch: Date.now(),
             resourceId: 'local-example',
-            resourcePath: '/hello',
+            resourcePath: '/hello/public/slack',
         },
-        body: null,
+        body: $U.json({ text: `[${$U.ts()}] Hello from \`aws-lambda-helper.example.ts\`.` }),
         isBase64Encoded: false,
     } as APIGatewayProxyEvent);
 
