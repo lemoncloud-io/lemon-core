@@ -549,9 +549,10 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
         total: number,
         failed: any[],
         context?: NextContext,
-    ): Promise<string> {
+    ): Promise<string | void> {
         const totalFailed = failed?.length ?? 0;
         if (totalFailed <= 0) return;
+        const MAX_ERR_LEN = 255;
 
         const successCount = total - totalFailed;
         const error = new Error(`Batch ${operation} failed: ${totalFailed}/${total} items`);
@@ -566,7 +567,7 @@ export class ProxyStorageService<T extends CoreModel<ModelType>, ModelType exten
                           .filter((item: any) => item != null)
                           .map<CoreModel>((item: CoreModel) => ({
                               id: item?.id ?? item?._id ?? 'unknown',
-                              error: item?.error ? `${item.error}`.substring(0, 100) : 'Unknown error',
+                              error: item?.error ? `${item.error}`.substring(0, MAX_ERR_LEN) : 'Unknown error',
                           }))
                     : failed,
             context,
