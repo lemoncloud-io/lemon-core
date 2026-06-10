@@ -222,6 +222,8 @@ export abstract class CoreManager<
      *
      * @param idList list of id
      * @param parrallel (optional) in parrallel size
+     *
+     * TODO [Steve] support `options` parameter for `throwable` and `errNoti` in batch get. @260608
      */
     public async getMulti(idList: string[], parrallel?: number): Promise<(Model | null)[]> {
         const $map = await this.getMulti$(idList, 'id', parrallel);
@@ -230,6 +232,8 @@ export abstract class CoreManager<
 
     /**
      * batch get models in map by idName
+     *
+     * TODO [Steve] support `options` parameter for `throwable` and `errNoti` in batch get. @260608
      */
     public async getMulti$(
         idList: string[],
