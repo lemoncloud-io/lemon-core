@@ -21,6 +21,7 @@ export { LambdaSNSHandler } from './lambda-sns-handler';
 export { LambdaSQSHandler } from './lambda-sqs-handler';
 export { LambdaWSSHandler } from './lambda-wss-handler';
 export { LambdaALBHandler } from './lambda-alb-handler';
+export { success, failure } from './lambda-web-handler'; // for custom web response.
 export { CronNextHandler, CronParam } from './lambda-cron-handler';
 export { LambdaCognitoHandler } from './lambda-cognito-handler';
 export * from './lambda-dynamo-stream-handler';

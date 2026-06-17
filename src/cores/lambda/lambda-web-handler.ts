@@ -117,7 +117,7 @@ export const buildResponse = (
     const headers = ['origin', HEADER_LEMON_LANGUAGE, HEADER_LEMON_IDENTITY].filter(s => !!s).join(', ');
     return {
         statusCode,
-        headers: onlyDefined({
+        headers: onlyDefined<Record<string, any>>({
             'Content-Type': _type(),
             // Required for CORS support to work
             'Access-Control-Allow-Origin': origin === null ? undefined : `${origin || '*'}`,
