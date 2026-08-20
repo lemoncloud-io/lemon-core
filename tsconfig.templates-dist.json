@@ -1,0 +1,13 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "useDefineForClassFields": false,
+        "declaration": false,
+        "paths": {
+            "lemon-core": ["dist/index.d.ts"],
+            "lemon-core/dist/*": ["dist/*"]
+        }
+    },
+    "include": ["templates/**/*.ts"]
+}

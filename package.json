@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "4.2.7",
+  "version": "4.3.0",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,6 +11,8 @@
     "fields:gen": "lemon-fields gen --report",
     "fields:check": "lemon-fields --check",
     "fields:guard-common": "lemon-fields guard-common --report",
+    "check:templates": "tsc -p tsconfig.templates.json",
+    "check:templates:dist": "tsc -p tsconfig.templates-dist.json",
     "watch-ts": "tsc -w",
     "doc": "npm run doc:html && open dist/docs/index.html",
     "doc:html": "typedoc src/ --exclude **/*.spec.ts --out dist/docs",
