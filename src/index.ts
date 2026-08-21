@@ -33,5 +33,12 @@ export { lib, tools };
 export * from './helpers/';
 export * from './extended/';
 
+//* export the L2 template layer. explicit lines below pin the 4 name collisions with L1:
+export * from './extended/cores/';
+export { $T } from './extended/cores/commons'; //* L2 wins — 4.2.x semantics (`asLut`/`BN`/`asMeta`, `S2` trims)
+export { onlyDefined } from './common/test-helper'; //* L1 wins — signature compat (`(N, $def)`)
+export { sourceToItem, $ES6 } from './extended/abstract-service'; //* L1 wins — keep existing behavior
+export { withBrowserCache } from './extended/cores/browser-cache'; //* not in the cores barrel (optional util)
+
 //* export as default.
 export default { engine, cores, tools, controllers };
