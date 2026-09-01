@@ -40,5 +40,28 @@ export { onlyDefined } from './common/test-helper'; //* L1 wins — signature co
 export { sourceToItem, $ES6 } from './extended/abstract-service'; //* L1 wins — keep existing behavior
 export { withBrowserCache } from './extended/cores/browser-cache'; //* not in the cores barrel (optional util)
 
+//* decision #4 (cores-migration P1): `helpers/types.ts` (L1) and `extended/cores/types.ts` (L2)
+//* redefine the same ~10 type names (`export *` collisions raise TS2308 here without these pins).
+//* `extended/cores/types.ts` wins for all of them — it is already a superset: its `IdentityToken`
+//* carries `cid`/`did` which `helpers/types.ts` never had (no merge needed, contrary to the
+//* original plan's premise — verified by direct inspection, see cores-migration README §7).
+export type {
+    IdentityToken,
+    IdentityTokenSite,
+    IdentityTokenUser,
+    IdentityTokenGroup,
+    ListResult,
+    PaginatedListResult,
+    AggrKeyCount,
+    ListParam,
+    PaginateParam,
+    BulkUpdateBody,
+    BulkBody,
+    BodyList,
+    BulkItemsResult,
+} from './extended/cores/types';
+//* same L2-wins rationale as `$T` above — these call the same underlying parsing, duplicated verbatim.
+export { parseListParam, parsePaginateParam } from './extended/cores/commons';
+
 //* export as default.
 export default { engine, cores, tools, controllers };
