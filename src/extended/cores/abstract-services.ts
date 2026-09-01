@@ -2617,3 +2617,12 @@ const hasOS2 = $U.env('OS2_ENDPOINT', '').startsWith('https://');
 export const $OS2 = _OS2();
 export const $ES6 = hasOS2 ? _OS2() : _ES6();
 
+/**
+ * explicit alias for the OS2-routing `$ES6` above (decision #3, cores-migration P1).
+ * - kept as `$ES6` here for deep-import compatibility (`lemon-core/dist/extended/cores`).
+ * - exported at root ONLY under this name: root `$ES6` stays pinned to the L1
+ *   (non-OS2) `extended/abstract-service` version, so consumers must opt in by
+ *   name instead of silently getting OS2-routing behavior via the root barrel.
+ */
+export const $ES6Routed = $ES6;
+
