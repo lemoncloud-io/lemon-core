@@ -69,6 +69,12 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 4.2.6     | optimized `$protocol.execute()` to support async lambda invocation.
+| 4.2.5     | optimized `isBase64Encoded` to support apigwBinary. (from `4.1.17`)
+| 4.2.4     | optimized `doReportError` to ignore in local dev. (from `4.1.16`)
+| 4.2.3     | optimized `ManagerProxy.inc()` w/ `string[]` parameters.
+| 4.2.2     | optimized `StorageService.increment()` w/ `string[]` parameters.
+| 4.2.1     | optimized `storage-service` w/ `dummy` service (+ audit fix).
 | 4.2.0     | optimized `node@24.15.0` w/o `ttypescript` + `jest`.
 | 4.1.12    | optimized `synchronizer` w/o `elastic` config.
 | 4.1.12    | optimized `@aws-sdk` w/ version `3.971.0`.

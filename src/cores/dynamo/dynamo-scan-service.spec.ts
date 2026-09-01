@@ -8,7 +8,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { vi } from 'vitest';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { expect2, _it } from '../../common/test-helper';
 import { loadDataYml } from '../../tools';

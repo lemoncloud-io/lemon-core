@@ -60,13 +60,39 @@ export interface StorageService<T extends StorageModel> {
 
     /**
      * update some attributes of model
-     * - NOTE! it will create if not exist.
+     * - partial update. only defined fields in `model` are applied.
+     * - unlike `save()`, this is not a full overwrite.
+     * - if the item does not exist yet, it may be created with the provided fields.
+     * - use `incrementals` when a numeric field should be atomically increased or decreased.
+     *
+     * Typical use cases:
+     * - patch a few mutable fields without resending the whole document.
+     * - update metadata such as `status`, `updatedAt`, or `deletedAt`.
+     * - increment counters while also setting other fields in the same request.
+     *
+     * Examples:
+     * ```ts
+     * await storage.update('A001', { name: 'Alice' });
+     * // => updates only `.name`
+     *
+     * await storage.update('A001', { status: 'done' });
+     * // => patches `.status` and `.updatedAt`
+     *
+     * await storage.update('A001', { tags: ['red', 'blue'] });
+     * // => replaces `.tags` with the given string[] value
+     *
+     * await storage.update('A001', { lastSeenAt: 1710000000000 }, { loginCount: 1 });
+     * // => sets `.lastSeenAt` and increments `.loginCount` by 1
+     *
+     * // array append is supported via `incrementals` for array or absent fields.
+     * // string values belong in the `model`/update argument, not `incrementals`.
+     * ```
      *
      * @param id        unique-id
-     * @param model     data
-     * @param incrementals (optional) incrementals like `count = count + 1`
+     * @param model     partial data to set on the target model
+     * @param incrementals (optional) atomic deltas: numbers add, arrays append (list_append).
      */
-    update(id: string, model: T, incrementals?: T): Promise<T>;
+    update(id: string, model: Partial<T>, incrementals?: Partial<T>): Promise<T>;
 
     /**
      * update multiple models.
@@ -77,13 +103,38 @@ export interface StorageService<T extends StorageModel> {
 
     /**
      * increment number attribute (or overwrite string field)
-     * - NOTE! increments only number type.
+     * - behavior depends on the runtime shape of each field value in `model`.
+     * - `number` values are added to the current value.
+     * - `string` values are overwritten.
+     * - `string[]` values are appended like DynamoDB `list_append`.
+     * - if the item does not exist yet, the call may create it with the derived values.
+     * - `$update` is a plain patch set applied together with the increment-style changes.
+     *
+     * Typical use cases:
+     * - add counters such as `balance += 100` or `slot += 1`.
+     * - append tags or event markers such as `tags = tags + ['new']`.
+     * - update a display field while also incrementing numeric or array fields atomically.
+     *
+     * Examples:
+     * ```ts
+     * await storage.increment('A001', { balance: 100 });
+     * // => adds 100 to `.balance`
+     *
+     * await storage.increment('A001', { tags: ['vip'] });
+     * // => appends 'vip' to `.tags`
+     *
+     * await storage.increment('A001', { name: 'Alice', loginCount: 1, tags: ['seen'] });
+     * // => overwrites `.name`, adds 1 to `.loginCount`, appends to `.tags`
+     *
+     * await storage.increment('A001', { slot: 1, tags: ['inc'] }, { balance: 50 });
+     * // => adds 1 to `.slot`, appends `.tags`, and sets `.balance = 50`
+     * ```
      *
      * @param id        unique-id
-     * @param model     data (ONLY number is supportable)
-     * @param $update   (optional) update-set.
+     * @param model     shape-driven increment payload: numbers add, strings overwrite, arrays append
+     * @param $update   (optional) plain update-set applied with the same request
      */
-    increment(id: string, model: T, $update?: T): Promise<T>;
+    increment(id: string, model: Partial<T>, $update?: Partial<T>): Promise<T>;
 
     /**
      * delete item by id
@@ -101,8 +152,8 @@ import { loadDataYml } from '../../tools/';
 
 interface MyGeneral extends GeneralItem, StorageModel {}
 
-const clearDuplicated = (arr: string[]) =>
-    arr.sort().reduce((L, val) => {
+const clearDuplicated = <T = unknown>(arr: T[]) =>
+    arr.sort().reduce<T[]>((L, val) => {
         if (L.indexOf(val) < 0) L.push(val);
         return L;
     }, []);
@@ -140,6 +191,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * Read whole model via database.
      *
      * @param id        id
+     * @override
      */
     public async read(id: string): Promise<T> {
         const data = await this.$dynamo.readItem(id);
@@ -156,6 +208,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * Read multiple models via database.
      *
      * @param ids       ids
+     * @override
      */
     public async mread(ids: string[]): Promise<BatchResult<T>> {
         const total = ids?.length ?? 0;
@@ -185,6 +238,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      *
      * @param id
      * @param model
+     * @override
      */
     public async readOrCreate(id: string, model: T): Promise<T> {
         return this.read(id).catch((e: Error) => {
@@ -198,6 +252,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      *
      * @param id        id
      * @param model     whole object.
+     * @override
      */
     public async save(id: string, model: T): Promise<T> {
         const fields = this._fields || [];
@@ -217,8 +272,9 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * @param id        id
      * @param model     attributes to update
      * @param incrementals (optional) attributes to increment
+     * @override
      */
-    public async update(id: string, model: T, incrementals?: T): Promise<T> {
+    public async update(id: string, model: Partial<T>, incrementals?: Partial<T>): Promise<T> {
         const fields = this._fields || [];
         const $U: MyGeneral = fields.reduce((N: any, key) => {
             const val = (model as any)[key];
@@ -226,14 +282,17 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
             return N;
         }, {});
         /* eslint-disable prettier/prettier */
-        const $I: Incrementable = !incrementals ? null : Object.keys(incrementals).reduce((M: Incrementable, key) => {
-            const val = (incrementals as any)[key];
-            if (typeof val !== 'number') throw new Error(`.${key} (${val}) should be number!`);
-            M[key] = val;
-            return M;
-        }, {});
+        const $I: Incrementable | null = !incrementals
+            ? null
+            : Object.keys(incrementals).reduce((M: Incrementable, key) => {
+                  const val = (incrementals as any)[key];
+                  if (typeof val !== 'number' && !Array.isArray(val))
+                      throw new Error(`.${key} (${val}) should be number or array!`);
+                  M[key] = val;
+                  return M;
+              }, {});
         /* eslint-enable prettier/prettier */
-        const ret: any = await this.$dynamo.updateItem(id, undefined, $U, $I);
+        const ret: any = await this.$dynamo.updateItem(id, undefined!, $U, $I);
         return ret as T;
     }
 
@@ -241,6 +300,7 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * update multiple models
      *
      * @param list      list of models (should include id)
+     * @override
      */
     public async mupdate(list: T[]): Promise<BatchResult<T>> {
         const total = list?.length ?? 0;
@@ -272,34 +332,41 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
      * @param id        id
      * @param model     attributes of number.
      * @param $update   (optional) update-set.
+     * @override
      */
     public async increment(id: string, model: T, $update?: T): Promise<T> {
         if (!model && !$update) throw new Error('@item is required!');
+        const fields = this._fields || [];
+
         const $org: any = await this.read(id).catch(e => {
             if (`${e.message || e}`.startsWith('404 NOT FOUND')) return { id };
             throw e;
         });
-        const fields = this._fields || [];
         const $U: MyGeneral = fields.reduce((N: any, key) => {
             const val = $update ? ($update as any)[key] : undefined;
             if (val !== undefined) N[key] = val;
             return N;
         }, {});
-        const $I: Incrementable = fields.reduce((N: any, key) => {
+        const $I: Incrementable = fields.reduce((N: Incrementable, key) => {
             const val = (model as any)[key];
             if (val !== undefined) {
                 const org = ($org as any)[key];
-                //* check type matched!
                 if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
                     throw new Error(`.${key} (${val}) should be number!`);
-                //* if not exists, update it.
-                if (org === undefined && typeof val === 'number') N[key] = val;
-                else if (typeof val !== 'number' && !Array.isArray(val)) $U[key] = val;
-                else N[key] = val;
+                if (typeof org === 'string' && (typeof val === 'number' || Array.isArray(val)))
+                    throw new Error(`.${key} (${val}) should be string!`);
+                if (Array.isArray(org) && !Array.isArray(val)) throw new Error(`.${key} (${val}) should be array!`);
+                if (org !== undefined && typeof val === 'number' && typeof org !== 'number')
+                    throw new Error(`.${key} (${val}) should be number!`);
+                if (org !== undefined && Array.isArray(val) && !Array.isArray(org))
+                    throw new Error(`.${key} (${val}) should be array!`);
+
+                if (typeof val === 'number' || Array.isArray(val)) N[key] = val;
+                else $U[key] = val;
             }
             return N;
         }, {});
-        const ret: any = await this.$dynamo.updateItem(id, undefined, $U, $I);
+        const ret: any = await this.$dynamo.updateItem(id, undefined!, $U, $I);
         return ret as T;
     }
 
@@ -329,11 +396,15 @@ export class DynamoStorageService<T extends StorageModel> implements StorageServ
 export class DummyStorageService<T extends StorageModel> implements StorageService<T> {
     private name: string;
     private idName: string;
-    public constructor(dataFile: string, name: string = 'memory', idName?: string) {
+    private _fields: string[] | null;
+    public constructor(dataFile: string, name: string = 'memory', idName?: string, fields?: string[]) {
         _log(NS, `DummyStorageService(${dataFile || ''})...`);
         if (!dataFile) throw new Error('@dataFile(string) is required!');
         this.name = `${name || ''}`;
         this.idName = `${idName || 'id'}`;
+        //* `undefined` keeps legacy "no filter" mode; `[]` opts into Dynamo's default whitelist.
+        this._fields =
+            fields === undefined ? null : clearDuplicated(['id', 'type', 'stereo', 'meta', this.idName].concat(fields));
         // const loadDataYml = require('../express').loadDataYml;
         const dummy: any = loadDataYml(dataFile);
         this.load(dummy.data as any);
@@ -349,16 +420,54 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
     }
 
     /**
+     * apply Dynamo-style field whitelist when configured; otherwise return a shallow copy.
+     */
+    private pick<S extends object>(obj: S): Partial<S> {
+        if (!this._fields) return { ...obj };
+        const source = DynamoService.normalize(obj);
+        return this._fields.reduce((N: any, key) => {
+            const val = (source as any)[key];
+            if (val !== undefined) N[key] = val;
+            return N;
+        }, {});
+    }
+
+    private pickRaw<S extends object>(obj: S): Partial<S> {
+        if (!this._fields) return { ...obj };
+        return this._fields.reduce((N: any, key) => {
+            const val = (obj as any)[key];
+            if (val !== undefined) N[key] = val ?? '';
+            return N;
+        }, {});
+    }
+
+    private applyDynamoAdd(key: string, org: any, val: any) {
+        if (Array.isArray(val)) {
+            if (org !== undefined && !Array.isArray(org)) throw new Error(`.${key} (${val}) should be array!`);
+            return [...(Array.isArray(org) ? org : []), ...val];
+        }
+        if (typeof val === 'number') {
+            if (org !== undefined && typeof org !== 'number') throw new Error(`.${key} (${val}) should be number!`);
+            return $U.N(org, 0) + val;
+        }
+        throw new Error(`.${key} (${val}) should be number!`);
+    }
+
+    /**
      * say hello()
      * @param name  (optional) given name
      */
-    public hello = () => `dummy-storage-service:${this.name}/${this.idName}`;
+    public hello = () =>
+        this._fields
+            ? `dummy-storage-service:${this.name}/${this.idName}/${this._fields.length}`
+            : `dummy-storage-service:${this.name}/${this.idName}`;
 
     public async read(id: string): Promise<T> {
-        if (!id.trim()) throw new Error('@id (string) is required!');
+        //* note: dummy-only validation; Dynamo's read does not short-circuit whitespace ids.
+        if (!id?.trim()) throw new Error('@id (string) is required!');
         const item = this.buffer[id];
         if (!item) throw new Error(`404 NOT FOUND - ${this.idName}:${id}`);
-        return { ...item, [this.idName]: id } as T;
+        return Object.assign(this.pick(item), { [this.idName]: id }) as unknown as T;
     }
 
     public async mread(ids: string[]): Promise<BatchResult<T>> {
@@ -367,12 +476,16 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         if (!ids || total === 0) return result;
 
         for (const id of ids) {
+            //* note: dummy-only validation; Dynamo's mread does not short-circuit whitespace ids.
             if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
             const item = this.buffer[id];
             if (!item) {
-                result.failed.push({ [this.idName]: id, error: '404 NOT FOUND' } as unknown as FailedItem<T>);
+                result.failed.push({
+                    [this.idName]: id,
+                    error: `404 NOT FOUND - ${this.idName}:${id}`,
+                } as unknown as FailedItem<T>);
             } else {
-                result.success.push({ ...item, [this.idName]: id } as T);
+                result.success.push(Object.assign(this.pick(item), { [this.idName]: id }) as unknown as T);
             }
         }
 
@@ -398,17 +511,42 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
 
     public async save(id: string, item: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         if (!item) throw new Error('@item is required!');
-        if (item && typeof (item as any).lock == 'number') this.$locks[id] = (item as any).lock;
-        this.buffer[id] = item;
-        return Object.assign({ [this.idName]: id }, item);
+        if (typeof (item as any).lock == 'number') this.$locks[id] = (item as any).lock;
+        const data = this.pick(item);
+        this.buffer[id] = data as StorageModel;
+        return Object.assign({ [this.idName]: id }, this.pickRaw(item)) as unknown as T;
     }
 
     private $locks: any = {}; //* only for lock.
-    public async update(id: string, item: T, $inc?: T): Promise<T> {
+
+    //* serialize increment() by id.
+    private $queues: { [id: string]: Promise<unknown> } = {};
+    private withLock<R>(id: string, fn: () => Promise<R>): Promise<R> {
+        const prev = this.$queues[id] ?? Promise.resolve();
+        const run: Promise<R> = prev.catch((): undefined => undefined).then((): Promise<R> => fn());
+        const tail: Promise<void> = run
+            .then(
+                (): undefined => undefined,
+                (): undefined => undefined,
+            )
+            .then((): void => {
+                if (this.$queues[id] === tail) delete this.$queues[id];
+            });
+        this.$queues[id] = tail;
+        return run;
+    }
+
+    public async update(id: string, item: Partial<T>, $inc?: Partial<T>): Promise<T> {
         if (!id) throw new Error('@id is required!');
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         if (!item) throw new Error('@item is required!');
-        //* atomic operation for `.lock`
+        return this.withLock(id, () => this._updateBody(id, item, $inc));
+    }
+
+    private async _updateBody(id: string, item: Partial<T>, $inc?: Partial<T>): Promise<T> {
+        //* atomic operation for `.lock`.
         const lock = (() => {
             let lock = 0;
             if (item && typeof (item as any).lock == 'number') this.$locks[id] = lock = (item as any).lock;
@@ -417,25 +555,29 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
             return lock;
         })();
         const $org = await this.readSafe(id);
-        const $new = Object.assign($org, item);
+        //* whitelist `item` (matches Dynamo `update` $U); $inc is iterated by its own keys (matches Dynamo $I).
+        const filtered = this.pick(item) as Partial<T>;
+        const $new: any = Object.assign($org, filtered);
         /* eslint-disable prettier/prettier */
-        const incremented: Incrementable = !$inc ? null : Object.keys($inc).reduce((M: Incrementable, key) => {
-            const val = ($inc as any)[key];
-            if (typeof val !== 'number')
-                throw new Error(`.${key} (${val}) should be number!`);
-            if (key == 'lock') {
-                M[key] = lock;
-            } else {
-                M[key] = $U.N(($new as any)[key], 0) + val;
-            }
-            return M;
-        }, {});
+        const incremented: Incrementable | null = !$inc
+            ? null
+            : Object.keys($inc).reduce((M: Incrementable, key) => {
+                  const val = ($inc as any)[key];
+                  if (typeof val !== 'number' && !Array.isArray(val))
+                      throw new Error(`.${key} (${val}) should be number or array!`);
+                  if (key == 'lock') {
+                      M[key] = lock;
+                  } else {
+                      M[key] = this.applyDynamoAdd(key, ($new as any)[key], val) as any;
+                  }
+                  return M;
+              }, {});
         if (incremented) Object.assign($new, incremented);
         /* eslint-enable prettier/prettier */
         await this.save(id, $new);
-        const $set = { ...item, ...incremented };
-        if (typeof $set.lock == 'number') ($set as any).lock = lock;
-        return Object.assign({ [this.idName]: id }, $set);
+        const $set: any = { ...filtered, ...incremented };
+        if (typeof $set.lock == 'number') $set.lock = lock;
+        return Object.assign({ [this.idName]: id }, $set) as T;
     }
 
     public async mupdate(list: T[]): Promise<BatchResult<T>> {
@@ -443,12 +585,16 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
         const result: BatchResult<T> = { success: [], failed: [], total };
         if (!list || total === 0) return result;
 
+        //* Dynamo's mupdateItem is batch-PUT (overwrite, no merge). Mirror that here inline.
         for (const item of list) {
             const _id = (item as any)[this.idName] || (item as any).id;
             if (!_id) throw new Error('@id is required!');
-            if (item && typeof (item as any).lock == 'number') this.$locks[_id] = (item as any).lock;
-            this.buffer[_id] = item;
-            result.success.push({ ...item, [this.idName]: _id } as T);
+            if (!_id || !`${_id}`.trim()) throw new Error('@id (string) is required!');
+            if (typeof (item as any).lock == 'number') this.$locks[_id] = (item as any).lock;
+            const cleaned = this.idName !== 'id' ? (({ id: _drop, ...rest }) => rest)(item as any) : item;
+            const data = this.pick(cleaned);
+            this.buffer[_id] = data as StorageModel;
+            result.success.push(Object.assign({ [this.idName]: _id }, data) as T);
         }
 
         return result;
@@ -456,8 +602,14 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
 
     public async increment(id: string, $inc: T, $upt?: T): Promise<T> {
         if (!id) throw new Error('@id is required!');
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         if (!$inc && !$upt) throw new Error('@item is required!');
-        //* atomic operation for `.lock`
+        if (!$inc) throw new TypeError('Cannot convert undefined or null to object');
+        return this.withLock(id, () => this._incrementBody(id, $inc, $upt));
+    }
+
+    private async _incrementBody(id: string, $inc: T, $upt?: T): Promise<T> {
+        //* atomic operation for `.lock`.
         const lock = (() => {
             let lock = 0;
             if ($upt && typeof ($upt as any).lock == 'number') this.$locks[id] = lock = ($upt as any).lock;
@@ -466,35 +618,54 @@ export class DummyStorageService<T extends StorageModel> implements StorageServi
             return lock;
         })();
         const $org: any = await this.readSafe(id);
-        const $set = Object.keys($inc)
-            .concat(Object.keys($upt || {}))
-            .reduce((N: any, key: string) => {
-                const val = $inc ? ($inc as any)[key] : undefined;
-                const upt = $upt ? ($upt as any)[key] : undefined;
-                const org = $org[key];
-                if (upt !== undefined) {
-                    N[key] = upt;
-                } else if (val !== undefined) {
-                    if (org !== undefined && typeof org === 'number' && typeof val !== 'number')
-                        throw new Error(`.${key} (${val}) should be number!`);
-                    if (typeof val !== 'number') {
-                        N[key] = val;
-                    } else if (key == 'lock') {
-                        N[key] = lock;
-                        $org[key] = lock;
+        const inc: any = $inc ? DynamoService.normalize($inc) : {};
+        const upt: any = $upt ? DynamoService.normalize($upt) : {};
+        //* seed AUTO_SEQUENCE on a fresh sequence record so ProxyStorageService.nextSeq()'s 2-step bootstrap
+        if (id.includes(':sequence:') && $org.next === undefined && typeof inc.next === 'number') {
+            $org.next = 1_000_000;
+        }
+        //* use whitelist if exists.
+        const keys: string[] = this._fields
+            ? this._fields
+            : Array.from(new Set([...Object.keys(inc), ...Object.keys(upt)]));
+        const $set: any = {};
+        for (const key of keys) {
+            const uptVal = upt[key];
+            const incVal = inc[key];
+            const org = $org[key];
+            if (uptVal !== undefined) {
+                $set[key] = uptVal;
+                $org[key] = uptVal;
+            } else if (incVal !== undefined) {
+                if (key === 'lock') {
+                    $set[key] = lock;
+                    $org[key] = lock;
+                } else {
+                    if (org !== undefined && typeof org === 'number' && typeof incVal !== 'number')
+                        throw new Error(`.${key} (${incVal}) should be number!`);
+                    if (typeof org === 'string' && (typeof incVal === 'number' || Array.isArray(incVal)))
+                        throw new Error(`.${key} (${incVal}) should be string!`);
+                    if (Array.isArray(org) && !Array.isArray(incVal))
+                        throw new Error(`.${key} (${incVal}) should be array!`);
+                    if (typeof incVal === 'number' || Array.isArray(incVal)) {
+                        const newVal = this.applyDynamoAdd(key, org, incVal);
+                        $set[key] = newVal;
+                        $org[key] = newVal;
                     } else {
-                        N[key] = (org === undefined ? 0 : org) + val;
-                        $org[key] = (org === undefined ? 0 : org) + val;
+                        //* string/null/object as SET.
+                        $set[key] = incVal;
+                        $org[key] = incVal;
                     }
                 }
-                return N;
-            }, {});
+            }
+        }
         if (typeof $set.lock == 'number') $set.lock = lock;
-        await this.save(id, Object.assign($org, $set));
-        return Object.assign({ [this.idName]: id }, $set);
+        await this.save(id, $org);
+        return Object.assign({ [this.idName]: id }, $set) as T;
     }
 
     public async delete(id: string): Promise<T> {
+        if (!id || !`${id}`.trim()) throw new Error('@id (string) is required!');
         const $org = await this.read(id);
         delete this.buffer[id];
         delete this.$locks[id];

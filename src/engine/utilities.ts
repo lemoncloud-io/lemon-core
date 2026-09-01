@@ -168,7 +168,7 @@ export class Utilities {
                 });
             o = output;
         }
-        return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o || ''}`;
+        return o ? JSON.stringify(o) : typeof o == 'number' ? `${o}` : `${o ?? ''}`;
     }
 
     /**
@@ -178,7 +178,7 @@ export class Utilities {
         const dt = date && typeof date === 'object' ? date : date ? new Date(date) : new Date();
         const now = new Date();
         const tzo = now.getTimezoneOffset(); // Asia/Seoul => -540
-        const diff = timeZone * 60 + tzo;
+        const diff = (timeZone ?? 0) * 60 + tzo;
         if (diff) dt.setSeconds(dt.getSeconds() + 1 * diff * 60);
 
         const y = dt.getFullYear();
@@ -203,7 +203,7 @@ export class Utilities {
         if (typeof dt == 'string') {
             const now = new Date();
             const tzo = now.getTimezoneOffset();
-            const diff = timeZone * 60 + tzo;
+            const diff = (timeZone ?? 0) * 60 + tzo;
             let tstr = '';
             if (/^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 1978-12-01
@@ -300,7 +300,7 @@ export class Utilities {
         const LC = this.env('LC', '0') === '1'; // LINE COLORING
         const SPACE = '           ';
         ns = SPACE.substr(0, len) + ns + (delim === undefined ? ':' : `${delim || ''}`);
-        if (LC && COLORS[color]) ns = `${COLORS[color]}${ns}\x1b[0m`;
+        if (LC && color && COLORS[color]) ns = `${COLORS[color]}${ns}\x1b[0m`;
         return ns;
     }
 
@@ -338,15 +338,15 @@ export class Utilities {
      */
     public N(x: any, def?: number): number {
         try {
-            if (x === '' || x === undefined || x === null) return def;
+            if (x === '' || x === undefined || x === null) return def as number;
             if (typeof x === 'number' && x % 1 === 0) return x;
             if (typeof x == 'number') return parseInt('' + x);
             x = '0' + x;
             x = x.startsWith('0-') || x.startsWith('0+') ? x.substr(1) : x; // minus
             return parseInt(x.replace(/,/gi, '').trim());
-        } catch (e) {
-            this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e.message || ''), e);
-            return def;
+        } catch (e: any) {
+            this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e?.message || ''), e);
+            return def as number;
         }
     }
 
@@ -357,15 +357,15 @@ export class Utilities {
      */
     public F(x: any, def?: number): number {
         try {
-            if (x === '' || x === undefined || x === null) return def;
+            if (x === '' || x === undefined || x === null) return def as number;
             if (typeof x === 'number' && x % 1 === 0) return x;
             if (typeof x == 'number') return parseFloat('' + x);
             x = '0' + x;
             x = x.startsWith('0-') || x.startsWith('0+') ? x.substr(1) : x; // minus
             return parseFloat(x.replace(/,/gi, '').trim());
-        } catch (e) {
-            this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e.message || ''), e);
-            return def;
+        } catch (e: any) {
+            this.err('err at _N: x=' + x + ';' + typeof x + ';' + (e?.message || ''), e);
+            return def as number;
         }
     }
 
@@ -404,7 +404,7 @@ export class Utilities {
      * convert and cut string like `abcd....z`
      */
     public S = (_: any, h?: number, t: number = 32, delim: string = '...'): string =>
-        [typeof _ == 'string' ? _ : `${this.json(_) || ''}`]
+        [typeof _ == 'string' ? _ : `${this.json(_) ?? ''}`]
             .map(s =>
                 h && s.length > h + t
                     ? s.substring(0, h) + delim + (s.length > h + t ? s.substring(s.length - t) : '')
@@ -780,7 +780,7 @@ export class Utilities {
 
         return new (class {
             /** @deprecated since nodejs22 */
-            public encrypt = (val: string): string => {
+            public encrypt = (val?: string | null): string => {
                 val = val === undefined ? null : val;
                 // msg = msg && typeof msg == 'object' ? JSON_TAG+JSON.stringify(msg) : msg;
                 //* 어느 데이터 타입이든 저장하기 위해서, object로 만든다음, 암호화 시킨다.
@@ -788,7 +788,7 @@ export class Utilities {
                 const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
 
                 const { key, iv } = getKeyIV();
-                const cipher = crypto.createCipheriv(algorithm, key, iv);
+                const cipher = crypto.createCipheriv(algorithm!, key, iv);
                 const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
                 return crypted.toString(1 ? 'base64' : 'utf8');
             };
@@ -797,7 +797,7 @@ export class Utilities {
                 const buffer = Buffer.from(`${msg || ''}`, 'base64');
 
                 const { key, iv } = getKeyIV();
-                const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                const decipher = crypto.createDecipheriv(algorithm!, key, iv);
                 const decrypted = Buffer.concat([decipher.update(buffer), decipher.final()]);
                 const dec = decrypted.toString('utf8');
 
@@ -821,28 +821,27 @@ export class Utilities {
      * @param magic     magic string to verify (default `LM!#`)
      */
     public readonly crypto2 = (passwd: string, algorithm?: string, ivNumb?: number, magic?: string) => {
-        algorithm = algorithm || 'aes-256-ctr';
+        algorithm = algorithm ?? 'aes-256-ctr';
         const MAGIC = magic === undefined ? 'LM!#' : `${magic || ''}`;
-        const iv = Buffer.from(
-            Array.prototype.map.call(Buffer.alloc(16), () => {
-                return ivNumb === undefined ? 0 : ivNumb === -1 ? Math.floor(Math.random() * 256) : ivNumb;
-            }),
-        );
+        const _RND = () => (ivNumb === undefined ? 0 : ivNumb === -1 ? Math.floor(Math.random() * 256) : ivNumb);
+        // const iv = Buffer.from(Array.prototype.map.call(Buffer.alloc(16), _RND));
+        const buff = Array.from(Buffer.alloc(16));
+        const iv = Buffer.from(buff.map(_RND));
         return new (class {
-            public encrypt = (val: string): string => {
+            public encrypt = (val?: string | null): string => {
                 val = val === undefined ? null : val;
                 //* use json string to support all data-type
                 const msg = JSON.stringify({ alg: algorithm, val: val });
                 const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
                 const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
-                const cipher = crypto.createCipheriv(algorithm, key, iv);
+                const cipher = crypto.createCipheriv(algorithm!, key, iv);
                 const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
                 return crypted.toString('base64');
             };
             public decrypt = (msg: string): string => {
                 const buffer = Buffer.from(`${msg || ''}`, 'base64');
                 const key = Buffer.concat([Buffer.from(passwd)], Buffer.alloc(32).length);
-                const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                const decipher = crypto.createDecipheriv(algorithm!, key, iv);
                 const dec = Buffer.concat([decipher.update(buffer), decipher.final()]).toString('utf8');
                 if (!dec.startsWith(MAGIC)) throw new Error(`400 INVALID PASSWD - invalid magic string!`);
                 const data = dec.substr(MAGIC.length);
@@ -878,13 +877,13 @@ export class Utilities {
         const makeNonce = () => this.uuid().replace(/-/g, '').substring(0, 13); // 13 chars (52-bit entropy)
 
         return new (class {
-            public encrypt = (val: T, options?: { current?: number; nonce?: string }): string => {
+            public encrypt = (val: T | null, options?: { current?: number; nonce?: string }): string => {
                 val = val === undefined ? null : val;
                 const nonce = options?.nonce ?? makeNonce();
                 const timestamp = String(options?.current ?? currentMs()).padStart(13, '0');
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex'); // AES IV must be 16 bytes.
                 const buffer = Buffer.from(JSON.stringify({ d: val }), 'utf8');
-                const cipher = crypto.createCipheriv(algorithm, key, iv);
+                const cipher = crypto.createCipheriv(algorithm!, key, iv);
                 const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
                 const headRaw = `${MAGIC}${VERSION}:${nonce}:${timestamp}`;
                 const head = Buffer.from(headRaw).toString('base64');
@@ -915,7 +914,7 @@ export class Utilities {
                 }
                 // 4. decrypt
                 const iv = Buffer.from(hmac(`${nonce}:${timestamp}`, passwd).substring(0, 32), 'hex');
-                const decipher = crypto.createDecipheriv(algorithm, key, iv);
+                const decipher = crypto.createDecipheriv(algorithm!, key, iv);
                 const dec = Buffer.concat([
                     decipher.update(Buffer.from(msg.substring(HEAD_B64_LEN), 'base64')),
                     decipher.final(),
@@ -973,7 +972,7 @@ export class Utilities {
              */
             public encode = (data: T & JwtCommon, algorithm: JwtAlgorithm = 'HS256'): string => {
                 data = current_ms ? { ...data, iat: Math.floor(current_ms / 1000) } : data;
-                const token = $jwt.sign(data, passcode, { algorithm });
+                const token = $jwt.sign(data, passcode!, { algorithm });
                 return token;
             };
 
@@ -996,10 +995,10 @@ export class Utilities {
              * @throws `jwt expired` if exp has expired!.
              */
             public verify = (token: string, algorithm: JwtAlgorithm = 'HS256'): T & JwtCommon => {
-                const verified = $jwt.verify(token, passcode, { algorithms: [algorithm] }) as T & JwtCommon;
+                const verified = $jwt.verify(token, passcode!, { algorithms: [algorithm] }) as T & JwtCommon;
                 const cur = $U.N(current_ms, 0);
                 const exp = $U.N(verified?.exp, 0) * 1000;
-                if (cur > 0 && exp > 0 && exp < current_ms) throw new Error(`jwt expired at ${$U.ts(exp)}`);
+                if (cur > 0 && exp > 0 && exp < cur) throw new Error(`jwt expired at ${$U.ts(exp)}`);
                 return verified;
             };
         })();

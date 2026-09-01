@@ -11,7 +11,14 @@
  *
  * @copyright (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import $cores, { APIHeaders, APIHttpMethod, ApiHttpProxy, NextContext, NextIdentityCognito } from '../cores/';
+import $cores, {
+    APIHeaders,
+    APIHttpMethod,
+    ApiHttpProxy,
+    GeneralItem,
+    NextContext,
+    NextIdentityCognito,
+} from '../cores/';
 import { ProtocolModule, ProtocolService, SimpleSet } from '../cores/';
 import $engine, { $U, doReportSlack, do_parallel } from '../engine/';
 import { GETERR, onlyDefined } from '../common/test-helper';
@@ -20,6 +27,69 @@ import { performance } from 'perf_hooks';
 
 import REQUEST from 'request';
 import queryString from 'query-string';
+import { ListParam, PaginateParam } from './types';
+
+/**
+ * type: boolean style number.
+ */
+type BoolFlag = 0 | 1;
+
+const _B = (val: any, def: BoolFlag = 0): BoolFlag => {
+    if (val === null || val === undefined) return def;
+    if (typeof val === 'boolean') return val ? 1 : 0;
+    if (typeof val === 'string' && ['y', 'yes', 't', 'true'].includes(val.toLowerCase())) return 1;
+    return $U.N(val, def) && 1;
+};
+
+const _N = (val: any, def = 0): number => {
+    const n = $U.N(val, def);
+    return Number.isNaN(n) ? def : n;
+};
+
+/**
+ * list param parser
+ * @param param
+ */
+export function parseListParam(param?: ListParam, $def?: { limit?: number }): Required<ListParam> {
+    return onlyDefined<Required<ListParam>>({
+        sort: param?.sort !== undefined ? $T.S2(param?.sort, '') : '',
+        limit: $T.N(param?.limit, $def?.limit ?? 10),
+    });
+}
+
+/**
+ * paginate param parser
+ */
+export function parsePaginateParam(
+    param?: PaginateParam,
+    /** default value or conditions */
+    options?: { noLimit?: boolean; limit?: number; page?: number },
+): PaginateParam {
+    const limit = options?.limit;
+    const page = options?.page ?? 0;
+    const res = onlyDefined<PaginateParam>({
+        ...parseListParam(param, { limit }),
+        page: $T.N(param?.page, page),
+        offset: param?.offset !== undefined ? $T.N(param?.offset, 0) : undefined,
+    });
+    const noLimit = options?.noLimit ?? res.limit == -1;
+    const MAX_LIMIT = $T.N($U.env('MAX_LIMIT', '2000'));
+    if (MAX_LIMIT <= 0) throw new Error(`@env.MAX_LIMIT[${MAX_LIMIT}] (number) is invalid!`);
+
+    //WARN! - limit the max result to 2000.
+    if (!noLimit) {
+        const limit = $T.N(res?.limit ?? 0, 0);
+        const page = $T.N(res?.page ?? 0, 0);
+        const maxPage = limit > 0 ? Math.floor(Math.min(limit * page, MAX_LIMIT) / limit) : MAX_LIMIT;
+        res.page = Math.min(page, maxPage);
+    } else {
+        res.limit = MAX_LIMIT;
+        res.page = 0;
+    }
+
+    //* returns.
+    return res;
+}
 
 /**
  * Helpers to transform data-types.
@@ -28,18 +98,19 @@ export const $T = {
     /**
      * transform to string w/ trim()
      */
-    S: (val: any, def = ''): string => `${val ?? def}`.trim(),
+    S: <T extends string = string>(val: any, def = ''): T => `${val ?? def}`.trim() as T,
     /**
      * as string w/o white-space.
      */
-    S2: (val: any, def = '', delim = ''): string => `${val ?? def}`.replace(/\s+/g, delim),
+    S2: <T extends string = string>(val: any, def = '', delim = ' '): T =>
+        `${val ?? def}`.replace(/\s+/g, delim).trim() as T,
     /**
      * transform to string[]
      */
-    SS: (val: any, def = [] as string[]): string[] => {
+    SS: <T extends string = string>(val: any, def = [] as T[]): T[] => {
         if (val === null || val === undefined) return def;
-        if (typeof val === 'string') return val ? val.split(',').map(_ => $T.S(_, '').trim()) : def;
-        if (Array.isArray(val)) return val.length > 0 ? val.map(_ => $T.S(_, '').trim()) : def;
+        if (typeof val === 'string') return val ? val.split(',').map<T>(_ => $T.S2<T>(_)) : def;
+        if (Array.isArray(val)) return val.length > 0 ? val.map<T>(_ => $T.S<T>(_, '')) : def;
         return [$T.S(val)];
     },
     /**
@@ -56,10 +127,8 @@ export const $T = {
     /**
      * transform to number(integer).
      */
-    N: (val: any, def = 0): number => {
-        const n = $U.N(val, def);
-        return Number.isNaN(n) ? def : n;
-    },
+    N: (v?: boolean | number | string, def: number = 0): number =>
+        typeof v === 'boolean' ? (v ? 1 : 0) : typeof v === 'number' || typeof v === 'string' ? _N(v, def) : def,
     /**
      * number array
      */
@@ -89,22 +158,26 @@ export const $T = {
     /**
      * transform to boolean.
      */
-    B: (val: any, def: 0 | 1 = 0): 0 | 1 => {
-        if (val === null || val === undefined) return def as 0 | 1;
-        if (typeof val === 'boolean') return val ? 1 : 0;
-        if (typeof val === 'string' && ['y', 'yes', 't', 'true'].includes(val.toLowerCase())) return 1;
-        return $U.N(val, def) && 1;
-    },
+    B: (v?: number | string | boolean, def?: 0 | 1 | boolean): boolean =>
+        typeof v === 'boolean'
+            ? v
+            : typeof v === 'number' || typeof v === 'string'
+            ? Boolean($T.BN(v, typeof def === 'boolean' ? (def ? 1 : 0) : def))
+            : Boolean(def),
+    /**
+     * convert to boolean style number
+     */
+    BN: <T extends number = BoolFlag>(v: any, def?: 0 | 1): T => (v === undefined ? (def as T) : (_B(v, def) as T)),
     /**
      * transform to Time number via string | number.
      */
     T: (val: any, def = 0): number => {
-        const checkVal = `${val || ''}`.includes('-');
+        const checkVal = `${val ?? ''}`.includes('-');
         if (checkVal) {
-            if ($U.dt(val)) return $U.dt(val).getTime();
+            if ($U.dt(val)) return $U.dt(val)!.getTime();
             else throw new Error(`@val[${val}] is invalid!`);
         } else {
-            return $U.dt($U.N(val, def)).getTime();
+            return $U.dt($U.N(val, def))!.getTime();
         }
     },
     /**
@@ -153,11 +226,11 @@ export const $T = {
      * transform to simple-set.
      * @param val json object.
      */
-    simples: (val: any, throws: boolean = false): SimpleSet => {
+    simples: (val: any, throws: boolean = false): SimpleSet | undefined => {
         //* validate if simple-type (string | number | null | undefined)
         const t = typeof val;
         if (val === undefined) return undefined;
-        else if (val === null || val === '') return { _: null };
+        else if (val === null || val === '') return { _: null as any };
         else if (t === 'string' || t === 'number') return { _: val };
         else if (t === 'object' && !Array.isArray(val)) {
             const keys = Object.keys(val);
@@ -168,7 +241,7 @@ export const $T = {
                     //* NOP
                 } else if (reName.test(k)) {
                     const t = typeof v;
-                    if (v === null || v === '') N[k] = null;
+                    if (v === null || v === '') (N as any)[k] = null;
                     else if (t === 'string' || t === 'number') N[k] = v;
                     else if (throws) throw new Error(`.${k}[${v}] is invalid!`);
                 } else if (throws) throw new Error(`.${k} is invalid format!`);
@@ -228,6 +301,17 @@ export const $T = {
             min + (flag ? Math.floor((max - min) * (typeof rand == 'number' ? rand : Math.random())) : max - min);
         return { val, min, max };
     },
+    /** cleanup if in undefined */
+    clear: <T extends object>(N: T): T =>
+        Object.entries(N).reduce((N, [k, v]) => {
+            if (v !== undefined) N[k] = v;
+            return N;
+        }, {} as any),
+    /** null to string */
+    nul2str: <T extends string>(v: T | any): T | undefined => {
+        if (v === undefined) return undefined;
+        return $T.S(v ?? '') as T;
+    },
     /**
      * 객체 정규화 시킴.
      * - null 에 대해서는 특별히 처리.
@@ -249,6 +333,36 @@ export const $T = {
             M[key] = N;
             return M;
         }, {}),
+    /**
+     * find key in LUT table.
+     */
+    asLut: <T extends object>(
+        key: string,
+        $map: T,
+        options?: { name?: string; throwable?: boolean; default?: string; errScope?: string } | string,
+    ) => {
+        const $opts = typeof options === 'string' ? { name: options } : options;
+        const name = $opts?.name ?? 'name';
+        const throwable = $opts?.throwable ?? true;
+        const _def = $opts?.default ?? null;
+        const errScope = $opts?.errScope ?? `asLut(${name ?? ''})`;
+        //* check of empty.
+        if (key === undefined) return undefined as unknown as keyof T;
+        if (key === null) return _def as keyof T;
+
+        //* check if key is defined.
+        if (typeof $map[key as keyof T] === 'undefined') {
+            //* lookup by value.
+            const foundEntry = Object.entries($map).find(([k, v]) => v === key);
+            if (foundEntry) return foundEntry[0] as keyof T;
+
+            //! throw or default
+            if (!throwable) return _def as keyof T;
+            if (errScope) throw new Error(`.${name}[${key}] is invalid key - ${errScope}`);
+            throw new Error(`.${name}[${key}] is invalid!`);
+        }
+        return key as keyof T;
+    },
     /**
      * compare object, and extract the only diff properties.
      */
@@ -323,7 +437,7 @@ export const $T = {
                 return $ret;
             }
         } else if (meta === null || meta === undefined) {
-            return null;
+            return null as any;
         } else if (typeof meta === 'object') {
             return meta as T;
         } else {
@@ -333,6 +447,21 @@ export const $T = {
         }
     },
     /**
+     * pack as meta in general-type.
+     */
+    asMeta: <T extends GeneralItem = GeneralItem>(body: any, options?: { errScope?: string }): T => {
+        const errScope = options?.errScope ?? '';
+        if (!body) return {} as T;
+        if (typeof body !== 'object') throw new Error(`@body (object) is required ${errScope}`.trim());
+        const isVal = (v: any): v is number | string => typeof v === 'number' || typeof v === 'string';
+        const res = Object.entries(body).reduce<GeneralItem>((R, [k, v]) => {
+            if (isVal(v)) R[k] = v;
+            else if (v && Array.isArray(v)) (R as any)[k] = v.filter(v => isVal(v));
+            return R;
+        }, {});
+        return res as T;
+    },
+    /**
      * clear the undefined properties from the cloned object.
      * - applied only to 1st depth.
      *
@@ -340,7 +469,32 @@ export const $T = {
      * @param $def default if not valid object.
      * @returns cloned object
      */
-    onlyDefined: onlyDefined,
+    onlyDefined,
+    /**
+     * reduce aggregation from ES6
+     * NOTE - 이거 반드시 최신꺼로 업데이트 필요함 @steve/250212
+     */
+    reduceAggr: ($aggr: any) =>
+        Object.keys($aggr).reduce<{ [key: string]: { [key: string]: number } }>((M, key: string) => {
+            const N: any = $aggr[key];
+            if (key == 'doc_count' && typeof N == 'number') {
+                M['doc_count'] = { total: N };
+                return M;
+            }
+            M[key] = Object.keys(N).reduce<{ [key: string]: number }>((M, x) => {
+                const Y = N[x];
+                if (x == 'doc_count') M['total'] = $T.N(Y, 0) as number;
+                if (x == 'buckets' && Array.isArray(Y))
+                    return Y.reduce((M, N) => {
+                        if (typeof N?.key === 'string' && typeof N?.doc_count === 'number') {
+                            M[N?.key] = N.doc_count;
+                        }
+                        return M;
+                    }, M);
+                return M;
+            }, {});
+            return M;
+        }, {}),
 };
 
 /**
@@ -697,7 +851,7 @@ export const my_parrallel = my_parallel;
  * @param list list of model.
  * @param func callback to process of each
  */
-export const my_sequence = <T extends { id?: string; error?: string | null }, U = T>(
+export const my_sequence = <T extends { id?: string; error?: string | null }, U extends T = T>(
     list: T[],
     func: (item: T, index?: number) => Promise<U>,
 ) => my_parallel<T, U>(list, func, 1);
@@ -726,7 +880,7 @@ export const createSigV4Proxy = (
         /** headers */
         headers?: APIHeaders;
         /** path encoder (default encodeURIComponent) */
-        encoder?: (name: string, path: string) => string;
+        encoder?: (name: string, path?: string) => string;
         /** relay-key in headers for proxy. */
         relayHeaderKey?: string;
         /** resultKey in response */

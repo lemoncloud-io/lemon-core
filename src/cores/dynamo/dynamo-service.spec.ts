@@ -8,7 +8,8 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { vi } from 'vitest';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, _it } from '../../common/test-helper';
 import { loadDataYml } from '../../tools/';
@@ -173,6 +174,36 @@ describe('DynamoService', () => {
             expect2(await dummy.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: null });
             expect2(await dummy.updateItem('A0', 0, { type: 'account' }).catch(GETERR), 'ID').toEqual({ ID: 'A0' });
             expect2(await dummy.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
+
+            //* updateItem with increments: number ADD and string[] append.
+            const ATOM_ID = 'A-ATOMIC';
+            await dummy.saveItem(ATOM_ID, { type: 'atomic', n: 0, s: [] } as any);
+
+            const inc = (increments: any) => dummy.updateItem(ATOM_ID, 0, {}, increments);
+            await Promise.all(Array.from({ length: 100 }, (_, i) => inc({ n: i + 1 })));
+            expect2(await dummy.readItem(ATOM_ID), 'ID,type,n').toEqual({ ID: ATOM_ID, type: 'atomic', n: 5050 });
+
+            await Promise.all('abcdefgh'.split('').map(s => inc({ s: [s] })));
+            const atom = (await dummy.readItem(ATOM_ID)) as any;
+            expect2(atom.s.sort().join('')).toEqual('abcdefgh');
+
+            const atom2 = (await dummy.updateItem(ATOM_ID, 0, { type: 'atomic-updated' }, {
+                n: 1,
+                s: ['z'],
+            } as any)) as any;
+            expect2(atom2, 'ID,type,n').toEqual({
+                ID: ATOM_ID,
+                type: 'atomic-updated',
+                n: 5051,
+            });
+            expect2([...atom2.s].sort().join('')).toEqual('abcdefghz');
+            expect2(atom2.type).toEqual('atomic-updated');
+            expect2(await dummy.readItem(ATOM_ID), 'ID,type,n').toEqual({
+                ID: ATOM_ID,
+                type: 'atomic-updated',
+                n: 5051,
+            });
+            await dummy.deleteItem(ATOM_ID);
 
             //* check dummy data list
             expect2(dummy.hello()).toEqual(`dummy-dynamo-service:${tableName}`);
@@ -783,6 +814,30 @@ describe('DynamoService', () => {
                     ID: 'A0',
                 });
                 expect2(await service.readItem('A0').catch(GETERR), 'ID,type').toEqual({ ID: 'A0', type: 'account' });
+
+                //* updateItem with increments: number ADD and string[] append.
+                const ATOM_ID = 'A-ATOMIC-REAL';
+                await service.saveItem(ATOM_ID, { type: 'atomic', n: 0, s: [] } as any);
+                dataMap.set(ATOM_ID, { ID: ATOM_ID } as MyModel);
+
+                const inc = (increments: any) => service.updateItem(ATOM_ID, 0, {}, increments);
+                await Promise.all(Array.from({ length: 100 }, (_, i) => inc({ n: i + 1 })));
+                expect2(await service.readItem(ATOM_ID), 'ID,type,n').toEqual({ ID: ATOM_ID, type: 'atomic', n: 5050 });
+
+                await Promise.all('abcdefgh'.split('').map(s => inc({ s: [s] })));
+                const atom = (await service.readItem(ATOM_ID)) as any;
+                expect2([...atom.s].sort().join('')).toEqual('abcdefgh');
+
+                const atom2 = (await service.updateItem(ATOM_ID, 0, { type: 'atomic-updated' }, {
+                    n: 1,
+                    s: ['z'],
+                } as any)) as any;
+                expect2(atom2, 'ID,type,n').toEqual({
+                    ID: ATOM_ID,
+                    type: 'atomic-updated',
+                    n: 5051,
+                });
+                expect2([...atom2.s].sort().join('')).toEqual('abcdefghz');
             }
 
             //* msaveItem test

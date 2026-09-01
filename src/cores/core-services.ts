@@ -129,6 +129,21 @@ export interface ProtocolTransformer<TEventParam = any, TLambdaEvent = TEventPar
 }
 
 /**
+ * type: `ProtocolExecuteOptions`
+ * - options for `ProtocolService.execute()`
+ */
+export interface ProtocolExecuteOptions {
+    /** custom uri to provide */
+    uri?: string;
+    /**
+     * if true, invoke lambda asynchronously with InvocationType 'Event'.
+     *
+     * NOTE - ONLY for AWS Lambda, if useEvent is true, then `execute()` will return directly.
+     */
+    useEvent?: boolean;
+}
+
+/**
  * class: `ProtocolService`
  * - support inter communication (sync or async) between micro-services.
  */
@@ -153,7 +168,7 @@ export interface ProtocolService {
      * @param config    (optional) custom config
      * @param uri       (optional) custom uri to provide.
      */
-    execute<T>(param: ProtocolParam, config?: CoreConfigService, uri?: string): Promise<T>;
+    execute<T>(param: ProtocolParam, config?: CoreConfigService, uri?: string | ProtocolExecuteOptions): Promise<T>;
 
     /**
      * asynchronous call to target function via 'SNS'.

@@ -20,6 +20,7 @@
  * @date        2019-08-08 improved `$api().do(event, context, callback)`.
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2022-02-21 remove `$_` the lodash libs.
+ * @date        2026-05-08 optimized to ignore of reporting.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -46,11 +47,12 @@ const $sns = (arn: string): AWSSNSService => new AWSSNSService(arn);
  */
 export const getHelloArn = (context?: Context | RequestContext | NextContext, NS?: string): string => {
     NS = NS || $U.NS('HELO');
+    const errScope = `getHelloArn(${NS ?? ''})`;
 
     //* use pre-defined env via `serverless.yml`
     const arn = $engine.environ('REPORT_ERROR_ARN', '') as string;
     if (arn.startsWith('arn:aws:sns:')) return arn;
-    if (!context) throw new Error(`@context (RequestContext) is required!`);
+    if (!context) throw new Error(`@context (RequestContext) is required - ${errScope}`);
     if (true) {
         const target = 'lemon-hello-sns';
         const $ctx: Context = context as Context;
@@ -58,12 +60,12 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
         const $ncx: NextContext = context as NextContext;
         //* build arn via context information.
         const invokedFunctionArn = `${$ctx.invokedFunctionArn || ''}`; // if called via lambda call ex: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-messages-api-prod-user'
-        const accountId = `${$ncx.accountId || invokedFunctionArn.split(':')[4] || $req.accountId || ''}`;
+        const accountId = $ncx?.accountId || invokedFunctionArn?.split(':')[4] || $req?.accountId;
         const region = invokedFunctionArn.split(':')[3] || `ap-northeast-2`;
         _inf(NS, '! accountId =', accountId);
-        if (!accountId) {
+        if (!accountId || typeof accountId !== 'string') {
             _err(NS, 'ERROR! missing accountId. context =', $U.json(context));
-            throw new Error('.accountId is missing');
+            throw new Error(`.accountId[${accountId ?? ''}] is missing - ${errScope}`);
         }
         return `arn:aws:sns:${region}:${accountId}:${target}`;
     }
@@ -78,9 +80,15 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
  * @param data          Optinal Data(body).
  */
 export const doReportError = async (e: Error, context?: any, event?: any, data?: any): Promise<string> => {
-    //* ignore only if local express-run.
-    if (context && context.source === 'express') return '!ignore';
     const NS = $U.NS('RPTE');
+
+    //* ignore only if local express-run or empty accountId.
+    const ignored = context?.source === 'express' || context?.accountId === '';
+    if (ignored) {
+        _err(NS, `! err(report) :=`, e);
+        return '!ignore';
+    }
+
     //TODO - optimize message extractor.
     const $message = (e: any) => {
         const m = (e && (e.message || e.statusMessage)) || e;
@@ -92,12 +100,12 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
     try {
         const message = $message(e);
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
-        const name = (context && context.name) || process.env.NAME || '';
-        const stage = (context && context.stage) || process.env.STAGE || '';
-        const apiId = (context && context.apiId) || '';
-        const domainPrefix = (context && context.domainPrefix) || '';
-        const resourcePath = (context && context.resourcePath) || '';
-        const identity = (context && context.identity) || {};
+        const name = context?.name || process.env.NAME || '';
+        const stage = context?.stage || process.env.STAGE || '';
+        const apiId = context?.apiId || '';
+        const domainPrefix = context?.domainPrefix || '';
+        const resourcePath = context?.resourcePath || '';
+        const identity = context?.identity || {};
         const service = `api://${$pack.name || 'lemon-core'}/${name}-${stage}#${$pack.version || '0.0.0'}`;
 
         //* prepare payload to publish.
@@ -121,7 +129,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
                 _err(NS, '! err.report =', e);
                 return '';
             });
-    } catch (e2) {
+    } catch (e2: any) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
     }
@@ -153,7 +161,7 @@ export const doReportCallback = async (data: CallbackData, service?: string, con
                 _err(NS, '! callback.err =', e);
                 return '';
             });
-    } catch (e) {
+    } catch (e: any) {
         _err(NS, '> reportCallback.err =', e);
         return doReportError(e, context, null, data);
     }
@@ -169,15 +177,23 @@ export const doReportCallback = async (data: CallbackData, service?: string, con
 export const doReportSlack = async (channel: string, body: SlackPostBody, context?: any): Promise<string> => {
     const NS = $U.NS('RPTS');
     _log(NS, `doReportSlack()...`);
+
+    //* ignore only if local express-run or empty accountId.
+    const ignored = context?.source === 'express' || context?.accountId === '';
+    if (ignored) {
+        _err(NS, `! slack(report) :=`, $U.json(body));
+        return '!ignore';
+    }
+
     //* dispatch invoke conditins.
     try {
         const $pack = (loadJsonSync && loadJsonSync('package.json')) || {};
         const service = `api://${$pack.name || 'lemon-core'}#${$pack.version || '0.0.0'}`;
-        const stage = (context && context.stage) || '';
-        const apiId = (context && context.apiId) || '';
-        const domainPrefix = (context && context.domainPrefix) || '';
-        const resourcePath = (context && context.resourcePath) || '';
-        const identity = (context && context.identity) || {};
+        const stage = context?.stage || '';
+        const apiId = context?.apiId || '';
+        const domainPrefix = context?.domainPrefix || '';
+        const resourcePath = context?.resourcePath || '';
+        const identity = context?.identity || {};
         const param = {};
 
         //* prepare payload to publish.
@@ -202,7 +218,7 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
                 _err(NS, '! err.slack =', e);
                 return '';
             });
-    } catch (e2) {
+    } catch (e2: any) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
     }
@@ -264,7 +280,7 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
                 _err(NS, '! err.metric =', e);
                 return '';
             });
-    } catch (e2) {
+    } catch (e2: any) {
         _err(NS, '! err-ignored =', e2);
         return `!err - ${e2.message || e2}`;
     }
@@ -378,13 +394,12 @@ export const do_parrallel = do_parallel;
 export const DEFAULT_TIME_ZONE = 9;
 
 //* convert to date of input.
-export const convDate = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT_TIME_ZONE);
+export const convDate = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT_TIME_ZONE)!;
 
 /**
  * Convert input to time value (in number)
  *
  * @param {*} dt    see `conv_date()`
- * @param {*} name  name of property
  */
 export const convDateToTime = (dt: string | number | Date) => {
     if (dt === '' || dt === '0' || dt === 0) return 0; // 0 means null (not-set)

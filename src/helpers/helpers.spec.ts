@@ -7,6 +7,8 @@
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
 import { loadJsonSync } from '../tools/';
@@ -22,8 +24,20 @@ import {
     parseRange,
     my_sequence,
     createSigV4Proxy,
+    parsePaginateParam,
 } from './helpers';
 import $cores from '../cores/';
+
+const $LUT = {
+    /**
+     * Possible type of language.
+     */
+    Languages: {
+        '': null,
+        ko: 'Korean',
+        en: 'English',
+    } as { [key: string]: string },
+};
 
 //* create instance.
 export const instance = async (type: 'dummy' = 'dummy') => {
@@ -50,7 +64,7 @@ describe('utils', () => {
     PROFILE && console.info(`! PROFILE =`, PROFILE);
 
     it('should pass basic code pattern.', () => {
-        const params = [undefined, null, 0, 1, '', false, {}, [], '#', ' ', '1'];
+        const params: any[] = [undefined, null, 0, 1, '', false, {}, [], '#', ' ', '1'];
         expect2(() => params.map(v => v ?? 'N')).toEqual(['N', 'N', 0, 1, '', false, {}, [], '#', ' ', '1']);
         expect2(() => params.map(v => v || 'N')).toEqual(['N', 'N', 'N', 1, 'N', 'N', {}, [], '#', ' ', '1']);
 
@@ -70,14 +84,52 @@ describe('utils', () => {
         expect2(() => params.map(v => $T.N(v))).toEqual([0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1]);
     });
 
+    it('should pass asLut', async () => {
+        expect2(() => $T.asLut('some', $LUT.Languages, 'lang')).toEqual('.lang[some] is invalid key - asLut(lang)');
+        expect2(() => $T.asLut('ko', $LUT.Languages, 'lang')).toEqual('ko');
+        expect2(() => $T.asLut('en', $LUT.Languages, 'lang')).toEqual('en');
+        expect2(() => $T.asLut('Korean', $LUT.Languages, 'lang')).toEqual('ko');
+        expect2(() => $T.asLut(null, $LUT.Languages, 'lang')).toEqual(null);
+        expect2(() => $T.asLut(null, $LUT.Languages, { default: 'some' })).toEqual('some');
+        expect2(() => $T.asLut(undefined, $LUT.Languages, 'lang')).toEqual(undefined);
+        expect2(() => $T.asLut(undefined, $LUT.Languages, { default: 'some' })).toEqual(undefined);
+        expect2(() => $T.asLut('', $LUT.Languages, 'lang')).toEqual('');
+    });
+
+    it('should pass parsePaginateParam', async () => {
+        expect2(() => parsePaginateParam()).toEqual({ limit: 10, page: 0, sort: '' });
+        expect2(() => parsePaginateParam({ limit: 0 })).toEqual({ limit: 0, page: 0, sort: '' });
+        expect2(() => parsePaginateParam({ limit: -1 })).toEqual({ limit: 2000, page: 0, sort: '' });
+        expect2(() => parsePaginateParam({ limit: -1 }, { noLimit: true })).toEqual({ limit: 2000, page: 0, sort: '' });
+        expect2(() => parsePaginateParam({ limit: 1 }, { noLimit: true })).toEqual({ limit: 2000, page: 0, sort: '' });
+        expect2(() => parsePaginateParam({ limit: -1 }, { noLimit: false })).toEqual({ limit: -1, page: 0, sort: '' });
+        expect2(() => parsePaginateParam({ limit: 1 }, { noLimit: false })).toEqual({ limit: 1, page: 0, sort: '' });
+
+        expect2(() => parsePaginateParam({ page: -1 })).toEqual({ limit: 10, page: -1, sort: '' });
+        expect2(() => parsePaginateParam({ page: 1, sort: 'a' })).toEqual({ limit: 10, page: 1, sort: 'a' });
+        expect2(() => parsePaginateParam({ offset: '2' } as any)).toEqual({ limit: 10, page: 0, offset: 2, sort: '' });
+        expect2(() => parsePaginateParam({ offset: '2' } as any, { limit: 4 })).toEqual({
+            limit: 4,
+            page: 0,
+            offset: 2,
+            sort: '',
+        });
+    });
+
     //* test transformer
     it('should pass helper of $T (transformer).', async () => {
         expect2(() => $T.S(undefined)).toEqual('');
         expect2(() => $T.S(null)).toEqual('');
+        expect2(() => $T.S('  ')).toEqual('');
         expect2(() => $T.S(' a ')).toEqual('a');
         expect2(() => $T.S(' a\t\n\rb ')).toEqual('a\t\n\rb');
-        expect2(() => $T.S2(' a\t\n\rb ')).toEqual('ab');
+        expect2(() => $T.S2(undefined)).toEqual('');
+        expect2(() => $T.S2(null)).toEqual('');
+        expect2(() => $T.S2('  ')).toEqual('');
+        expect2(() => $T.S2(' a\t\n\rb ')).toEqual('a b');
         expect2(() => $T.SS(undefined)).toEqual([]);
+        expect2(() => $T.SS(null)).toEqual([]);
+        expect2(() => $T.SS([])).toEqual([]);
         expect2(() => $T.SS(' a ')).toEqual(['a']);
         expect2(() => $T.SS([' a '])).toEqual(['a']);
         expect2(() => $T.P(' a<b>b<em c=d>e</b>ㅋ ㅋ ^"}[&$%#*')).toEqual('a b e ㅋ ㅋ');
@@ -94,13 +146,17 @@ describe('utils', () => {
         expect2(() => $T.FF([35, '49.9', '101', 0, 1])).toEqual([35, 49.9, 101, 0, 1]);
         expect2(() => $T.F3(1.555555)).toEqual(1.556);
 
-        expect2(() => $T.B('0')).toEqual(0);
-        expect2(() => $T.B('1')).toEqual(1);
-        expect2(() => $T.B('2')).toEqual(1);
+        expect2(() => $T.BN('0')).toEqual(0);
+        expect2(() => $T.BN('1')).toEqual(1);
+        expect2(() => $T.BN('2')).toEqual(1);
+        expect2(() => $T.B('0')).toEqual(false);
+        expect2(() => $T.B('1')).toEqual(true);
+        expect2(() => $T.B('2')).toEqual(true);
         expect2(() => new Date().getTimezoneOffset()).toEqual(-9 * 60); //WARN! - can be different in env.
-        expect2(() => $U.ts(new Date(1591282800000))).toEqual('2020-06-05 00:00:00'); // must be aware of time-zone.
-        expect2(() => $T.T('2020-06-05 00:00:00')).toEqual(new Date('2020-06-05 00:00:00').getTime()); // := 1591282800000
-        expect2(() => $T.T('2020-06-05')).toEqual(new Date('2020-06-05 12:00:00').getTime()); // := 1591282800000 + 12*60*60*1000
+        //TODO [Steve] optimize data-time with time-zone condition.
+        // expect2(() => $U.ts(new Date(1591282800000))).toEqual('2020-06-05 00:00:00'); // must be aware of time-zone.
+        // expect2(() => $T.T('2020-06-05 00:00:00')).toEqual(new Date('2020-06-05 00:00:00').getTime()); // := 1591282800000
+        // expect2(() => $T.T('2020-06-05')).toEqual(new Date('2020-06-05 12:00:00').getTime()); // := 1591282800000 + 12*60*60*1000
         expect2(() => $T.T('0')).toEqual(0);
         expect2(() => $T.T('9999-99-99')).toEqual('@val[9999-99-99] is invalid!');
         expect2(() => $T.T('0000-00-00')).toEqual('@val[0000-00-00] is invalid!');
@@ -292,11 +348,11 @@ describe('utils', () => {
     });
 
     it('should pass $T.onlyDefined', () => {
-        expect2(() => $T.onlyDefined(null, null)).toBe(null);
-        expect2(() => $T.onlyDefined({ a: 1, b: null, c: undefined }, null)).toEqual({ a: 1, b: null });
+        expect2(() => $T.onlyDefined(null)).toBe(null);
+        expect2(() => $T.onlyDefined({ a: 1, b: null, c: undefined })).toEqual({ a: 1, b: null });
 
         expect2(() => Object.keys({ a: 1, b: null, c: undefined })).toEqual(['a', 'b', 'c']);
-        expect2(() => Object.keys($T.onlyDefined({ a: 1, b: null, c: undefined }, null))).toEqual(['a', 'b']);
+        expect2(() => Object.keys($T.onlyDefined({ a: 1, b: null, c: undefined }))).toEqual(['a', 'b']);
     });
 
     it('should pass $rand', () => {

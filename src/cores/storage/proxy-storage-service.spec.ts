@@ -8,7 +8,8 @@
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
-import { vi } from 'vitest';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { CoreModel, CORE_FIELDS } from 'lemon-model';
 import { $U, do_parrallel } from '../../engine';
@@ -224,6 +225,31 @@ describe('ProxyStorageService', () => {
         expect2(await $test.nextId(3).catch(GETERR)).toEqual(1000006);
         expect2(await $test.nextId(-1).catch(GETERR)).toEqual('@stepNext[-1] is invalid - nextSeq(test)');
         expect2(await $test.nextId(1000010 - 1000006)).toEqual(1000010);
+
+        //* parallel nextId() in dummy: must be unique & monotonic (regression for the bootstrap race).
+        if (type == 'dummy') {
+            const N = 5;
+            //* via do_parrallel().
+            await storage.clearSeq('test');
+            const ids1 = await do_parrallel(
+                Array.from({ length: N }, (_, i) => i),
+                () => storage.nextSeq('test'),
+            );
+            expect2([...ids1].sort((a, b) => Number(a) - Number(b))).toEqual([
+                1000001, 1000002, 1000003, 1000004, 1000005,
+            ]);
+            expect2(new Set(ids1).size).toEqual(N);
+
+            //* via Promise.all on TypedStorageService — mirrors `[0..N].map(() => proxy.nextId())`.
+            await storage.clearSeq('test');
+            const ids2 = await Promise.all(Array.from({ length: N }, () => $test.nextId()));
+            expect2([...ids2].sort((a, b) => a - b)).toEqual([1000001, 1000002, 1000003, 1000004, 1000005]);
+            expect2(new Set(ids2).size).toEqual(N);
+
+            //* restore sequence to 1000010 so the rest of the scenario (lastId = '1000011') still holds.
+            await storage.clearSeq('test');
+            for (let i = 0; i < 10; i++) await storage.nextSeq('test');
+        }
 
         const lastId = '1000011';
 
