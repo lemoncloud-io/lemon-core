@@ -162,6 +162,20 @@ iamRoleStatements:
 | `mupdateItem` | Batch update (max 25 items/request) | `BatchWriteItem` |
 | `saveAllUpdates({ useBatch: true })` | AbstractProxy batch mode | `BatchWriteItem` |
 
+## 6. Consume `cores` from lemon-core (v4.3.0+)
+
+From `4.3.0`, the `src/cores/` template layer is embedded in lemon-core as `extended/cores` — import it instead of copying:
+
+```ts
+import { MyCoreService, MyCoreManager, MyCoreProxy, MyManagerProxy } from 'lemon-core';
+import { AbstractCRUDController, RestAPI, $createApi, $T } from 'lemon-core';
+```
+
+- The root `$T` now follows the extended semantics (`asLut`/`asMeta`/`BN`/`US`, `S2` trims) — same as what services already use via their copied `cores/commons`.
+- Not exported at root (name collision with the L1 layer): `onlyDefined`, `sourceToItem`, and the OS2-routed `$ES6`. If needed, deep-import `lemon-core/dist/extended/cores`. NOTE: the root `$ES6` remains the L1 (non-OS2) instance — switching imports from your copied `cores/` to the root changes which `$ES6` you get.
+- Your existing copied `src/cores/` keeps working as-is — migration is optional: delete the copy, switch imports to `lemon-core` (or the deep path for the 3 symbols above), then run `npm run fields:gen`.
+- Section "4. Update src/cores" above applies to pre-4.3 versions only.
+
 ---
 
 ## At-a-Glance Checklist
