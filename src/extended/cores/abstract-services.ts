@@ -216,9 +216,16 @@ export abstract class MyCoreService<
     /**
      * check if using useSession from environ.
      */
-    public isUseSssion(): boolean {
+    public isUseSession(): boolean {
         const USE_SESSION = $T.S($U.env('USE_SESSION', '')).toLowerCase();
         return USE_SESSION && USE_SESSION != '0' && USE_SESSION != 'false' ? true : false;
+    }
+
+    /**
+     * @deprecated typo kept for 1 minor as a non-breaking alias — use `isUseSession()` instead. (cores-migration P1, decision #2)
+     */
+    public isUseSssion(): boolean {
+        return this.isUseSession();
     }
 
     /**
@@ -1440,7 +1447,7 @@ export class MyManagerProxy<
      */
     public canDo<T extends MyModel>(action: CanDoActionType, model?: T, options?: CanDoOptions): boolean {
         const errScope = options?.errScope ?? `canDo(${action ?? ''}:${this.$mgr.type}/${model?.id ?? '-'})`;
-        const useSession = options?.useSession ?? this.proxy.service.isUseSssion();
+        const useSession = options?.useSession ?? this.proxy.service.isUseSession();
         const throwable = options?.throwable ?? true;
         const context = options?.context;
 
@@ -2609,3 +2616,4 @@ export const _OS2 = (options?: OS2Option): OS2Instance => {
 const hasOS2 = $U.env('OS2_ENDPOINT', '').startsWith('https://');
 export const $OS2 = _OS2();
 export const $ES6 = hasOS2 ? _OS2() : _ES6();
+

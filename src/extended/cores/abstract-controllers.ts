@@ -143,7 +143,7 @@ export abstract class AbstractCRUDController<
         // _log(this.logNS, `! STAGE =`, $U.env('STAGE'));
         const STAGE = $U.env('STAGE');
         if (STAGE === 'local') return false;
-        const useSession = this.options?.useSession ?? this.service.isUseSssion();
+        const useSession = this.options?.useSession ?? this.service.isUseSession();
         return useSession;
     }
 
