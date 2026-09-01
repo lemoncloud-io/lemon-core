@@ -730,24 +730,26 @@ describe('AbstractCRUDController', () => {
             `404 NOT FOUND - _id:TT:test:#811c9dc5.0`,
         );
 
-        //NOTE - develop DummyStorage.increment() lacks 4.2.x normalize('' -> null); expects '' here (4.2.7: null).
+        //NOTE - measured (2026-09-01, cores-migration P1): develop's DummyStorageService._incrementBody()
+        //NOTE - now routes through DynamoService.normalize(), so `''` normalizes to `null` here.
         expect2(await fxLookup('').catch(GETERR)).toEqual({
             _id: 'TT:test:#811c9dc5.0',
             id: `#811c9dc5.0`,
             type: '#test',
             stereo: '#',
-            meta: { hash: '811c9dc5', text: '' },
+            meta: { hash: '811c9dc5', text: null },
             lock: 1,
             next: initialNo + 1,
             ...$ts,
         });
-        //NOTE - develop DummyStorage.increment() lacks 4.2.x normalize('' -> null); expects '' here (4.2.7: null).
+        //NOTE - measured (2026-09-01, cores-migration P1): same DynamoService.normalize() routing as above,
+        //NOTE - `''` normalizes to `null` here too.
         expect2(await fxSha256('').catch(GETERR)).toEqual({
             _id: 'TT:test:#1B2M2Y8AsgTpgAmY7PhCfg==.0',
             id: '#1B2M2Y8AsgTpgAmY7PhCfg==.0',
             type: '#test',
             stereo: '#',
-            meta: { hash: '1B2M2Y8AsgTpgAmY7PhCfg==', text: '' },
+            meta: { hash: '1B2M2Y8AsgTpgAmY7PhCfg==', text: null },
             lock: 1,
             next: initialNo + 2,
             ...$ts,
