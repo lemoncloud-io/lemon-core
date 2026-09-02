@@ -34,8 +34,9 @@ The string branch is a two-stage pipeline:
    is the *executing machine's* offset (`utilities.ts:204-206`, `:255`).
 
 Because step 2 mixes a local-time constructor with a machine-tzo-based shift, the two effects
-algebraically cancel: **the resulting UTC instant (epoch) is independent of the machine's own
-timezone**, and is exactly `Date.UTC(y, m-1, d, h, i, s) − timeZone_hours × 3600000` (with
+algebraically cancel **as long as the machine's offset is the same at call time and at the target
+date (non-DST zones — see the DST caveat below the format table)**: the resulting UTC instant
+(epoch) is then independent of the machine's own timezone, and is exactly `Date.UTC(y, m-1, d, h, i, s) − timeZone_hours × 3600000` (with
 `timeZone` treated as `0` when omitted). This was derived from source and confirmed by
 re-running the identical script under both `TZ=Asia/Seoul` and `TZ=UTC` and observing identical
 `.toISOString()` output for every case below (verified by execution 2026-09-02). What *does*
@@ -45,7 +46,7 @@ which is exactly what `utilities.spec.ts:59-79`'s skipped test compares against.
 
 ### Format table (all rows: `timeZone` omitted, i.e. `?? 0`)
 
-| Input | Format matched | Normalized string | Result `.toISOString()` (machine-invariant) | Result `.toString()` on **this machine (KST)** | Evidence |
+| Input | Format matched | Normalized string | Result `.toISOString()` (invariant across **non-DST** zones — see DST caveat) | Result `.toString()` on **this machine (KST)** | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | `'1978-12-01'` | `YYYY-MM-DD` | `'1978-12-01 12:00:00'` | `1978-12-01T12:00:00.000Z` | `Fri Dec 01 1978 21:00:00 GMT+0900` | `utilities.ts:208-210` — verified by execution 2026-09-02 |
 | `'79-11-26'` | `[4-9][0-9]-MM-DD` (2-digit, → `19xx`) | `'1979-11-26 12:00:00'` | `1979-11-26T12:00:00.000Z` | `Mon Nov 26 1979 21:00:00 GMT+0900` | `utilities.ts:211-213` — verified by execution 2026-09-02 |
@@ -59,6 +60,16 @@ which is exactly what `utilities.spec.ts:59-79`'s skipped test compares against.
 
 Every date-only format fills `12:00:00` — confirmed for all 4 date-only formats above
 (`utilities.ts:210`, `:213`, `:216`, `:227`).
+
+> **DST caveat (added 2026-09-02, coordinator).** The "invariant" column holds only on machines
+> whose UTC offset does not change between *now* and the *target date* — i.e. non-DST zones such
+> as `Asia/Seoul` and `UTC`, which is where the rows above were verified. `utilities.ts:205` takes
+> `tzo` from `new Date().getTimezoneOffset()` (call time), not from the constructed target date, so
+> on a DST zone the result shifts by the DST delta when the two differ: under
+> `TZ=America/New_York` on 2026-09-02 (EDT) the same `'1978-12-01'` (EST) input yields
+> `1978-12-01T13:00:00.000Z`, one hour later than the table. Preserved defect — see Known defects
+> item 5. Characterization tests (U2) compute the expected instant with the same call-time offset
+> so they pass on any machine while still pinning this behavior.
 
 ### `timeZone` explicit vs. omitted (input `'1978-12-01'`)
 
@@ -138,6 +149,12 @@ separate, explicit decision.
 4. **`Date` input returns the same object reference**, not a copy (`utilities.ts:259-260`).
    Callers that later mutate the returned Date (e.g. `.setSeconds(...)`) will mutate the
    caller's original object too.
+5. **Offset is sampled at call time, not at the target date** (`utilities.ts:205`,
+   `now.getTimezoneOffset()` where `now = new Date()`). On DST zones this makes string parsing
+   off by the DST delta whenever the current date and the target date are on different sides of a
+   DST transition (verified: `TZ=America/New_York`, `'1978-12-01'` → 13:00Z instead of 12:00Z).
+   Invisible on `Asia/Seoul`/`UTC`. Preserved; fixing it means reading the offset from the
+   constructed date instead.
 
 ## Not covered by existing spec
 
