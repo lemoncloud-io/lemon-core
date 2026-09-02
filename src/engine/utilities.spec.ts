@@ -56,7 +56,24 @@ describe(`core/utilities.ts`, () => {
     });
 
     //* test datetime()
-    _it('check datetime()', async () => {
+    // 2026-09-02 U2: was skipped since expectations assumed local-noon; current behavior
+    // (utilities.ts:206, timeZone ?? 0) reads omitted-timeZone input as UTC — see
+    // docs/specs/utilities/dt.md. Re-enabled (`_it` -> `it`) with expectations rewritten
+    // against the UTC instant the source actually produces, instead of comparing against a
+    // locally-constructed `new Date(...)` (which is exactly what made this fail by 9h on this
+    // KST machine, per dt.md Known defect #1). The prior
+    // `new Date().getTimezoneOffset() === -540` sanity check is dropped for the same reason —
+    // it hardcoded this (KST) machine's offset.
+    // 2026-09-02 U2 follow-up (coordinator): a first pass compared against fixed
+    // `.toISOString()` literals, which itself only holds on non-DST machines — `utilities.ts:205`
+    // takes the offset from call time, not the target date, so on a DST machine (e.g.
+    // `TZ=America/New_York`) the target date's own offset can differ from "today"'s by up to
+    // 1h. Expectations below are computed via `expectedUtcForLocalString(...)` (mirrors that
+    // same call-time-vs-target-date offset formula) instead of literals, so this test is
+    // machine-TZ-independent: the correction is 0 on non-DST machines (matching dt.md's table
+    // values exactly) and non-zero on DST machines, preserving `utilities.ts:205`'s behavior
+    // everywhere rather than only where it happens to look correct.
+    it('check datetime()', async () => {
         const { $U } = instance();
         const date1 = '79-11-26';
         const date2 = '19-11-26';
@@ -66,16 +83,27 @@ describe(`core/utilities.ts`, () => {
         const date6 = '19781201';
         const date7 = '19781201 1234';
 
-        expect2(() => new Date().getTimezoneOffset()).toEqual(-540);
+        const expectedUtcForLocalString = (
+            y: number,
+            m: number,
+            d: number,
+            h: number,
+            i: number,
+            s: number,
+        ): number => {
+            const todayOffset = new Date().getTimezoneOffset();
+            const targetOffset = new Date(y, m, d, h, i, s).getTimezoneOffset();
+            return Date.UTC(y, m, d, h, i, s) - (todayOffset - targetOffset) * 60 * 1000;
+        };
 
-        expect2($U.dt(date3)).toEqual(new Date(1978, 11, 1, 12, 0, 0));
-        expect2($U.dt(date4)).toEqual(new Date(1978, 11, 1, 12, 34, 0));
-        expect2($U.dt(date5)).toEqual(new Date(1978, 11, 1, 12, 34, 20));
-        expect2($U.dt(date6)).toEqual(new Date(1978, 11, 1, 12, 0, 0));
-        expect2($U.dt(date7)).toEqual(new Date(1978, 11, 1, 12, 34, 0));
+        expect2($U.dt(date3).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 0, 0));
+        expect2($U.dt(date4).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 34, 0));
+        expect2($U.dt(date5).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 34, 20));
+        expect2($U.dt(date6).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 0, 0));
+        expect2($U.dt(date7).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 34, 0));
 
-        expect2($U.dt(date1)).toEqual(new Date(1979, 10, 26, 12, 0, 0));
-        expect2($U.dt(date2)).toEqual(new Date(2019, 10, 26, 12, 0, 0));
+        expect2($U.dt(date1).getTime()).toEqual(expectedUtcForLocalString(1979, 10, 26, 12, 0, 0));
+        expect2($U.dt(date2).getTime()).toEqual(expectedUtcForLocalString(2019, 10, 26, 12, 0, 0));
     });
 
     //* test cryto()
