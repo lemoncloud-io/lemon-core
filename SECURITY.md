@@ -16,25 +16,10 @@ please upgrade before reporting an issue against an older version.
 
 ## Reporting a vulnerability
 
-**Contact:** {{SECURITY_CONTACT}}
-
-> Draft note: no security contact has been designated yet. Steve needs to
-> pick one of the options below (or supply an address/handle) before this
-> file can be published. Do not fill in a placeholder email on your own.
-
-Choose one reporting channel (pick one, don't offer both — a single channel
-avoids reports getting lost):
-
-- **Option A — GitHub Private Vulnerability Reporting.** Enable
-  "Private vulnerability reporting" in each repo's Settings → Security (this
-  also flips `isSecurityPolicyEnabled` to `true`, currently `false` on all
-  three repos per `gh repo view`). Reporters use the repo's Security tab
-  directly; no email address needs to be published. Requires GitHub org/repo
-  admin action outside this template's scope.
-- **Option B — a dedicated email alias**, e.g. `security@lemoncloud.io` or
-  `{{SECURITY_CONTACT}}` (placeholder — replace with the real address once
-  designated). Simpler to stand up but means an inbox someone has to monitor,
-  and the address becomes public in the repo.
+**Contact:** use **GitHub Private Vulnerability Reporting** — open the repository's
+**Security** tab → **Report a vulnerability**. Reports go privately to the maintainers; no
+email is required. (Repo admins: this requires "Private vulnerability reporting" to be
+enabled under Settings → Code security — see the note at the end of this file.)
 
 Please do not report security vulnerabilities through public GitHub issues.
 
@@ -47,16 +32,20 @@ When reporting, please include:
 
 ## Response SLA
 
-Pick one (not adopted yet — this is a proposal for B1 re-review):
+- **Acknowledgement:** within **72 hours** of the report.
+- **Triage decision** (accepted / declined / needs more information): within **7 days**.
 
-- **Option 1 — committed SLA:** acknowledgment within 72 hours, triage
-  outcome (accepted / declined / needs more info) within 7 days.
-- **Option 2 — best-effort:** no committed timeline; maintainers respond
-  "as soon as reasonably possible." Simpler to honor for a small team, weaker
-  signal to security researchers.
+If we miss these windows, please follow up on the same report thread.
 
 ## Disclosure
 
 Once a fix is available, we will publish a patched release and credit the
 reporter (unless they prefer to remain anonymous) in the release notes /
 `CHANGELOG.md` (or the README `## VERSION INFO` table, per repo convention).
+
+---
+
+*Maintainer note (remove before publishing if preferred): Private vulnerability reporting is
+currently **disabled** on this repository (`isSecurityPolicyEnabled: false` as of 2026-09-02).
+Enable it under Settings → Code security and analysis before this policy goes live, otherwise
+the Security tab will not show the report form.*
