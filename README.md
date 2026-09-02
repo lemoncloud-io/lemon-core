@@ -45,13 +45,138 @@ const queueId = await service.enqueue(protocol, callback, 30);
 
 ## Usage
 
-1. install `lemon-core` module (>= 2.1.0).
+### 1. Install
 
 ```sh
 npm install lemon-core --save
 ```
 
-TODO - TBD in detail.
+Requires Node `>=24.0.0` (`package.json#engines.node`).
+
+### 2. Minimal bootstrap — engine initialization
+
+Importing `lemon-core` creates the `$engine` singleton immediately at module
+load time (not lazily):
+
+```ts
+// src/engine/index.ts:23
+//   export const $engine: LemonEngine = buildEngine(global, { env: process.env });
+// src/engine/index.ts:26,30-32
+//   export const $U = $engine.U;
+//   export const _log = $engine.log; export const _inf = $engine.inf; export const _err = $engine.err;
+import { $U, _log, _inf, _err } from 'lemon-core';
+
+_inf('lemon-core loaded, NS=', $U.env('NS', 'TT'));
+```
+
+The root package also exposes a default export that bundles the four
+top-level groups (`engine`, `cores`, `tools`, `controllers`):
+
+```ts
+// src/index.ts:68 — export default { engine, cores, tools, controllers };
+import $lemon from 'lemon-core';
+
+await $lemon.engine.initialize(); // resolves once every registered module's initModule() settles
+```
+
+### 3. Engine module registration — the "3-piece set"
+
+Any module that hangs off `$engine` (built-in or your own) follows the same
+contract: register in the constructor, name itself, expose an init level.
+The built-in `ProtocolModule` is the smallest real example:
+
+```ts
+// src/cores/protocol/index.ts:16-34
+// export class ProtocolModule implements EngineModule {
+//     public constructor(engine?: LemonEngine) {
+//         this.engine = engine || $engine;
+//         if (this.engine) this.engine.register(this);      // (1) register
+//     }
+//     public readonly service: ProtocolService = new MyProtocolService();
+//     public getModuleName = () => 'protocol';               // (2) name
+//     public async initModule(level?: number): Promise<number> { // (3) init level
+//         const $conf = this.engine.module<ConfigModule>('config');
+//         if (level === undefined) return $conf ? (await $conf.initModule()) + 1 : 1;
+//     }
+// }
+// export default new ProtocolModule();   // <- import-time instance, not lazy
+```
+
+`cores/index.ts:33` re-exports it as part of the `cores` default group
+(`export default { aws, config, lambda, protocol }`), which is why the
+existing `$engine.cores.protocol.service` example below resolves.
+
+### 4. Manager / proxy registration — inter-service call example
+
+`ProtocolService` (registered above) is the mechanism for calling another
+micro-service — synchronously via `execute()`, or asynchronously via
+`notify()` / `enqueue()` / `broadcast()`:
+
+```ts
+// import path verified: root barrel re-exports src/cores/core-services.ts
+// (ProtocolParam: :99, CallbackParam: :88, ProtocolService: :150)
+import $engine, { ProtocolParam, ProtocolService, CallbackParam } from 'lemon-core';
+
+const service: ProtocolService = $engine.cores.protocol.service;
+const protocol: ProtocolParam = service.fromURL(context, 'api://lemon-hello-api/hello/echo', param, body);
+const callback: CallbackParam = { type: 'hooks', id: `${id}` };
+// queue protocol in 30 seconds delayed.
+const queueId = await service.enqueue(protocol, callback, 30);
+```
+
+For model persistence, lemon-core's storage/model layer (see the class table
+below) is meant to be **subclassed**, not used directly — `AbstractManager`
+and `MyCoreService` are abstract:
+
+```ts
+// class contracts (all exported from the root barrel):
+// - CoreService            src/extended/abstract-service.ts:115  (table/ns/idName, makeStorageService())
+// - AbstractManager        src/cores/storage/model-manager.ts:23  (storage owner; must implement
+//                          `protected abstract prepareDefault($def: T): T` — model-manager.ts:66)
+// - MyCoreService          src/extended/cores/abstract-services.ts:171
+//                          (adds `guardProxy(context, cb)` — auto-saves via `proxy.saveAllUpdates()`
+//                          on both success and throw — abstract-services.ts:189-202)
+// - MyCoreProxy            src/extended/cores/abstract-services.ts:912
+// - ManagerProxy           src/extended/abstract-service.ts:399  (auto-registers via `proxy.register(this)`
+//                          in its own constructor — abstract-service.ts:406)
+// - AbstractProxy          src/extended/abstract-service.ts:652  (container; `saveAllUpdates()` persists
+//                          every registered ManagerProxy's changes in one call)
+// - NextContext            re-exported from the `lemon-model` package via
+//                          `export * from 'lemon-model';` — src/cores/index.ts:12
+
+class MyService extends MyCoreService<MyModel, 'my-type', MyProxy> {
+    createProxy(context: NextContext): MyProxy {
+        return new MyProxy(context, this);
+    }
+}
+
+// typical call site:
+const result = await service.guardProxy(context, async proxy => {
+    // read/modify via proxy.<manager>.get()/.set() ...
+    return something;
+}); // saveAllUpdates() runs automatically, even if the callback throws
+```
+
+This is a skeleton, not a runnable app — see the reference links below for a
+worked model + manager + proxy example.
+
+### 5. Run tests
+
+```sh
+LS=1 vitest run
+```
+
+(exact value of `package.json#scripts.test`, 2026-09-02)
+
+### 6. Reference
+
+- Full `ProtocolService` surface: `src/cores/core-services.ts`.
+- Storage/model layer: `src/extended/abstract-service.ts`,
+  `src/extended/cores/abstract-services.ts`, `src/cores/storage/model-manager.ts`.
+- Generated API docs: *(typedoc output — link TBD, see B1 re-review doc,
+  item 5 "API 문서 공개 전략"; current CI publishes to both an S3 bucket and
+  `gh-pages` with no README link — not resolved in this draft)*.
+- `docs/header-identity-token.md` (existing hand-written doc in this repo).
 
 ## Contribution
 
