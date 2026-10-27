@@ -10,7 +10,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import _ from 'lodash';
+import { isEmpty, merge } from './lang';
 import * as expressions from './expressions';
 import * as utils from './utils';
 
@@ -20,7 +20,7 @@ internals.keyCondition = function (keyName: any, schema: any, scan: any) {
     const f = function (operator: any) {
         return function (/*values*/) {
             const copy = [].slice.call(arguments);
-            const existingValueKeys = _.keys(scan.request.ExpressionAttributeValues);
+            const existingValueKeys = Object.keys(scan.request.ExpressionAttributeValues ?? {});
             const args = [keyName, operator, existingValueKeys].concat(copy);
             const cond = expressions.buildFilterExpression.apply(null, args);
             return scan.addFilterCondition(cond);
@@ -68,22 +68,18 @@ class Scan {
     };
 
     public addFilterCondition = function (condition: any) {
-        const expressionAttributeNames = _.merge({}, condition.attributeNames, this.request.ExpressionAttributeNames);
-        const expressionAttributeValues = _.merge(
-            {},
-            condition.attributeValues,
-            this.request.ExpressionAttributeValues,
-        );
+        const expressionAttributeNames = merge({}, condition.attributeNames, this.request.ExpressionAttributeNames);
+        const expressionAttributeValues = merge({}, condition.attributeValues, this.request.ExpressionAttributeValues);
 
-        if (!_.isEmpty(expressionAttributeNames)) {
+        if (!isEmpty(expressionAttributeNames)) {
             this.request.ExpressionAttributeNames = expressionAttributeNames;
         }
 
-        if (!_.isEmpty(expressionAttributeValues)) {
+        if (!isEmpty(expressionAttributeValues)) {
             this.request.ExpressionAttributeValues = expressionAttributeValues;
         }
 
-        if (_.isString(this.request.FilterExpression)) {
+        if (typeof this.request.FilterExpression === 'string') {
             this.request.FilterExpression = this.request.FilterExpression + ' AND (' + condition.statement + ')';
         } else {
             this.request.FilterExpression = '(' + condition.statement + ')';
@@ -99,23 +95,20 @@ class Scan {
     };
 
     public attributes = function (attrs: any) {
-        if (!_.isArray(attrs)) {
+        if (!Array.isArray(attrs)) {
             attrs = [attrs];
         }
 
-        const expressionAttributeNames = _.reduce(
-            attrs,
-            function (result: any, attr: any) {
-                const path = '#' + attr;
-                result[path] = attr;
+        //* `#attr` → `attr` name map for the projection.
+        const expressionAttributeNames = attrs.reduce(function (result: any, attr: any) {
+            const path = '#' + attr;
+            result[path] = attr;
 
-                return result;
-            },
-            {},
-        );
+            return result;
+        }, {});
 
-        this.request.ProjectionExpression = _.keys(expressionAttributeNames).join(',');
-        this.request.ExpressionAttributeNames = _.merge(
+        this.request.ProjectionExpression = Object.keys(expressionAttributeNames).join(',');
+        this.request.ExpressionAttributeNames = merge(
             {},
             expressionAttributeNames,
             this.request.ExpressionAttributeNames,
@@ -131,7 +124,7 @@ class Scan {
     };
 
     public returnConsumedCapacity = function (value: any) {
-        if (_.isUndefined(value)) {
+        if (value === undefined) {
             value = 'TOTAL';
         }
 
@@ -191,8 +184,9 @@ class Scan {
         return this;
     };
 
+    //* the request with `TableName`, as a deep copy (nested key and value maps are not shared).
     public buildRequest = function () {
-        return _.merge({}, this.request, { TableName: this.table.tableName() });
+        return merge({}, this.request, { TableName: this.table.tableName() });
     };
 }
 

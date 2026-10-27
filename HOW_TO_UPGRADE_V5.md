@@ -1,6 +1,6 @@
 # UPGRADE GUIDE: lemon-core V4 to V5
 
-> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging).
+> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging) and B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed).
 
 ---
 
@@ -108,6 +108,128 @@ Fix the install so there is one copy. Two copies still mean two sets of globals.
 
 ---
 
+## 6. Dependencies removed: `request`, `lodash`, `ioredis`, `memcached` (B2-a)
+
+lemon-core v5 no longer installs `request`, `lodash`, `ioredis`, `memcached` (and `@types/ioredis`). If your service imports one of them directly, add it to **your own** `package.json`. Check with:
+
+```bash
+grep -rn "from 'request'\|from 'lodash'\|from 'ioredis'\|from 'memcached'\|require('request')\|require('lodash')" src
+```
+
+### 6.1 `CacheService.create()` default: Redis → in-process
+
+| | v4 | v5 |
+| --- | --- | --- |
+| `CacheService.create()` (no `type`) | Redis client to `CACHE_ENDPOINT` (or `localhost:6379`) | in-process cache (`node-cache`), per process |
+| `CacheOptions.type` | `'memcached' \| 'redis'` | `'node'` (the only value) |
+| `CacheOptions.endpoint` | cache server url | removed |
+| `CacheOptions.backend` | - | new: a `CacheBackend` you provide |
+| `CacheService.create({ type: 'redis' })` | Redis | throws `@type [redis] is invalid (inject options.backend)` |
+| `AbstractProxy.cache` with `CACHE_ENDPOINT=redis:...` | one Redis connection per proxy | not created (`undefined`); `CACHE_ENDPOINT` is not read |
+
+* This is a **breaking** change for a service that calls `CacheService.create()` without arguments and expects a shared (cross-process) cache. An in-process cache is not shared between Lambda instances.
+* `DummyCacheService` is unchanged.
+
+### 6.2 Inject your own cache backend
+
+`CacheBackend` and `ItemEntry` are exported. Implement `CacheBackend` with the client of your choice and pass it as `backend`. lemon-core keeps no Redis code; the client is a dependency of your service.
+
+```ts
+import { CacheService, CacheBackend, ItemEntry } from 'lemon-core';
+
+const cache = CacheService.create({ backend: myBackend, ns: 'my-service:' });
+```
+
+Sketch of a consumer-side Redis backend (your service installs `ioredis`; error handling and `getset`/`pop` left out):
+
+```ts
+import IORedis from 'ioredis';
+import { CacheBackend, ItemEntry } from 'lemon-core';
+
+/** CacheBackend over ioredis: values are JSON strings, ttl in seconds (0 = no timeout). */
+export class RedisBackend implements CacheBackend {
+    public readonly name = 'redis';
+    private readonly redis: IORedis;
+    public constructor(endpoint: string, private readonly defTTL = 0) {
+        this.redis = new IORedis(endpoint);
+    }
+    /** set one value with the given or default ttl */
+    public async set<T>(key: string, val: T, ttl = this.defTTL) {
+        const text = JSON.stringify(val);
+        const res = ttl > 0 ? await this.redis.set(key, text, 'EX', ttl) : await this.redis.set(key, text);
+        return res === 'OK';
+    }
+    /** get one value (undefined if missing) */
+    public async get<T>(key: string): Promise<T | undefined> {
+        const text = await this.redis.get(key);
+        return text === null ? undefined : JSON.parse(text);
+    }
+    /** set many values in one transaction */
+    public async mset<T>(entries: ItemEntry<T>[]) {
+        const multi = this.redis.multi();
+        entries.forEach(({ key, val, ttl = this.defTTL }) =>
+            ttl > 0 ? multi.set(key, JSON.stringify(val), 'EX', ttl) : multi.set(key, JSON.stringify(val)),
+        );
+        return !!(await multi.exec());
+    }
+    /** get many values as a key map (missing keys are left out) */
+    public async mget<T>(keys: string[]) {
+        const texts = await this.redis.mget(keys);
+        return keys.reduce((M: { [key: string]: T }, key, i) => {
+            if (texts[i] !== null) M[key] = JSON.parse(texts[i]);
+            return M;
+        }, {});
+    }
+    /** add to a number value */
+    public async incr(key: string, increment: number) {
+        return this.redis.incrbyfloat(key, increment).then(Number);
+    }
+    /** list keys (use SCAN for large key spaces) */
+    public async keys() {
+        return this.redis.keys('*');
+    }
+    /** whether the key exists */
+    public async has(key: string) {
+        return (await this.redis.exists(key)) > 0;
+    }
+    /** delete the key */
+    public async del(key: string) {
+        return (await this.redis.del(key)) === 1;
+    }
+    /** set the ttl in seconds */
+    public async expire(key: string, ttl: number) {
+        return (await this.redis.expire(key, ttl)) === 1;
+    }
+    /** remaining ttl in milliseconds (0 = no timeout, undefined = missing) */
+    public async ttl(key: string) {
+        const ms = await this.redis.pttl(key);
+        return ms === -2 ? undefined : ms === -1 ? 0 : ms;
+    }
+    /** close the connection */
+    public async close() {
+        await this.redis.quit();
+    }
+}
+```
+
+### 6.3 `RedisStorageService` removed
+
+`RedisStorageService`, `DummyRedisStorageService` and `RedisOptions` are removed from the public API. Use a `StorageService` over DynamoDB (`DynamoStorageService`), or keep a copy of the v4 class in your service together with your own `ioredis` dependency.
+
+### 6.4 HTTP proxies use the built-in `fetch`
+
+`createHttpWebProxy`, `createSigV4Proxy` and `$X.createHttpSearchProxy` (and so `APIService`, `HttpStorageService` and the OS2 FGAC data path) now send requests with the Node built-in `fetch` instead of `request`. Signatures and results are unchanged:
+
+* Success is still `200` or `201` only. Any other status (including `204`) rejects as before.
+* Error messages keep the v4 formats (`404 NOT FOUND - ...`, `400 BAD REQUEST - ...`, `<code> <status text> - ...`).
+* A network error now rejects with a message that starts with the error code, for example `ECONNREFUSED connect ECONNREFUSED 127.0.0.1:8080` or `ENOTFOUND ...`. Code that checks `GETERR(e).includes('ECONNREFUSED')` keeps working.
+* `json` bodies are serialized once; with SigV4 the signed string is exactly the sent string.
+* A `GET`/`HEAD` request never sends a body (`fetch` does not allow it; SigV4 already signed an empty body for `GET`).
+* **Timeout.** lemon-core sets no timeout, as before. The `fetch` implementation (undici) has a default of **300 seconds** for headers and for the body. A Lambda timeout is usually shorter, so this rarely matters.
+* `fetch` asks for compressed responses (`accept-encoding`) and decompresses them. Results are the same.
+
+---
+
 ## At-a-Glance Checklist
 
 - [ ] Node.js 24 (`.nvmrc`, local runtime)
@@ -115,3 +237,6 @@ Fix the install so there is one copy. Two copies still mean two sets of globals.
 - [ ] No directory deep imports (`lemon-core/dist/<dir>`); plan to remove file deep imports before v6
 - [ ] Test helpers from `lemon-core/testing` (optional in v5)
 - [ ] `npm ls lemon-core` shows one copy
+- [ ] Direct imports of `request`, `lodash`, `ioredis`, `memcached` are in your own `package.json`
+- [ ] `CacheService.create()` without `backend` is in-process; inject a `CacheBackend` for a shared cache
+- [ ] No `RedisStorageService` / `DummyRedisStorageService` / `RedisOptions`

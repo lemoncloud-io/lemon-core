@@ -134,7 +134,9 @@ export const do_serialize = <T, U>(
 class MyEngineModules implements EngineModules {
     private mods: EngineModule[] = [];
     private inited: boolean = false;
+    /** `notice` prints the skipped duplicate registrations (optional). */
     public constructor(private readonly notice?: GeneralFuntion) {}
+    /** register a module once per name; a later module of the same name is ignored. */
     public register(mod: EngineModule) {
         // console.info(`! mod.reg(${mod.getModuleName()})..`);
         const name = mod.getModuleName();
@@ -238,6 +240,7 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     const createEngine = (): LemonEngine => {
         const $engine: LemonEngine = new (class extends MyEngineModules implements LemonEngine {
             public constructor() {
+                //* report ignored duplicate module registrations via `_inf`.
                 super(_inf);
                 this.U = new Utilities(this);
             }
