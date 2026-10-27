@@ -1,0 +1,6 @@
+# B2-a: Redis storage removed, cache backend types exported (K4)
+-RedisOptions
+-RedisStorageService
+-DummyRedisStorageService
++CacheBackend
++ItemEntry

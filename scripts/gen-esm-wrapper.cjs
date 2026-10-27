@@ -24,13 +24,16 @@ const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
 
+// package root (one level above `scripts/`).
 const root = path.resolve(__dirname, '..');
 
+// wrapper files to generate: output, source `.d.ts`, and the CJS file each re-exports.
 const TARGETS = [
     { out: 'dist/esm/index.mjs', dts: 'dist/index.d.ts', cjs: '../index.js' },
     { out: 'dist/esm/testing.mjs', dts: 'dist/common/test-helper.d.ts', cjs: '../common/test-helper.js' },
 ];
 
+// sort by code unit, so the order does not depend on the locale.
 const byCode = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
@@ -43,6 +46,7 @@ const readValueNames = dtsFile => {
     const source = program.getSourceFile(dtsFile);
     const moduleSymbol = source && checker.getSymbolAtLocation(source);
     if (!moduleSymbol) throw new Error(`no module symbol for ${path.relative(root, dtsFile)}`);
+    // true if the export (or the symbol it aliases) is a runtime value.
     const isValue = sym => {
         const target = sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym;
         return (target.flags & ts.SymbolFlags.Value) !== 0;
@@ -71,6 +75,7 @@ const render = (names, cjsPath, from) => {
     return lines.join('\n') + '\n';
 };
 
+// render every target from its `.d.ts` (throws if the build is missing).
 const build = () =>
     TARGETS.map(t => {
         const dts = path.join(root, t.dts);
@@ -79,9 +84,11 @@ const build = () =>
         return { ...t, names, text: render(names, t.cjs, t.dts) };
     });
 
+// write the wrappers, or with `--check` compare two renders and the files on disk; returns the exit code.
 const main = () => {
     const check = process.argv.slice(2).includes('--check');
     const first = build();
+    // write mode: write each wrapper and print its name count.
     if (!check) {
         first.forEach(r => {
             const file = path.join(root, r.out);
@@ -93,6 +100,7 @@ const main = () => {
         });
         return 0;
     }
+    // check mode: render again and compare with the first render and the file on disk.
     const second = build();
     let bad = 0;
     first.forEach((r, i) => {
@@ -107,6 +115,7 @@ const main = () => {
     return bad ? 1 : 0;
 };
 
+// run as a CLI only (the module can also be required for its helpers).
 if (require.main === module) {
     try {
         process.exit(main());

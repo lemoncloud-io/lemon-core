@@ -14,11 +14,15 @@
  */
 import { createRequire } from 'node:module';
 
+// CJS `require` for this ESM file, to load the same package both ways.
 const require = createRequire(import.meta.url);
+// failed check names (with details).
 const fails = [];
+// record a failure when `ok` is false.
 const check = (name, ok, info = '') => {
     if (!ok) fails.push(`${name}${info ? ` (${info})` : ''}`);
 };
+// true if both key lists hold the same names.
 const sameSet = (a, b) => a.length === b.length && a.every(k => b.includes(k));
 
 //* 1. root: ESM import vs CJS require
@@ -45,6 +49,7 @@ for (const name of ['aws', 'config', 'protocol', 'lambda']) {
 }
 
 //* 3. sub-paths: import() and require() resolve
+// sub-path entries declared in the `exports` map.
 const SUBPATHS = [
     'lemon-core/testing',
     'lemon-core/dist/environ',
@@ -80,6 +85,7 @@ for (const p of SUBPATHS) {
 const testing = await import('lemon-core/testing');
 check('testing.expect2 === cjs.expect2', typeof testing.expect2 === 'function' && testing.expect2 === cjs.expect2);
 
+//* 5. report: print each failure and exit 1, else print the name count.
 if (fails.length) {
     fails.forEach(f => console.error(`! esm-smoke FAIL: ${f}`));
     process.exit(1);

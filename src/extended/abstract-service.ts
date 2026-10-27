@@ -46,7 +46,7 @@ import { GETERR, NUL404, onlyDefined } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
 import { CrendentialForAWS } from '../environ';
-import REQUEST from 'request';
+import { fetchProxyBody, isJsonBody, toPayload } from '../lib/http-fetch';
 import queryString from 'query-string';
 import elasticsearch from '@elastic/elasticsearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
@@ -657,25 +657,20 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
     public readonly context: NextContext;
     /** (internal) backend-service */
     public readonly service: T;
-    /** (internal) cache service instance */
+    /** (internal) cache service instance (v5: no longer created from `CACHE_ENDPOINT`, so `undefined` unless a subclass sets it) */
     public readonly cache?: CacheService;
 
     /**
      * constructor of proxy.
      * @param service user service instance
      * @param parrallel parrallel count (default 2)
-     * @param cacheScope prefix of cache-key (like `lemon:SS:` or `lemon:SS:user`)
+     * @param cacheScope prefix of cache-key (like `lemon:SS:` or `lemon:SS:user`). v5: kept for signature compat, unused.
      */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public constructor(context: NextContext, service: T, parrallel = 2, cacheScope?: string) {
         this.context = context;
         this.service = service;
         this.parrallel = parrallel;
-
-        // create cache
-        const endpoint = $U.env('CACHE_ENDPOINT', '');
-        if (cacheScope && endpoint.startsWith('redis:')) {
-            this.cache = CacheService.create({ type: 'redis', endpoint, ns: cacheScope });
-        }
     }
 
     /**
@@ -1399,16 +1394,18 @@ const $X = {
                     (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
                     (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
                     (!query_string ? '' : '?' + query_string);
-                const request = REQUEST;
+                //* serialize the body once: the same string is signed and sent.
+                const json = isJsonBody($body);
+                const payload = toPayload($body, json);
                 const options: any = {
                     method,
                     uri: url,
                     headers: { ...headers },
-                    body: $body === null ? undefined : $body,
-                    json: typeof $body === 'string' ? false : true,
+                    body: payload,
+                    json,
                 };
 
-                //* build signed url
+                //* build signed url (the signed body is the exact `payload` string)
                 if (sigClient) {
                     const signedRequest = sigClient.signRequest({
                         method,
@@ -1417,7 +1414,7 @@ const $X = {
                             (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`),
                         queryParams: $param,
                         headers: options.headers,
-                        body: $body,
+                        body: payload,
                     });
                     options.headers = { ...options.headers, ...signedRequest.headers };
                     options.uri = signedRequest.url;
@@ -1437,45 +1434,10 @@ const $X = {
                 _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
                 _log(NS, '> options =', $U.json(options));
 
-                //* returns promise
-                return new Promise((resolve, reject) => {
-                    //* start request..
-                    request(options, function (error: any, response: any, body: any) {
-                        error && _err(NS, '>>>>> requested! err=', error);
-                        if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
-                        //* detect trouble.
-                        const statusCode = response.statusCode;
-                        const statusMessage = response.statusMessage;
-                        //* if not in success
-                        if (statusCode !== 200 && statusCode !== 201) {
-                            const msg = body ? GETERR(body) : `${statusMessage || ''}`;
-                            if (statusCode === 400 || statusCode === 404) {
-                                const title = `${
-                                    (statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'
-                                }`.toUpperCase();
-                                const message = msg.startsWith('404 NOT FOUND')
-                                    ? msg
-                                    : `${statusCode} ${title} - ${msg}`;
-                                return reject(new Error(message));
-                            }
-                            statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
-                            body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
-                            return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
-                        }
-                        //* try to parse body.
-                        try {
-                            if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
-                                body = JSON.parse(body);
-                            } else if (body && typeof body == 'string' && body.startsWith('[') && body.endsWith(']')) {
-                                body = JSON.parse(body);
-                            }
-                        } catch (e) {
-                            _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
-                        }
-                        //* ok! succeeded.
-                        resolve(body);
-                    });
-                }).then((res: any) => {
+                //* send via `fetch` (status check, error format and body parse in `http-fetch`)
+                const logger = { log: (...a: any[]) => _log(NS, ...a), err: (...a: any[]) => _err(NS, ...a) };
+                const req = { method, url: options.uri, headers: options.headers, payload, json };
+                return fetchProxyBody(req, logger).then((res: any) => {
                     if (resultKey && res && res[resultKey] !== undefined) return res[resultKey];
                     return res;
                 });
