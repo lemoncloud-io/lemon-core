@@ -4,3 +4,32 @@
 -DummyRedisStorageService
 +CacheBackend
 +ItemEntry
+# B2-b: OpenSearch client, ES names removed or renamed (K5) — SPEC § 3.4.2
+-$ES6
+-_ES6
+-elasticsearch
+-DummyElastic6Service
+-Elastic6Instance
+-ElasticIndexService
+-Elastic6Service
+-Elastic6QueryService
+-Elastic6Synchronizer
+-AbstractElastic6Instance
+-Elastic6ContructParams
+-Elastic6SearchParams
+-Elastic6Option
+-ElasticOption
+-Elastic6Item
+-ElasticItem
+# B2-b: version detection removed (SPEC § 3.4.1) — its two public types go with it
+-EngineType
+-ParsedVersion
++OS2ClientService
++OS2CoreService
++OS2QueryService
++OS2Synchronizer
++AbstractOS2Instance
++OS2ConstructParams
++OS2SearchParams
++OS2BaseOption
++OS2Item

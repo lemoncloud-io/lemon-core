@@ -1,27 +1,25 @@
 /**
  * `elastic6-service.ts`
- * - common service for elastic-search v6
+ * - common service for OpenSearch (file name kept; identifiers renamed in v5 B2-b)
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @date        2022-02-21 optimized error handler, and search.
  * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
+ * @date        2026-10-27 v5 B2-b: `@opensearch-project/opensearch` client, no doc `type`, no version detection.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { _log, _inf, _err, $U } from '../../engine/';
-import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
-import elasticsearch, { ApiResponse } from '@elastic/elasticsearch';
+import { Incrementable, SearchBody } from 'lemon-model';
+import type { Client, ApiResponse, ClientOptions } from '@opensearch-project/opensearch';
 import $hangul from './hangul-service';
-import { loadDataYml } from '../../tools';
 import { GETERR, waited } from '../../common/test-helper';
-import fs from 'fs';
-import path from 'path';
-const NS = $U.NS('ES6', 'green'); // NAMESPACE TO BE PRINTED.
+const NS = $U.NS('OS2', 'green'); // NAMESPACE TO BE PRINTED.
 
 // export shared one
-export { elasticsearch, $hangul };
+export { $hangul };
 export type SearchType = 'query_then_fetch' | 'dfs_query_then_fetch';
 
 // export type SearchResponse = elasticsearch.SearchResponse<any>;
@@ -34,21 +32,17 @@ export interface SearchResponse<T = any> {
 
 /**
  * options for construction.
+ * - v5: the doc-type and version options are removed (typeless OpenSearch only).
  */
-export interface ElasticOption {
+export interface OS2BaseOption {
     /**
-     * endpoint url of ES6
+     * endpoint url of OpenSearch
      */
     endpoint: string;
     /**
      * index-name
      */
     indexName: string;
-    /**
-     * document type (default as `_doc` in ES6)
-     * - it must be `_doc` since ES6.x
-     */
-    docType?: string;
     /**
      * id-name (optional if time-seriese)
      */
@@ -58,11 +52,6 @@ export interface ElasticOption {
      */
     timeSeries?: boolean;
     /**
-     * (optional) version of engine.
-     * - (default) 6.8
-     */
-    version?: string;
-    /**
      * fields to provide autocomplete(Search-as-You-Type) feature
      */
     autocompleteFields?: string[] | null;
@@ -70,7 +59,7 @@ export interface ElasticOption {
 /**
  * common type of item
  */
-export interface ElasticItem {
+export interface OS2Item {
     _id?: string;
     _version?: number;
     _score?: number;
@@ -105,30 +94,7 @@ interface ElasticSearchAllParams {
 }
 
 /**
- * type of search-engine type
- */
-export type EngineType = 'os' | 'es'; // openSearch | elasticSearch
-
-/**
- * parsed version with major and minor version numbers.
- */
-export interface ParsedVersion {
-    /** search-engine type */
-    engine?: EngineType;
-    /** major version */
-    major: number;
-    /** minor version */
-    minor: number;
-    /** patch version */
-    patch: number;
-    /** pre-release label (e.g., 'alpha', 'beta') */
-    prerelease?: string;
-    /** build metadata */
-    build?: string;
-}
-
-/**
- * parameters for Elasticsearch operations.
+ * parameters for document operations (typeless: no `type`).
  *
  * @template T type of the body content.
  */
@@ -145,13 +111,10 @@ interface ElasticParams<T extends object = any> {
      * body content.
      */
     body: T;
-    /**
-     * document type (optional).
-     */
-    type?: string;
 }
 /**
- * parameters for Elasticsearch search operations.
+ * parameters for search operations.
+ * - the client sends every non-path key as-is in the query string, so the key is `search_type`.
  *
  * @template T type of the body content.
  */
@@ -165,87 +128,88 @@ interface ElasticSearchParams<T extends object = any> {
      */
     body: T;
     /**
-     * document type (optional).
-     */
-    type?: string;
-    /**
      * search type
      * (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
      */
-    searchType: SearchType;
+    search_type?: SearchType;
 }
+/**
+ * the client package, required on the first client creation (not at import: it loads ~546 files).
+ * - `.Client` is read at call time, so a replaced `Client` on the cached module is honoured.
+ */
+let $opensearch: typeof import('@opensearch-project/opensearch') = null;
+// memoized loader of `@opensearch-project/opensearch`.
+const loadOpenSearch = (): typeof import('@opensearch-project/opensearch') => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    if (!$opensearch) $opensearch = require('@opensearch-project/opensearch');
+    return $opensearch;
+};
 /**
  * convert to string.
  */
 const _S = (v: any, def: string = '') =>
     typeof v === 'string' ? v : v === undefined || v === null ? def : typeof v === 'object' ? $U.json(v) : `${v}`;
 /** ****************************************************************************************************************
- *  Elastic Index Service
+ *  OS2 Client Service
  ** ****************************************************************************************************************/
 /**
- * abstarct class: `ElasticIndexService`
- * - abstract class for basic Elasticsearch CRUD operations
- * - common operations that are shared across different versions.
- * TODO - support `Elastic` and `OpenSearch`
+ * abstarct class: `OS2ClientService`
+ * - holds the options and the OpenSearch client.
+ * - the client is created on the first `client` access (not in the constructor).
  */
-export abstract class ElasticIndexService<T extends ElasticItem = any> {
-    protected _options: ElasticOption;
-    public readonly _client: elasticsearch.Client;
+export abstract class OS2ClientService<T extends OS2Item = any> {
+    protected _options: OS2BaseOption;
+    /** the client, created on first access of `client` */
+    protected _client?: Client;
 
     /**
-     * simple instance maker.
-     *
-     * ```js
-     * const { client } = ElasticIndexService.instance(endpoint);
-     * ```
-     *
-     * @param endpoint  service-url
-     * @see https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/configuration.html
+     * default constuctor w/ options (no client is created here).
+     * @param options { endpoint, indexName } is required.
      */
-    public static instance(endpoint: string) {
-        const client = new elasticsearch.Client({
-            node: endpoint,
+    public constructor(options: OS2BaseOption) {
+        _inf(NS, `OS2ClientService(${options.indexName}/${options.idName})...`);
+        if (!options.endpoint) throw new Error('.endpoint (URL) is required');
+        if (!options.indexName) throw new Error('.indexName (string) is required');
+
+        // default option values: idName='$id'
+        this._options = { idName: '$id', ...options };
+    }
+
+    /**
+     * build the client for `options.endpoint` (override to add `auth`).
+     * @see https://opensearch.org/docs/latest/clients/javascript/index/
+     */
+    protected createClient(): Client {
+        return this.newClient();
+    }
+
+    /**
+     * build a client for `options.endpoint` with extra client options (e.g. `auth`); loads the package on first use.
+     */
+    protected newClient(extra?: Partial<ClientOptions>): Client {
+        const { Client } = loadOpenSearch();
+        return new Client({
+            node: this.options.endpoint,
             ssl: {
                 ca: process.env.elasticsearch_certificate,
                 rejectUnauthorized: false,
             },
+            ...extra,
         });
-        return { client };
     }
 
     /**
-     * default constuctor w/ options.
-     * @param options { endpoint, indexName } is required.
+     * get the client instance (created once, on first access).
      */
-    public constructor(options: ElasticOption) {
-        _inf(NS, `ElasticIndexService(${options.indexName}/${options.idName})...`);
-        if (!options.endpoint) throw new Error('.endpoint (URL) is required');
-        if (!options.indexName) throw new Error('.indexName (string) is required');
-
-        // default option values: docType='_doc', idName='$id'
-        const { client } = ElasticIndexService.instance(options.endpoint);
-        this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
-        this._client = client;
-    }
-
-    /**
-     * get the client instance.
-     */
-    public get client(): elasticsearch.Client {
+    public get client(): Client {
+        if (!this._client) this._client = this.createClient();
         return this._client;
     }
     /**
      * get the current options.
      */
-    public get options(): ElasticOption {
+    public get options(): OS2BaseOption {
         return this._options;
-    }
-    /**
-     * get the version from options
-     */
-    public get version(): number {
-        const ver = $U.F(this.options.version, 6.8);
-        return ver;
     }
     /**
      * say hello
@@ -255,16 +219,14 @@ export abstract class ElasticIndexService<T extends ElasticItem = any> {
      * save an item
      * @param id - item id
      * @param item - item to save
-     * @param type - document type
      */
-    public abstract saveItem(id: string, item: T, type?: string): Promise<T>;
+    public abstract saveItem(id: string, item: T): Promise<T>;
 
     /**
      * push item for time-series data
      * @param item - item to push
-     * @param type - document type
      */
-    public abstract pushItem(item: T, type?: string): Promise<T>;
+    public abstract pushItem(item: T): Promise<T>;
 
     /**
      * read item with projections
@@ -307,15 +269,14 @@ export abstract class ElasticIndexService<T extends ElasticItem = any> {
 }
 
 /** ****************************************************************************************************************
- *  Elastic6Service
+ *  OS2CoreService
  ** ****************************************************************************************************************/
-export interface Elastic6Option extends ElasticOption {}
-export interface Elastic6Item extends ElasticItem {}
 /**
- * class: `Elastic6Service`
- * - extends `ElasticIndexService` and adds version-specific implementation
+ * class: `OS2CoreService`
+ * - extends `OS2ClientService`: document CRUD, search and index management via the client.
+ * - the parent of `OS2Service`.
  */
-export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexService {
+export class OS2CoreService<T extends OS2Item = any> extends OS2ClientService {
     // internal field name to store analyzed strings for autocomplete search
     public static readonly DECOMPOSED_FIELD = '_decomposed';
     public static readonly QWERTY_FIELD = '_qwerty';
@@ -323,154 +284,14 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
      * default constuctor w/ options.
      * @param options { endpoint, indexName } is required.
      */
-    constructor(options: Elastic6Option) {
+    constructor(options: OS2BaseOption) {
         super(options);
-        _inf('Elastic6Service', `Elastic6Service(${options.indexName}/${options.idName})...`);
+        _inf('OS2CoreService', `OS2CoreService(${options.indexName}/${options.idName})...`);
     }
     /**
      * say hello of identity.
      */
-    public hello = () => `elastic6-service:${this.options.indexName}:${this.options.version}`;
-    /**
-     * get isOldES6
-     * - used when setting doctype
-     * - used when verifying mismatched error and results of search
-     */
-    public get isOldES6(): boolean {
-        return this.parsedVersion.major < 7 && this.parsedVersion.engine === 'es';
-    }
-    /**
-     * get isOldES71
-     * - used when verifying mismatched error
-     */
-    public get isOldES71(): boolean {
-        return this.parsedVersion.major == 7 && this.parsedVersion.minor == 1 && this.parsedVersion.engine === 'es';
-    }
-    /**
-     * get isLatestOS2
-     * - used when verifying results of search
-     */
-    public get isLatestOS2(): boolean {
-        return this.parsedVersion.major >= 2 && this.parsedVersion.engine === 'os';
-    }
-    /**
-     * get the parsedVersion
-     */
-    public get parsedVersion(): ParsedVersion {
-        return this.parseVersion(this.options.version);
-    }
-    /**
-     * get the root version from client
-     *
-     * @protected only for internal test.
-     */
-    protected async getVersion(options?: { dump?: boolean }): Promise<ParsedVersion> {
-        const isDump = options?.dump ?? false;
-
-        // it consumes about >20ms
-        const info = await this.client.info();
-
-        const rootVersion: string = $U.S(info.body.version.number);
-        const parsedVersion: ParsedVersion = this.parseVersion(rootVersion, { throwable: true });
-
-        if (isDump) {
-            //* save into `info.json`.
-            const description = {
-                '!': `${this.parsedVersion?.engine}${this.options.version} client info`,
-                ...info,
-            };
-            const filePath = path.resolve(
-                __dirname,
-                `../../../data/samples/${this.parsedVersion?.engine}${this.options.version}/info.json`,
-            );
-            await this.saveInfoToFile(description, filePath);
-        }
-
-        return parsedVersion;
-    }
-
-    /**
-     * check whether the service version matches the version provided in the options.
-     *
-     * @protected only for internal test.
-     */
-    protected async executeSelfTest() {
-        // STEP.1 read the parsed-version.
-        const optionVersion: ParsedVersion = this.parsedVersion;
-
-        // STEP.2 get the real version via `getVersion()`
-        const rootVersion: ParsedVersion = await this.getVersion();
-
-        // STEP.3 validate version
-        const isEqual =
-            optionVersion.engine === rootVersion.engine &&
-            optionVersion.major === rootVersion.major &&
-            optionVersion.minor === rootVersion.minor;
-
-        // Return the comparison result
-        return {
-            isEqual: isEqual,
-            optionVersion: optionVersion,
-            rootVersion: rootVersion,
-        };
-    }
-
-    /**
-     * parse version according to Semantic Versioning (SemVer) rules.
-     *
-     * @param version The version string to parse (e.g., "1.2.3", "1.2.3-alpha.1", "1.2.3+build.001").
-     * @param options Optional configuration for throwable behavior.
-     * @returns A ParsedVersion object or null if parsing fails and throwable is false.
-     */
-    public parseVersion(version: string, options?: { throwable?: boolean }): ParsedVersion {
-        const isThrowable = options?.throwable ?? true;
-
-        if (!version && isThrowable) throw new Error(`@version (string) is required!`);
-
-        // RegEx to match Semantic Versioning patterns
-        const match = version?.match(
-            /^(\d{1,2})(?:\.(\d{1,2}))?(?:\.(\d{1,2}))?(?:-([a-zA-Z0-9-.]+))?(?:\+([a-zA-Z0-9-.]+))?$/,
-        );
-
-        if (!match) {
-            if (isThrowable) throw new Error(`@version[${version}] is invalid - fail to parse`);
-            return null;
-        }
-
-        const res: ParsedVersion = {
-            engine: $U.N(match[1], 10) < 6 ? 'os' : 'es',
-            major: $U.N(match[1], 10),
-            minor: match[2] !== undefined ? $U.N(match[2], 10) : 0,
-            patch: match[3] !== undefined ? $U.N(match[3], 10) : 0,
-            ...(match[4] !== undefined ? { prerelease: match[4] } : {}),
-            ...(match[5] !== undefined ? { build: match[5] } : {}),
-        };
-
-        return res;
-    }
-
-    /**
-     * save info to a JSON file.
-     * @param info - The information to be saved
-     * @param filePath - The file path where should be saved.
-     */
-    private async saveInfoToFile(info: any, filePath: string) {
-        try {
-            const directory = path.dirname(filePath);
-
-            // check whether directory exists
-            if (!fs.existsSync(directory)) {
-                fs.mkdirSync(directory, { recursive: true });
-            }
-
-            // write info to file
-            fs.writeFileSync(filePath, JSON.stringify(info, null, 2));
-        } catch {
-            $ERROR.handler('saveIntoFile', e => {
-                throw e;
-            });
-        }
-    }
+    public hello = () => `os2-core-service:${this.options.indexName}`;
 
     /**
      * list of index
@@ -543,8 +364,9 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
      * @param settings - creating settings
      */
     public async createIndex(settings?: any) {
-        const { indexName, docType, idName, timeSeries, version } = this.options;
-        settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
+        const { indexName, idName, timeSeries } = this.options;
+        // default: the typeless settings (`mappings.properties`)
+        settings = settings || OS2CoreService.prepareSettings({ idName, timeSeries });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
 
@@ -693,12 +515,13 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
     /**
      * save single item
      *
+     * - typeless: no `type` param (v5).
+     *
      * @param id - id
      * @param item - item to save
-     * @param type - document type (default: doc-type given at construction time)
      */
-    public async saveItem(id: string, item: T, type?: string): Promise<T> {
-        const { indexName, docType, idName } = this.options;
+    public async saveItem(id: string, item: T): Promise<T> {
+        const { indexName, idName } = this.options;
         _log(NS, `- saveItem(${id})`);
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -707,13 +530,7 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
         const body: any = { ...item, [idName]: id };
         const body2 = this.popullateAutocompleteFields(body);
 
-        type = `${type || docType}`;
         const params: ElasticParams = { index: indexName, id, body: body2 };
-
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
-        }
 
         if (idName === '_id') delete params.body[idName]; //WARN! `_id` is reserved in ES6.
         _log(NS, `> params[${id}] =`, $U.json(params));
@@ -728,7 +545,6 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                     // delete body2[idName]; // do set id while update
                     // return this.updateItem(id, body2);
                     const param2: ElasticParams = { index: indexName, id, body: { ...body2 } };
-                    if (this.isOldES6) param2.type = type;
                     return client.index(param2);
                 }
                 throw e;
@@ -745,19 +561,19 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
     /**
      * push item for time-series data.
      *
+     * - typeless: no `type` param (v5).
+     *
      * @param item - item to push
-     * @param type - document type (default: doc-type given at construction time)
      */
-    public async pushItem(item: T, type?: string): Promise<T> {
-        const { indexName, docType } = this.options;
+    public async pushItem(item: T): Promise<T> {
+        const { indexName } = this.options;
         const id = '';
 
-        type = `${type || docType}`;
         const body: any = { ...item };
         const body2 = this.popullateAutocompleteFields(body);
 
         _log(NS, `- pushItem(${id})`);
-        const params = { index: indexName, type, body: body2 };
+        const params = { index: indexName, body: body2 };
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
@@ -780,17 +596,16 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
     }
 
     /**
-     * read item with projections
+     * read item with projections (typeless `GET /{index}/_doc/{id}`)
      *
      * @param id - item-id
      * @param views - projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
-        const { indexName, docType } = this.options;
-        const type = `${docType}`;
+        const { indexName } = this.options;
         _log(NS, `- readItem(${id})`);
 
-        const params: any = { index: indexName, type, id };
+        const params: any = { index: indexName, id };
         if (views) {
             const fields: string[] = [];
             const keys: string[] = Array.isArray(views) ? views : Object.keys(views);
@@ -817,24 +632,23 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
         const _version = res.body?._version;
         const data: T = (res as any)?._source || res.body?._source || {};
         // delete internal (analyzed) field
-        delete data[Elastic6Service.DECOMPOSED_FIELD];
-        delete data[Elastic6Service.QWERTY_FIELD];
+        delete data[OS2CoreService.DECOMPOSED_FIELD];
+        delete data[OS2CoreService.QWERTY_FIELD];
 
         const res2: T = { ...data, _id, _version };
         return res2;
     }
 
     /**
-     * delete item with projections
+     * delete item with projections (typeless `DELETE /{index}/_doc/{id}`)
      *
      * @param id - item-id
      */
     public async deleteItem(id: string): Promise<T> {
-        const { indexName, docType } = this.options;
-        const type = `${docType}`;
+        const { indexName } = this.options;
         _log(NS, `- readItem(${id})`);
 
-        const params = { index: indexName, type, id };
+        const params = { index: indexName, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
         const client = this.client;
@@ -876,18 +690,12 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
         increments?: Incrementable,
         options?: { maxRetries?: number },
     ): Promise<T> {
-        const { indexName, docType, idName } = this.options;
-        const type = `${docType}`;
+        const { indexName, idName } = this.options;
         _log(NS, `- updateItem(${id})`);
         item = !item && increments ? undefined : item;
 
         //* prepare params.
         const params: ElasticParams = { index: indexName, id, body: {} };
-
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
-        }
         const scripts: string[] = [];
         if (increments) {
             //* it will create if not exists.
@@ -963,25 +771,20 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
     }
 
     /**
-     * run search and get the raw response.
+     * run search and get the raw response (`search_type` in the query string).
      * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
      * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
      */
     public async searchRaw<T extends object = any>(body: SearchBody, searchType?: SearchType): Promise<T> {
         if (!body) throw new Error('@body (SearchBody) is required');
-        const { indexName, docType } = this.options;
+        const { indexName } = this.options;
         _log(NS, `- search(${indexName}, ${searchType || ''})....`);
         _log(NS, `> body =`, $U.json(body));
 
-        const tmp = docType ? docType : '';
-        const type: string = docType ? `${docType}` : undefined;
-        const params: ElasticSearchParams = { index: indexName, body, searchType };
-
-        // check version to include 'type' in params
-        if (this.isOldES6) {
-            params.type = type;
-        }
-        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
+        // `search_type` goes to the query string as-is (the client does not rename camelCase keys)
+        const params: ElasticSearchParams = { index: indexName, body };
+        if (searchType) params.search_type = searchType;
+        _log(NS, `> params =`, $U.json({ ...params, body: undefined }));
         // const { client } = instance(endpoint);
         const client = this.client;
         const $res = await client.search(params).catch(
@@ -1080,30 +883,25 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
     /**
      * prepare default setting
      * - migrated from engine-v2.
+     * - v5: always the typeless mapping (`mappings.properties`); no doc-type or version, no `standard` filter.
      *
-     * @param docType       document type name
      * @param idName        id-name
      * @param shards        number of shards (default 4)
      * @param replicas      number of replicas (default 1)
      * @param timeSeries    flag of TIMESERIES (default false)
      */
     public static prepareSettings(params: {
-        docType: string;
         idName: string;
-        version?: string;
         timeSeries?: boolean;
         shards?: number;
         replicas?: number;
     }) {
-        const docType: string = params.docType === undefined ? '_doc' : params.docType;
         const idName: string = params.idName === undefined ? '$id' : params.idName;
-        const version: number = $U.F(params.version === undefined ? '6.8' : params.version);
         const shards: number = params.shards === undefined ? 4 : params.shards;
         const replicas: number = params.replicas === undefined ? 1 : params.replicas;
         const timeSeries: boolean = params.timeSeries === undefined ? false : params.timeSeries;
 
         //* core config.
-        const CONF_ES_DOCTYPE = docType;
         const CONF_ID_NAME = idName;
         const CONF_ES_TIMESERIES = !!timeSeries;
 
@@ -1113,7 +911,7 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                 // 1. Search-as-You-Type (autocomplete search) - apply to '_decomposed.*' fields
                 {
                     autocomplete: {
-                        path_match: `${Elastic6Service.DECOMPOSED_FIELD}.*`,
+                        path_match: `${OS2CoreService.DECOMPOSED_FIELD}.*`,
                         mapping: {
                             type: 'text',
                             analyzer: 'autocomplete_case_insensitive',
@@ -1124,7 +922,7 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                 // 2. Search-as-You-Type (Korean to Alphabet sequence in QWERTY/2벌식 keyboard) - apply to '_qwerty.*' fields
                 {
                     autocomplete_qwerty: {
-                        path_match: `${Elastic6Service.QWERTY_FIELD}.*`,
+                        path_match: `${OS2CoreService.QWERTY_FIELD}.*`,
                         mapping: {
                             type: 'text',
                             analyzer: 'autocomplete_case_sensitive',
@@ -1219,33 +1017,24 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                         autocomplete_case_sensitive: {
                             type: 'custom',
                             tokenizer: 'edge_30grams',
-                            filter: version < 7 && version >= 6 ? ['standard'] : [], //* error - The [standard] token filter has been removed.
+                            filter: [], //* the [standard] token filter has been removed since 7.x.
                         },
                     },
                 },
             },
-            //* since 7.x. no mapping for types.
-            mappings: version < 7 && version >= 6 ? { [CONF_ES_DOCTYPE]: ES_MAPPINGS } : ES_MAPPINGS,
+            //* typeless mapping (no doc-type key).
+            mappings: ES_MAPPINGS,
         };
 
         //* timeseries 데이터로, 기본 timestamp 값을 넣어준다. (주의! save시 current-time 값 자동 저장)
         if (!!CONF_ES_TIMESERIES) {
             ES_SETTINGS.settings.refresh_interval = '5s';
-            if (version < 7 && version >= 6) {
-                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['@timestamp'] = { type: 'date', doc_values: true };
-                ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties['ip'] = { type: 'ip' };
+            ES_SETTINGS.mappings.properties['@timestamp'] = { type: 'date', doc_values: true };
+            ES_SETTINGS.mappings.properties['ip'] = { type: 'ip' };
 
-                //* clear mappings.
-                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
-                CLEANS.map(key => delete ES_SETTINGS.mappings[CONF_ES_DOCTYPE].properties[key]);
-            } else {
-                ES_SETTINGS.mappings.properties['@timestamp'] = { type: 'date', doc_values: true };
-                ES_SETTINGS.mappings.properties['ip'] = { type: 'ip' };
-
-                //* clear mappings.
-                const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
-                CLEANS.map(key => delete ES_SETTINGS.properties[key]);
-            }
+            //* clear mappings. (fixed: v4 deleted from `ES_SETTINGS.properties`, which does not exist)
+            const CLEANS = '@version,created_at,updated_at,deleted_at'.split(',');
+            CLEANS.map(key => delete ES_SETTINGS.mappings.properties[key]);
         }
 
         //* returns settings.
@@ -1271,17 +1060,17 @@ export class Elastic6Service<T extends ElasticItem = any> extends ElasticIndexSe
                         // 자모 분해 (e.g. '레몬' -> 'ㄹㅔㅁㅗㄴ')
                         const decomposed = $hangul.asJamoSequence(value);
                         const recomposed = decomposed.replace(/[ -]/g, '');
-                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
+                        (N as any)[OS2CoreService.DECOMPOSED_FIELD][field] = [decomposed, recomposed];
                         // 영자판 (e.g. '레몬' -> 'fpahs')
-                        (N as any)[Elastic6Service.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
+                        (N as any)[OS2CoreService.QWERTY_FIELD][field] = $hangul.asAlphabetKeyStokes(value);
                     } else {
                         const recomposed = value.replace(/[ -]/g, '');
-                        (N as any)[Elastic6Service.DECOMPOSED_FIELD][field] = [value, recomposed];
+                        (N as any)[OS2CoreService.DECOMPOSED_FIELD][field] = [value, recomposed];
                     }
                 }
                 return N;
             },
-            { ...body, [Elastic6Service.DECOMPOSED_FIELD]: {}, [Elastic6Service.QWERTY_FIELD]: {} },
+            { ...body, [OS2CoreService.DECOMPOSED_FIELD]: {}, [OS2CoreService.QWERTY_FIELD]: {} },
         );
     }
 }
@@ -1344,42 +1133,34 @@ export const $ERROR = {
             return $ret;
         }
     },
+    /**
+     * parse a client error into `{ status, message, reason }`.
+     * - `type` comes from `meta.body.error.type` (same in both clients); it falls back to `message` only
+     *   when the body has no error type (e.g. a meta-only sample of elastic 7.x).
+     * - output form is unchanged: `<TYPE upper, last token dropped, _ as space>` like `VERSION CONFLICT ENGINE`.
+     * - errors without `meta` (FGAC `http-fetch`, network) give `reason = null` and are rethrown by `handler`.
+     */
     asError: (e: any): ErrorReason => {
         const E = $ERROR.asJson(e);
         const status = `${E.statusCode || ''}`;
         const message = `${E.message || E.msg || ''}`;
         const reason = ((E: any): ErrorReasonDetail => {
-            //* from ES7.1
-            if (E.meta && typeof E.meta == 'object') {
-                const type = _S(E?.message).toUpperCase().split('_').slice(0, -1).join(' ');
-                const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
-                const $res = $ERROR.parseMeta<any>(E.meta);
-                //* find the reason.
-                const reason =
-                    $res.body?.error?.reason === 'failed to execute script'
-                        ? $res.body?.error?.caused_by?.caused_by?.reason
-                        : $res.body?.error?.reason;
-                const result: ErrorReasonDetail = { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
-                if (typeof reason !== 'undefined') {
-                    result.reason = reason;
-                }
-                return result;
+            //* only client response errors carry `meta`.
+            if (!(E.meta && typeof E.meta == 'object')) return null;
+            const $res = $ERROR.parseMeta<any>(E.meta);
+            const source = _S($res.body?.error?.type ?? E?.message);
+            const type = source.toUpperCase().split('_').slice(0, -1).join(' ');
+            const status = $U.N(E.meta?.statusCode, type.includes('NOT FOUND') ? 404 : 400);
+            //* find the reason.
+            const reason =
+                $res.body?.error?.reason === 'failed to execute script'
+                    ? $res.body?.error?.caused_by?.caused_by?.reason
+                    : $res.body?.error?.reason;
+            const result: ErrorReasonDetail = { status, type: type || (status === 404 ? 'NOT FOUND' : 'UNKNOWN') };
+            if (typeof reason !== 'undefined') {
+                result.reason = reason;
             }
-
-            //* from ES6.2
-            if (!E.response) return null;
-            const $res = $ERROR.parseMeta<any>(E.response);
-
-            //* find the root-cause.
-            const pic1 = (N: any[] | any, i = 0) => (N && Array.isArray(N) ? N[i] : N);
-            const cause: any = pic1($res?.error?.root_cause);
-            const status = $U.N($res.error?.status || $res.status);
-            const reason = _S(
-                $res.error?.reason,
-                $res.found === false || $res.result === 'not_found' ? 'NOT FOUND' : '',
-            );
-            const type = _S(cause?.type).toUpperCase().split('_').slice(0, -1).join(' ');
-            return { status, reason, cause, type: type || reason };
+            return result;
         })(E);
 
         //* FINAL. convert to error-object.
@@ -1404,78 +1185,3 @@ export const $ERROR = {
             throw $e;
         },
 };
-
-/** ****************************************************************************************************************
- *  Dummy Elastic6 Service
- ** ****************************************************************************************************************/
-/**
- * class: `DummyElastic6Service`
- * - service in-memory dummy data
- */
-export class DummyElastic6Service<T extends GeneralItem> extends Elastic6Service<T> {
-    public constructor(dataFile: string, options: ElasticOption) {
-        super(options);
-        _log(NS, `DummyElastic6Service(${dataFile || ''})...`);
-        if (!dataFile) throw new Error('@dataFile(string) is required!');
-        const dummy: any = loadDataYml(dataFile);
-        this.load(dummy.data as any);
-    }
-
-    private buffer: { [id: string]: T } = {};
-    public load(data: T[]) {
-        const { idName } = this.options;
-        if (!data || !Array.isArray(data)) throw new Error('@data should be array!');
-        data.map(item => {
-            const id = `${item[idName] || ''}`;
-            this.buffer[id] = item;
-        });
-    }
-
-    /**
-     * say hello()
-     */
-    public hello = () => `dummy-elastic6-service:${this.options.indexName}`;
-
-    public async readItem(id: string): Promise<T> {
-        const item: T = this.buffer[id];
-        if (item === undefined) throw new Error(`404 NOT FOUND - id:${id}`);
-        return item;
-    }
-
-    public async saveItem(id: string, item: T): Promise<T> {
-        const { idName } = this.options;
-        this.buffer[id] = { id, ...item };
-        return { [idName]: id, ...item, _version: 1 };
-    }
-
-    public async deleteItem(id: string, sort?: string | number): Promise<T> {
-        const org = this.buffer[id];
-        delete this.buffer[id];
-        return { ...org };
-    }
-
-    public async updateItem(id: string, updates: T, increments?: Incrementable): Promise<T> {
-        const org = await this.readItem(id);
-        const item: any = { ...org, ...updates, _version: Number(org._version || 0) + 1 };
-        if (increments) {
-            Object.entries(increments).forEach(([key, value]) => {
-                if (Array.isArray(value)) {
-                    // case of arrary increment
-                    if (Array.isArray(item[key])) {
-                        item[key] = [...item[key], ...value];
-                    } else {
-                        item[key] = value;
-                    }
-                } else {
-                    if (typeof item[key] === 'number') {
-                        item[key] = item[key] + value;
-                    } else {
-                        item[key] = value;
-                    }
-                }
-            });
-        }
-        this.buffer[id] = item;
-        return { id: id, _version: Number(org._version || 0) + 1, ...updates };
-    }
-}

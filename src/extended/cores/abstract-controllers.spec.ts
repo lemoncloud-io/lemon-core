@@ -22,7 +22,7 @@ import { $T } from './commons';
 import { $rand } from '../../helpers/';
 import { GETERR, GETERR$ } from '../../common/test-helper';
 import { NextContext } from 'lemon-model';
-import { $ES6 } from './abstract-services';
+import { $ES6Routed as $ES6 } from './abstract-services'; // v5 B2-b: the L2 `$ES6` name is removed
 import { AbstractCRUDController, AbstractTransformer } from './abstract-controllers';
 import { View, Body } from './types';
 
@@ -416,13 +416,12 @@ describe('AbstractCRUDController', () => {
             );
             return;
         }
+        //* v5 B2-b: no doc-type/version in the options.
         expect2(() => $ES6.options).toEqual({
             autocompleteFields: [],
-            docType: '_doc',
             endpoint: 'https://localhost:9710',
             idName: '$id',
             indexName: 'test-v7.10',
-            version: '7.10',
         });
 
         //* check if test is empty

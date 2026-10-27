@@ -37,9 +37,9 @@ export * from './extended/';
 export * from './extended/cores/';
 export { $T } from './extended/cores/commons'; //* L2 wins — 4.2.x semantics (`asLut`/`BN`/`asMeta`, `S2` trims)
 export { onlyDefined } from './common/test-helper'; //* L1 wins — signature compat (`(N, $def)`)
-export { sourceToItem, $ES6 } from './extended/abstract-service'; //* L1 wins — keep existing behavior
+export { sourceToItem } from './extended/abstract-service'; //* L1 wins — keep existing behavior
 export { withBrowserCache } from './extended/cores/browser-cache'; //* not in the cores barrel (optional util)
-export { $ES6Routed } from './extended/cores/abstract-services'; //* explicit name only — root `$ES6` above must stay non-OS2 (decision #3); prevents silent search-backend swap
+export { $ES6Routed } from './extended/cores/abstract-services'; //* v5 B2-b: the same lazy object as `$OS2` (root `$ES6` is removed)
 
 //* decision #4 (cores-migration P1): `helpers/types.ts` (L1) and `extended/cores/types.ts` (L2)
 //* redefine the same ~10 type names (`export *` collisions raise TS2308 here without these pins).

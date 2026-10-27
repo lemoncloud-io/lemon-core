@@ -7,6 +7,7 @@
  * @date        2019-11-25 initial version with dummy serivce
  * @date        2022-02-21 optimized error handler, and search.
  * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
+ * @date        2026-10-27 v5 B2-b: OpenSearch only (ES servers and version checks removed), spec-local dummy.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -14,20 +15,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
-import { Elastic6Service, DummyElastic6Service, Elastic6Option, $ERROR, Elastic6Item } from './elastic6-service';
-// import { ApiResponse } from '@elastic/elasticsearch';
+import { errors } from '@opensearch-project/opensearch';
+import { OS2CoreService, OS2BaseOption, $ERROR, OS2Item } from './elastic6-service';
+import { loadDataYml } from '../../tools';
 
 /**
  * default endpoints url.
  * - use ssh tunneling to make connection to real server instance.
  */
 const ENDPOINTS = {
-    //* elastic-search */
-    '6.2': 'https://localhost:8443', // run alias lmes62
-    '7.1': 'https://localhost:9071', // run alias lmts071
-    '7.2': 'https://localhost:9072', // run alias lmts072
-    '7.10': 'https://localhost:9710', // run alias lmts710
-    //* open-search */
+    //* open-search (v5: no elastic-search servers) */
     '1.1': 'https://localhost:8683', // run alias lmes68
     '1.2': 'https://localhost:9683', // run alias lmes72
     '2.13': 'https://localhost:9213', // run alias lmts213
@@ -38,40 +35,107 @@ export type VERSIONS = keyof typeof ENDPOINTS;
 interface MyModel extends GeneralItem {
     id: string;
 }
-export const instance = (version: VERSIONS = '6.2', useAutoComplete = false, indexName?: string) => {
-    //* NOTE - use tunneling to elastic6 endpoint.
+
+/**
+ * class: `DummyOS2Service` (spec only; replaces the removed v4 dummy service)
+ * - in-memory dummy data, no client.
+ */
+export class DummyOS2Service<T extends GeneralItem> extends OS2CoreService<T> {
+    // load the dummy data file into the buffer.
+    public constructor(dataFile: string, options: OS2BaseOption) {
+        super(options);
+        if (!dataFile) throw new Error('@dataFile(string) is required!');
+        const dummy: any = loadDataYml(dataFile);
+        this.load(dummy.data as any);
+    }
+
+    private buffer: { [id: string]: T } = {};
+    // put items into the buffer by id-name.
+    public load(data: T[]) {
+        const { idName } = this.options;
+        if (!data || !Array.isArray(data)) throw new Error('@data should be array!');
+        data.map(item => {
+            const id = `${item[idName] || ''}`;
+            this.buffer[id] = item;
+        });
+    }
+
+    /**
+     * say hello()
+     */
+    public hello = () => `dummy-os2-service:${this.options.indexName}`;
+
+    // read from the buffer (404 if missing).
+    public async readItem(id: string): Promise<T> {
+        const item: T = this.buffer[id];
+        if (item === undefined) throw new Error(`404 NOT FOUND - id:${id}`);
+        return item;
+    }
+
+    // save into the buffer.
+    public async saveItem(id: string, item: T): Promise<T> {
+        const { idName } = this.options;
+        this.buffer[id] = { id, ...item };
+        return { [idName]: id, ...item, _version: 1 };
+    }
+
+    // delete from the buffer.
+    public async deleteItem(id: string): Promise<T> {
+        const org = this.buffer[id];
+        delete this.buffer[id];
+        return { ...org };
+    }
+
+    // update in the buffer (404 if missing), with number/array increments.
+    public async updateItem(id: string, updates: T, increments?: Incrementable): Promise<T> {
+        const org = await this.readItem(id);
+        const item: any = { ...org, ...updates, _version: Number(org._version || 0) + 1 };
+        if (increments) {
+            Object.entries(increments).forEach(([key, value]) => {
+                if (Array.isArray(value)) {
+                    // case of arrary increment
+                    if (Array.isArray(item[key])) {
+                        item[key] = [...item[key], ...value];
+                    } else {
+                        item[key] = value;
+                    }
+                } else {
+                    if (typeof item[key] === 'number') {
+                        item[key] = item[key] + value;
+                    } else {
+                        item[key] = value;
+                    }
+                }
+            });
+        }
+        this.buffer[id] = item;
+        return { id: id, _version: Number(org._version || 0) + 1, ...updates };
+    }
+}
+
+// build the real-server service (tunnel endpoint) and the in-memory dummy for the version.
+export const instance = (version: VERSIONS = '2.13', useAutoComplete = false, indexName?: string) => {
+    //* NOTE - use tunneling to the search endpoint.
     const endpoint = ENDPOINTS[version];
     if (!endpoint) throw new Error(`@version[${version}] is not supported!`);
 
     // const indexName = `test-v${version}`;
     indexName = indexName ?? `test-v${version}`;
     const idName = '$id'; //* global unique id-name in same index.
-    const docType = '_doc'; //* must be `_doc`.
     const autocompleteFields = useAutoComplete ? ['title', 'name'] : null;
-    const options: Elastic6Option = { endpoint, indexName, idName, docType, autocompleteFields, version };
+    const options: OS2BaseOption = { endpoint, indexName, idName, autocompleteFields };
 
     // service is an instance of serach engine
-    const service = new (class extends Elastic6Service<MyModel> {
-        public constructor() {
-            super(options);
-        }
-        //* open to `public`
-        public async getVersion(options?: any) {
-            return super.getVersion(options);
-        }
-        public async executeSelfTest() {
-            return super.executeSelfTest();
-        }
-    })();
+    const service = new OS2CoreService<MyModel>(options);
 
-    // dummy for testing Elasticsearch with buffer.
-    const dummy: Elastic6Service<GeneralItem> = new DummyElastic6Service<MyModel>('dummy-elastic6-data.yml', options);
+    // dummy for testing with buffer.
+    const dummy: OS2CoreService<GeneralItem> = new DummyOS2Service<MyModel>('dummy-elastic6-data.yml', options);
     return { version, service, dummy, options };
 };
 
 /**
  * initialize the service with the specified version.
- * @param ver - version of the Elasticsearch service.
+ * @param ver - version label of the server (tunnel).
  * @returns object containing the initialized service and its options.
  */
 export const initService = async (ver: VERSIONS) => {
@@ -80,48 +144,13 @@ export const initService = async (ver: VERSIONS) => {
 
     //* check hello
     const helloResult = service.hello();
-    expect2(() => helloResult).toEqual(`elastic6-service:${indexName}:${ver}`);
+    expect2(() => helloResult).toEqual(`os2-core-service:${indexName}`);
 
     //* check idName
     expect2(() => idName).toEqual('$id');
 
     //* check indexName
     expect2(() => indexName).toEqual(`test-v${ver}`);
-
-    //* check version
-    expect2(() => service.options.version).toEqual(ver);
-
-    //* check version parse error
-    expect2(() => service.parseVersion('12345')).toEqual('@version[12345] is invalid - fail to parse');
-    expect2(() => service.parseVersion('abcd')).toEqual('@version[abcd] is invalid - fail to parse');
-    expect2(() => service.parseVersion('1.2.3a')).toEqual('@version[1.2.3a] is invalid - fail to parse');
-    expect2(() => service.parseVersion('1.2.3')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 3 });
-    expect2(() => service.parseVersion('1.2')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 0 });
-    expect2(() => service.parseVersion('1')).toEqual({ engine: 'os', major: 1, minor: 0, patch: 0 });
-    expect2(() => service.parseVersion('1.2.0')).toEqual({ engine: 'os', major: 1, minor: 2, patch: 0 });
-    expect2(() => service.parseVersion('1.0.0')).toEqual({ engine: 'os', major: 1, minor: 0, patch: 0 });
-    expect2(() => service.parseVersion('1.2.3-alpha')).toEqual({
-        engine: 'os',
-        major: 1,
-        minor: 2,
-        patch: 3,
-        prerelease: 'alpha',
-    });
-    expect2(() => service.parseVersion('1.2.3+build.001')).toEqual({
-        build: 'build.001',
-        engine: 'os',
-        major: 1,
-        minor: 2,
-        patch: 3,
-    });
-    expect2(() => service.parseVersion('1.2.3-alpha+build.001')).toEqual({
-        build: 'build.001',
-        engine: 'os',
-        major: 1,
-        minor: 2,
-        patch: 3,
-        prerelease: 'alpha',
-    });
 
     return { service, options };
 };
@@ -131,7 +160,7 @@ export const initService = async (ver: VERSIONS) => {
  * @param service - Elasticsearch service instance.
  * @param indexName - the name of the index to be set up.
  */
-export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<void> => {
+export const setupIndex = async (service: OS2CoreService<MyModel>): Promise<void> => {
     const PASS = (e: any) => e;
     const indexName = service.options.indexName;
 
@@ -186,7 +215,7 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
         type: 'custom',
     });
     expect2(() => analysisSettings.analyzer.autocomplete_case_sensitive).toEqual({
-        filter: service.isOldES6 ? ['standard'] : [],
+        filter: [],
         tokenizer: 'edge_30grams',
         type: 'custom',
     });
@@ -246,7 +275,7 @@ export const setupIndex = async (service: Elastic6Service<MyModel>): Promise<voi
  * @param service - Elasticsearch service instance.
  * @returns boolean which indicates whether the test can be performed.
  */
-export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise<boolean> => {
+export const canPerformTest = async (service: OS2CoreService<MyModel>): Promise<boolean> => {
     // const { service } = instance();
     // cond 1. localhost is able to access elastic6 endpoint (by tunneling)
     // cond 2. index must be exist
@@ -268,7 +297,7 @@ export const canPerformTest = async (service: Elastic6Service<MyModel>): Promise
  * perform basic CRUD tests.
  * @param service - Elasticsearch service instance.
  */
-export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void> => {
+export const basicCRUDTest = async (service: OS2CoreService<any>): Promise<void> => {
     expect2(await service.readItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
     expect2(await service.deleteItem('A0').catch(GETERR)).toEqual('404 NOT FOUND - id:A0');
 
@@ -422,7 +451,7 @@ export const basicCRUDTest = async (service: Elastic6Service<any>): Promise<void
  * @param service - Elasticsearch service instance.
  * @param indexName - the name of the index to search.
  */
-export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promise<void> => {
+export const basicSearchTest = async (service: OS2CoreService<MyModel>): Promise<void> => {
     //* try to search...
     await waited(2000);
     const $search: SearchBody = {
@@ -454,7 +483,7 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
     };
     // check results of searchAll
     const searchRawResult = await service.searchRaw($search);
-    const expectedTotal = service.isOldES6 ? 2 : { relation: 'eq', value: 2 };
+    const expectedTotal = { relation: 'eq', value: 2 };
     const aggregationResult = searchRawResult.aggregations.test;
     const hitsResult = searchRawResult.hits;
 
@@ -497,12 +526,10 @@ export const basicSearchTest = async (service: Elastic6Service<MyModel>): Promis
 
     //verify that the results of `search` and `searchRaw` are equal
     expect2(() => searchRawResult.aggregations).toEqual(searchResult.aggregations);
-    expect2(() => searchResult.total).toEqual(
-        service.isOldES6 ? searchRawResult.hits.total : searchRawResult.hits.total.value,
-    );
+    expect2(() => searchResult.total).toEqual(searchRawResult.hits.total.value);
 };
 
-interface CRUDModel extends Elastic6Item {
+interface CRUDModel extends OS2Item {
     $id?: string;
     nick?: string;
     count?: number;
@@ -518,7 +545,7 @@ interface CRUDModel extends Elastic6Item {
  * perform detailed CRUD tests.
  * @param service - Elasticsearch service instance.
  */
-export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Promise<void> => {
+export const detailedCRUDTest = async (service: OS2CoreService<CRUDModel>): Promise<void> => {
     //* agent for test
     const agent = <T extends CRUDModel = any>() => ({
         update: (id: string, data: T, increment?: Incrementable) =>
@@ -705,7 +732,7 @@ export const detailedCRUDTest = async (service: Elastic6Service<CRUDModel>): Pro
  * - update fields with mismatched types
  * @param service - Elasticsearch service instance.
  */
-export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise<void> => {
+export const mismatchedTypeTest = async (service: OS2CoreService<any>): Promise<void> => {
     //* agent for test
     const agent = <T = any>(id: string = 'A0') => ({
         update: (data: T) =>
@@ -735,7 +762,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
 
     //* verify the mapping condition. (`_mapping`)
     const mapping = await service.getIndexMapping();
-    const properties = service.isOldES6 ? mapping?._doc?.properties : mapping?.properties;
+    const properties = mapping?.properties;
     // verify mapping types
     expect2(() => properties.array_field.type).toEqual('text');
     expect2(() => properties.string_field.type).toEqual('text');
@@ -762,11 +789,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ string_field: [1, 2, 3] })).toEqual({ string_field: [1, 2, 3] });
     expect2(await agent().update({ string_field: false })).toEqual({ string_field: false });
     expect2(await agent().update({ string_field: {} })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [string_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [string_field] of type [text] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [string_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'",
+        "400 MAPPER PARSING - failed to parse field [string_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'",
     );
 
     /**
@@ -781,18 +804,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ long_field: [] })).toEqual({ long_field: [] });
     expect2(await agent().update({ long_field: [1, 2, 3] })).toEqual({ long_field: [1, 2, 3] });
     expect2(await agent().update({ long_field: {} })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [long_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'. Preview of field's value: '{}'",
+        "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'. Preview of field's value: '{}'",
     );
     expect2(await agent().update({ long_field: false })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [long_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'. Preview of field's value: 'false'",
+        "400 MAPPER PARSING - failed to parse field [long_field] of type [long] in document with id 'A0'. Preview of field's value: 'false'",
     );
 
     /**
@@ -807,18 +822,10 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ float_field: [] })).toEqual({ float_field: [] });
     expect2(await agent().update({ float_field: [1, 2, 3] })).toEqual({ float_field: [1, 2, 3] });
     expect2(await agent().update({ float_field: {} })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [float_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'. Preview of field's value: '{}'",
+        "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'. Preview of field's value: '{}'",
     );
     expect2(await agent().update({ float_field: false })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [float_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'. Preview of field's value: 'false'",
+        "400 MAPPER PARSING - failed to parse field [float_field] of type [float] in document with id 'A0'. Preview of field's value: 'false'",
     );
 
     /**
@@ -833,32 +840,16 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ date_field: [] })).toEqual({ date_field: [] });
     expect2(await agent().update({ date_field: [1, 2, 3] })).toEqual({ date_field: [1, 2, 3] });
     expect2(await agent().update({ date_field: '' })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [date_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: ''",
+        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: ''",
     );
     expect2(await agent().update({ date_field: 1.23456789 })).toEqual(
-        service.isOldES6
-            ? { date_field: 1.23456789 }
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: '1.23456789'",
+        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: '1.23456789'",
     );
     expect2(await agent().update({ date_field: {} })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [date_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: '{}'",
+        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: '{}'",
     );
     expect2(await agent().update({ date_field: false })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [date_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: 'false'",
+        "400 MAPPER PARSING - failed to parse field [date_field] of type [date] in document with id 'A0'. Preview of field's value: 'false'",
     );
 
     /**
@@ -873,32 +864,16 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ boolean_field: 'true' })).toEqual({ boolean_field: 'true' });
     expect2(await agent().update({ boolean_field: [] })).toEqual({ boolean_field: [] });
     expect2(await agent().update({ boolean_field: 123456789 })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [boolean_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '123456789'",
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '123456789'",
     );
     expect2(await agent().update({ boolean_field: 1.23456789 })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [boolean_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '1.23456789'",
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '1.23456789'",
     );
     expect2(await agent().update({ boolean_field: {} })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [boolean_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '{}'",
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '{}'",
     );
     expect2(await agent().update({ boolean_field: [1, 2, 3] })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [boolean_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '1'",
+        "400 MAPPER PARSING - failed to parse field [boolean_field] of type [boolean] in document with id 'A0'. Preview of field's value: '1'",
     );
 
     /**
@@ -966,11 +941,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ array_field: 1.23456789 })).toEqual({ array_field: 1.23456789 });
     expect2(await agent().update({ array_field: false })).toEqual({ array_field: false });
     expect2(await agent().update({ array_field: {} })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [array_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'",
+        "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'",
     );
 
     /**
@@ -984,11 +955,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ array_field: [''] })).toEqual({ array_field: [''] });
     expect2(await agent().update({ array_field: [1.1] })).toEqual({ array_field: [1.1] });
     expect2(await agent().update({ array_field: [{ b: 'a' }] })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [array_field]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'. Preview of field's value: '{b=a}'",
+        "400 MAPPER PARSING - failed to parse field [array_field] of type [text] in document with id 'A0'. Preview of field's value: '{b=a}'",
     );
 
     /**
@@ -1002,11 +969,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ nested_field: [{ sub: null }] })).toEqual({ nested_field: [{ sub: null }] });
     expect2(await agent().update({ nested_field: [{ sub: '' }] })).toEqual({ nested_field: [{ sub: '' }] });
     expect2(await agent().update({ nested_field: [{ sub: { inner: 'object' } }] })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [nested_field.sub]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [nested_field.sub] of type [text] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [nested_field.sub] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
+        "400 MAPPER PARSING - failed to parse field [nested_field.sub] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
     );
 
     /**
@@ -1020,16 +983,12 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
     expect2(await agent().update({ object_field: { sub: null } })).toEqual({ object_field: { sub: null } });
     expect2(await agent().update({ object_field: { sub: '' } })).toEqual({ object_field: { sub: '' } });
     expect2(await agent().update({ object_field: { sub: { inner: 'object' } } })).toEqual(
-        service.isOldES6
-            ? '400 MAPPER PARSING - failed to parse [object_field.sub]'
-            : service.isOldES71
-            ? "400 MAPPER PARSING - failed to parse field [object_field.sub] of type [text] in document with id 'A0'"
-            : "400 MAPPER PARSING - failed to parse field [object_field.sub] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
+        "400 MAPPER PARSING - failed to parse field [object_field.sub] of type [text] in document with id 'A0'. Preview of field's value: '{inner=object}'",
     );
 
     //* verify the mapping condition doesn't change. (`_mapping`)
     const mapping2 = await service.getIndexMapping();
-    const properties2 = service.isOldES6 ? mapping2?._doc?.properties : mapping2?.properties;
+    const properties2 = mapping2?.properties;
     // verify mapping types for properties2
     expect2(() => properties2.array_field.type).toEqual('text');
     expect2(() => properties2.string_field.type).toEqual('text');
@@ -1052,7 +1011,7 @@ export const mismatchedTypeTest = async (service: Elastic6Service<any>): Promise
  * @param service - Elasticsearch service instance.
  */
 
-export const autoIndexingTest = async (service: Elastic6Service<any>): Promise<void> => {
+export const autoIndexingTest = async (service: OS2CoreService<any>): Promise<void> => {
     // agent for test
     const agent = () => ({
         save: (id: string, name: string, count: number) =>
@@ -1189,7 +1148,7 @@ interface BulkDummyResponse {
  * @param n - Number of chunks to divide the data into (default is 2).
  * @param t - Time in milliseconds to wait between bulk operations (default is 5000).
  */
-export const bulkDummyData = async (service: Elastic6Service<any>, n = 2, t = 5000): Promise<BulkDummyResponse> => {
+export const bulkDummyData = async (service: OS2CoreService<any>, n = 2, t = 5000): Promise<BulkDummyResponse> => {
     const { indexName } = service.options;
 
     const departments: Array<string> = [
@@ -1230,7 +1189,6 @@ export const bulkDummyData = async (service: Elastic6Service<any>, n = 2, t = 50
                 index: {
                     _index: indexName,
                     _id: doc.id,
-                    ...(service.isLatestOS2 ? {} : { _type: '_doc' }),
                 },
             });
             acc.push(doc);
@@ -1298,7 +1256,7 @@ interface SearchResponse<T = any> {
  * perform total summary with 20,000 data
  * @param service - Elasticsearch service instance.
  */
-export const totalSummaryTest = async (service: Elastic6Service<any>) => {
+export const totalSummaryTest = async (service: OS2CoreService<any>) => {
     const indexName = service.options.indexName;
 
     //* destroy index
@@ -1383,7 +1341,7 @@ export const totalSummaryTest = async (service: Elastic6Service<any>) => {
  * perform aggregation with 20,000 data
  * @param service - Elasticsearch service instance.
  */
-export const aggregationTest = async (service: Elastic6Service<any>) => {
+export const aggregationTest = async (service: OS2CoreService<any>) => {
     //* 1. employee per company
     const $companyAggregation: SearchBody = {
         size: 0, // set 0 to see only results
@@ -1468,7 +1426,7 @@ export const aggregationTest = async (service: Elastic6Service<any>) => {
  * perform search/filter tests with 20,000 data
  * @param service - Elasticsearch service instance.
  */
-export const searchFilterTest = async (service: Elastic6Service<any>) => {
+export const searchFilterTest = async (service: OS2CoreService<any>) => {
     //* 1.1 Test by keyword (filter term query)
     const $keywordSearch: SearchBody = {
         size: 3,
@@ -1557,19 +1515,11 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
     expect2(() => aggregationResult2.buckets[1]).toEqual({ doc_count: 833, key: 'A' });
     expect2(() => aggregationResult2.buckets[2]).toEqual({ doc_count: 833, key: 'C' }); // aggregation result matches the filter query
     // match query search result
-    if (service.isOldES6) {
-        /* sorted by the _score calculated using the TF-IDF algorithm */
-        expect2(() => extractedFields2[0]).toEqual({ id: 'employee 10033', _score: 2.0947309 });
-        expect2(() => extractedFields2[1]).toEqual({ id: 'employee 10089', _score: 2.0947309 });
-        expect2(() => extractedFields2[2]).toEqual({ id: 'employee 10121', _score: 2.0947309 });
-        expect2(() => matchQueryhResult.last).toEqual([2.0947309, 'employee 10121']);
-    } else {
-        /* sorted by the _score calculated using the BM25 algorithm */
-        expect2(() => extractedFields2[0]).toEqual({ id: 'employee 1001', _score: 2.0919745 });
-        expect2(() => extractedFields2[1]).toEqual({ id: 'employee 10041', _score: 2.0919745 });
-        expect2(() => extractedFields2[2]).toEqual({ id: 'employee 10073', _score: 2.0919745 });
-        expect2(() => matchQueryhResult.last).toEqual([2.0919745, 'employee 10073']);
-    }
+    /* sorted by the _score calculated using the BM25 algorithm */
+    expect2(() => extractedFields2[0]).toEqual({ id: 'employee 1001', _score: 2.0919745 });
+    expect2(() => extractedFields2[1]).toEqual({ id: 'employee 10041', _score: 2.0919745 });
+    expect2(() => extractedFields2[2]).toEqual({ id: 'employee 10073', _score: 2.0919745 });
+    expect2(() => matchQueryhResult.last).toEqual([2.0919745, 'employee 10073']);
     expect2(() => matchQueryhResult.total).toEqual(2500); // 834(B) + 833(A) + 833(C)
 
     //* 2. Test by range (salary range)
@@ -1723,12 +1673,12 @@ export const searchFilterTest = async (service: Elastic6Service<any>) => {
     expect2(() => properties.salary).toEqual({ type: 'long' });
 };
 /**
- * run Elastic6Service tests sequentially.
+ * run OS2CoreService tests sequentially.
  *
  * @param service - Elasticsearch service instance.
  */
 
-export const doTest = async (service: Elastic6Service<any>) => {
+export const doTest = async (service: OS2CoreService<any>) => {
     const runTest = async (testName: string, testFn: () => Promise<void>) => {
         try {
             await testFn();
@@ -1763,14 +1713,14 @@ export const doTest = async (service: Elastic6Service<any>) => {
 };
 
 //* main test body.
-describe('Elastic6Service', () => {
+describe('OS2CoreService', () => {
     //* dummy storage service.
     it('should pass basic CRUD w/ dummy', async () => {
         //* load dummy storage service.
         const { dummy } = instance();
 
         //* check dummy data.
-        expect2(() => dummy.hello()).toEqual('dummy-elastic6-service:test-v6.2');
+        expect2(() => dummy.hello()).toEqual('dummy-os2-service:test-v2.13');
         expect2(await dummy.readItem('00').catch(GETERR)).toEqual('404 NOT FOUND - id:00');
         expect2(await dummy.readItem('A0').catch(GETERR)).toEqual({ $id: 'A0', type: 'account', name: 'lemon' });
         expect2(await dummy.readItem('A1'), '$id,type,name').toEqual({ $id: 'A1', type: 'account', name: 'Hong' });
@@ -1801,97 +1751,6 @@ describe('Elastic6Service', () => {
             stringArr: ['a', 'b'],
             type: 'account',
         });
-    });
-
-    //* $ERROR parser
-    it('should pass error handler($ERROR/es6.2)', async () => {
-        const message = 'someting wrong';
-        const err = new Error(message);
-        // expect2(() => JSON.stringify(err, Object.getOwnPropertyNames(err))).toEqual();
-        expect2(() => $ERROR.asJson(err), 'message').toEqual({ message });
-
-        //* parse the origin error.
-        const E1 = loadJsonSync('data/samples/es6.5/create-index.err-400.json');
-        expect2(() => $ERROR.asError(E1)).toEqual({
-            status: 400,
-            message: 'index [test-v4/menh7_JkTJeXGX6b6EzTnA] already exists',
-            reason: {
-                status: 400,
-                type: 'RESOURCE ALREADY EXISTS',
-                reason: 'index [test-v4/menh7_JkTJeXGX6b6EzTnA] already exists',
-                cause: {
-                    index: 'test-v4',
-                    index_uuid: 'menh7_JkTJeXGX6b6EzTnA',
-                    reason: 'index [test-v4/menh7_JkTJeXGX6b6EzTnA] already exists',
-                    type: 'resource_already_exists_exception',
-                },
-            },
-        });
-
-        const E2 = loadJsonSync('data/samples/es6.5/update-item.err-400A.json');
-        expect2(() => $ERROR.asError(E2)).toEqual({
-            status: 400,
-            message: 'failed to execute script',
-            reason: {
-                status: 400,
-                type: 'REMOTE TRANSPORT',
-                reason: 'failed to execute script',
-                cause: {
-                    type: 'remote_transport_exception',
-                    reason: '[41hifW8][x.x.x.x:9300][indices:data/write/update[s]]',
-                },
-            },
-        });
-
-        const E3 = loadJsonSync('data/samples/es6.5/read-item.err-404.json');
-        expect2(() => $ERROR.asError(E3)).toEqual({
-            status: 404,
-            message: 'NOT FOUND',
-            reason: { cause: undefined, reason: 'NOT FOUND', status: undefined, type: 'NOT FOUND' },
-        });
-
-        const E4 = loadJsonSync('data/samples/es6.5/update-item.err-400.json');
-        expect2(() => $ERROR.asError(E4)).toEqual({
-            status: 400,
-            message: "Validation Failed: 1: can't provide both script and doc;",
-            reason: {
-                status: 400,
-                type: 'ACTION REQUEST VALIDATION',
-                reason: "Validation Failed: 1: can't provide both script and doc;",
-                cause: {
-                    reason: "Validation Failed: 1: can't provide both script and doc;",
-                    type: 'action_request_validation_exception',
-                },
-            },
-        });
-
-        const E5 = loadJsonSync('data/samples/es6.5/delete-item.err-404.json');
-        expect2(() => $ERROR.asError(E5)).toEqual({
-            status: 404,
-            message: 'NOT FOUND',
-            reason: { cause: undefined, reason: 'NOT FOUND', status: undefined, type: 'NOT FOUND' },
-        });
-        const E6 = loadJsonSync('data/samples/es6.2/update-item.err400.mapping.json');
-        expect2(() => $ERROR.asError(E6)).toEqual({
-            message: 'mapper_parsing_exception',
-            reason: {
-                reason: 'failed to parse [string_field]',
-                status: 400,
-                type: 'MAPPER PARSING',
-            },
-            status: 400,
-        });
-        expect2(() => $ERROR.handler('test', GETERR)(E6)).toEqual(
-            '400 MAPPER PARSING - failed to parse [string_field]',
-        );
-
-        expect2(() => $ERROR.handler('test', GETERR)(E1)).toEqual(
-            '400 RESOURCE ALREADY EXISTS - index [test-v4/menh7_JkTJeXGX6b6EzTnA] already exists',
-        );
-        expect2(() => $ERROR.handler('test', GETERR)(E2)).toEqual('400 REMOTE TRANSPORT - failed to execute script');
-        expect2(() => $ERROR.handler('test', GETERR)(E4)).toEqual(
-            `400 ACTION REQUEST VALIDATION - Validation Failed: 1: can't provide both script and doc;`,
-        );
     });
 
     //* $ERROR parser
@@ -1947,93 +1806,32 @@ describe('Elastic6Service', () => {
         });
     });
 
-    //* test with real server
-    it('should pass basic CRUD w/ real server (6.2)', async () => {
-        // if (!PROFILE) return; // ignore w/o profile
-        vi.setConfig({ testTimeout: 1200000 });
+    //* $ERROR parser w/ the OpenSearch client error (v5 B2-b)
+    it('should pass error handler($ERROR/os2.13)', async () => {
+        //* the sample saved by elastic 7.12 on OpenSearch 2.13 (message = error type).
+        const S1 = loadJsonSync('data/samples/os2.13/update-item.err400.mapping.json');
+        const reason =
+            "failed to parse field [string_field] of type [text] in document with id 'A0'. Preview of field's value: '{}'";
+        const expected = { status: 400, type: 'MAPPER PARSING', reason };
+        expect2(() => $ERROR.asError(S1)).toEqual({
+            status: 400,
+            message: 'mapper_parsing_exception',
+            reason: expected,
+        });
+        expect2(() => $ERROR.handler('test', GETERR)(S1)).toEqual(`400 MAPPER PARSING - ${reason}`);
 
-        //* load dummy storage service.
-        const { service } = await initService('6.2');
+        //* the same `meta` as an OpenSearch client `ResponseError` (message = `<type>: [<root_cause>] Reason: ...`).
+        const E1 = new errors.ResponseError(S1.meta);
+        expect2(() => E1.message.startsWith('mapper_parsing_exception: [mapper_parsing_exception] Reason:')).toEqual(
+            true,
+        );
+        expect2(() => $ERROR.asError(E1).reason).toEqual(expected);
+        expect2(() => $ERROR.handler('test', GETERR)(E1)).toEqual(`400 MAPPER PARSING - ${reason}`);
 
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
-
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
-
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(true);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 6, minor: 2, patch: 3 });
-
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
-
-    //* elastic storage service.
-    it('should pass basic CRUD w/ real server(7.1)', async () => {
-        vi.setConfig({ testTimeout: 1200000 });
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service } = await initService('7.1');
-
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
-
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
-
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(true);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 1, patch: 1 });
-
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
-
-    //* elastic storage service.
-    it('should pass basic CRUD w/ real server(7.2)', async () => {
-        vi.setConfig({ testTimeout: 1200000 });
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service } = await initService('7.2');
-
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
-
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
-
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(false);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 2, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 4, patch: 2 });
-
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
-    });
-
-    //* elastic storage service.
-    it('should pass basic CRUD w/ real server(7.10)', async () => {
-        vi.setConfig({ testTimeout: 1200000 });
-        // if (!PROFILE) return; // ignore w/o profile
-        //* load dummy storage service.
-        const { service } = await initService('7.10');
-
-        //* break if no live connection
-        if (!(await canPerformTest(service))) return;
-
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(true);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        //* run Elastic6Service tests sequentially.
-        expect2(await doTest(service).catch(GETERR)).toEqual('pass');
+        //* errors without `meta` (FGAC `http-fetch`, network) are rethrown as-is.
+        const E2 = new Error('404 NOT FOUND - id:A0');
+        expect2(() => $ERROR.asError(E2).reason).toEqual(null);
+        expect2(() => $ERROR.handler('test', GETERR)(E2)).toEqual('404 NOT FOUND - id:A0');
     });
 
     //* elastic storage service.
@@ -2046,15 +1844,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(false);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 1, minor: 1, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        //* run Elastic6Service tests sequentially.
+        //* run OS2CoreService tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
@@ -2068,15 +1858,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(false);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 1, minor: 2, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        //* run Elastic6Service tests sequentially.
+        //* run OS2CoreService tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 
@@ -2090,15 +1872,7 @@ describe('Elastic6Service', () => {
         //* break if no live connection
         if (!(await canPerformTest(service))) return;
 
-        //* version check w/root
-        expect2(() => service.getVersion()).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        const selfTest = await service.executeSelfTest();
-        expect2(() => selfTest.isEqual).toEqual(false);
-        expect2(() => selfTest.optionVersion).toEqual({ engine: 'os', major: 2, minor: 13, patch: 0 });
-        expect2(() => selfTest.rootVersion).toEqual({ engine: 'es', major: 7, minor: 10, patch: 2 });
-
-        //* run Elastic6Service tests sequentially.
+        //* run OS2CoreService tests sequentially.
         expect2(await doTest(service).catch(GETERR)).toEqual('pass');
     });
 });

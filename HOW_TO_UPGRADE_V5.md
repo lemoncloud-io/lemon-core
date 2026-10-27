@@ -1,6 +1,6 @@
 # UPGRADE GUIDE: lemon-core V4 to V5
 
-> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging) and B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed).
+> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging), B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed) and B2-b (search: OpenSearch client, ES names, lazy `$OS2`).
 
 ---
 
@@ -230,6 +230,108 @@ export class RedisBackend implements CacheBackend {
 
 ---
 
+## 7. Search: OpenSearch client, ES names removed, lazy `$OS2` (B2-b)
+
+lemon-core v5 talks to OpenSearch with `@opensearch-project/opensearch` (^3.9.0) instead of `@elastic/elasticsearch` 7.12. Responses keep the wrapped shape `{ body, statusCode, headers, meta }`, so code that reads `res.body` keeps working. If your service imports `@elastic/elasticsearch` directly, add it to **your own** `package.json`. The client type is no longer re-exported; import it from the client package:
+
+```ts
+import type { Client } from '@opensearch-project/opensearch';
+```
+
+Find the names that changed:
+
+```bash
+grep -rn "Elastic6\|ElasticIndexService\|ElasticOption\|ElasticItem\|_ES6\|\$ES6\b\|createSyncToElastic6\|ES6_\|OS2_VERSION\|OS2_DOCTYPE\|docType\|esVersion" src
+```
+
+### 7.1 Renamed
+
+| v4 | v5 | kind |
+| --- | --- | --- |
+| `ElasticIndexService` | `OS2ClientService` | class + type. Holds the client; creates it on first use |
+| `Elastic6Service` | `OS2CoreService` | class + type. Client CRUD and index management; parent of `OS2Service` |
+| `Elastic6QueryService` | `OS2QueryService` | class + type |
+| `Elastic6Synchronizer` | `OS2Synchronizer` | class + type |
+| `AbstractElastic6Instance` | `AbstractOS2Instance` | class + type. The constructor builds nothing |
+| `Elastic6ContructParams` | `OS2ConstructParams` | type. `esVersion`, `esDocType` removed |
+| `Elastic6SearchParams` | `OS2SearchParams` | type |
+| `ElasticOption`, `Elastic6Option` | `OS2BaseOption` | type. `version`, `docType` removed |
+| `ElasticItem`, `Elastic6Item` | `OS2Item` | type |
+| `LambdaDynamoStreamHandler.createSyncToElastic6()` | `LambdaDynamoStreamHandler.createSyncToOS2()` | static method |
+
+Kept: `$OS2`, `$ES6Routed`, `_OS2`, `OS2Instance` (now `extends AbstractOS2Instance`), `OS2Service`, `OS2FGACManager`, `OS2Option`, `$ERROR`, `RetryOptions`, `SearchType`, `SearchResponse`, `SearchParam`, `SearchProxyBody`, `SearchResult`, `HangulService`, `$hangul`. `Elastic6SimpleQueriable` and the other search types from `lemon-model` keep their names (they belong to `lemon-model`).
+
+File names (`cores/elastic/elastic6-service.ts` and the others) are unchanged in v5, so `lemon-core/dist/...` file deep imports still resolve.
+
+### 7.2 Removed
+
+| Removed | Use instead |
+| --- | --- |
+| root `$ES6` (the L1 instance), `_ES6()` | `$OS2` (or `$ES6Routed`, the same object), `_OS2()` |
+| `$ES6` in `lemon-core/dist/extended/cores` (deep import) | `$ES6Routed` / `$OS2` |
+| `Elastic6Instance`, the internal `Elastic6Proxy` | `OS2Instance` |
+| `$ES6.$X` (`describeEndpointUrl`, `createHttpSearchProxy`) | `$OS2.$X2.describeEndpointUrl`. The search proxy agent is gone; call the proxy endpoint with `createHttpWebProxy` if you need it |
+| `elasticsearch` (re-export of the whole client module) | `import { Client } from '@opensearch-project/opensearch'` |
+| `DummyElastic6Service` | a small in-memory class in your spec (extend `OS2CoreService` and override `readItem`/`saveItem`/`updateItem`/`deleteItem`) |
+| `EngineType`, `ParsedVersion` | - |
+| `getVersion()`, `executeSelfTest()`, `parseVersion()`, `parsedVersion`, `isOldES6`, `isOldES71`, `isLatestOS2`, `version` (getter) | call `client.info()` or `client.nodes.info()` yourself. No behaviour depends on the server version any more |
+| env reads `ES6_ENDPOINT`, `ES6_INDEX`, `ES6_VERSION`, `ES6_DOCTYPE`, `ES6_AUTOCOMPLETE_FIELDS`, `ES6_IS_PROXY`, `OS2_VERSION`, `OS2_DOCTYPE` | `OS2_ENDPOINT`, `OS2_INDEX`, `OS2_AUTOCOMPLETE_FIELDS`, `MY_DYNAMO_TABLE` (unchanged) |
+
+Why no version detection: an OpenSearch cluster in compatibility mode answers `GET /` with `7.10.2` and no `distribution`, so the root response cannot tell OpenSearch from Elasticsearch.
+
+### 7.3 Typeless requests, options and parameters
+
+* No request sends a doc `type` any more. The OpenSearch client puts every unknown key into the query string as-is, and OpenSearch 2.x/3.x answers `400` to `?type=`. `searchType` is sent as `search_type`.
+* `OS2BaseOption.docType` and `OS2BaseOption.version` are removed. Passing them in an object literal is a type error. Default options are `{ idName: '$id' }`.
+* `OS2CoreService.saveItem(id, item)` and `pushItem(item)` have no `type` parameter.
+* `OS2CoreService.prepareSettings({ idName, timeSeries?, shards?, replicas? })` always returns the typeless mapping (`mappings.properties`, `mappings.dynamic_templates`); the `standard` token filter branch is gone. With `timeSeries: true` it no longer throws (v4 deleted from a missing object).
+* `createIndex()` on an instance (`OS2Instance`) sends that mapping as-is. The v4 L1 instance also added a `score_` (`half_float`) field; that instance is removed.
+* `OS2SearchParams.searchType` keeps its name (it is the lemon-core parameter; it goes out as `search_type`).
+* `hello()` of the services: `os2-core-service:<index>`, `os2-query-service:<index>`.
+
+### 7.4 Lazy `$OS2`
+
+`$OS2` and `$ES6Routed` are **one object**: a `Proxy` that runs `_OS2()` on the first property access and delegates everything after that.
+
+| | v4 | v5 |
+| --- | --- | --- |
+| `require('lemon-core')` / `import` with `OS2_ENDPOINT` | 6 clients, 5 dynamo-stream listeners | 0 clients, 0 listeners |
+| first access (`$OS2.hello()`, first `MyCoreManager`) | - | `_OS2()` reads env **now**: 1 instance, 1 listener, 0 clients |
+| first `client` use (index management, bulk) | - | 1 master client |
+| `$OS2 === $ES6Routed` | no (two instances) | yes |
+| without `OS2_ENDPOINT` | L1 `Elastic6Instance` (root `$ES6`) | `OS2Instance` with `options === null`, `elastic`/`query`/`synchronizer` `undefined`, no listener |
+
+* Env is read at the first access, not at import. Loading the env after `import 'lemon-core'` but before the first use now gives a configured `$OS2` (v4 fixed it at import).
+* `$OS2` is a `Proxy`: `$OS2 instanceof OS2Instance`, `'hello' in $OS2`, `Object.keys($OS2)` and property writes work as on the instance itself.
+* `OS2ClientService` and its subclasses create the client on the first `client` access, once per service. `new OS2Service(...)` and `new OS2CoreService(...)` build no client.
+* One `OS2Instance` = one service = at most one client = one listener (v4: 3 clients, 2 listeners).
+* The client package itself is loaded on the first client creation, not at import (`require('lemon-core')` no longer loads it).
+
+### 7.5 Master credentials are read when the master client is built
+
+`OS2Service` (the master client for index management and `bulk`) reads `OS2_MASTER_UID` and `OS2_MASTER_PWD` from the lemon-core config **when the client is first used**, which is after `$engine` init. It sets `auth` only when **both** are present.
+
+In v4 they were read at import, before config init, so they were always `undefined` and no `Authorization` header was sent. **If your config defines `OS2_MASTER_*`, v5 now sends them.** If it does not, nothing changes (the master paths answer `401` as before). The FGAC data path (CRUD and search through `OS2Service`) does not use the client and is unchanged.
+
+### 7.6 `$ERROR` messages are unchanged
+
+`$ERROR.asError()` now reads the error type from `meta.body.error.type` (present with both clients) instead of the client's error message, so the messages keep the v4 form:
+
+```
+409 VERSION CONFLICT ENGINE - [A0]: version conflict, ...
+404 INDEX NOT FOUND - ...
+400 MAPPER PARSING - failed to parse field ...
+```
+
+Prefix checks such as `msg.startsWith('400 ILLEGAL ARGUMENT - Cannot apply')` keep matching. Errors without `meta` (FGAC `fetch` errors, network errors) are rethrown as they are. The `E.response` branch for Elasticsearch 6.2 error objects is removed.
+
+### 7.7 Fixed
+
+* `OS2Service.pushItem()` returns `_id` and `_version` (v4 read them from `res.body`, which the FGAC result does not have).
+* `api-search` style code that called `_OS2()` per request added two listeners per call; use the shared `$OS2` (`$ES6Routed`).
+
+---
+
 ## At-a-Glance Checklist
 
 - [ ] Node.js 24 (`.nvmrc`, local runtime)
@@ -240,3 +342,7 @@ export class RedisBackend implements CacheBackend {
 - [ ] Direct imports of `request`, `lodash`, `ioredis`, `memcached` are in your own `package.json`
 - [ ] `CacheService.create()` without `backend` is in-process; inject a `CacheBackend` for a shared cache
 - [ ] No `RedisStorageService` / `DummyRedisStorageService` / `RedisOptions`
+- [ ] Search names renamed (`Elastic6Service` → `OS2CoreService` …, § 7.1); no `$ES6`/`_ES6`/`Elastic6Instance`/`elasticsearch` (§ 7.2)
+- [ ] No `docType`/`version` in search options; no `type` argument to `saveItem`/`pushItem`
+- [ ] Env loaded before the first use of `$OS2`/`$ES6Routed` (not needed before import any more)
+- [ ] `OS2_MASTER_UID`/`OS2_MASTER_PWD` in config are now sent by the master client (§ 7.5)

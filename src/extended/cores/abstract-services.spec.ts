@@ -7,6 +7,7 @@
  * @date        2022-12-29 optimized with `lemon-core@3.2.1`
  * @date        2023-01-18 optimized with `lemon-core@3.2.4`
  * @date        2023-01-20 optimized `doSearch()` w/ `SearchParam()`
+ * @date        2026-10-27 v5 B2-b: lazy `$OS2` test (listener and client counts).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -21,6 +22,10 @@ import { loadJsonSync } from '../../tools/';
 import { SearchResult, filterFields } from '../abstract-service';
 import { NextContext, NextIdentity, SearchBody, SimpleSet, CoreModel } from 'lemon-model';
 import { CanDoActionType, MyCoreManager, MyCoreProxy, MyCoreService, MyManagerProxy } from './abstract-services';
+import { $OS2, $ES6Routed, _OS2, OS2Instance, OS2Service } from './abstract-services';
+import { lazyInstance } from '../../lib/lazy';
+import $cores from '../../cores/';
+import { vi } from 'vitest';
 import { PaginateParam } from './types';
 import { loadSample } from './contexts.spec';
 import { fieldKeys } from '../../generated/field-registry';
@@ -1207,5 +1212,29 @@ describe('abstract-services', () => {
             { ..._base('test'), id: 'a', name: 'second-update', test: 100 },
             { ..._base('test'), id: 'a', name: 'second-update', test: 100 },
         ]);
+    });
+
+    //* v5 B2-b: `$OS2` is one lazy object; a lazy instance builds 1 listener on first touch and 1 client on first use.
+    it('should pass lazy $OS2', async () => {
+        expect2(() => $OS2 === $ES6Routed).toEqual(true);
+        expect2(() => $OS2 instanceof OS2Instance).toEqual(true);
+
+        // listeners on the global dynamo-stream registry (protected field, read for the test).
+        const listeners = () => ((($cores.lambda.dynamos as any).listeners as any[]) ?? []).length;
+        const created = vi.spyOn(OS2Service.prototype as any, 'createClient');
+        try {
+            const n0 = listeners();
+            const $lazy = lazyInstance(() => _OS2({ endpoint: 'https://127.0.0.1:9', indexName: 'test-lazy' }));
+            expect2(() => listeners() - n0).toEqual(0); // nothing built yet.
+            expect2(() => $lazy.hello()).toEqual('OS2Instance');
+            expect2(() => listeners() - n0).toEqual(1); // one synchronizer.
+            expect2(() => created.mock.calls.length).toEqual(0); // no client yet.
+            expect2(() => !!$lazy.elastic.client).toEqual(true);
+            expect2(() => created.mock.calls.length).toEqual(1); // the master client, once.
+            expect2(() => !!$lazy.client).toEqual(true);
+            expect2(() => created.mock.calls.length).toEqual(1);
+        } finally {
+            created.mockRestore();
+        }
     });
 });

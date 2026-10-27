@@ -5,6 +5,7 @@
  * @author      Tim Hong <tim@lemoncloud.io>
  * @date        2020-07-29 initial version
  * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
+ * @date        2026-10-27 v5 B2-b: `OS2QueryService`, OpenSearch versions only.
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -12,20 +13,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, waited } from '../..';
-import { Elastic6QueryService } from './elastic6-query-service';
+import { OS2QueryService } from './elastic6-query-service';
 import { canPerformTest, VERSIONS } from './elastic6-service.spec';
 import * as $elastic from './elastic6-service.spec';
 
+// build the core service and the query service for the version.
 const instance = (version: VERSIONS, indexName: string) => {
     const { service: elastic, options } = $elastic.instance(version, true, indexName);
-    const search: Elastic6QueryService<any> = new Elastic6QueryService(elastic);
+    const search: OS2QueryService<any> = new OS2QueryService(elastic);
     return { elastic, search, options, indexName };
 };
 
-export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, instanceIndexName: string) => {
-    const defaultVersion: VERSIONS = instanceVersion ?? (['6.2', '6.8', '7.1', '7.2', '0'][3] as VERSIONS);
+// register the query tests for one server version.
+export const runOS2QueryServiceTests = async (instanceVersion: VERSIONS, instanceIndexName: string) => {
+    const defaultVersion: VERSIONS = instanceVersion ?? '2.13';
     const defaultIndexName = instanceIndexName ?? 'test-v4';
-    describe(`Elastic6QueryService ${defaultVersion}`, () => {
+    describe(`OS2QueryService ${defaultVersion}`, () => {
         const PROFILE = loadProfile(process); // override process.env.
         if (PROFILE) console.info(`! PROFILE =`, PROFILE);
 
@@ -36,10 +39,8 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
             const { elastic, search, options } = instance(defaultVersion, defaultIndexName);
             /* eslint-disable prettier/prettier */
 
-            const { version } = options;
-
-            expect2(() => elastic.hello()).toEqual(`elastic6-service:${defaultIndexName}:${version}`);
-            expect2(() => search.hello()).toEqual(`elastic6-query-service:${defaultIndexName}`);
+            expect2(() => elastic.hello()).toEqual(`os2-core-service:${defaultIndexName}`);
+            expect2(() => search.hello()).toEqual(`os2-query-service:${defaultIndexName}`);
             expect2(() => options, 'idName,autocompleteFields').toEqual({ idName: '$id', autocompleteFields: ['title', 'name'] });
             /* eslint-enable prettier/prettier */
         });
@@ -230,24 +231,12 @@ export const runElastic6QueryServiceTests = async (instanceVersion: VERSIONS, in
 ////////////////////////////////////////////////////////////////////////////////////////////////////////
 //* main test body with real server
 
-//* Elastic6QueryService tests
-//* it should pass basic CRUD w/ real server (6.2)
-runElastic6QueryServiceTests('6.2', 'test-v6.2');
-
-//* it should pass basic CRUD w/ real server(7.1)
-runElastic6QueryServiceTests('7.1', 'test-v7.1');
-
-//* it should pass basic CRUD w/ real server(7.2)
-runElastic6QueryServiceTests('7.2', 'test-v7.2');
-
-//* it should pass basic CRUD w/ real server(7.10)
-runElastic6QueryServiceTests('7.10', 'test-v7.10');
-
+//* OS2QueryService tests (v5: OpenSearch servers only)
 //* it should pass basic CRUD w/ open-search server(1.1)
-runElastic6QueryServiceTests('1.1', 'test-v1.1');
+runOS2QueryServiceTests('1.1', 'test-v1.1');
 
 //* it should pass basic CRUD w/ open-search server(1.2)
-runElastic6QueryServiceTests('1.2', 'test-v1.2');
+runOS2QueryServiceTests('1.2', 'test-v1.2');
 
 //* it should pass basic CRUD w/ open-search server(2.13)
-runElastic6QueryServiceTests('2.13', 'test-v2.13');
+runOS2QueryServiceTests('2.13', 'test-v2.13');

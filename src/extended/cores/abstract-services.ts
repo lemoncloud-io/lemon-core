@@ -37,35 +37,31 @@
  * @date        2026-01-05 optimized `hasAdminRole()` and `getCurrentSession()`.
  * @date        2026-02-11 optimized `proxy.mget()` with `throwable` options.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
+ * @date        2026-10-27 v5 B2-b: OpenSearch client, lazy `$OS2` (= `$ES6Routed`), one service set per instance.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err, $engine } from '../../engine/';
-import $cores, {
-    ConfigModule,
-    SearchType,
-    Elastic6Service,
-    Elastic6Option,
-    Elastic6QueryService,
-    $ERROR,
-} from '../../cores/';
+import $cores, { ConfigModule, SearchType, OS2CoreService, OS2BaseOption, OS2QueryService, $ERROR } from '../../cores/';
 import { DynamoScanService, DynamoScanFilter, DynamoScanResult, ApiHttpProxy, APIHeaders } from '../../cores/';
-import { elasticsearch, SearchResponse, DynamoOption, Elastic6Item } from '../../cores/';
+import { SearchResponse, DynamoOption, OS2Item } from '../../cores/';
+import type { Client } from '@opensearch-project/opensearch';
 import { NUL404, GETERR, GETERR$, waited } from '../../common/test-helper';
 import { asyncCredentials, loadJsonSync } from '../../tools/';
 import { my_parrallel, createSigV4Proxy, my_sequence, getIdentityId } from '../../helpers/';
 import {
-    _ES6,
-    Elastic6Synchronizer,
+    OS2Synchronizer,
     CoreManager,
     CoreService,
     SearchResult,
     ManagerProxy,
     AbstractProxy,
-    Elastic6Instance,
+    AbstractOS2Instance,
+    OS2ConstructParams,
 } from '../abstract-service';
+import { lazyInstance } from '../../lib/lazy';
 import {
     Incrementable,
     CoreModel,
@@ -202,13 +198,13 @@ export abstract class MyCoreService<
     };
 
     /**
-     * run search
-     * - override this to hide `$ES6`
+     * run search (via `$OS2`)
+     * - override this to hide `$OS2`
      */
     public async doSearch<T>(body: SearchBody): Promise<SearchResult<T>> {
         _log(`doSearch()`);
         _log(`> list.query =`, $U.json(body));
-        const result = await $ES6.search<T>(body);
+        const result = await $OS2.search<T>(body);
         _log(`> list.res =`, $U.json({ ...result, list: [result?.list?.[0]] }));
         return result;
     }
@@ -233,7 +229,7 @@ export abstract class MyCoreService<
      * @returns
      */
     public hasSearchEngine(): boolean {
-        const useSearch = !!$ES6.options?.indexName;
+        const useSearch = !!$OS2.options?.indexName;
         return useSearch;
     }
 }
@@ -273,7 +269,8 @@ export abstract class MyCoreManager<
     ) {
         super(type, parent, fields, options?.uniqueField);
         const enableSync = options?.enableSync ?? true;
-        if (enableSync) $ES6.synchronizer?.enableSynchronization(this.type);
+        //* the first manager builds the lazy `$OS2` (1 listener when `OS2_ENDPOINT` is set).
+        if (enableSync) $OS2.synchronizer?.enableSynchronization(this.type);
         this.logNS = $U.NS(type, 'yellow');
     }
 
@@ -836,13 +833,14 @@ export abstract class MyCoreManager<
         };
 
         const _saveBulk = async <T = any>(operations: T[]) => {
-            const elastic = $ES6.client;
+            const elastic = $OS2.client;
             const $res = await elastic.bulk({ body: operations }).catch(e => {
                 _err(this.NS, `>> err=`, e);
                 throw e;
             });
+            //* the OS client types `items[].index.error` as an object; read it in the v4 shape.
             const list =
-                ($res.body as BulkResponseBody)?.items?.map<ItemList>(item => ({
+                ($res.body as unknown as BulkResponseBody)?.items?.map<ItemList>(item => ({
                     _id: item.index._id,
                     _version: item.index._version,
                     error: item.index.error,
@@ -866,7 +864,7 @@ export abstract class MyCoreManager<
         const _transformBulkOperations = (dataChunk: Model[]) => {
             return dataChunk.flatMap(doc => {
                 const { _id, ...items } = doc;
-                return [{ index: { _index: $ES6.options?.indexName, _id: doc._id } }, items as Model];
+                return [{ index: { _index: $OS2.options?.indexName, _id: doc._id } }, items as Model];
             });
         };
 
@@ -1606,10 +1604,6 @@ interface ElasticParams<T extends object = any> {
      * body content.
      */
     body: T;
-    /**
-     * document type (optional).
-     */
-    type?: string;
 }
 /**
  * parameters for Elasticsearch search operations.
@@ -1626,63 +1620,38 @@ interface ElasticSearchParams<T extends object = any> {
      */
     body: T;
     /**
-     * document type (optional).
-     */
-    type?: string;
-    /**
      * search type
      * (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
      */
-    searchType: SearchType;
+    search_type?: SearchType;
 }
 
 /**
  * class: `OS2Service`
  * - Master 권한 전용 Elasticsearch 관리 서비스
- * - elasticsearch service for OS2.
+ * - service for OS2: data path via FGAC (`$fgac`), index management via the master client.
  */
-export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<any> {
-    protected declare _options: Elastic6Option;
-    public declare readonly _client: elasticsearch.Client;
+export class OS2Service<T extends OS2Item = any> extends OS2CoreService<any> {
     public readonly $fgac: OS2FGACManager;
 
-    public static override instance(endpoint: string) {
-        const _config = (n: string) => $cores.config.config.get(n);
-        const masterUser = _config('OS2_MASTER_UID');
-        const masterPass = _config('OS2_MASTER_PWD');
-        // if (!masterUser || !masterPass) throw new Error('400 NO MASTER - OS2_MASTER_UID/OS2_MASTER_PWD is required!');
-
-        const client = new elasticsearch.Client({
-            node: endpoint,
-            ssl: {
-                ca: process.env.elasticsearch_certificate,
-                rejectUnauthorized: false,
-            },
-            auth: {
-                username: masterUser,
-                password: masterPass,
-            },
-        });
-        return { client };
-    }
-
-    public constructor(options: Elastic6Option, fgac: OS2FGACManager) {
+    /**
+     * constructor (no client here; the master client is created on first `client` access)
+     */
+    public constructor(options: OS2BaseOption, fgac: OS2FGACManager) {
         super(options);
-        if (!options.endpoint) throw new Error('.endpoint (URL) is required');
-        if (!options.indexName) throw new Error('.indexName (string) is required');
-
-        const { client } = OS2Service.instance(options.endpoint);
-        this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
-        this._client = client;
         this.$fgac = fgac;
     }
 
-    public get client(): elasticsearch.Client {
-        return this._client;
-    }
-
-    public get options(): Elastic6Option {
-        return this._options;
+    /**
+     * build the master client: `auth` is read from config now (after engine init), and set only when both exist.
+     */
+    protected override createClient(): Client {
+        const _config = (n: string) => $cores.config.config.get(n);
+        const username = _config('OS2_MASTER_UID');
+        const password = _config('OS2_MASTER_PWD');
+        const auth = username && password ? { auth: { username, password } } : {};
+        //* same node/ssl as the base; the package is loaded here, on first use.
+        return this.newClient(auth);
     }
 
     /**
@@ -1724,8 +1693,9 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
      * @param settings - creating settings
      */
     public async createIndex(settings?: any) {
-        const { indexName, docType, idName, timeSeries, version } = this.options;
-        settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
+        const { indexName, idName, timeSeries } = this.options;
+        // default: the typeless settings (`mappings.properties`)
+        settings = settings || OS2CoreService.prepareSettings({ idName, timeSeries });
         if (!indexName) new Error('@index is required!');
         _log(NS, `- createIndex(${indexName})`);
 
@@ -1826,7 +1796,7 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
     public async bulkItems(items: T[], options?: { idName?: string }): Promise<BulkItemsResult> {
         const errScope = `bulkItems(${this.options.indexName})`;
         const { indexName } = this.options;
-        const client = this.client;
+        //* FGAC only: do not touch `this.client` here (it would create the master client).
         const idName = options?.idName ?? '_id';
 
         if (!Array.isArray(items) || items.length === 0)
@@ -1893,21 +1863,19 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
     }
 
     /**
-     * push item for time-series data.
+     * push item for time-series data (via FGAC; the result is the response body itself).
      *
      * @param item - item to push
-     * @param type - document type (default: doc-type given at construction time)
      */
-    public async pushItem(item: T, type?: string): Promise<T> {
-        const { indexName, docType } = this.options;
+    public async pushItem(item: T): Promise<T> {
+        const { indexName } = this.options;
         const id = (item.id as string) ?? '';
 
-        type = `${type || docType}`;
         const body: any = { ...item };
         const body2 = this.popullateAutocompleteFields(body);
 
         _log(NS, `- pushItem(${id})`);
-        const params = { index: indexName, type, body: body2, id };
+        const params = { index: indexName, body: body2, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
@@ -1923,8 +1891,9 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
         // {"_index":"test-v3","_type":"_doc","_id":"rTeHiW4BPb_liACrA9qa","_version":1,"result":"created","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":2,"_primary_term":1}
         _log(NS, `> create[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
-        const _id = res.body?._id;
-        const _version = res.body?._version;
+        //* fixed: the FGAC result is the body itself (v4 read `res.body?._id`, always undefined)
+        const _id = res?._id;
+        const _version = res?._version;
         const res2: T = { ...body, _id, _version };
         return res2;
     }
@@ -1936,11 +1905,10 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
      * @param views - projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
-        const { indexName, docType } = this.options;
-        const type = `${docType}`;
+        const { indexName } = this.options;
         _log(NS, `- readItem(${id})`);
 
-        const params: any = { index: indexName, type, id };
+        const params: any = { index: indexName, id };
         if (views) {
             const fields: string[] = [];
             const keys: string[] = Array.isArray(views) ? views : Object.keys(views);
@@ -1967,8 +1935,8 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
         const _version = res._version;
         const data: T = (res as any)?._source || res._source || {};
         // delete internal (analyzed) field
-        delete data[Elastic6Service.DECOMPOSED_FIELD];
-        delete data[Elastic6Service.QWERTY_FIELD];
+        delete data[OS2CoreService.DECOMPOSED_FIELD];
+        delete data[OS2CoreService.QWERTY_FIELD];
 
         const res2: T = { ...data, _id, _version };
         return res2;
@@ -1980,11 +1948,10 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
      * @param id - item-id
      */
     public async deleteItem(id: string): Promise<T> {
-        const { indexName, docType } = this.options;
-        const type = `${docType}`;
+        const { indexName } = this.options;
         _log(NS, `- deleteItem(${id})`);
 
-        const params: ElasticParams = { index: indexName, type, id, body: {} };
+        const params: ElasticParams = { index: indexName, id, body: {} };
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
 
@@ -2038,15 +2005,13 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
      */
     public async searchRaw<T extends object = any>(body: SearchBody, searchType?: SearchType): Promise<T> {
         if (!body) throw new Error('@body (SearchBody) is required');
-        const { indexName, docType } = this.options;
+        const { indexName } = this.options;
         _log(NS, `- search(${indexName}, ${searchType || ''})....`);
         _log(NS, `> body =`, $U.json(body));
 
-        const tmp = docType ? docType : '';
-        const params: ElasticSearchParams = { index: indexName, body, searchType };
-
-        // check version to include 'type' in params
-        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
+        const params: ElasticSearchParams = { index: indexName, body };
+        if (searchType) params.search_type = searchType;
+        _log(NS, `> params =`, $U.json({ ...params, body: undefined }));
         const $res = await this.$fgac.doFgacSearch(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
@@ -2090,9 +2055,9 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
  */
 export class OS2FGACManager {
     private _fgacProxy: ApiHttpProxy;
-    public readonly options: Elastic6Option;
+    public readonly options: OS2BaseOption;
 
-    public constructor(options: Elastic6Option) {
+    public constructor(options: OS2BaseOption) {
         this.options = options;
     }
 
@@ -2136,7 +2101,7 @@ export class OS2FGACManager {
     public async doFgacSearch<R = any>(params: ElasticSearchParams): Promise<R> {
         const index = params?.index ?? '';
         const body = onlyDefined(params?.body ?? undefined);
-        const queryParams = params?.searchType ? { search_type: params?.searchType } : undefined;
+        const queryParams = params?.search_type ? { search_type: params?.search_type } : undefined;
         return this.proxy.doProxy('POST', index, `_search`, queryParams, body);
     }
 
@@ -2275,7 +2240,7 @@ export class OS2FGACManager {
 }
 
 /** extended option for `OS2Instance` */
-export interface OS2Option extends Elastic6Option {
+export interface OS2Option extends OS2BaseOption {
     /** (optional) role-name in FGAC */
     roleName?: string;
     /** (optional) user-name in FGAC */
@@ -2285,53 +2250,47 @@ export interface OS2Option extends Elastic6Option {
 /**
  * OS2 인스턴스
  * - describeIndex(), destroyIndex(), search() with elastic initialized by master-key
+ * - one service set (fgac, elastic, query, synchronizer) only when `endpoint && indexName`.
  */
-export class OS2Instance extends Elastic6Instance {
-    public declare readonly client?: elasticsearch.Client;
+export class OS2Instance extends AbstractOS2Instance {
     public declare readonly elastic?: OS2Service;
-    public declare readonly query?: Elastic6QueryService<any>;
-    public declare readonly synchronizer?: Elastic6Synchronizer;
+    public declare readonly query?: OS2QueryService<any>;
+    public declare readonly synchronizer?: OS2Synchronizer;
     public readonly fgac?: OS2FGACManager;
 
+    /**
+     * build one service set when `endpoint && indexName` (no client: it is created on first use).
+     */
     public constructor({
         endpoint,
         indexName,
         idName,
-        esVersion,
-        esDocType,
         tableName,
         autocompleteFields,
         roleName,
         userName,
-    }: {
-        endpoint: string;
-        indexName: string;
+    }: OS2ConstructParams & {
+        /** (optional) id-name (default `$id`, `null` = unset) */
         idName?: string;
-        esVersion: string;
-        esDocType: string;
-        tableName: string;
-        autocompleteFields: string[];
+        /** (optional) role-name in FGAC */
         roleName?: string;
+        /** (optional) user-name in FGAC */
         userName?: string;
     }) {
-        super({ endpoint, indexName, esVersion, esDocType, tableName, autocompleteFields });
+        super();
         const options: OS2Option = onlyDefined<OS2Option>({
             endpoint,
             indexName,
-            version: esVersion,
             autocompleteFields,
             roleName,
             userName,
             idName: idName === null ? undefined : idName ?? '$id',
         });
         if (endpoint && indexName) {
-            if (esDocType) options.docType = esDocType;
-
             this.fgac = new OS2FGACManager(options);
             this.elastic = new OS2Service(options, this.fgac);
-            this.client = this.elastic.client;
-            this.query = new Elastic6QueryService<any>(this.elastic);
-            this.synchronizer = new Elastic6Synchronizer(this.elastic, { tableName });
+            this.query = new OS2QueryService<any>(this.elastic);
+            this.synchronizer = new OS2Synchronizer(this.elastic, { tableName });
         }
     }
 
@@ -2351,34 +2310,6 @@ export class OS2Instance extends Elastic6Instance {
      */
     public async describeIndex(): Promise<any> {
         return this.elastic && (await this.elastic.describe());
-    }
-
-    /**
-     * create Elasticsearch index with ES7+ mapping structure
-     */
-    public async createIndex(): Promise<any> {
-        if (!this.elastic) return null;
-
-        const { docType, idName, version = '2.10' } = this.options;
-        const settings = Elastic6Service.prepareSettings({ docType, idName, version });
-
-        // _doc 제거 및 properties 병합
-        if (settings.mappings?._doc) {
-            const { dynamic_templates, properties: docProperties } = settings.mappings._doc;
-
-            settings.mappings = {
-                ...settings.mappings,
-                ...(dynamic_templates ? { dynamic_templates } : {}),
-                properties: {
-                    ...(docProperties || {}),
-                    ...(settings.mappings.properties || {}),
-                },
-            };
-
-            delete settings.mappings._doc;
-        }
-
-        return this.elastic.createIndex(settings);
     }
 
     /**
@@ -2575,27 +2506,23 @@ const $X2 = {
 
 /**
  * factory of `OS2Instance`
+ * - reads `OS2_ENDPOINT`, `OS2_INDEX`, `MY_DYNAMO_TABLE`, `OS2_AUTOCOMPLETE_FIELDS` (no version, no doc-type).
  */
 export const _OS2 = (options?: OS2Option): OS2Instance => {
     return new (class extends OS2Instance {
+        // 0. load from env configuration, then 1. build the instance.
         public constructor() {
-            // 0. load from env configuration.
             const endpoint = options?.endpoint ?? $U.env('OS2_ENDPOINT', '');
             const indexName = options?.indexName ?? $U.env('OS2_INDEX', 'test-x1');
-            const esVersion = options?.version ?? $U.env('OS2_VERSION', '2.10');
-            const esDocType = options?.docType ?? $U.env('OS2_DOCTYPE', '');
             const tableName = $U.env('MY_DYNAMO_TABLE', '');
             const autocompleteFields = options?.autocompleteFields ?? $T.SS($U.env('OS2_AUTOCOMPLETE_FIELDS', ''));
 
             const roleName = options?.roleName;
             const userName = options?.userName;
 
-            // 1. initialize instance.
             super({
                 endpoint,
                 indexName,
-                esVersion,
-                esDocType,
                 tableName,
                 autocompleteFields,
                 roleName,
@@ -2612,17 +2539,14 @@ export const _OS2 = (options?: OS2Option): OS2Instance => {
     })();
 };
 
-/** dynamically load the OS2 instance if `OS2_ENDPOINT` is set */
-const hasOS2 = $U.env('OS2_ENDPOINT', '').startsWith('https://');
-export const $OS2 = _OS2();
-export const $ES6 = hasOS2 ? _OS2() : _ES6();
+/**
+ * the default `OS2Instance`, built lazily by `_OS2()` on first access (S-25).
+ * - nothing is built at import: no client, no dynamo-stream listener.
+ * - without `OS2_ENDPOINT` it is an `OS2Instance` with `options === null`.
+ */
+export const $OS2: OS2Instance = lazyInstance(() => _OS2());
 
 /**
- * explicit alias for the OS2-routing `$ES6` above (decision #3, cores-migration P1).
- * - kept as `$ES6` here for deep-import compatibility (`lemon-core/dist/extended/cores`).
- * - exported at root ONLY under this name: root `$ES6` stays pinned to the L1
- *   (non-OS2) `extended/abstract-service` version, so consumers must opt in by
- *   name instead of silently getting OS2-routing behavior via the root barrel.
+ * explicit alias of `$OS2` (the same object). The name is kept; the meaning is OS2.
  */
-export const $ES6Routed = $ES6;
-
+export const $ES6Routed: OS2Instance = $OS2;
