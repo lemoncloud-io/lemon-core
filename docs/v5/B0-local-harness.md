@@ -1,6 +1,6 @@
 # v5 B0 — Local harness
 
-Status: draft (2026-10-27). First bundle of the lemon-core v5 program. This bundle changes no runtime code in lemon-core (B0-a); it makes the local run path the verification gate for every later bundle.
+Status: B0-a done, B0-b dropped (2026-10-27). First bundle of the lemon-core v5 program. This bundle changes no runtime code in lemon-core; it makes the local run path the verification gate for every later bundle.
 
 ## Goal
 
@@ -39,9 +39,9 @@ npm run express.lemon       # ENV=lemon STAGE=local npm run start
 - [x] Consumer cleanup — ✔ `server`, `server-local`, `server.lemon` scripts and the `exec-cli` branch removed; build and boot pass after it.
 - [x] Generated file — ✔ build rewrites `src/generated/field-registry.ts` (format only); revert after each build.
 
-## B0-b — move the five devkit functions (after owner decision)
+## B0-b — dropped (owner decision, 2026-10-27)
 
-`loadEnviron`, `loadProfile`, `buildExpress` and their two internal helpers move from `lemon-devkit` into lemon-core (`./local` subpath). Starts only after the per-feature decision on devkit is recorded.
+`loadEnviron`, `loadProfile`, `buildExpress` and their two internal helpers stay in `lemon-devkit`: they are local-development-only, so moving them into lemon-core is not part of v5. lemon-core keeps its dynamic `require('lemon-devkit')` delegation and the circular devDependency. B0 is complete with B0-a.
 
 ## Gate for later bundles
 
