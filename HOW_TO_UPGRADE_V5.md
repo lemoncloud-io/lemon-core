@@ -651,6 +651,30 @@ It has no authorization. Gate it in your own code or move to `AbstractCRUDContro
 * `callback/proxy.ts` claims the `admin` role in its outgoing context instead of `domain: 'localhost'`.
 * `MockModelManager`, `TestModelManager`, `CallbackModelManager` pass `{ enableSync: true }`.
 
+## 12. Services that carry a `src/cores/` copy (B6)
+
+This section is for a service that pins lemon-core `^4.x` and carries a `src/cores/` copy (11 files, about 6.3k lines; the 2026 template generation). The full per-repo procedure, with counts per repo: `docs/v5/B6-dou-migration.md`.
+
+Move one repo in four stages, one PR each:
+
+* **A. Compile and run, copy kept.** Install v5 and the peers, delete the `exec-cli` branch, rename the search names, fix `$T.S2`, pass `tsc`, tests and the local harness.
+* **B. Remove the copy.** Import from `lemon-core` / `lemon-core/testing`, then apply § 11.3, § 11.6, § 11.7 and § 11.8 to your own code.
+* **C. Trust boundary and deploy.** Signing key, `warn` → `enforce`, `ReportBatchItemFailures`, Lambda runtime — with the deploy lane.
+* **D. `@field()` models** (optional, § 10.3).
+
+**A alone is deployable and keeps the copy's v4 behaviour (sync on, save on error, `domain` checks); B switches on the § 11 contracts.** Root-level changes (§ 11.4, § 11.5, § 11.8) apply from A.
+
+Measured in the five DoU backend repos (read-only census):
+
+| Item | Count |
+| --- | --- |
+| must-fix occurrences (removed search names, `$T.S2` 3-arg, `exec-cli`, directory import) | 73–80 per repo in 9–11 files; 68 of them in the same 6 shared files |
+| `MyCoreManager` subclasses that relied on the copy's `enableSync` default | 46, all need `{ enableSync: true }` |
+| `require('lemon-core/dist/exec-cli')` branch in `src/index.ts` | 1 per repo (66 of 68 consumer repos) |
+| `$T.S2` with 3 arguments | 22, of which 2 change an id (`'-'` delimiter) |
+| `lemon-model` not declared | 4 of 5 (the fifth pins `^1.2.2`) |
+| `ReportBatchItemFailures` on an event source | 0 |
+
 ---
 
 ## At-a-Glance Checklist
@@ -687,3 +711,6 @@ It has no authorization. Gate it in your own code or move to `AbstractCRUDContro
 - [ ] Updates/deletes of `sid`-less records go through an admin (§ 11.7)
 - [ ] `$U.ts()`/`$U.dt()` callers that expected UTC pass `0` (§ 11.8)
 - [ ] No new use of `GeneralAPIController` (§ 11.9)
+- [ ] `src/cores/` copy removed, or every removed search name inside it replaced (§ 12)
+- [ ] `require('lemon-core/dist/exec-cli')` branch deleted from `src/index.ts` (§ 12)
+- [ ] Every `MyCoreManager` subclass that relied on the copy's default passes `{ enableSync: true }` (§ 12, § 11.6)
