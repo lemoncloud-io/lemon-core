@@ -6,6 +6,7 @@
  * @author      Steve <steve@lemoncloud.io>
  * @date        2022-03-31 optimize test-spec
  * @date        2026-10-27 v5 B2-b: `$OS2` / `_OS2` instead of the removed L1 search instance and factory.
+ * @date        2026-10-28 v5 B4: `TestModel` is a class with `@field()` (no generated registry); field lists compared as sets.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -16,7 +17,8 @@ import { loadProfile } from '../environ';
 import { CoreModel, NextContext } from '../cores/';
 import { _it, expect2, GETERR } from '../common/test-helper';
 import { $U, _log } from '../engine';
-import { fieldKeys } from '../generated/field-registry';
+//* v5 B4: field annotations come from lemon-model (not on the lemon-core root).
+import { field, fieldsOf } from 'lemon-model';
 import { AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
 import { $OS2, _OS2, OS2Instance, OS2Service } from './cores/abstract-services';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
@@ -29,14 +31,21 @@ const NS = $U.NS('TEST', 'blue'); // NAMESPACE FOR TEST LOGGING
  */
 export type ModelType = 'test';
 export type Model = CoreModel<ModelType>;
-export interface TestModel extends Model {
+//* v5 B4: a class over `CoreModel` - stored fields carry `@field()`, view fields (`Model`, `$model`) do not.
+export class TestModel extends CoreModel<ModelType> {
+    @field()
     name?: string;
+    @field()
     test?: number;
+    @field()
     A?: string;
+    @field()
     AB?: string;
+    @field()
     A_B?: string;
     Model?: Model;
     $model?: Model;
+    @field()
     object$?: {
         id?: string;
         userId?: string;
@@ -45,10 +54,12 @@ export interface TestModel extends Model {
         activateTokenTs?: string;
     };
     // For equivalence testing
+    @field()
     extra?: string;
+    @field()
     keepMe?: string;
 }
-const TEST_FIELDS = filterFields(fieldKeys.testModel<TestModel>());
+const TEST_FIELDS = filterFields(fieldsOf(TestModel));
 
 /**
  * class: `BackendService`
@@ -167,12 +178,14 @@ describe('abstract-service', () => {
         //* test filterFields()
         const isKeys = true;
         if (isKeys) {
-            expect2(() => filterFields(TEST_FIELDS).join(',')).toEqual(
-                'name,test,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
-            );
-            expect2(() => filterFields(TEST_FIELDS, ['test']).join(',')).toEqual(
-                'test,name,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
-            );
+            //* v5 B4: compared as sets - `fieldsOf()` lists parent fields first (the generator listed own fields first).
+            const sorted = (list: string[]) => [...list].sort().join(',');
+            const EXPECTED =
+                'name,test,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id';
+            expect2(() => sorted(filterFields(TEST_FIELDS))).toEqual(sorted(EXPECTED.split(',')));
+            expect2(() => sorted(filterFields(TEST_FIELDS, ['test']))).toEqual(sorted(EXPECTED.split(',')));
+            //* the `base` list still comes first.
+            expect2(() => filterFields(TEST_FIELDS, ['test'])[0]).toEqual('test');
         } else {
             //NOTE - improve..
             //@see https://www.npmjs.com/package/ts-transformer-keys

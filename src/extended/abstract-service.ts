@@ -13,6 +13,7 @@
  * @date        2022-03-31 optimized w/ unit test spec.
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
  * @date        2026-10-27 v5 B2-b: `OS2Synchronizer`/`AbstractOS2Instance`; the L1 search instance, its factory and proxy are removed.
+ * @date        2026-10-28 v5 B4: `CoreManager` `fields` may be a model class.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
@@ -40,6 +41,8 @@ import $cores, {
     TypedStorageService,
 } from '../cores/';
 import { $U, _log } from '../engine/';
+//* v5 B4: manager `fields` may be a model class.
+import { ModelClass } from '../cores/storage/model-fields';
 import { GETERR, NUL404, onlyDefined } from '../common/test-helper';
 import { $protocol, $slack, $T, my_parrallel } from '../helpers';
 import type { Client } from '@opensearch-project/opensearch';
@@ -170,7 +173,8 @@ export abstract class CoreManager<
      * constructor
      * @protected
      */
-    protected constructor(type: ModelType, parent: Service, fields: string[], uniqueField?: string) {
+    //* v5 B4: `fields` may be a model class (resolved in `AbstractManager`).
+    protected constructor(type: ModelType, parent: Service, fields: string[] | ModelClass, uniqueField?: string) {
         super(type, parent, fields, uniqueField);
     }
 

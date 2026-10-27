@@ -33,3 +33,6 @@
 +OS2SearchParams
 +OS2BaseOption
 +OS2Item
+# B4: `CoreModel` is a class since lemon-model 5.0.0 — kind change type → value+type, name kept (api-check prints a kind change as one `-` and one `+`)
+-CoreModel
++CoreModel
