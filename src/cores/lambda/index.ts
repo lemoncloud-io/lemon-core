@@ -60,7 +60,11 @@ export class LambdaModule implements EngineModule {
         const thiz = this;
         const lambda = new (class extends LambdaHandler {
             public async handle(event: any, context: Context): Promise<any> {
-                return thiz.engine.initialize().then(() => super.handle(event, context));
+                //* v5 B5: an init failure is resolved like any other failure (never rejects, D7).
+                return thiz.engine.initialize().then(
+                    () => super.handle(event, context),
+                    e => this.asFailure(e, event, context),
+                );
             }
         })();
         this.lambda = lambda;

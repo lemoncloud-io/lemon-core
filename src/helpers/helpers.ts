@@ -714,7 +714,8 @@ export const $event = (context: NextContext, defEndpoint: string = '') => {
  */
 export function getIdentityId(context?: NextContext | null): string | undefined {
     const identityId = (context?.identity as NextIdentityCognito)?.identityId;
-    if (!identityId && context?.domain === 'localhost') {
+    //* v5: `env[LOCAL_ACCOUNT]` only in local mode, never from `context.domain` (B5 § 6.3).
+    if (!identityId && $U.isLocalMode()) {
         //* use `env[LOCAL_ACCOUNT]` only if runs in local server.
         return $U.env('LOCAL_ACCOUNT', '');
     }
@@ -731,8 +732,8 @@ export function getIdentityId(context?: NextContext | null): string | undefined 
  */
 export function isUserAuthorized(context: NextContext, params?: any): boolean {
     const identityId = getIdentityId(context);
-    //WARN - in local server, override the identity w/ param
-    if (context?.domain === 'localhost') {
+    //WARN - in local server, override the identity w/ param (v5: local mode only — B5 § 6.3)
+    if ($U.isLocalMode()) {
         //!* override with optional parameter.
         if (context) {
             context.identity = {

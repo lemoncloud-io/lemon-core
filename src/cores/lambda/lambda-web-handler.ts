@@ -31,6 +31,7 @@ import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from '
 import { GETERR, onlyDefined } from '../../common/test-helper';
 import { loadJsonSync, awsConfig } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
+import { HEADER_PROTOCOL_SIGNATURE, assertSigned, verifyContext } from '../protocol/protocol-sign';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
@@ -53,6 +54,10 @@ const loadSts = () =>
     ));
 
 //* header definitions by environment.
+//* v5 B5: true if a `host` header is present (case-insensitive key lookup) → the request is external.
+const hasHostHeader = (headers: { [key: string]: any }): boolean =>
+    Object.keys(headers || {}).some(key => key.toLowerCase() === 'host');
+
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
 const HEADER_LEMON_IDENTITY = $U.env('HEADER_LEMON_IDENTITY', 'x-lemon-identity');
 const HEADER_COOKIE = $U.env('HEADER_COOKIE', 'cookie');
@@ -210,55 +215,59 @@ export const mxNextHandler =
     };
 
 /**
- * builder for failure promised.
+ * v5 B5: classify an error by the `mxNextFailure` rules — the HTTP failure response and whether to report it.
+ * - no side effect (no log, no report), so the top-level `LambdaHandler.handle()` can reuse it.
  */
-export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) => {
-    _err(NS, `! err =`, e instanceof Error ? e : $U.json(e));
-    const message = `${e.message || e.reason || $U.json(e)}`;
-    if (message.startsWith('404 NOT FOUND')) return notfound(message);
-    _err(NS, `! err.msg =`, message);
+export const asFailureResult = (
+    e: any,
+): { message: string; response: ReturnType<typeof buildResponse>; report: boolean } => {
+    const message = `${e?.message || e?.reason || $U.json(e)}`;
+    if (message.startsWith('404 NOT FOUND')) return { message, response: notfound(message), report: false };
 
-    //* common format of error.
-    if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
-        const status = $U.N(message.substring(0, 3), 0);
+    //* v5 B5: a typed `status` (ex: `LemonError`) wins over the message prefix (S-33).
+    const typed = typeof e?.status === 'number' && e.status >= 100 && e.status <= 599 ? (e.status as number) : 0;
+    //* common format of error. v5: only 3xx~5xx prefixes (`200 OK - …` is no longer a success).
+    if (typed || (typeof message == 'string' && /^[345][0-9]{2} [A-Z ]+/.test(message))) {
+        const status = typed || $U.N(message.substring(0, 3), 0);
         //* handle for 302/301 redirect. format: 303 REDIRECT - http://~~~
         if ((status == 301 || status == 302) && message.indexOf(' - ') > 0) {
             const loc = message.substring(message.indexOf(' - ') + 3).trim();
-            if (loc) return redirect(loc, status);
+            if (loc) return { message, response: redirect(loc, status), report: false };
         }
         //* handle for `400 SIGNATURE - fail to verify!`. ignore report-error.
         if (status == 400 && message.startsWith('400 SIGNATURE')) {
-            return failure(message, status);
+            return { message, response: failure(message, status), report: false };
         }
-
         //* report error and returns
-        if (LambdaHandler.REPORT_ERROR)
-            return doReportError(e, $ctx, event)
-                .catch(GETERR)
-                .then(() => failure(message, status));
-        return failure(message, status);
+        return { message, response: failure(message, status), report: true };
     } else if (typeof message == 'string' && /^\.[a-zA-Z0-9_\-]+/.test(message)) {
         //* handle for message `.name () is required!`
-        if (LambdaHandler.REPORT_ERROR)
-            return doReportError(e, $ctx, event)
-                .catch(GETERR)
-                .then(() => failure(message, 400));
-        return failure(message, 400);
+        return { message, response: failure(message, 400), report: true };
     } else if (typeof message == 'string' && /^\@[a-zA-Z0-9_\-]+/.test(message)) {
         //* handle for message `@name () is required!`
-        if (LambdaHandler.REPORT_ERROR)
-            return doReportError(e, $ctx, event)
-                .catch(GETERR)
-                .then(() => failure(message, 400));
-        return failure(message, 400);
+        return { message, response: failure(message, 400), report: true };
     }
 
+    //* report error and returns (default 503).
+    return { message, response: failure(e instanceof Error ? message : e), report: true };
+};
+
+/**
+ * builder for failure promised.
+ * - v5 B5: the rules live in `asFailureResult()`; this adds the log and the report.
+ */
+export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) => {
+    _err(NS, `! err =`, e instanceof Error ? e : $U.json(e));
+    const { message, response, report } = asFailureResult(e);
+    if (message.startsWith('404 NOT FOUND')) return response;
+    _err(NS, `! err.msg =`, message);
+
     //* report error and returns
-    if (LambdaHandler.REPORT_ERROR)
+    if (report && LambdaHandler.REPORT_ERROR)
         return doReportError(e, $ctx, event)
             .catch(GETERR)
-            .then(() => failure(e instanceof Error ? message : e));
-    return failure(e instanceof Error ? message : e);
+            .then(() => response);
+    return response;
 };
 
 /**
@@ -433,14 +442,33 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         // STEP.1 support lambda call JWT Token authentication.
         const headers = event.headers;
-        if (headers && headers[HEADER_PROTOCOL_CONTEXT]) {
-            //* if it is protocol request via lambda, then returns valid context.
-            const $param = $protocol.service.asTransformer('web').transformToParam(event);
-            return $param?.context;
+        const $tool = this.tools(headers);
+        //* v5 B5: a `host` header (any case) means external → `x-protocol-context`/`-signature` are ignored (S-29).
+        if (!hasHostHeader(headers)) {
+            const contextJson = headers?.[HEADER_PROTOCOL_CONTEXT];
+            const idt = $tool.getHeader(HEADER_LEMON_IDENTITY);
+            const hasJsonIdentity = typeof idt === 'string' && idt.startsWith('{') && idt.endsWith('}');
+            //* host-less internal claim (protocol context or JSON identity) → verify the signature, then apply the mode.
+            if (contextJson || hasJsonIdentity) {
+                const signature = $tool.getHeader(HEADER_PROTOCOL_SIGNATURE);
+                const ctxText = typeof contextJson === 'string' ? contextJson : '';
+                assertSigned('web', () => verifyContext(signature, ctxText, event.body));
+            }
+            if (contextJson) {
+                //* if it is protocol request via lambda, then returns valid context (bad JSON → `400 INVALID CONTEXT`).
+                try {
+                    const $param = $protocol.service.asTransformer('web').transformToParam(event);
+                    return $param?.context;
+                } catch (e) {
+                    const msg = GETERR(e);
+                    throw new Error(/^[1-5][0-9]{2} [A-Z]/.test(msg) ? msg : `400 INVALID CONTEXT - ${msg}`);
+                }
+            }
+        } else if (headers?.[HEADER_PROTOCOL_CONTEXT]) {
+            _log(NS, `> ignore ${HEADER_PROTOCOL_CONTEXT} (external request)`);
         }
 
         // STEP.2 use internal identity json data via python lambda call.
-        const $tool = this.tools(headers);
         const identity = await $tool.parseIdentityHeader();
         const _prepare = (): NextContext => {
             const cookie = $tool.parseCookiesHeader();
@@ -639,9 +667,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
      * @returns true if in external
      */
     public isExternal = (): boolean => {
-        const host = this.getHeader('host');
-        const isExternal = host ? true : false;
-        return !!isExternal;
+        //* v5 B5: the presence of `host` (any case, even empty) means external (API-GW, ALB, URL, express).
+        return hasHostHeader(this.headers);
     };
 
     /**

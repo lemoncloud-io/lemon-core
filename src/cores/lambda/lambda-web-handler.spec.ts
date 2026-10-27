@@ -534,7 +534,7 @@ describe('LambdaWEBHandler', () => {
             referer: 'http://localhost:5004/',
         });
 
-        //* pre-condition.
+        //* v5 B5: the fixture has `Host` (external) → `x-protocol-context` is ignored whatever it holds (S-29).
         if (1) {
             event.headers['x-protocol-context'] = null;
             const $res = await lambda.handle(event, null).catch(GETERR$);
@@ -543,28 +543,54 @@ describe('LambdaWEBHandler', () => {
         if (1) {
             event.headers['x-protocol-context'] = {};
             const $res = await lambda.handle(event, null).catch(GETERR$);
-            expect2(() => $res, 'statusCode,error').toEqual({
-                error: '@context (NextContext) should be string - web.transformToParam(/hello/a_123_test)',
-            });
+            expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
         }
         if (1) {
             event.headers['x-protocol-context'] = '-';
             const $res = await lambda.handle(event, null).catch(GETERR$);
-            expect2(() => $res, 'statusCode,error').toEqual({
-                error: '@context[-] is not valid JSON - web.transformToParam(/hello/a_123_test)',
-            });
+            expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
         }
 
-        //* pack context by header
-        event.headers['x-protocol-context'] = $U.json(context);
+        //* v5 B5: a forged admin context with `Host` is not trusted (flipped from v4, A1).
+        const forged = { identity: { sid: 'X', roles: ['admin'], accessKey: 'x' }, domain: 'localhost' };
+        event.headers['x-protocol-context'] = $U.json(forged);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
         const $res = await lambda.handle(event, null).catch(GETERR$);
         expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
-
         const body = JSON.parse($res.body);
         expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
-        expect2(body.context, '').toEqual({ ...context });
+        expect2(() => body.context?.domain).toEqual('na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com');
+        expect2(() => body.context?.identity?.roles).toEqual(undefined);
+        expect2(() => body.context?.identity?.accessKey).toEqual(undefined);
+
+        //* v5 B5: host-less (internal) event → the header is read (mode `off` without a key).
+        const internal = { ...event, headers: { ...event.headers } };
+        Object.keys(internal.headers)
+            .filter(key => key.toLowerCase() === 'host')
+            .forEach(key => delete internal.headers[key]);
+        if (1) {
+            //* bad header → `400 INVALID CONTEXT` response (resolved, not rejected).
+            internal.headers['x-protocol-context'] = {};
+            const $res = await lambda.handle(internal, null).catch(GETERR$);
+            expect2(() => $res, 'statusCode,body').toEqual({
+                statusCode: 400,
+                body: '400 INVALID CONTEXT - @context (NextContext) should be string - web.transformToParam(/hello/a_123_test)',
+            });
+        }
+        if (1) {
+            internal.headers['x-protocol-context'] = '-';
+            const $res = await lambda.handle(internal, null).catch(GETERR$);
+            expect2(() => $res, 'statusCode,body').toEqual({
+                statusCode: 400,
+                body: '400 INVALID CONTEXT - @context[-] is not valid JSON - web.transformToParam(/hello/a_123_test)',
+            });
+        }
+        internal.headers['x-protocol-context'] = $U.json(context);
+        const $res2 = await lambda.handle(internal, null).catch(GETERR$);
+        expect2(() => $res2, 'statusCode,error').toEqual({ statusCode: 200 });
+        const body2 = JSON.parse($res2.body);
+        expect2(body2.context, '').toEqual({ ...context });
     });
 
     //* test packContext() via lambda protocol

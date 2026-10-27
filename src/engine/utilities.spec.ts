@@ -83,18 +83,9 @@ describe(`core/utilities.ts`, () => {
         const date6 = '19781201';
         const date7 = '19781201 1234';
 
-        const expectedUtcForLocalString = (
-            y: number,
-            m: number,
-            d: number,
-            h: number,
-            i: number,
-            s: number,
-        ): number => {
-            const todayOffset = new Date().getTimezoneOffset();
-            const targetOffset = new Date(y, m, d, h, i, s).getTimezoneOffset();
-            return Date.UTC(y, m, d, h, i, s) - (todayOffset - targetOffset) * 60 * 1000;
-        };
+        //* v5 B5 (SPEC § 6.8): the wall clock of the default timeZone 9 → `Date.UTC(y, m, d, h - 9, i, s)`, host TZ free.
+        const expectedUtcForLocalString = (y: number, m: number, d: number, h: number, i: number, s: number): number =>
+            Date.UTC(y, m, d, h - 9, i, s);
 
         expect2($U.dt(date3).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 0, 0));
         expect2($U.dt(date4).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 34, 0));
@@ -272,8 +263,9 @@ describe(`core/utilities.ts`, () => {
         const current = 1 ? 1614241198963 : $U.current_time_ms();
 
         expect2(() => current).toEqual(1614241198963);
-        // expect2(() => $U.ts(current)).toEqual('2021-02-25 17:19:58');
-        expect2(() => $U.ts(current)).toEqual('2021-02-25 08:19:58');
+        //* v5 B5: `ts(N)` is the KST wall clock (default timeZone 9); v4 printed the UTC wall `08:19:58`.
+        expect2(() => $U.ts(current)).toEqual('2021-02-25 17:19:58');
+        expect2(() => $U.ts(current, 0)).toEqual('2021-02-25 08:19:58');
         const iat = Math.floor(current / 1000);
 
         //* build jwt handler.

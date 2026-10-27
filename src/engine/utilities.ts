@@ -18,6 +18,9 @@ import $jwt, { DecodeOptions } from 'jsonwebtoken';
 import * as uuid from 'uuid';
 const NS = 'util';
 
+//* default time-zone for this api (Asia/Seoul +9 hours). v5: the default of `$U.ts()`/`$U.dt()` (B5 § 6.8).
+export const DEFAULT_TIME_ZONE = 9;
+
 const COLORS = {
     red: '\x1b[31m',
     green: '\x1b[32m',
@@ -87,6 +90,14 @@ export class Utilities {
 
     public env(name: string, def_val?: string): any {
         return this.get_env(name, def_val);
+    }
+
+    /**
+     * v5: local mode — `LOCAL_MODE=1` and not running in Lambda (B5 § 6.3).
+     * - read from `process.env` on every call (no cache), never from the event or context.
+     */
+    public isLocalMode(): boolean {
+        return process?.env?.LOCAL_MODE === '1' && !process?.env?.AWS_LAMBDA_FUNCTION_NAME;
     }
 
     public is_dev(): boolean {
@@ -172,22 +183,24 @@ export class Utilities {
     }
 
     /**
-     * timestamp string like `2020-02-22`
+     * timestamp string like `2020-02-22 12:34:56`
+     * - v5: wall clock of `timeZone` (default `DEFAULT_TIME_ZONE` = 9), host TZ and DST free (B5 § 6.8).
+     * - v5: never mutates the input `Date`.
      */
     public static timestamp(date?: undefined | number | Date, timeZone?: number): string {
-        const dt = date && typeof date === 'object' ? date : date ? new Date(date) : new Date();
-        const now = new Date();
-        const tzo = now.getTimezoneOffset(); // Asia/Seoul => -540
-        const diff = (timeZone ?? 0) * 60 + tzo;
-        if (diff) dt.setSeconds(dt.getSeconds() + 1 * diff * 60);
+        const tz = timeZone ?? DEFAULT_TIME_ZONE;
+        //* the instant in ms (a `Date` is read, never changed).
+        const ms = date && typeof date === 'object' ? date.getTime() : date ? new Date(date).getTime() : Date.now();
+        //* shift by the zone offset, then read the UTC fields (= wall clock of `tz`).
+        const dt = new Date(ms + tz * 60 * 60 * 1000);
 
-        const y = dt.getFullYear();
-        const m = dt.getMonth() + 1; //Months are zero based
-        const d = dt.getDate();
+        const y = dt.getUTCFullYear();
+        const m = dt.getUTCMonth() + 1; //Months are zero based
+        const d = dt.getUTCDate();
 
-        const h = dt.getHours();
-        const i = dt.getMinutes();
-        const s = dt.getSeconds();
+        const h = dt.getUTCHours();
+        const i = dt.getUTCMinutes();
+        const s = dt.getUTCSeconds();
 
         const d2 = (x: number) => `${x < 10 ? '0' : ''}${x}`;
 
@@ -197,13 +210,13 @@ export class Utilities {
 
     /**
      * parse timestamp to date.
+     * - v5: a string is read as the wall clock of `timeZone` (default `DEFAULT_TIME_ZONE` = 9) via `Date.UTC` (B5 § 6.8).
+     * - v5: number/`Date`/`undefined` ignore `timeZone`; a `Date` input returns a copy.
      */
     public static datetime(dt?: string | number | Date, timeZone?: number) {
         let ret = null;
         if (typeof dt == 'string') {
-            const now = new Date();
-            const tzo = now.getTimezoneOffset();
-            const diff = (timeZone ?? 0) * 60 + tzo;
+            const tz = timeZone ?? DEFAULT_TIME_ZONE;
             let tstr = '';
             if (/^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 1978-12-01
@@ -250,14 +263,14 @@ export class Utilities {
                 const h = parseInt(hh[0]);
                 const i = parseInt(hh[1]);
                 const s = parseInt(hh[2]);
-                return new Date(y, m, d, h, i, s, 0);
+                //* v5: wall clock of `tz` → instant, host TZ and DST free (= `Date.UTC(y, m, d, h - tz, i, s)`).
+                return new Date(Date.UTC(y, m, d, h, i, s, 0) - tz * 60 * 60 * 1000);
             })(tstr);
-            if (ret && diff) ret.setSeconds(ret.getSeconds() + -1 * diff * 60);
             return ret;
         } else if (typeof dt == 'number') {
             ret = new Date(dt);
         } else if (typeof dt == 'object' && (dt as any) instanceof Date) {
-            ret = dt;
+            ret = new Date((dt as Date).getTime()); //* v5: a copy, not the same reference (B5 § 6.8).
         } else if (dt === undefined) {
             ret = new Date();
         } else {

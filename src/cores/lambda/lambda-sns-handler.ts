@@ -15,6 +15,7 @@ import { NextContext, NextHandler } from 'lemon-model';
 import { LambdaHandler, SNSHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+import { ATTR_PROTOCOL_SIGNATURE, assertSigned, verifyMessage } from '../protocol/protocol-sign';
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -43,6 +44,7 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
 
     /**
      * Default SNS Handler.
+     * - v5 B5: reports each failure and resolves `void` (no rethrow: SNS → Lambda is async, a reject = retries + DLQ).
      */
     public handle: SNSHandler = async (event): Promise<void> => {
         //* for each records.
@@ -59,6 +61,9 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
             const $msg: SNSMessage = record.Sns;
             const { Subject } = $msg;
             if (Subject == 'x-protocol-service') {
+                //* v5 B5: verify the signature before dispatch (`enforce` → this record is reported, not dispatched).
+                const signature = `${$msg.MessageAttributes?.[ATTR_PROTOCOL_SIGNATURE]?.Value ?? ''}`;
+                assertSigned('sns', () => verifyMessage(signature, $msg.Message));
                 const param: MyProtocolParam = $protocol.service.asTransformer('sns').transformToParam($msg);
                 const context: NextContext = param.context;
                 const callback = param.callback || '';

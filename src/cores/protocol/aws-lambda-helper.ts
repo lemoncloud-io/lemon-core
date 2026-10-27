@@ -5,6 +5,7 @@ import { AwsConfigParams } from '../../tools/tools';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 import type { InvocationRequest, InvokeCommandOutput } from '@aws-sdk/client-lambda';
 import { measureAsync } from '../../lib/perf';
+import { asLemonError } from '../../common/lemon-error';
 const NS = $U.NS('PRTL', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -80,8 +81,10 @@ export async function invokeLambda<T>(
             //* if useEvent is true and status code is 202, then return directly without parsing payload.
             if (useEvent && statusCode == 202) return asInvokeLogData(data);
 
-            //* for debug, print whole data if status code is not 200 or 201.
-            const hasWarn = ![200, 201].includes(statusCode);
+            //* v5 B5: any 2xx is a success (SPEC § 6.6).
+            const isOk = statusCode >= 200 && statusCode < 300;
+            //* for debug, print whole data if status code is not 2xx.
+            const hasWarn = !isOk;
             if (hasWarn) _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(asInvokeLogData(data)));
 
             //* safe parse payload.body.
@@ -95,12 +98,15 @@ export async function invokeLambda<T>(
                 }
             })();
 
-            //* returns
-            if (statusCode == 400 || statusCode == 404) return Promise.reject(new Error($U.S(body) || '404 NOT FOUND'));
-            else if (statusCode != 200 && statusCode != 201) {
-                if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw new Error(body);
-                throw new Error($U.S(body) || `Lambda Error. status:${statusCode}`);
+            //* returns — v5: a `LemonError` with the peer status, the message string is unchanged (wire contract).
+            if (statusCode == 400 || statusCode == 404)
+                return Promise.reject(asLemonError(statusCode, $U.S(body) || '404 NOT FOUND'));
+            else if (!isOk) {
+                if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw asLemonError(statusCode, body);
+                throw asLemonError(statusCode, $U.S(body) || `Lambda Error. status:${statusCode}`);
             }
+            //* v5: a 2xx without body (ex: 204) → `null`.
+            if (body === undefined || body === '') return statusCode == 200 || statusCode == 201 ? body : null;
             return body;
         });
     const res: T = response as T;

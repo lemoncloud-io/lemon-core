@@ -28,7 +28,7 @@ import { CanDoActionType, MyCoreManager, MyCoreProxy, MyCoreService, MyManagerPr
 import { $OS2, $ES6Routed, _OS2, OS2Instance, OS2Service } from './abstract-services';
 import { lazyInstance } from '../../lib/lazy';
 import $cores from '../../cores/';
-import { vi } from 'vitest';
+import { vi, afterEach } from 'vitest';
 import { PaginateParam } from './types';
 import { loadSample } from './contexts.spec';
 
@@ -166,7 +166,21 @@ export const instance = (type: AuthType = 'authed', params?: ServiceParams) => {
 };
 
 //* main test body.
+//* v5 B5: env names toggled by the local-mode tests — restored after each test.
+const $envB5 = { LOCAL_MODE: process.env.LOCAL_MODE, AWS_LAMBDA_FUNCTION_NAME: process.env.AWS_LAMBDA_FUNCTION_NAME };
+//* restore one env name (delete if it was unset).
+const restoreEnvB5 = (name: keyof typeof $envB5) => {
+    if ($envB5[name] === undefined) delete process.env[name];
+    else process.env[name] = $envB5[name];
+};
+
 describe('abstract-services', () => {
+    //* v5 B5: restore the toggled env.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+    });
+
     const PROFILE = loadProfile(process); // override process.env.
     PROFILE && console.info('! PROFILE=', PROFILE);
 
@@ -467,6 +481,16 @@ describe('abstract-services', () => {
             expect2(() => _can2('read', _sid())).toEqual(true);
             expect2(() => _can2('read', _sid(''))).toEqual(true);
             expect2(() => _can2('read', _sid('1'))).toEqual(false);
+
+            //* v5 B5: a `sid`-less record — list/read/create open, update/delete admin-only (S-37, SPEC § 6.4).
+            expect2(() => _can2('list', _sid(''))).toEqual(true);
+            expect2(() => _can2('create', _sid(''))).toEqual(true);
+            expect2(() => _can2('update', _sid(''))).toEqual(false);
+            expect2(() => _can2('delete', _sid(''))).toEqual(false);
+            expect2(() => _can2('update', _sid())).toEqual(false);
+            const _canAdm = (action: CanDoActionType) => _can(action, _sid(''), { context: $admin, throwable: false });
+            expect2(() => _canAdm('update')).toEqual(true);
+            expect2(() => _canAdm('delete')).toEqual(true);
         }
         //* test of canDo() w/ session(user1).
         if (1) {
@@ -869,12 +893,26 @@ describe('abstract-services', () => {
             accountId: '111122223333',
             identityId: 'ap-northeast-2:00000000-0000-0000-0000-000000000000',
         });
+        //* v5 B5: `domain: 'localhost'` grants nothing without local mode (flipped from v4 true).
+        delete process.env.LOCAL_MODE;
+        expect2(() => proxy.assertContext({ isLocal: true }, { throwable: false })).toEqual(false);
+        expect2(() => proxy.hasAdminRole()).toEqual(false);
+
+        //* v5 B5: local mode is the runtime setting `LOCAL_MODE=1` (off Lambda).
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        expect2(() => $U.isLocalMode()).toEqual(true);
         expect2(() => proxy.assertContext({ isLocal: true }, { throwable: false })).toEqual(true);
         expect2(() => proxy.assertContext({ isSigned: true })).toEqual(true);
         expect2(() => proxy.assertContext({ isAuthed: true })).toEqual(true);
 
         expect2(() => proxy.hasAdminRole()).toEqual(true);
         expect2(() => proxy.hasAdminRole('user')).toEqual(true);
+
+        //* v5 B5: never in Lambda, whatever the env says.
+        process.env.AWS_LAMBDA_FUNCTION_NAME = 'any-function';
+        expect2(() => $U.isLocalMode()).toEqual(false);
+        expect2(() => proxy.hasAdminRole()).toEqual(false);
     });
 
     it('should pass doScanLast', async () => {
@@ -1220,6 +1258,31 @@ describe('abstract-services', () => {
         ).toEqual('404 NOT FOUND - proxy/test/id:invalid-id');
 
         //* STEP.8 verify final state after updates
+        //* v5 B5: `guardProxy` no longer saves on exception (default) → 'valid-a' is NOT saved (v4 saved it).
+        expect2(
+            await service.guardProxy(context, async proxy => {
+                return proxy.tests.mget(['a', 'b']);
+            }),
+        ).toEqual([
+            { ..._base('test'), id: 'a', name: 'batch-a', test: 15 },
+            { ..._base('test'), id: 'b', name: 'batch-b', test: 25 },
+        ]);
+
+        //* STEP.8-b v5 B5: the same mixed update with `saveOnError: true` keeps the v4 behaviour (saved, then rethrown).
+        expect2(
+            await service
+                .guardProxy(
+                    context,
+                    async proxy => {
+                        return proxy.tests.mset([
+                            { id: 'a', name: 'valid-a' },
+                            { id: 'invalid-id', name: 'invalid' },
+                        ]);
+                    },
+                    { saveOnError: true },
+                )
+                .catch(GETERR),
+        ).toEqual('404 NOT FOUND - proxy/test/id:invalid-id');
         expect2(
             await service.guardProxy(context, async proxy => {
                 return proxy.tests.mget(['a', 'b']);

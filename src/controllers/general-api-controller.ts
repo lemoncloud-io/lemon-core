@@ -19,6 +19,8 @@ import { CoreModel, TypedStorageService, UniqueFieldManager } from '../cores/';
 /**
  * class: `APIController`
  * - support basic CRUD with TypedManager
+ *
+ * @deprecated v5: 인가가 없다. 소비자가 게이트하거나 `AbstractCRUDController`로. v6 삭제 (B5 § 6.4)
  */
 export class GeneralAPIController<
     T extends TypedStorageService<CoreModel<ModelType>, ModelType>,
@@ -64,6 +66,7 @@ export class GeneralAPIController<
     /**
      * search node
      *
+     * @deprecated v5: 인가가 없다. 소비자가 게이트하거나 `AbstractCRUDController`로. v6 삭제 (B5 § 6.4)
      */
     public listBase: NextHandler = async (id, param, body, context) => {
         _log(this.NS, `! listBase(${id})..`);
@@ -86,6 +89,7 @@ export class GeneralAPIController<
 
     /**
      * read node
+     * @deprecated v5: 인가가 없다. 소비자가 게이트하거나 `AbstractCRUDController`로. v6 삭제 (B5 § 6.4)
      */
     public getBase: NextHandler = async (id, param, body, context) => {
         _log(this.NS, `! getBase(${id})..`);
@@ -95,6 +99,7 @@ export class GeneralAPIController<
     /**
      * update node.
      * - throw error if not found.
+     * @deprecated v5: 인가가 없다. 소비자가 게이트하거나 `AbstractCRUDController`로. v6 삭제 (B5 § 6.4)
      */
     public putBase: NextHandler = async (id, param, body, context) => {
         _log(this.NS, `! putBase(${id})..`);
@@ -111,6 +116,7 @@ export class GeneralAPIController<
 
     /**
      * save (or create) node.
+     * @deprecated v5: 인가가 없다. 소비자가 게이트하거나 `AbstractCRUDController`로. v6 삭제 (B5 § 6.4)
      */
     public postBase: NextHandler = async (id, param, body, context) => {
         _log(this.NS, `! postBase(${id})..`);
@@ -135,6 +141,7 @@ export class GeneralAPIController<
 
     /**
      * delete (or destroy) node
+     * @deprecated v5: 인가가 없다. 소비자가 게이트하거나 `AbstractCRUDController`로. v6 삭제 (B5 § 6.4)
      */
     public deleteBase: NextHandler = async (id, param, body, context) => {
         _log(this.NS, `! deleteBase(${id})..`);

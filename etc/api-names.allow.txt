@@ -36,3 +36,5 @@
 # B4: `CoreModel` is a class since lemon-model 5.0.0 — kind change type → value+type, name kept (api-check prints a kind change as one `-` and one `+`)
 -CoreModel
 +CoreModel
+# B5: one status-carrying error class (S-33, SPEC § 6.6) — `message` keeps the `<status> <CODE> - <detail>` wire contract
++LemonError

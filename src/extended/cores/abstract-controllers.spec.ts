@@ -467,6 +467,7 @@ describe('AbstractCRUDController', () => {
     });
 
     //* test doList(localhost)
+    //* v5 B5: `domain: 'localhost'` is inert now (local mode = `LOCAL_MODE=1`); the session `sid` pin applies (see the ES part).
     it('should pass doList(session)', async () => {
         const { api, context, service, current } = instance({ auth: 'session', session: true, domain: 'localhost' });
         expect2(() => context?.identity, 'roles').toEqual({ roles: ['user'] });

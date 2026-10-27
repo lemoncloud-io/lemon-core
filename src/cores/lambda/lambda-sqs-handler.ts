@@ -15,6 +15,7 @@ import { SQSHandler, LambdaHandler, LambdaSubHandler, buildReportError } from '.
 import { NextHandler, NextContext } from 'lemon-model';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+import { ATTR_PROTOCOL_SIGNATURE, assertSigned, verifyMessage } from '../protocol/protocol-sign';
 const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -43,13 +44,21 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
 
     /**
      * Default SQS Handler.
+     * - v5 B5: never rejects. a failed record goes to `batchItemFailures` (by `messageId`).
      */
-    public handle: SQSHandler = async (event): Promise<void> => {
+    public handle: SQSHandler = async (event): Promise<{ batchItemFailures: { itemIdentifier: string }[] }> => {
         //* for each records.
         const records: SQSRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
         // _log(NS, '> event =', $U.json(event));
         const $doReportError = buildReportError(LambdaSQSHandler.REPORT_ERROR);
+        //* v5: indexes of the failed records (listener, protocol or signature failure).
+        const failed = new Set<number>();
+        //* mark the record as failed, then report (resolves the error message).
+        const $fail = (index: number) => (e: any, context?: any, event?: any, data?: any) => {
+            failed.add(index);
+            return $doReportError(e, context, event, data);
+        };
 
         //* handle sqs record data.
         const onSQSRecord = async (record: SQSRecord, index: number): Promise<string> => {
@@ -67,6 +76,9 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
 
             //* check if via protocol-service.
             if (param['Subject'] && param['Subject'] == 'x-protocol-service') {
+                //* v5 B5: verify the signature before dispatch (`enforce` → this record fails).
+                const signature = `${record.messageAttributes?.[ATTR_PROTOCOL_SIGNATURE]?.stringValue ?? ''}`;
+                assertSigned('sqs', () => verifyMessage(signature, record.body));
                 const param: MyProtocolParam = $protocol.service.asTransformer('sqs').transformToParam(record);
                 const context: NextContext = param.context;
                 const callback = param.callback || '';
@@ -93,7 +105,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         //* call the remote service if callback.
                         return proto ? $protocol.service.execute(proto) : body;
                     })
-                    .catch(e => $doReportError(e, param.context, null, { protocol: param }));
+                    .catch(e => $fail(index)(e, param.context, null, { protocol: param }));
                 _log(NS, `> sqs[${index}].res =`, $U.json(result));
                 return typeof result == 'string' ? result : $U.json(result);
             } else {
@@ -109,7 +121,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                 const asyncNext = (fn: NextHandler, j: number) =>
                     new Promise(resolve => {
                         resolve(fn('SQS', param, body, null));
-                    }).catch(e => $doReportError(e, null, null, { param, body, i: index, j }));
+                    }).catch(e => $fail(index)(e, null, null, { param, body, i: index, j }));
                 const res = await Promise.all(this.listeners.map(asyncNext));
                 return res.join(',');
             }
@@ -118,11 +130,14 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
         //* serialize each records.
         this.$lastResult = await do_parrallel(
             records,
-            (record, i) => onSQSRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
+            (record, i) => onSQSRecord(record, i).catch(e => $fail(i)(e, null, null, { record, i })),
             1,
         );
 
-        //* returns void.
-        return;
+        //* v5: returns the partial batch response (empty if all succeeded).
+        const batchItemFailures = records
+            .filter((_, i) => failed.has(i))
+            .map(record => ({ itemIdentifier: `${record?.messageId ?? ''}` }));
+        return { batchItemFailures };
     };
 }

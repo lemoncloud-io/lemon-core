@@ -49,6 +49,13 @@ const expectedUtcForLocalString = (
     return Date.UTC(y, m, d, h, i, s) - (todayOffset - targetOffset) * 60 * 1000 - timeZoneHours * 3600 * 1000;
 };
 
+/**
+ * v5 B5 (SPEC § 6.8): a string is the wall clock of `timeZone` (default `DEFAULT_TIME_ZONE` = 9),
+ * converted by `Date.UTC(y, m, d, h - tz, i, s)` — host TZ and DST free.
+ */
+const expectedUtcV5 = (y: number, m: number, d: number, h: number, i: number, s: number, timeZoneHours = 9): number =>
+    Date.UTC(y, m, d, h, i, s) - timeZoneHours * 3600 * 1000;
+
 //! main test body.
 describe(`core/utilities.ts (characterization, WP-U2)`, () => {
     //* ---------------------------------------------------------------------
@@ -68,12 +75,16 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             ['1978-12-01 12:34:20', 1978, 11, 1, 12, 34, 20],
             ['19781201', 1978, 11, 1, 12, 0, 0],
             ['19781201 1234', 1978, 11, 1, 12, 34, 0],
-        ])('dt.md Format table row: dt(%j) -> UTC(%j-%j-%j %j:%j:%j) (utilities.ts:208-241)', (input, y, m, d, h, i, s) => {
-            const { $U } = instance();
-            expect($U.dt(input as string).getTime()).toEqual(
-                expectedUtcForLocalString(y as number, m as number, d as number, h as number, i as number, s as number),
-            );
-        });
+        ])(
+            'dt.md Format table row: dt(%j) -> KST(%j-%j-%j %j:%j:%j) (v5 B5: default timeZone 9)',
+            (input, y, m, d, h, i, s) => {
+                const { $U } = instance();
+                //* v5 B5: timeZone omitted = 9 (was 0), host TZ free.
+                expect($U.dt(input as string).getTime()).toEqual(
+                    expectedUtcV5(y as number, m as number, d as number, h as number, i as number, s as number),
+                );
+            },
+        );
 
         //* dt.md Format table rows 8-9: no format matches -> null.
         it("dt.md Format table row: dt('') -> null (no format matches, utilities.ts:242-243)", () => {
@@ -89,18 +100,21 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
         //* dt.md "timeZone explicit vs. omitted" table (input '1978-12-01') — same
         //* machine-TZ-independence rationale as the Format table above.
         it.each([[undefined], [9], [0], [-5]])(
-            "dt.md timeZone table row: dt('1978-12-01', %j) -> UTC(1978-12-01 12:00:00) shifted by timeZone (utilities.ts:206)",
+            "dt.md timeZone table row: dt('1978-12-01', %j) -> 1978-12-01 12:00:00 at timeZone (v5 B5: omitted = 9)",
             tz => {
                 const { $U } = instance();
+                //* v5 B5: `tz ?? 9` (was `?? 0`).
                 expect($U.dt('1978-12-01', tz as number).getTime()).toEqual(
-                    expectedUtcForLocalString(1978, 11, 1, 12, 0, 0, tz ?? 0),
+                    expectedUtcV5(1978, 11, 1, 12, 0, 0, tz ?? 9),
                 );
             },
         );
 
-        it('dt.md timeZone table: timeZone 0 and timeZone omitted produce identical output — confirms `?? 0` is nullish coalescing, not falsy-coalescing (utilities.ts:206)', () => {
+        it('dt.md timeZone table (v5 B5): timeZone omitted = 9, explicit 0 = UTC — nullish, not falsy', () => {
             const { $U } = instance();
-            expect($U.dt('1978-12-01', 0).getTime()).toEqual($U.dt('1978-12-01').getTime());
+            //* v5 B5: flipped — omitted is no longer the same as 0.
+            expect($U.dt('1978-12-01').getTime()).toEqual($U.dt('1978-12-01', 9).getTime());
+            expect($U.dt('1978-12-01', 0).getTime() - $U.dt('1978-12-01').getTime()).toEqual(9 * 3600 * 1000);
         });
 
         //* Sanity connection back to dt.md's literal table values: on THIS run, if the target
@@ -158,10 +172,26 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             },
         );
 
-        it('dt.md number/Date table row: Date input returns the same object reference, not a copy (utilities.ts:259-260, Known defect #4, preserved)', () => {
+        it('dt.md number/Date table row (v5 B5): Date input returns a copy, not the same reference (Known defect #4 fixed)', () => {
             const { $U } = instance();
             const D = new Date(2020, 0, 1);
-            expect($U.dt(D, 9)).toBe(D);
+            //* v5 B5: flipped — a copy with the same instant.
+            expect($U.dt(D, 9)).not.toBe(D);
+            expect($U.dt(D, 9).getTime()).toEqual(D.getTime());
+        });
+
+        it('ts() (v5 B5): ts(Date, tz) never mutates the input, ts(N) is the KST wall clock', () => {
+            const { $U } = instance();
+            const D = new Date(Date.UTC(2026, 6, 15, 0, 30, 0));
+            const before = D.getTime();
+            expect($U.ts(D, 9)).toEqual('2026-07-15 09:30:00');
+            expect(D.getTime()).toEqual(before);
+            expect($U.ts(D.getTime())).toEqual('2026-07-15 09:30:00');
+            expect($U.ts(D.getTime(), 0)).toEqual('2026-07-15 00:30:00');
+            //* winter and summer give the same offset (no DST).
+            expect($U.ts(Date.UTC(2026, 0, 15, 0, 30, 0), 9)).toEqual('2026-01-15 09:30:00');
+            expect($U.ts(Date.UTC(2026, 0, 15, 0, 30, 0), -5)).toEqual('2026-01-14 19:30:00');
+            expect($U.ts(Date.UTC(2026, 6, 15, 0, 30, 0), -5)).toEqual('2026-07-14 19:30:00');
         });
 
         //* dt.md undefined/unsupported input table.
@@ -196,15 +226,12 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
         //* expected value below is computed via the identical offset-difference formula the
         //* source itself uses, so it holds on this (KST, non-DST) machine and is designed to
         //* hold under DST too (cross-checked once under TZ=America/New_York, see U2 report).
-        it('dt.md Known defect (coordinator U1 note): DST-dependent offset source (utilities.ts:205), preserved — expected computed via call-time-vs-target-date offset difference, not hardcoded', () => {
+        it('dt.md Known defect (coordinator U1 note) fixed in v5 B5: no DST / host offset — Date.UTC(y, m, d, h - tz, i, s)', () => {
             const { $U } = instance();
-            const y = 1978,
-                m = 11, // December, 0-indexed month
-                d = 1;
-            const todayOffset = new Date().getTimezoneOffset();
-            const targetDateOffset = new Date(y, m, d, 12).getTimezoneOffset();
-            const expected = Date.UTC(y, m, d, 12) - (todayOffset - targetDateOffset) * 60 * 1000;
-            expect($U.dt('1978-12-01').getTime()).toEqual(expected);
+            //* v5 B5: flipped — the offset comes from `timeZone` only (no call-time host offset).
+            expect($U.dt('1978-12-01').getTime()).toEqual(Date.UTC(1978, 11, 1, 12 - 9));
+            expect($U.dt('2026-01-15 09:30', -5).getTime()).toEqual(Date.UTC(2026, 0, 15, 14, 30));
+            expect($U.dt('2026-07-15 09:30', -5).getTime()).toEqual(Date.UTC(2026, 6, 15, 14, 30));
         });
     });
 

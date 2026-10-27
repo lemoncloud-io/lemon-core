@@ -32,6 +32,7 @@ import $aws from '../aws/'; // load config-module.
 import queryString from 'qs';
 import { invokeLambda } from './aws-lambda-helper';
 import { measureAsync } from '../../lib/perf';
+import { signContext, signMessage, HEADER_PROTOCOL_SIGNATURE, ATTR_PROTOCOL_SIGNATURE } from './protocol-sign';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -549,10 +550,15 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         //* build http parameter
         const base: APIGatewayProxyEvent = {} as APIGatewayProxyEvent;
         const $ctx: APIGatewayEventRequestContext = {} as APIGatewayEventRequestContext;
+        //* v5 B5: sign the exact header and body strings (no signature if no key).
+        const contextJson = $U.json(context);
+        const bodyText = param.body ? $U.json(param.body) : null;
+        const signature = signContext(contextJson, bodyText);
         const event: APIGatewayProxyEvent = {
             ...base,
             headers: {
-                [HEADER_PROTOCOL_CONTEXT]: $U.json(context),
+                [HEADER_PROTOCOL_CONTEXT]: contextJson,
+                ...(signature ? { [HEADER_PROTOCOL_SIGNATURE]: signature } : {}),
             },
             path,
             httpMethod,
@@ -567,7 +573,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
                 accountId,
                 requestId,
             },
-            body: param.body ? $U.json(param.body) : null,
+            body: bodyText,
         };
         const res: APIGatewayProxyEvent = event;
         return res;
@@ -675,10 +681,13 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
         const accountId = `${context.accountId || ''}`;
         const requestId = `${context.requestId || ''}`;
         _log(NS, `> TopicArn =`, TopicArn);
+        //* v5 B5: the receiver gets the `default` string as `Sns.Message` → sign that string.
+        const message = $U.json(param);
+        const signature = signMessage(message);
         const res: MySNSEventParam = {
             TopicArn,
             Subject: `x-protocol-service`,
-            Message: JSON.stringify({ default: $U.json(param) }),
+            Message: JSON.stringify({ default: message }),
             // Message: JSON.stringify({ default: param }),
             MessageAttributes: {
                 // accountId: { DataType: 'String', StringValue: accountId },
@@ -691,6 +700,8 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
         if (requestId) res.MessageAttributes['requestId'] = { DataType: 'String', StringValue: requestId };
         //* append callback-url in attributes (WARN! string length limit)
         if (callback) res.MessageAttributes['callback'] = { DataType: 'String', StringValue: callback };
+        //* v5 B5: signature attribute (only if a key is set).
+        if (signature) res.MessageAttributes[ATTR_PROTOCOL_SIGNATURE] = { DataType: 'String', StringValue: signature };
         return res;
     }
 
@@ -758,10 +769,13 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
         const QueueUrl = `https://sqs.${arr[3]}.amazonaws.com/${arr[4]}/${url.hostname}`;
         const accountId = `${context.accountId || ''}`;
         const requestId = `${context.requestId || ''}`;
+        //* v5 B5: sign the exact `MessageBody` string (the receiver's `record.body`).
+        const messageBody = $U.json(param);
+        const signature = signMessage(messageBody);
         const res: SQSEventParam = {
             // DelaySeconds: 10, //NOTE - use SQS's configuration.
             QueueUrl,
-            MessageBody: $U.json(param),
+            MessageBody: messageBody,
             MessageAttributes: {
                 Subject: { DataType: 'String', StringValue: 'x-protocol-service' }, //NOTE! - should use 'Subject' in here.
                 // accountId: { DataType: 'String', StringValue: accountId },
@@ -773,6 +787,8 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
         if (requestId) res.MessageAttributes['requestId'] = { DataType: 'String', StringValue: requestId };
         //* append callback-url in attributes (WARN! string length limit)
         if (callback) res.MessageAttributes['callback'] = { DataType: 'String', StringValue: callback };
+        //* v5 B5: signature attribute (only if a key is set).
+        if (signature) res.MessageAttributes[ATTR_PROTOCOL_SIGNATURE] = { DataType: 'String', StringValue: signature };
         return res;
     }
 

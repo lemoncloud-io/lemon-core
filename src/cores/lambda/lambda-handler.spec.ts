@@ -102,9 +102,9 @@ describe('LambdaHandler', () => {
         const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
-        //* call handler.
+        //* call handler. v5 B5: never rejects — a web failure is the HTTP response (was a reject).
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({ error: '404 NOT FOUND' });
+        expect2(response, 'statusCode,body').toEqual({ statusCode: 404, body: '404 NOT FOUND' });
     });
 
     //* test async error
@@ -116,9 +116,56 @@ describe('LambdaHandler', () => {
         const event: any = { requestContext: {}, pathParameters: null };
         const context: any = {};
 
-        //* call handler.
+        //* call handler. v5 B5: never rejects — a web failure is the HTTP response (was a reject).
         const response = await service.handle(event, context).catch(GETERR$);
-        expect2(response).toEqual({ error: '404 NOT FOUND' });
+        expect2(response, 'statusCode,body').toEqual({ statusCode: 404, body: '404 NOT FOUND' });
+    });
+
+    //* v5 B5: no rejection for any event (D7).
+    it('should resolve failures of any event (v5)', async () => {
+        const { service } = instance();
+        //* unknown event → `{ error }`.
+        expect2(await service.handle({ hello: 1 }, {} as any).catch(GETERR$)).toEqual({
+            error: '400 UNKNOWN EVENT - service:',
+        });
+        //* no event → `{ error }`.
+        expect2(await service.handle(null, {} as any).catch(GETERR$)).toEqual({ error: '@event is required!' });
+        //* sqs handler throws → every record in `batchItemFailures`.
+        service.setHandler('sqs', () => {
+            throw new Error('boom-sqs');
+        });
+        const sqs = {
+            Records: [
+                { eventSource: 'aws:sqs', messageId: 'm1' },
+                { eventSource: 'aws:sqs', messageId: 'm2' },
+            ],
+        };
+        expect2(await service.handle(sqs, {} as any).catch(GETERR$)).toEqual({
+            batchItemFailures: [{ itemIdentifier: 'm1' }, { itemIdentifier: 'm2' }],
+        });
+        //* dds handler rejects → every record by `SequenceNumber`.
+        service.setHandler('dds', async () => {
+            throw new Error('boom-dds');
+        });
+        const dds = { Records: [{ dynamodb: { SequenceNumber: 's1' } }] };
+        expect2(await service.handle(dds, {} as any).catch(GETERR$)).toEqual({
+            batchItemFailures: [{ itemIdentifier: 's1' }],
+        });
+        //* sns handler rejects → `{ error }`.
+        service.setHandler('sns', async () => {
+            throw new Error('boom-sns');
+        });
+        expect2(await service.handle({ Records: [{ Sns: {} }] }, {} as any).catch(GETERR$)).toEqual({
+            error: 'boom-sns',
+        });
+        //* cognito handler throws → `handle()` rejects with the same message (the response contract).
+        service.setHandler('cognito', () => {
+            throw new Error('boom-cognito');
+        });
+        const cognito = loadJsonSync('data/samples/events/sample.event.cognito.json');
+        expect2(() => service.findService(cognito)).toEqual('cognito');
+        expect2(await service.handle(cognito, {} as any).catch(GETERR$)).toEqual({ error: 'boom-cognito' });
+        await expect(service.handle(cognito, {} as any)).rejects.toThrow('boom-cognito');
     });
 
     //* test class.method
