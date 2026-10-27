@@ -1,6 +1,6 @@
 # UPGRADE GUIDE: lemon-core V4 to V5
 
-> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging), B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed) B2-b (search: OpenSearch client, ES names, lazy `$OS2`) and B2-c (AWS SDK: optional peers, lazy loading, `PERF` lines).
+> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging), B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed) B2-b (search: OpenSearch client, ES names, lazy `$OS2`) and B2-c (AWS SDK: optional peers, lazy loading, `PERF` lines), B3 (L1/L2 merge) and B4 (field annotations: `@field()` replaces the generated field registry).
 
 ---
 
@@ -480,6 +480,92 @@ The shims are removed with `./dist/*` in v6. The folder name (`cores/elastic/`) 
 * `$X` (`src/view/transformer.ts`, a local copy of `$T` helpers with different `B`/`BN`/`N`/`F` semantics) is removed. Use `$T` from `lemon-core`.
 * `api/hello-api.ts` calls `isUseSession()`.
 
+## 10. Field annotations: `@field()` replaces the generated registry (B4)
+
+lemon-core v4 built its field lists with a generator (`lemon-fields gen` → `src/generated/field-registry.ts`, `fieldKeys.<model>()`). v5 reads them from the model class: a field carries `@field()`, and `fieldsOf(MyModel)` lists the fields. The annotations live in **lemon-model 1.6.0**.
+
+### 10.1 What changed
+
+| Area | v4 | v5 |
+| --- | --- | --- |
+| `CoreModel` (lemon-model) | interface | **class** with 16 annotated public optional fields (`$` view, `id`/`_id` internal, 13 data). Type-compatible: object literals typed as `CoreModel` and `interface X extends CoreModel` still compile |
+| `CORE_FIELDS` (lemon-model, root) | literal list, 14 | `fieldsOf(CoreModel, { kinds: ['view', 'data'] })` — the same 14 in the same order |
+| lemon-core generated registry | `src/generated/field-registry.ts`, `lemon-core/dist/generated/field-registry` | **removed** (the deep path is gone; it had no consumer) |
+| lemon-core scripts | `fields:migrate`, `fields:gen`, `fields:check`, `fields:guard-common`; `build` ran `fields:gen` first | removed; `build` is `build-ts` + the ESM wrapper |
+| Manager constructors (`AbstractManager`, `CoreManager`, `MyCoreManager`) | `fields: string[]` | `fields: string[] \| ModelClass` — a model class is read with `fieldsOf(cls)`. Existing calls are unchanged. `ModelClass`/`resolveFields` are not on the root (deep path `lemon-core/dist/cores/storage/model-fields`) |
+| `lemon-devkit` | devDependency | still a devDependency (`loadProfile`/`loadEnviron`/`buildExpress` need it; only the `fields:*` use is gone) |
+
+### 10.2 Root: lemon-model names
+
+The lemon-core root re-exports **exactly the 32 lemon-model names it had in v4** (`CoreModel`, `CORE_FIELDS`, `AbstractTransformer`, `NextContext`, `SearchBody`, …). `CoreModel` is now a value and a type there. The new lemon-model names (1.2 to 1.6, including `field`, `fieldsOf`, `specsOf`, `FIELDS_KEY`) are **not** on the lemon-core root. Import them from lemon-model and declare it yourself:
+
+```jsonc
+// package.json
+"dependencies": { "lemon-core": "…", "lemon-model": "^1.6.0" }
+```
+
+```ts
+import { CoreModel } from 'lemon-core'; // or 'lemon-model' (the same class)
+import { field, fieldsOf } from 'lemon-model';
+```
+
+### 10.3 Convert one model
+
+```ts
+// before: interface + generated registry
+export interface PetModel extends CoreModel<ModelType> {
+    name?: string;
+    stereo?: PetStereo;
+    readonly $owner?: OwnerHead; // view field
+}
+export const $FIELD = { pet: filterFields(fieldKeys.petModel<PetModel>()) };
+
+// after: class + annotations (no registry entry)
+export class PetModel extends CoreModel<ModelType> implements PetHead {
+    @field({ group: 'head' }) declare id?: string; // inherited field, redeclared to join the head group
+    @field({ group: 'head' }) name?: string;
+    @field({ group: 'head' }) declare stereo?: PetStereo; // narrowed redeclaration
+    readonly $owner?: OwnerHead; // view field: no @field()
+}
+export const $HEAD = { pet: filterFields(fieldsOf(PetModel, { group: 'head' })) };
+export const $FIELD = { pet: filterFields(fieldsOf(PetModel)) };
+```
+
+1. Turn `interface X extends A, B` into `class X extends CoreModel<…> implements <Head>`. A class has one parent; keep the head interface for type consumers and put its fields in the `head` group.
+2. Put `@field()` on every stored field. Leave view fields (`$x`, `Model`, `Query`, …) without it; your `filterFields` then gives the same set as before.
+3. Redeclare an inherited field only to narrow its type or to add a group. Use `declare` (needed from target ES2022, where a plain redeclaration is TS2612; harmless at es6). Options merge with the parent's: `@field({ group: 'head' }) declare id?: string` keeps `kind: 'internal'` from `CoreModel`.
+4. Pass the list (`$FIELD.pet`) or the class (`super('pet', parent, PetModel)`) to the manager. A class gives the raw `fieldsOf(cls)` list (with `$`, `_id`); pass the filtered list if you rely on your own `filterFields`.
+5. Remove the `fieldKeys.<model>` calls and rerun your generator while other models still use it (it drops the entries). Remove the generator, its scripts and `src/generated/` when no model uses it.
+6. Add a parity spec (§ 10.4).
+
+Keep `experimentalDecorators: true` (legacy decorators). lemon-core's vitest (Oxc) does not run TS 5 standard decorators. `field()` also works with standard decorators under `tsc` (lemon-model sets `Symbol.metadata ??= Symbol.for('Symbol.metadata')` once).
+
+### 10.4 Parity spec
+
+A missing `@field()` is silent: the field folds into `.meta` on save. In an es6 legacy build `Object.keys(new X())` is empty, so there is no automatic check. Copy the v4 registry list into a spec **before** you delete the entry and compare **sets** (not order):
+
+```ts
+// v4 list, copied from src/generated/field-registry.ts (`petModel`) through the same filterFields()
+const V4_PET_FIELDS = ['name', 'stereo', 'id', 'ns', 'type' /* … */];
+it('pet fields equal v4 as a set', () => {
+    expect(new Set($FIELD.pet)).toEqual(new Set(V4_PET_FIELDS));
+    expect(new Set($HEAD.pet)).toEqual(new Set(['id', 'name', 'stereo']));
+});
+```
+
+### 10.5 Order
+
+`fieldsOf()` lists fields in declaration order, **parent first** (`CoreModel`'s 16, then your own). A redeclared field keeps the parent position. The generator listed own fields first. Storage, `.meta` folding, search parameters and `listProjections()` (sorted) only check inclusion, so behaviour does not change. Specs that compare a field array with `join(',')` or `toEqual([...])` must compare sets.
+
+### 10.6 Release order
+
+lemon-model 1.6.0 is published first. lemon-core and your service then move to `"lemon-model": "^1.6.0"` with a lockfile update. Before the publish, test with `npm link` / a local tarball (`npm pack`).
+
+### 10.7 `lemon-templates-api`
+
+* `MockModel` (`src/modules/mock/model.ts`) is the first annotated model: `class MockModel extends CoreModel<ModelType> implements MockHead`; `$HEAD.mock`/`$FIELD.mock` come from `fieldsOf()` (same sets, parent-first order). Parity spec: `src/modules/mock/model.spec.ts`.
+* The other models still use `fieldKeys` and `fields:gen` (the registry has 10 entries now). They move one by one with the steps of § 10.3.
+
 ---
 
 ## At-a-Glance Checklist
@@ -503,3 +589,7 @@ The shims are removed with `./dist/*` in v6. The folder name (`cores/elastic/`) 
 - [ ] Deep imports of `lemon-core/dist/helpers/helpers` or `…/helpers/types`: check `$T.S2` 3-argument / `$T.SS(v, def)` calls and `IdentityToken.cid` (§ 9.3)
 - [ ] Deep imports of `…/cores/elastic/elastic6-*` moved to `…/os2-*` or the root (§ 9.4)
 - [ ] Template copies of `$T` helpers (`$X`) replaced by `$T` (§ 9.5)
+- [ ] `lemon-model` `^1.6.0` declared in your own `package.json`; `field`/`fieldsOf`/`specsOf` imported from `lemon-model`, not `lemon-core` (§ 10.2)
+- [ ] No `lemon-core/dist/generated/field-registry` import; no `fields:*` script calls into lemon-core (§ 10.1)
+- [ ] Each converted model: `@field()` on stored fields, `declare` on narrowed redeclarations, a parity spec with set comparison (§ 10.3, § 10.4)
+- [ ] Specs that compare field arrays by order compare sets (§ 10.5)

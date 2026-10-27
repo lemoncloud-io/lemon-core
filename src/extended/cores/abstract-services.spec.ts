@@ -8,6 +8,7 @@
  * @date        2023-01-18 optimized with `lemon-core@3.2.4`
  * @date        2023-01-20 optimized `doSearch()` w/ `SearchParam()`
  * @date        2026-10-27 v5 B2-b: lazy `$OS2` test (listener and client counts).
+ * @date        2026-10-28 v5 B4: `MyTestModel` is a class with `@field()`; a manager built from the class; L2 `CORE_FIELDS`.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -20,7 +21,9 @@ import { $T } from './commons';
 import { GETERR } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { SearchResult, filterFields } from '../abstract-service';
-import { NextContext, NextIdentity, SearchBody, SimpleSet, CoreModel } from 'lemon-model';
+import { NextContext, NextIdentity, SearchBody, SimpleSet, CoreModel, CORE_FIELDS } from 'lemon-model';
+//* v5 B4: field annotations come from lemon-model (not on the lemon-core root).
+import { field, fieldsOf } from 'lemon-model';
 import { CanDoActionType, MyCoreManager, MyCoreProxy, MyCoreService, MyManagerProxy } from './abstract-services';
 import { $OS2, $ES6Routed, _OS2, OS2Instance, OS2Service } from './abstract-services';
 import { lazyInstance } from '../../lib/lazy';
@@ -28,7 +31,6 @@ import $cores from '../../cores/';
 import { vi } from 'vitest';
 import { PaginateParam } from './types';
 import { loadSample } from './contexts.spec';
-import { fieldKeys } from '../../generated/field-registry';
 
 export type ModelType = 'test';
 export type Model = CoreModel<ModelType>;
@@ -36,13 +38,17 @@ export type Model = CoreModel<ModelType>;
 /**
  * `test`: internal test model.
  */
-export interface MyTestModel extends Model {
+//* v5 B4: a class over `CoreModel` - stored fields carry `@field()`, view fields (`Model`, `$identity`) do not.
+export class MyTestModel extends CoreModel<ModelType> {
     /** name of model */
+    @field()
     name?: string;
     /** test count */
+    @field()
     test?: number;
 
     /** (optional) extra */
+    @field()
     extra?: SimpleSet;
 
     /**
@@ -57,7 +63,7 @@ export interface MyTestModel extends Model {
 }
 
 export const $FIELD = {
-    test: filterFields(fieldKeys.myTestModel<MyTestModel>()),
+    test: filterFields(fieldsOf(MyTestModel)),
 };
 
 /**
@@ -74,6 +80,16 @@ export class TestModelManager extends MyCoreManager<MyTestModel, ModelType, Back
     public async validateModel(model: MyTestModel, $org?: MyTestModel) {
         if (model.test && model.test <= 0) throw Error('.test (number) is required (greater than 0)');
         return model;
+    }
+}
+
+/**
+ * class: `ClassFieldsManager`
+ * - v5 B4: the same model, but the manager gets the model class (`resolveFields()` -> `fieldsOf(MyTestModel)`).
+ */
+export class ClassFieldsManager extends MyCoreManager<MyTestModel, ModelType, BackendService> {
+    public constructor(parent: BackendService) {
+        super('test', parent, MyTestModel, { enableSync: false });
     }
 }
 
@@ -161,12 +177,13 @@ describe('abstract-services', () => {
 
         const isKeys = true;
         if (isKeys) {
-            expect2(() => filterFields($FIELD.test).join(',')).toEqual(
-                'name,test,extra,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
-            );
-            expect2(() => filterFields($FIELD.test, ['test']).join(',')).toEqual(
-                'test,name,extra,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
-            );
+            //* v5 B4: compared as sets - `fieldsOf()` lists parent fields first (the generator listed own fields first).
+            const sorted = (list: string[]) => [...list].sort().join(',');
+            const EXPECTED =
+                'name,test,extra,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id';
+            expect2(() => sorted(filterFields($FIELD.test))).toEqual(sorted(EXPECTED.split(',')));
+            expect2(() => sorted(filterFields($FIELD.test, ['test']))).toEqual(sorted(EXPECTED.split(',')));
+            expect2(() => filterFields($FIELD.test, ['test'])[0]).toEqual('test');
         } else {
             console.warn('check ts-transformer-keys!');
         }
@@ -190,6 +207,25 @@ describe('abstract-services', () => {
 
         expect2(await $test.getMulti(['A', 'A']).catch(GETERR), 'id').toEqual([{ id: 'A' }, { id: 'A' }]);
         expect2(await $test.getMulti$(['A', 'A']).catch(GETERR)).toEqual({ A: { ...$A } });
+    });
+
+    //* v5 B4: fields from the model class (`resolveFields()` through MyCoreManager -> CoreManager -> AbstractManager).
+    it('should pass manager fields from a model class (B4)', async () => {
+        const { service } = instance();
+        const $cls = new ClassFieldsManager(service);
+        const L1 = CORE_FIELDS.join(',');
+        // L1 (lemon-model) stays 14; the L2 core list is `fieldsOf(CoreModel)` = L1 + `id`, `_id` (16).
+        expect2(() => CORE_FIELDS.length).toEqual(14);
+        expect2(() => fieldsOf(CoreModel).join(',')).toEqual(`${L1},id,_id`);
+        // the class is resolved into its annotated fields (parent first), view fields excluded.
+        expect2(() => $cls.FIELDS.join(',')).toEqual(`${L1},id,_id,name,test,extra`);
+        expect2(() => $cls.FIELDS.includes('Model') || $cls.FIELDS.includes('$identity')).toEqual(false);
+        // after `filterFields()` the class list equals the `string[]` list as a set.
+        expect2(() => [...filterFields($cls.FIELDS)].sort()).toEqual([...$FIELD.test].sort());
+        // `listProjections()` drops the 16 L2 core fields (incl. `$`, `id`, `_id`) from the class list.
+        expect2(() => $cls.listProjections({ includes: [], excludes: [] })).toEqual(['extra', 'name', 'test']);
+        // a `string[]` is kept as is.
+        expect2(() => service.$test.FIELDS).toEqual($FIELD.test);
     });
 
     it('should pass ManagerProxy', async () => {

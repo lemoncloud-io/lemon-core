@@ -38,6 +38,7 @@
  * @date        2026-02-11 optimized `proxy.mget()` with `throwable` options.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
  * @date        2026-10-27 v5 B2-b: OpenSearch client, lazy `$OS2` (= `$ES6Routed`), one service set per instance.
+ * @date        2026-10-28 v5 B4: `CORE_FIELDS = fieldsOf(CoreModel)`; manager `fields` may be a model class.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -76,18 +77,21 @@ import {
     SortTerm,
     SimpleSet,
     GeneralItem,
+    fieldsOf,
 } from 'lemon-model';
 import { BulkItemsResult, IdentityToken, ListResult, PaginateParam } from './types';
 import { $T, onlyDefined, parsePaginateParam } from './commons';
 import { CrendentialForAWS } from '../../environ';
-import { fieldKeys } from '../../generated/field-registry';
+//* v5 B4: manager `fields` may be a model class.
+import { ModelClass } from '../../cores/storage/model-fields';
 
 const NAME = $U.env('NAME', 'lemon');
 const NS = $U.NS('HDBS', 'green');
 /**
- * fields in core model.
+ * fields in core model (L2: the 14 L1 `CORE_FIELDS` + `id`, `_id`).
+ * - v5 B4: read from the `@field()` annotations of the `CoreModel` class (was the generated registry).
  */
-const CORE_FIELDS: string[] = fieldKeys.coreModel<CoreModel>();
+const CORE_FIELDS: string[] = fieldsOf(CoreModel);
 
 export type SearchParam<T> = T & { [key: string]: string | number };
 
@@ -253,7 +257,8 @@ export abstract class MyCoreManager<
     protected constructor(
         type: ModelType,
         parent: Service,
-        fields: string[],
+        //* v5 B4: a `string[]` or a model class (resolved in `AbstractManager`).
+        fields: string[] | ModelClass,
         public readonly options?: {
             /** enable to sync with es6 (default true) */
             enableSync?: boolean;
