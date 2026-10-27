@@ -12,8 +12,21 @@
 import { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { measureAsync } from '../../lib/perf';
 const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
+
+/**
+ * `@aws-sdk/lib-dynamodb`, imported on the first use (not at import; v5 B2-c, K6). This file keeps its own loader.
+ */
+let $dynamoDoc: Promise<typeof import('@aws-sdk/lib-dynamodb')>;
+// memoized loader (the first call prints one `PERF` line; near 0 ms if `dynamo-service` loaded it first).
+const loadDynamoDoc = () =>
+    ($dynamoDoc ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/lib-dynamodb',
+        () => import('@aws-sdk/lib-dynamodb'),
+    ));
 
 // ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
 // - NOTE: '!=' is shortcut to { not: { comparator: '=' } }
@@ -126,6 +139,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
 
         //* get instance of dynamodoc, and execute query().
         const dynamodoc = await DynamoService.instance().dynamodoc();
+        const { ScanCommand } = await loadDynamoDoc(); // command class from the lazy-loaded package.
         const res = await dynamodoc.send(new ScanCommand(payload));
         _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
         res?.Items && _log(NS, `> scan[0] =`, $U.json(res?.Items?.[0]));

@@ -20,8 +20,8 @@ import {
     CallbackParam,
     ProtocolExecuteOptions,
 } from './../core-services';
-import { PublishCommand, PublishCommandInput, PublishCommandOutput, SNSClient } from '@aws-sdk/client-sns';
-import { SendMessageCommand, SendMessageCommandInput, SendMessageCommandOutput, SQSClient } from '@aws-sdk/client-sqs';
+import type { PublishCommandInput, PublishCommandOutput } from '@aws-sdk/client-sns';
+import type { SendMessageCommandOutput } from '@aws-sdk/client-sqs';
 import { APIGatewayProxyEvent, APIGatewayEventRequestContext, SNSMessage, SQSRecord } from 'aws-lambda';
 import { ConfigService } from './../config/config-service';
 import { LambdaHandler } from './../lambda/lambda-handler';
@@ -31,7 +31,40 @@ import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
 import queryString from 'qs';
 import { invokeLambda } from './aws-lambda-helper';
+import { measureAsync } from '../../lib/perf';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
+
+/**
+ * SDK packages, imported on the first use (not at import; v5 B2-c, K6). This file keeps its own loaders.
+ * - each loader is memoized, and its first call prints one `PERF` line.
+ */
+let $sns: Promise<typeof import('@aws-sdk/client-sns')>;
+let $sqs: Promise<typeof import('@aws-sdk/client-sqs')>;
+// loader of `@aws-sdk/client-sns`.
+const loadSns = () =>
+    ($sns ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sns',
+        () => import('@aws-sdk/client-sns'),
+    ));
+// loader of `@aws-sdk/client-sqs`.
+const loadSqs = () =>
+    ($sqs ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sqs',
+        () => import('@aws-sdk/client-sqs'),
+    ));
+
+/**
+ * a message attribute of SNS/SQS (local structural type = the SDK `MessageAttributeValue`; v5 B2-c).
+ */
+interface MyMessageAttributeValue {
+    DataType: string;
+    StringValue?: string;
+    BinaryValue?: Uint8Array;
+}
 
 /**
  * header name to exchange `next-context`
@@ -47,8 +80,15 @@ export type MyProtocolType = 'web' | 'sns' | 'sqs' | 'api';
 
 /**
  * type: MySNSEventParam
+ * - the SNS publish input this service builds (local structural type, the fields it uses; v5 B2-c).
  */
-export type MySNSEventParam = PublishCommandInput;
+export interface MySNSEventParam {
+    TopicArn?: string;
+    Subject?: string;
+    Message: string;
+    MessageStructure?: string;
+    MessageAttributes?: Record<string, MyMessageAttributeValue>;
+}
 
 /**
  * type of ProtocolParam w/ callback
@@ -364,6 +404,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
+        const { SNSClient, PublishCommand } = await loadSns(); // a new client per call (no `PERF > client` line).
         const sns = new SNSClient(awsConfig($engine, region));
         const res = await sns
             .send(new PublishCommand(params))
@@ -412,6 +453,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = endpoint.split('.')[1] || 'ap-northeast-2';
+        const { SQSClient, SendMessageCommand } = await loadSqs(); // a new client per call.
         const sqs = new SQSClient(awsConfig($engine, region));
         const res = await sqs
             .send(new SendMessageCommand(params))
@@ -461,6 +503,7 @@ export class MyProtocolService implements ProtocolService {
 
         //* call sns
         const region = arn.split(':')[3] || 'ap-northeast-2';
+        const { SNSClient, PublishCommand } = await loadSns(); // a new client per call.
         const sns = new SNSClient(awsConfig($engine, region));
         const res = await sns
             .send(new PublishCommand(params))
@@ -683,7 +726,15 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
     }
 }
 
-type SQSEventParam = SendMessageCommandInput;
+/**
+ * the SQS send input this service builds (local structural type, the fields it uses; v5 B2-c).
+ */
+interface SQSEventParam {
+    QueueUrl: string;
+    MessageBody: string;
+    DelaySeconds?: number;
+    MessageAttributes?: Record<string, MyMessageAttributeValue>;
+}
 /**
  * class: `SQSProtocolTransformer`
  * - transformer for `SQS` Handler

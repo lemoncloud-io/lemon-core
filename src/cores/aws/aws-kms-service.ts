@@ -17,22 +17,56 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
-import { KMSClient, SignCommand, SigningAlgorithmSpec } from '@aws-sdk/client-kms';
-import { GetPublicKeyCommand, EncryptCommand, DecryptCommand, VerifyCommand } from '@aws-sdk/client-kms';
 // eslint-disable-next-line prettier/prettier
-import { EncryptCommandInput, DecryptCommandInput, GetPublicKeyCommandInput, SignCommandInput, VerifyCommandInput } from '@aws-sdk/client-kms';
+import type { EncryptCommandInput, DecryptCommandInput, GetPublicKeyCommandInput, SignCommandInput, VerifyCommandInput } from '@aws-sdk/client-kms';
 import { CoreKmsService } from '../core-services';
 import { awsConfig } from '../../tools';
 import { GETERR } from '../../common/test-helper';
+import { measure } from '../../lib/perf';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
-type MySigningAlgorithm = SigningAlgorithmSpec;
+/**
+ * signing algorithm (local literal union = the SDK `SigningAlgorithmSpec` values; v5 B2-c).
+ */
+type MySigningAlgorithm =
+    | 'ECDSA_SHA_256'
+    | 'ECDSA_SHA_384'
+    | 'ECDSA_SHA_512'
+    | 'ED25519_PH_SHA_512'
+    | 'ED25519_SHA_512'
+    | 'ML_DSA_SHAKE_256'
+    | 'RSASSA_PKCS1_V1_5_SHA_256'
+    | 'RSASSA_PKCS1_V1_5_SHA_384'
+    | 'RSASSA_PKCS1_V1_5_SHA_512'
+    | 'RSASSA_PSS_SHA_256'
+    | 'RSASSA_PSS_SHA_384'
+    | 'RSASSA_PSS_SHA_512'
+    | 'SM2DSA';
+
+/**
+ * the KMS client as this service uses it (local structural type, no SDK type in `.d.ts`; v5 B2-c).
+ */
+type KmsClientLike = { send: (command: any) => Promise<any> };
+
 const ALIAS = `lemon-hello-api`; //NOTE - use env[KMS_KEY_ID] to overide.
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
-const instance = () => {
+/**
+ * `@aws-sdk/client-kms`, required on the first use (not at import; v5 B2-c, K6).
+ */
+let $kms: typeof import('@aws-sdk/client-kms');
+// memoized sync loader (the first call prints one `PERF` line).
+const loadKms = (): typeof import('@aws-sdk/client-kms') =>
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    ($kms ??= measure(_inf, $U.NS('PERF', 'cyan'), 'lazy-load @aws-sdk/client-kms', () =>
+        require('@aws-sdk/client-kms'),
+    ));
+
+// build a new client (sync; cached by `AWSKMSService.instance()`, so `PERF > client KMS` prints once per service).
+const instance = (): KmsClientLike => {
     const cfg = awsConfig($engine, region());
-    return new KMSClient(cfg);
+    const { KMSClient } = loadKms();
+    return measure(_inf, $U.NS('PERF', 'cyan'), 'client KMS', () => new KMSClient(cfg));
 };
 
 /**
@@ -95,9 +129,9 @@ export class AWSKMSService implements CoreKmsService {
         return this._keyId;
     };
 
-    protected _instance: KMSClient;
+    protected _instance: KmsClientLike;
     /**
-     * get KMS instance in stock
+     * get KMS instance in stock (sync; the SDK package is loaded on the first call)
      */
     public instance() {
         if (!this._instance) this._instance = instance();
@@ -117,6 +151,7 @@ export class AWSKMSService implements CoreKmsService {
             KeyId,
             Plaintext: Buffer.from(message),
         };
+        const { EncryptCommand } = loadKms(); // command class from the lazy-loaded package.
         const result = await this.instance().send(new EncryptCommand(params));
         _log(NS, '> result =', result);
         const ciphertext = result.CiphertextBlob ? Buffer.from(result.CiphertextBlob).toString('base64') : message;
@@ -135,6 +170,7 @@ export class AWSKMSService implements CoreKmsService {
 
         //* api param.
         const params: DecryptCommandInput = { CiphertextBlob: CiphertextBlob as Uint8Array };
+        const { DecryptCommand } = loadKms(); // command class from the lazy-loaded package.
         const data: any = await this.instance().send(new DecryptCommand(params));
         // _log(NS, '> data.type =', typeof data);
         return data?.Plaintext ? Buffer.from(data.Plaintext).toString('utf-8') : '';
@@ -157,6 +193,7 @@ export class AWSKMSService implements CoreKmsService {
             SigningAlgorithm: this._options?.algorithm ?? 'RSASSA_PKCS1_V1_5_SHA_256',
             MessageType: 'RAW',
         };
+        const { SignCommand } = loadKms(); // command class from the lazy-loaded package.
         const result = await this.instance().send(new SignCommand(params));
         const signature = result.Signature ? Buffer.from(result.Signature).toString('base64') : '';
         if (forJwtSignature) return fromBase64(signature);
@@ -185,6 +222,7 @@ export class AWSKMSService implements CoreKmsService {
             Signature: typeof signature === 'string' ? Buffer.from(signature, 'base64') : signature,
         };
         //TODO retry error handling(jitter) in case of getaddrinfo EBUSY error. @251212.
+        const { VerifyCommand } = loadKms(); // command class from the lazy-loaded package.
         const result = await this.instance()
             .send(new VerifyCommand(params))
             .catch(e => {
@@ -208,6 +246,7 @@ export class AWSKMSService implements CoreKmsService {
         const params: GetPublicKeyCommandInput = {
             KeyId,
         };
+        const { GetPublicKeyCommand } = loadKms(); // command class from the lazy-loaded package.
         const result = await this.instance().send(new GetPublicKeyCommand(params));
         return result?.PublicKey ? Buffer.from(result.PublicKey).toString(encoding) : '';
     };

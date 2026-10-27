@@ -156,6 +156,8 @@ class MyEngineModules implements EngineModules {
         if (!force && this.inited) return;
         // console.info(`! EngineModules.init()..`);
         this.inited = true;
+        //* PERF (D40): start time (inline: this file takes no value import).
+        const perf0 = process.hrtime.bigint();
         //* setup init level per each module.
         const mods = await Promise.all(
             this.mods.map(async mod => {
@@ -195,6 +197,10 @@ class MyEngineModules implements EngineModules {
             ),
         );
         // console.info(`! engine[${res.length}].inited =`, res);
+        //* PERF (D40): one line via the engine's own `inf` and `U.NS` (`this` is the engine at runtime).
+        const $e = this as unknown as Partial<LemonEngine>;
+        const perfMs = (Number(process.hrtime.bigint() - perf0) / 1e6).toFixed(1);
+        $e.inf && $e.inf($e.U ? $e.U.NS('PERF', 'cyan') : 'PERF:', '>', 'initialize', `${perfMs} ms`);
         return res;
     }
 }

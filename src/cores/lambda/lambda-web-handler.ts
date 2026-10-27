@@ -33,11 +33,24 @@ import { loadJsonSync, awsConfig } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
-import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import $config from '../config';
+import { measureAsync } from '../../lib/perf';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
+
+/**
+ * `@aws-sdk/client-sts`, imported on the first use (not at import; v5 B2-c, K6).
+ */
+let $sts: Promise<typeof import('@aws-sdk/client-sts')>;
+// memoized loader (the first call prints one `PERF` line).
+const loadSts = () =>
+    ($sts ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sts',
+        () => import('@aws-sdk/client-sts'),
+    ));
 
 //* header definitions by environment.
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
@@ -575,6 +588,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
 
                 // 2. fallback: STS 호출 (awsConfig 사용)
                 const cfg = awsConfig($engine);
+                const { STSClient, GetCallerIdentityCommand } = await loadSts(); // a new client per call.
                 const sts = new STSClient(cfg);
                 const data = await sts.send(new GetCallerIdentityCommand({}));
                 return data?.Account || '000000000000';

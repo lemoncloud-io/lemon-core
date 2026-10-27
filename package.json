@@ -95,15 +95,6 @@
   "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.971.0",
-    "@aws-sdk/client-dynamodb-streams": "^3.971.0",
-    "@aws-sdk/client-iam": "^3.971.0",
-    "@aws-sdk/client-kms": "^3.971.0",
-    "@aws-sdk/client-lambda": "^3.971.0",
-    "@aws-sdk/client-s3": "^3.971.0",
-    "@aws-sdk/client-sns": "^3.971.0",
-    "@aws-sdk/client-sqs": "^3.971.0",
-    "@aws-sdk/client-sts": "^3.971.0",
-    "@aws-sdk/credential-providers": "^3.971.0",
     "@aws-sdk/lib-dynamodb": "^3.971.0",
     "@opensearch-project/opensearch": "^3.9.0",
     "@types/aws-lambda": "^8.10.62",
@@ -121,8 +112,14 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@aws-sdk/types": "^3.972.0",
-    "@smithy/util-stream": "^3.3.4",
+    "@aws-sdk/client-iam": "^3.971.0",
+    "@aws-sdk/client-kms": "^3.971.0",
+    "@aws-sdk/client-lambda": "^3.971.0",
+    "@aws-sdk/client-s3": "^3.971.0",
+    "@aws-sdk/client-sns": "^3.971.0",
+    "@aws-sdk/client-sqs": "^3.971.0",
+    "@aws-sdk/client-sts": "^3.971.0",
+    "@aws-sdk/credential-providers": "^3.971.0",
     "@types/async": "^3.2.15",
     "@types/crypto-js": "^4.2.2",
     "@types/js-yaml": "^3.12.5",
@@ -152,6 +149,42 @@
     "typedoc": "^0.28.19",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-iam": "^3.971.0",
+    "@aws-sdk/client-kms": "^3.971.0",
+    "@aws-sdk/client-lambda": "^3.971.0",
+    "@aws-sdk/client-s3": "^3.971.0",
+    "@aws-sdk/client-sns": "^3.971.0",
+    "@aws-sdk/client-sqs": "^3.971.0",
+    "@aws-sdk/client-sts": "^3.971.0",
+    "@aws-sdk/credential-providers": "^3.971.0"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-iam": {
+      "optional": true
+    },
+    "@aws-sdk/client-kms": {
+      "optional": true
+    },
+    "@aws-sdk/client-lambda": {
+      "optional": true
+    },
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@aws-sdk/client-sns": {
+      "optional": true
+    },
+    "@aws-sdk/client-sqs": {
+      "optional": true
+    },
+    "@aws-sdk/client-sts": {
+      "optional": true
+    },
+    "@aws-sdk/credential-providers": {
+      "optional": true
+    }
   },
   "private": false,
   "repository": {

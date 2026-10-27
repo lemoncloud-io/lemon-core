@@ -15,6 +15,7 @@ import { _log, _inf, _err, $U } from '../../engine/';
 import { Incrementable, SearchBody } from 'lemon-model';
 import type { Client, ApiResponse, ClientOptions } from '@opensearch-project/opensearch';
 import $hangul from './hangul-service';
+import { measure } from '../../lib/perf';
 import { GETERR, waited } from '../../common/test-helper';
 const NS = $U.NS('OS2', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -140,8 +141,12 @@ interface ElasticSearchParams<T extends object = any> {
 let $opensearch: typeof import('@opensearch-project/opensearch') = null;
 // memoized loader of `@opensearch-project/opensearch`.
 const loadOpenSearch = (): typeof import('@opensearch-project/opensearch') => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    if (!$opensearch) $opensearch = require('@opensearch-project/opensearch');
+    //* first call only: `require` timed by one `PERF` line (D40).
+    if (!$opensearch)
+        $opensearch = measure(_inf, $U.NS('PERF', 'cyan'), 'lazy-load @opensearch-project/opensearch', () =>
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            require('@opensearch-project/opensearch'),
+        );
     return $opensearch;
 };
 /**
@@ -188,14 +193,21 @@ export abstract class OS2ClientService<T extends OS2Item = any> {
      */
     protected newClient(extra?: Partial<ClientOptions>): Client {
         const { Client } = loadOpenSearch();
-        return new Client({
-            node: this.options.endpoint,
-            ssl: {
-                ca: process.env.elasticsearch_certificate,
-                rejectUnauthorized: false,
-            },
-            ...extra,
-        });
+        //* `PERF > client OS2`: constructor time (at most once per instance, D40).
+        return measure(
+            _inf,
+            $U.NS('PERF', 'cyan'),
+            'client OS2',
+            () =>
+                new Client({
+                    node: this.options.endpoint,
+                    ssl: {
+                        ca: process.env.elasticsearch_certificate,
+                        rejectUnauthorized: false,
+                    },
+                    ...extra,
+                }),
+        );
     }
 
     /**

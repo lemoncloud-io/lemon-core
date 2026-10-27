@@ -1,6 +1,6 @@
 # UPGRADE GUIDE: lemon-core V4 to V5
 
-> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging), B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed) and B2-b (search: OpenSearch client, ES names, lazy `$OS2`).
+> Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging), B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed) B2-b (search: OpenSearch client, ES names, lazy `$OS2`) and B2-c (AWS SDK: optional peers, lazy loading, `PERF` lines).
 
 ---
 
@@ -330,6 +330,96 @@ Prefix checks such as `msg.startsWith('400 ILLEGAL ARGUMENT - Cannot apply')` ke
 * `OS2Service.pushItem()` returns `_id` and `_version` (v4 read them from `res.body`, which the FGAC result does not have).
 * `api-search` style code that called `_OS2()` per request added two listeners per call; use the shared `$OS2` (`$ES6Routed`).
 
+## 8. AWS SDK: optional peers, lazy loading, `PERF` lines (B2-c)
+
+`require('lemon-core')` (and `import`) no longer loads any AWS SDK module. Each SDK package is loaded on its **first use** (the first KMS decrypt, the first DynamoDB call, the first SNS report, …). Measured with `scripts/aws-lazy-probe.cjs`, no AWS env: `require('lemon-core')` 737 → 265 modules, `$U` only (`dist/engine`) 338 → 131, with 0 files under `@aws-sdk`, `@smithy`, `@aws-crypto` and `@aws`.
+
+### 8.1 Packages
+
+* DynamoDB is the required storage (D41): `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` stay in lemon-core `dependencies`. They are installed with lemon-core, and still loaded only on first use.
+* The other **8** packages are **optional peers** (`^3.971.0`). npm does not install them for you. Add the ones your service uses to **your own** `dependencies`:
+
+| You use | Add to your `package.json` |
+| --- | --- |
+| KMS (config `*`-encrypted values are decrypted at `$engine.initialize()`, `AWSKMSService`, JWT sign/verify) | `@aws-sdk/client-kms` + `@aws-sdk/credential-providers` |
+| a local profile (`env.NAME`) for any AWS client, `tools.asyncCredentials()` | `@aws-sdk/credential-providers` |
+| DynamoDB (`DynamoService`, storage, query, scan) | nothing (in lemon-core `dependencies`) |
+| error reports (`doReportError`, `AWSSNSService`), account id (`accountID()`, JWT `getAccountId`) | `@aws-sdk/client-sns` + `@aws-sdk/client-iam` + `@aws-sdk/client-sts` |
+| `$protocol` (`execute` → Lambda, `notify` → SNS, `enqueue` → SQS, `broadcast` → SNS, plus IAM/STS when the topic ARN needs the account id), `AWSSQSService` | `@aws-sdk/client-lambda` + `@aws-sdk/client-sns` + `@aws-sdk/client-sqs` |
+| S3 (`AWSS3Service`) | `@aws-sdk/client-s3` |
+
+A typical API service (config decrypt, storage, error reports, protocol) adds all 8:
+
+```bash
+npm i @aws-sdk/client-kms @aws-sdk/credential-providers @aws-sdk/client-sns @aws-sdk/client-iam @aws-sdk/client-sts @aws-sdk/client-lambda @aws-sdk/client-sqs @aws-sdk/client-s3
+```
+
+* Removed from lemon-core: `@aws-sdk/client-dynamodb-streams` (never used), and the dev packages `@aws-sdk/types` and `@smithy/util-stream`.
+* `npm link` hides a missing peer: Node resolves the SDK from the linked lemon-core checkout. Check peers with a registry or `npm pack` install.
+
+### 8.2 When a missing peer fails
+
+| | v4 | v5 |
+| --- | --- | --- |
+| package not installed | `Cannot find module '@aws-sdk/…'` at `import` | the same error at the **first use**: a rejected Promise from an async method (SNS, SQS, STS, IAM, Lambda, protocol, query, scan), or a `throw` from a sync getter (`AWSKMSService.instance()`, `AWSS3Service.instance()`, `DynamoService.instance()`, `awsConfig()` with a profile) |
+| first use of a package | (paid at import) | pays the package load once (tens to hundreds of ms) |
+
+`awsConfig()`, `AWSKMSService.instance()`, `AWSS3Service.instance()` and `DynamoService.instance()` stay **synchronous** with the same signatures.
+
+### 8.3 `DynamoService.instance()` and client caches
+
+| | v4 | v5 |
+| --- | --- | --- |
+| `DynamoService.instance(region)` returns | `{ dynamo, dynamostr, dynamodoc }` | `{ dynamo, dynamodoc }` — **`dynamostr` removed** (and the static `_dynamostr`) |
+| low-level client (`dynamo`) | a new `DynamoDBClient` **and** a new `DynamoDBStreamsClient` on every call | one per region, cached in `_dynamo[region]` |
+| `dynamodoc()` | one document client per region | unchanged |
+| S3 module client (`AWSS3Service.instance()`) | a new `S3Client` on every call | one per region |
+| KMS client | one per service (`_instance`) | unchanged |
+| SNS, SQS, STS, IAM, Lambda, protocol | a new client per call | unchanged |
+
+If you used `dynamostr`, build your own `DynamoDBStreamsClient` from `@aws-sdk/client-dynamodb-streams`. The region cache reads the profile once per region: a later change of `env.NAME` does not rebuild a cached Dynamo or S3 client.
+
+`prepareCreateTable()` writes `StreamViewType: 'NEW_AND_OLD_IMAGES'` as a string (the same value the SDK enum had).
+
+### 8.4 Types without the SDK
+
+lemon-core `.d.ts` files no longer import `@aws-sdk/*` or `@smithy/*`, so a consumer without the optional peers still compiles (`skipLibCheck` not needed). The public names stay; their types became local structural types:
+
+| Name | v5 type |
+| --- | --- |
+| `AwsConfigParams.credentials`, `awsConfig()` return `.credentials` | a provider function `(props?) => Promise<{ accessKeyId; secretAccessKey; sessionToken?; expiration? }>` (it is still the `fromIni` provider at runtime) |
+| `AWSKMSService.instance()`, `_instance` | `{ send(command): Promise<any> }` |
+| `AWSKMSSignOption.algorithm` | the literal union of the SDK signing algorithms |
+| `AWSS3Service.instance()` (protected) | `{ send(command): Promise<any> }` |
+| `S3Object`, `ListObjectResult.Contents` | `S3Object` interface with the SDK object fields (`Key`, `LastModified`, `ETag`, `Size`, `StorageClass`, `Owner`, …) |
+| `DynamoService.instance()`, `_dynamo`, `_dynamodoc` | `{ send(command): Promise<any> }` clients |
+| `DynamoService.createTable()` / `deleteTable()` | `Promise<{ TableDescription?: { TableName?; TableStatus?; … }; $metadata? }>` |
+| `DynamoService.prepareCreateTable().KeySchema` | `{ AttributeName: string; KeyType: 'HASH' \| 'RANGE' }[]` |
+| `MySNSEventParam`, SQS transformer event | interfaces with the fields lemon-core builds (`TopicArn`, `Subject`, `Message`, `MessageStructure`, `MessageAttributes` / `QueueUrl`, `MessageBody`, `DelaySeconds`, `MessageAttributes`) |
+
+`send()` results are `any`. If you need the SDK result types, import them yourself (`import type { … } from '@aws-sdk/…'`).
+
+`lemon-core/dist/tools/aws-lambda-helper.example` is an example file: a deep import of it loads `@aws-sdk/credential-providers` at import.
+
+### 8.5 `PERF` lines
+
+lemon-core prints one `PERF` line per checkpoint, once per process, through the normal info logger (`I` level). `LS=1` silences them like every other line; `TS` and `LC` work as before. There is no new switch. A line has a label and a time only (no values, hosts or profiles):
+
+```
+2026-10-28 10:00:00 I PERF: > lazy-load @aws-sdk/client-kms 50.9 ms
+```
+
+| Label | Printed when | Time measured |
+| --- | --- | --- |
+| `loaded lemon-core` | the `lemon-core` index finished loading | process uptime at that moment (includes everything loaded before, e.g. `ts-node` compile) |
+| `initialize` | `$engine.initialize()` finished | the whole initialize (config init, KMS decrypt, …) |
+| `lazy-load <package>` | the first use of an SDK package or of `@opensearch-project/opensearch` | the `require`/`import()` |
+| `client KMS` / `client S3` / `client DYNAMO` / `client DYNAMO-DOC` | a cached client is built | the constructor (once per service or per region) |
+| `instance $OS2` | the first access of `$OS2` | `_OS2()` |
+| `client OS2` | an OpenSearch client is built | the constructor |
+
+Each file has its own loader, so the same package can show twice (for example `lazy-load @aws-sdk/lib-dynamodb` from `dynamo-service` and from `dynamo-query-service`); the second line is near 0 ms because Node already has the module. `lazy-load @aws-sdk/credential-providers` is printed only when `awsConfig()` loads the package first (not from `asyncCredentials()`).
+
 ---
 
 ## At-a-Glance Checklist
@@ -346,3 +436,6 @@ Prefix checks such as `msg.startsWith('400 ILLEGAL ARGUMENT - Cannot apply')` ke
 - [ ] No `docType`/`version` in search options; no `type` argument to `saveItem`/`pushItem`
 - [ ] Env loaded before the first use of `$OS2`/`$ES6Routed` (not needed before import any more)
 - [ ] `OS2_MASTER_UID`/`OS2_MASTER_PWD` in config are now sent by the master client (§ 7.5)
+- [ ] The AWS SDK peers your service uses are in your own `dependencies` (§ 8.1); DynamoDB comes with lemon-core
+- [ ] No `DynamoService.instance().dynamostr` (§ 8.3)
+- [ ] Code that typed `send()` results through lemon-core SDK types imports them from `@aws-sdk/*` itself (§ 8.4)
