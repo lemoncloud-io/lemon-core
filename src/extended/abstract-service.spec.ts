@@ -5,6 +5,7 @@
  *
  * @author      Steve <steve@lemoncloud.io>
  * @date        2022-03-31 optimize test-spec
+ * @date        2026-10-27 v5 B2-b: `$OS2` / `_OS2` instead of the removed L1 search instance and factory.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -12,21 +13,12 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it } from 'vitest';
 import { loadProfile } from '../environ';
-import { CoreModel, NextContext, SearchBody } from '../cores/';
+import { CoreModel, NextContext } from '../cores/';
 import { _it, expect2, GETERR } from '../common/test-helper';
 import { $U, _log } from '../engine';
 import { fieldKeys } from '../generated/field-registry';
-import {
-    $ES6,
-    _ES6,
-    AbstractProxy,
-    CoreManager,
-    CoreService,
-    Elastic6SearchParams,
-    filterFields,
-    ManagerProxy,
-} from './abstract-service';
-import { asyncCredentials } from '../tools';
+import { AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
+import { $OS2, _OS2, OS2Instance, OS2Service } from './cores/abstract-services';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -551,18 +543,19 @@ describe('abstract-service', () => {
         }
     }, 60000);
 
-    //* check of `$ES6`
-    it('should pass $ES6', async () => {
-        expect2(() => $ES6.hello()).toEqual('Elastic6Instance');
+    //* check of `$OS2` (lazy; no `OS2_ENDPOINT` in the test env)
+    it('should pass $OS2', async () => {
+        expect2(() => $OS2.hello()).toEqual('OS2Instance');
+        expect2(() => $OS2 instanceof OS2Instance).toEqual(true);
 
         //* check environment
-        expect2(() => $U.env('ES6_ENDPOINT', '')).toEqual('');
-        expect2(() => $U.env('ES6_INDEX', '')).toEqual('');
+        expect2(() => $U.env('OS2_ENDPOINT', '')).toEqual('');
 
-        //* the search options.
-        expect2(() => $ES6.options).toEqual(null);
+        //* the search options (no endpoint → no service set).
+        expect2(() => $OS2.options).toEqual(null);
+        expect2(() => $OS2.synchronizer).toEqual(undefined);
 
-        const $X = $ES6.$X;
+        const $X = $OS2.$X2;
         const describe = $X.describeEndpointUrl;
 
         expect2(() => describe(null, { errScope: 'test' })).toEqual('@url(string) is required - test');
@@ -625,70 +618,25 @@ describe('abstract-service', () => {
         }
     });
 
-    //* check of createHttpSearchProxy()
-    it('should pass $ES6.$X.createHttpSearchProxy()', async () => {
+    //* check of _OS2 (no request is sent: only the service set is checked)
+    it('should pass _OS2 factory', async () => {
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
             console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
-        // use `lemon-hello-api` in prod.
-        const endpoint = `https://hg9errxv25.execute-api.ap-northeast-2.amazonaws.com/prod`;
-        const $X = $ES6.$X;
-        const credentials = await asyncCredentials(PROFILE);
-        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
-
-        // GET method test
-        expect2(
-            await proxy
-                .doProxy('GET', undefined)
-                .then((s: string) => s.split('\n').map(s => s.split('/')[0]))
-                .catch(GETERR),
-        ).toEqual(['lemon-hello-api', 'lemon-core']);
-
-        expect2(await proxy.doProxy('GET', 'hello', '1').catch(GETERR)).toEqual({ name: 'cloud' });
-        expect2(await proxy.doProxy('POST', 'hello', 'echo').catch(GETERR), 'id,cmd,param').toEqual({
-            id: '!',
-            cmd: 'echo',
-            param: null,
+        const endpoint = `https://localhost:9213`;
+        const agent = _OS2({ endpoint, indexName: 'test-v1' });
+        expect2(() => agent.hello()).toEqual('OS2Instance');
+        expect2(() => agent.options, 'endpoint,indexName,idName').toEqual({
+            endpoint,
+            indexName: 'test-v1',
+            idName: '$id',
         });
-    });
-
-    //* check of _ES6
-    it('should pass _ES6 factory', async () => {
-        //* ignore if not in 'lemon'
-        if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
-            return;
-        }
-
-        // use `lemon-templates-api` in dev.
-        const endpoint = `https://ag1qbtayhj.execute-api.ap-northeast-2.amazonaws.com/dev/search/echo/query`;
-        const $X = $ES6.$X;
-        const credentials = await asyncCredentials(PROFILE);
-        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
-
-        // GET method test
-        const param: Elastic6SearchParams = { searchType: 'query_then_fetch' };
-        const body: SearchBody = { size: 1, query: null };
-        const proxyResult = await proxy.doProxy('POST', null, null, param, { body }).catch(GETERR);
-        if (`${proxyResult}`.indexOf('ENOTFOUND') >= 0) return;
-        expect2(proxyResult, '!context').toEqual({
-            param,
-            body: { body },
-        });
-
-        const agent = _ES6({ endpoint, useProxy: true, credentials });
-        expect2(await agent.search(body, param).catch(GETERR), '!context').toEqual({
-            param,
-            body: {
-                body,
-                index: 'test-v1',
-                service: 'lemon-core',
-                signature: 'v1:84g6M+IU2X/yfcyYqUxNAgQPKYlnucbWrPhP+hFYXUE=',
-            },
-        });
+        expect2(() => agent.elastic instanceof OS2Service).toEqual(true);
+        expect2(() => agent.query.hello()).toEqual('os2-query-service:test-v1');
+        expect2(() => !!agent.synchronizer).toEqual(true);
     });
     it('should pass saveAllUpdates tests', async () => {
         //* ignore if not in 'lemon'

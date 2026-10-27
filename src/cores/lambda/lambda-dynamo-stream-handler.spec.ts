@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2026-10-27 v5 B2-b: `createSyncToOS2()` with an in-memory fake (no search spec import).
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -16,7 +17,42 @@ import { LambdaHandler } from './lambda-handler';
 import { LambdaDynamoStreamHandler, DynamoStreamFilter, DynamoStreamCallback } from './lambda-dynamo-stream-handler';
 import { DynamoOption } from './../dynamo/';
 import * as $lambda from './lambda-handler.spec';
-import * as $elastic6 from './../elastic/elastic6-service.spec';
+import { OS2CoreService } from '../elastic/';
+
+/**
+ * in-memory fake of `OS2CoreService` (read/save/update/delete only; no client is ever built).
+ * - `updateItem` throws `404 NOT FOUND` for a missing id, so the synchronizer falls back to `saveItem`.
+ */
+class MemoryOS2Service extends OS2CoreService<any> {
+    private buffer: { [id: string]: any } = {};
+    // a local endpoint is required by the constructor but never contacted.
+    public constructor() {
+        super({ endpoint: 'http://127.0.0.1:9', indexName: 'test-memory', idName: '@id' });
+    }
+    // read from the buffer (404 if missing).
+    public async readItem(id: string): Promise<any> {
+        const item = this.buffer[id];
+        if (item === undefined) throw new Error(`404 NOT FOUND - id:${id}`);
+        return item;
+    }
+    // save into the buffer.
+    public async saveItem(id: string, item: any): Promise<any> {
+        this.buffer[id] = { id, ...item };
+        return { [this.options.idName]: id, ...item, _version: 1 };
+    }
+    // update in the buffer (404 if missing).
+    public async updateItem(id: string, item: any): Promise<any> {
+        const org = await this.readItem(id);
+        this.buffer[id] = { ...org, ...item };
+        return { id, ...item };
+    }
+    // delete from the buffer.
+    public async deleteItem(id: string): Promise<any> {
+        const org = this.buffer[id];
+        delete this.buffer[id];
+        return { ...org };
+    }
+}
 
 class LambdaDynamoStreamHandlerLocal extends LambdaDynamoStreamHandler {
     public constructor(lambda: LambdaHandler) {
@@ -60,10 +96,10 @@ describe('LambdaDynamoStreamHandler', () => {
         });
     });
 
-    //* test sync to es6
-    it('should pass createSyncToElastic6()', async () => {
+    //* test sync to OpenSearch (in-memory fake)
+    it('should pass createSyncToOS2()', async () => {
         const { service } = instance();
-        const { dummy: elastic6 } = $elastic6.instance();
+        const elastic6 = new MemoryOS2Service();
 
         const tableName = 'MetricsTest';
         const idName = '@id';
@@ -100,13 +136,7 @@ describe('LambdaDynamoStreamHandler', () => {
             // check extra field set
             expect2(item['X']).toBe('x');
         };
-        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(
-            options,
-            elastic6,
-            filter,
-            onBeforeSync,
-            onAfterSync,
-        );
+        const handler = LambdaDynamoStreamHandler.createSyncToOS2(options, elastic6, filter, onBeforeSync, onAfterSync);
         service.addListener(handler);
 
         //* pre-condition.

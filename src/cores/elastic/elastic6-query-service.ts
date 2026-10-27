@@ -19,22 +19,22 @@ import {
     AutocompleteSearchParam,
     SearchBody,
 } from 'lemon-model';
-import { Elastic6Service, SearchType } from './elastic6-service';
+import { OS2CoreService, SearchType } from './elastic6-service';
 import $hangul from './hangul-service';
 const NS = $U.NS('ES6Q', 'green'); // NAMESPACE TO BE PRINTED.
 
 /**
- * class: `Elastic6QueryService`
- * - support simple query like range search.
+ * class: `OS2QueryService`
+ * - support simple query like range search (over an `OS2CoreService`).
  */
-export class Elastic6QueryService<T extends GeneralItem> implements Elastic6SimpleQueriable<T> {
-    protected readonly service: Elastic6Service;
+export class OS2QueryService<T extends GeneralItem> implements Elastic6SimpleQueriable<T> {
+    protected readonly service: OS2CoreService;
 
     /**
      * use query w/ the given search-service.
      * @param service the origin search-service to use.
      */
-    public constructor(service: Elastic6Service) {
+    public constructor(service: OS2CoreService) {
         const options = service.options;
         if (!options.indexName) throw new Error('.indexName is required');
         this.service = service;
@@ -50,7 +50,7 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
     /**
      * say hello of identity.
      */
-    public hello = () => `elastic6-query-service:${this.options.indexName}`;
+    public hello = () => `os2-query-service:${this.options.indexName}`;
 
     /**
      * query all by id.
@@ -147,8 +147,8 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
             source._id = source._id || id; // attach to internal-id
             source._score = score;
             // delete internal autocomplete data
-            delete source[Elastic6Service.DECOMPOSED_FIELD];
-            delete source[Elastic6Service.QWERTY_FIELD];
+            delete source[OS2CoreService.DECOMPOSED_FIELD];
+            delete source[OS2CoreService.QWERTY_FIELD];
             return source as T;
         });
 
@@ -193,8 +193,8 @@ export class Elastic6QueryService<T extends GeneralItem> implements Elastic6Simp
         if (!autocompleteFields.includes(field)) throw new Error(`.query has no autocomplete field`);
 
         // build query body
-        const decomposedField = `${Elastic6Service.DECOMPOSED_FIELD}.${field}`;
-        const qwertyField = `${Elastic6Service.QWERTY_FIELD}.${field}`;
+        const decomposedField = `${OS2CoreService.DECOMPOSED_FIELD}.${field}`;
+        const qwertyField = `${OS2CoreService.QWERTY_FIELD}.${field}`;
         const body: SearchBody = {
             query: {
                 bool: {

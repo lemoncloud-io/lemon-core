@@ -105,7 +105,7 @@
     "@aws-sdk/client-sts": "^3.971.0",
     "@aws-sdk/credential-providers": "^3.971.0",
     "@aws-sdk/lib-dynamodb": "^3.971.0",
-    "@elastic/elasticsearch": "7.12",
+    "@opensearch-project/opensearch": "^3.9.0",
     "@types/aws-lambda": "^8.10.62",
     "@types/jsonwebtoken": "^8.5.9",
     "async": "^3.2.4",
