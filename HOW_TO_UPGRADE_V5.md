@@ -482,7 +482,7 @@ The shims are removed with `./dist/*` in v6. The folder name (`cores/elastic/`) 
 
 ## 10. Field annotations: `@field()` replaces the generated registry (B4)
 
-lemon-core v4 built its field lists with a generator (`lemon-fields gen` → `src/generated/field-registry.ts`, `fieldKeys.<model>()`). v5 reads them from the model class: a field carries `@field()`, and `fieldsOf(MyModel)` lists the fields. The annotations live in **lemon-model 1.6.0**.
+lemon-core v4 built its field lists with a generator (`lemon-fields gen` → `src/generated/field-registry.ts`, `fieldKeys.<model>()`). v5 reads them from the model class: a field carries `@field()`, and `fieldsOf(MyModel)` lists the fields. The annotations live in **lemon-model 5.0.0**.
 
 ### 10.1 What changed
 
@@ -501,7 +501,7 @@ The lemon-core root re-exports **exactly the 32 lemon-model names it had in v4**
 
 ```jsonc
 // package.json
-"dependencies": { "lemon-core": "…", "lemon-model": "^1.6.0" }
+"dependencies": { "lemon-core": "…", "lemon-model": "^5.0.0" }
 ```
 
 ```ts
@@ -559,7 +559,7 @@ it('pet fields equal v4 as a set', () => {
 
 ### 10.6 Release order
 
-lemon-model 1.6.0 is published first. lemon-core and your service then move to `"lemon-model": "^1.6.0"` with a lockfile update. Before the publish, test with `npm link` / a local tarball (`npm pack`).
+lemon-model 5.0.0 is published first. lemon-core and your service then move to `"lemon-model": "^5.0.0"` with a lockfile update. Before the publish, test with `npm link` / a local tarball (`npm pack`).
 
 ### 10.7 `lemon-templates-api`
 
@@ -589,7 +589,7 @@ lemon-model 1.6.0 is published first. lemon-core and your service then move to `
 - [ ] Deep imports of `lemon-core/dist/helpers/helpers` or `…/helpers/types`: check `$T.S2` 3-argument / `$T.SS(v, def)` calls and `IdentityToken.cid` (§ 9.3)
 - [ ] Deep imports of `…/cores/elastic/elastic6-*` moved to `…/os2-*` or the root (§ 9.4)
 - [ ] Template copies of `$T` helpers (`$X`) replaced by `$T` (§ 9.5)
-- [ ] `lemon-model` `^1.6.0` declared in your own `package.json`; `field`/`fieldsOf`/`specsOf` imported from `lemon-model`, not `lemon-core` (§ 10.2)
+- [ ] `lemon-model` `^5.0.0` declared in your own `package.json`; `field`/`fieldsOf`/`specsOf` imported from `lemon-model`, not `lemon-core` (§ 10.2)
 - [ ] No `lemon-core/dist/generated/field-registry` import; no `fields:*` script calls into lemon-core (§ 10.1)
 - [ ] Each converted model: `@field()` on stored fields, `declare` on narrowed redeclarations, a parity spec with set comparison (§ 10.3, § 10.4)
 - [ ] Specs that compare field arrays by order compare sets (§ 10.5)

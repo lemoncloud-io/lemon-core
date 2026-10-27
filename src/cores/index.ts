@@ -11,8 +11,8 @@
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 //* export cores: v5 B4 (S-06) names the lemon-model re-exports - exactly the 32 names of the v4 root (lemon-model 1.1.1).
-//* new lemon-model names (1.2 ~ 1.6, incl. `field`/`fieldsOf`/`specsOf`/`FIELDS_KEY`) are NOT on this root: import them from 'lemon-model'.
-//* runtime values (`CoreModel` is a class since lemon-model 1.6.0, so value + type).
+//* new lemon-model names (1.2 ~ 5.0, incl. `field`/`fieldsOf`/`specsOf`/`FIELDS_KEY`) are NOT on this root: import them from 'lemon-model'.
+//* runtime values (`CoreModel` is a class since lemon-model 5.0.0, so value + type).
 export { AbstractTransformer, CORE_FIELDS, CoreModel } from 'lemon-model';
 //* types: storage models.
 export type { CoreModifier, InternalKey, InternalModel, StorageModel } from 'lemon-model';
