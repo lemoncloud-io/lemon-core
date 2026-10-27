@@ -132,6 +132,12 @@ describe('utils', () => {
         expect2(() => $T.SS([])).toEqual([]);
         expect2(() => $T.SS(' a ')).toEqual(['a']);
         expect2(() => $T.SS([' a '])).toEqual(['a']);
+        //* v5 B3: one `$T` (32 members) with the L2 `S2`/`SS` (no `delim`, no `def`, items collapsed) and `US`.
+        expect2(() => Object.keys($T).length).toEqual(32);
+        expect2(() => ($T.S2 as any)('a b  c', '', '-')).toEqual('a b c');
+        expect2(() => ($T.SS as any)(null, ['x'])).toEqual([]);
+        expect2(() => $T.SS([' a  b '])).toEqual(['a b']);
+        expect2(() => $T.US(['a', 'b', 'a'])).toEqual(['a', 'b']);
         expect2(() => $T.P(' a<b>b<em c=d>e</b>ㅋ ㅋ ^"}[&$%#*')).toEqual('a b e ㅋ ㅋ');
 
         expect2(() => $T.N('1.234')).toEqual(1);

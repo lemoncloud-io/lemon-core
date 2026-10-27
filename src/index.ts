@@ -34,36 +34,10 @@ export { lib, tools };
 export * from './helpers/';
 export * from './extended/';
 
-//* export the L2 template layer. explicit lines below pin the name collisions with L1:
+//* export the L2 template layer. v5 B3: every L1/L2 name has one definition, so no collision pins are needed.
 export * from './extended/cores/';
-export { $T } from './extended/cores/commons'; //* L2 wins — 4.2.x semantics (`asLut`/`BN`/`asMeta`, `S2` trims)
-export { onlyDefined } from './common/test-helper'; //* L1 wins — signature compat (`(N, $def)`)
-export { sourceToItem } from './extended/abstract-service'; //* L1 wins — keep existing behavior
 export { withBrowserCache } from './extended/cores/browser-cache'; //* not in the cores barrel (optional util)
 export { $ES6Routed } from './extended/cores/abstract-services'; //* v5 B2-b: the same lazy object as `$OS2` (root `$ES6` is removed)
-
-//* decision #4 (cores-migration P1): `helpers/types.ts` (L1) and `extended/cores/types.ts` (L2)
-//* redefine the same ~10 type names (`export *` collisions raise TS2308 here without these pins).
-//* `extended/cores/types.ts` wins for all of them — it is already a superset: its `IdentityToken`
-//* carries `cid`/`did` which `helpers/types.ts` never had (no merge needed, contrary to the
-//* original plan's premise — verified by direct inspection, see cores-migration README §7).
-export type {
-    IdentityToken,
-    IdentityTokenSite,
-    IdentityTokenUser,
-    IdentityTokenGroup,
-    ListResult,
-    PaginatedListResult,
-    AggrKeyCount,
-    ListParam,
-    PaginateParam,
-    BulkUpdateBody,
-    BulkBody,
-    BodyList,
-    BulkItemsResult,
-} from './extended/cores/types';
-//* same L2-wins rationale as `$T` above — these call the same underlying parsing, duplicated verbatim.
-export { parseListParam, parsePaginateParam } from './extended/cores/commons';
 
 //* export as default.
 export default { engine, cores, tools, controllers };

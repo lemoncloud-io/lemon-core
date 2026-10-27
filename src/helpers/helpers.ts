@@ -8,6 +8,7 @@
  * @date        2021-12-21 protocol support `//self` url.
  * @date        2021-12-23 optimize types of $protocol.
  * @date        2022-03-17 addition text processing. (S2, P)
+ * @date        2026-10-28 v5 B3: single `$T` (L1/L2 merged), single `parseListParam`/`parsePaginateParam`.
  *
  * @copyright (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -44,6 +45,17 @@ const _B = (val: any, def: BoolFlag = 0): BoolFlag => {
 const _N = (val: any, def = 0): number => {
     const n = $U.N(val, def);
     return Number.isNaN(n) ? def : n;
+};
+
+//* the former L1 `$T.S2` body (with `delim`) — kept local as the base of the L2 `S2`/`SS`.
+const _S2 = (val: any, def = '', delim = ' '): string => `${val ?? def}`.replace(/\s+/g, delim).trim();
+
+//* the former L1 `$T.SS` body — kept local: the L2 `SS` splits a non-array value with it.
+const _SS = <T extends string = string>(val: any, def = [] as T[]): T[] => {
+    if (val === null || val === undefined) return def;
+    if (typeof val === 'string') return val ? val.split(',').map(_ => _S2(_) as T) : def;
+    if (Array.isArray(val)) return val.length > 0 ? val.map(_ => $T.S<T>(_, '')) : def;
+    return [$T.S(val)];
 };
 
 /**
@@ -94,25 +106,32 @@ export function parsePaginateParam(
 /**
  * Helpers to transform data-types.
  */
+//* v5 B3: the single `$T` (32 members; L1 + the L2 `S2`/`SS`/`N`/`US`). `extended/cores/commons.ts` re-exports it.
 export const $T = {
     /**
      * transform to string w/ trim()
      */
     S: <T extends string = string>(val: any, def = ''): T => `${val ?? def}`.trim() as T,
     /**
-     * as string w/o white-space.
+     * clear white-spaces and trim.
      */
-    S2: <T extends string = string>(val: any, def = '', delim = ' '): T =>
-        `${val ?? def}`.replace(/\s+/g, delim).trim() as T,
+    //* v5 B3: L2 body (the root `$T` already had it) — a 3rd `delim` argument is no longer honoured.
+    S2: <T extends string = string>(v?: any, def: string = ''): T => _S2(v, def).trim() as T,
     /**
-     * transform to string[]
+     * array string with clear white-spaces and trim
      */
-    SS: <T extends string = string>(val: any, def = [] as T[]): T[] => {
-        if (val === null || val === undefined) return def;
-        if (typeof val === 'string') return val ? val.split(',').map<T>(_ => $T.S2<T>(_)) : def;
-        if (Array.isArray(val)) return val.length > 0 ? val.map<T>(_ => $T.S<T>(_, '')) : def;
-        return [$T.S(val)];
-    },
+    //* v5 B3: L2 body — `def` is not taken; array items get their inner white-spaces collapsed too.
+    SS: <T extends string = string>(v?: any): T[] =>
+        (v && Array.isArray(v) ? v : _SS<T>(v)).map(v => _S2(v, '').trim() as T),
+    /**
+     * remove duplicates from string array using reduce
+     */
+    //* v5 B3: moved from the L2 `$T` (`extended/cores/commons.ts`) so one object has all 32 members.
+    US: <T extends string = string>(arr: T[]): T[] =>
+        arr?.reduce<T[]>((acc, v) => {
+            if (!acc.includes(v)) acc.push(v);
+            return acc;
+        }, []) ?? [],
     /**
      * text to Plain text (remove html tag)
      */
@@ -127,7 +146,8 @@ export const $T = {
     /**
      * transform to number(integer).
      */
-    N: (v?: boolean | number | string, def: number = 0): number =>
+    //* v5 B3: L2 signature (`unknown` accepted); same result as before.
+    N: (v: boolean | number | string | unknown, def: number = 0): number =>
         typeof v === 'boolean' ? (v ? 1 : 0) : typeof v === 'number' || typeof v === 'string' ? _N(v, def) : def,
     /**
      * number array

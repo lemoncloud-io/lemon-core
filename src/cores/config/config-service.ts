@@ -13,6 +13,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-06-04 initial version.
  * @date        2019-11-06 added `getStage()`
+ * @date        2026-10-28 v5 B3: `Filter`/`marshal` come from `common/test-helper` (re-exported).
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -20,52 +21,15 @@
 import { _log, _inf, _err, $U } from '../../engine/';
 import { STAGE, CoreKmsService, CoreConfigService } from './../core-services';
 import { loadJsonSync } from '../../tools/';
+//* v5 B3: `Filter`/`marshal` were verbatim copies of the test-helper ones; one definition, imported here.
+import { Filter, marshal } from '../../common/test-helper';
 const NS = $U.NS('CFGS', 'red'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
 
-/**
- * filter function()
- */
-export interface Filter<T> {
-    (name: string, val: any, thiz?: any, attr?: string | number): T;
-}
-
-/**
- * marshaler: convert object to dotted list.
- *
- * @param obj   json object
- * @param name  current name
- * @param list  result list
- * @param filter filter function.
- */
-export const marshal = <T>(
-    obj: any,
-    filter: Filter<T>,
-    name: string = '',
-    list: T[] = [],
-    thiz?: any,
-    attr?: string | number,
-): T[] => {
-    if (!filter) throw new Error('filter is required!');
-    thiz = thiz === undefined ? obj : thiz;
-    if (obj && typeof obj == 'object') {
-        if (!Array.isArray(obj)) {
-            return Object.keys(obj).reduce((L: T[], key: string) => {
-                const val = obj[key];
-                return marshal(val, filter, name ? `${name}.${key}` : `${key}`, L, obj, key);
-            }, list);
-        } else {
-            return obj.reduce((L: T[], val: any, index: number) => {
-                return marshal(val, filter, name ? `${name}.${index}` : `${index}`, L, obj, index);
-            }, list);
-        }
-    } else {
-        const line = filter(name, obj, thiz, attr);
-        if (line !== undefined && line !== null) list.push(line);
-    }
-    return list;
-};
+//* v5 B3: re-exported so the deep path `dist/cores/config/config-service` keeps the names `Filter`/`marshal`.
+export type { Filter };
+export { marshal };
 
 /**
  * class: `MyConfigService`

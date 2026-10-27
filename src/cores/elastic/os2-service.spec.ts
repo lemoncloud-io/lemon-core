@@ -1,6 +1,6 @@
 /**
- * `elastic6-service.spec.js`
- * - unit test for `elastic6-service` w/ dummy data
+ * `os2-service.spec.ts`
+ * - unit test for `os2-service` w/ dummy data
  *
  *
  * @author      Steve Jung <steve@lemoncloud.io>
@@ -8,6 +8,7 @@
  * @date        2022-02-21 optimized error handler, and search.
  * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
  * @date        2026-10-27 v5 B2-b: OpenSearch only (ES servers and version checks removed), spec-local dummy.
+ * @date        2026-10-28 v5 B3: renamed with `os2-service.ts` (fixture `data/dummy-os2-data.yml`).
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -16,7 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { GETERR, expect2, _it, waited, loadJsonSync } from '../..';
 import { GeneralItem, Incrementable, SearchBody } from 'lemon-model';
 import { errors } from '@opensearch-project/opensearch';
-import { OS2CoreService, OS2BaseOption, $ERROR, OS2Item } from './elastic6-service';
+import { OS2CoreService, OS2BaseOption, $ERROR, OS2Item } from './os2-service';
 import { loadDataYml } from '../../tools';
 
 /**
@@ -129,7 +130,7 @@ export const instance = (version: VERSIONS = '2.13', useAutoComplete = false, in
     const service = new OS2CoreService<MyModel>(options);
 
     // dummy for testing with buffer.
-    const dummy: OS2CoreService<GeneralItem> = new DummyOS2Service<MyModel>('dummy-elastic6-data.yml', options);
+    const dummy: OS2CoreService<GeneralItem> = new DummyOS2Service<MyModel>('dummy-os2-data.yml', options);
     return { version, service, dummy, options };
 };
 
@@ -277,7 +278,7 @@ export const setupIndex = async (service: OS2CoreService<MyModel>): Promise<void
  */
 export const canPerformTest = async (service: OS2CoreService<MyModel>): Promise<boolean> => {
     // const { service } = instance();
-    // cond 1. localhost is able to access elastic6 endpoint (by tunneling)
+    // cond 1. localhost is able to access the OpenSearch endpoint (by tunneling)
     // cond 2. index must be exist
     try {
         await service.listIndices();
@@ -285,7 +286,7 @@ export const canPerformTest = async (service: OS2CoreService<MyModel>): Promise<
     } catch (e) {
         if (GETERR(e).includes('ECONNREFUSED')) return false; // no connection.
         if (GETERR(e).includes('Connection Error')) return false; // no connection.
-        //* unable to access to elastic6 endpoint
+        //* unable to access to the OpenSearch endpoint
         if (GETERR(e).endsWith('unknown error')) return false;
         //* index does not exist
         if (GETERR(e).startsWith('404 NOT FOUND')) return false;

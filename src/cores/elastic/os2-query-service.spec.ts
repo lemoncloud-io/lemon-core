@@ -1,11 +1,12 @@
 /**
- * `elastic6-query-service.spec.ts`
- * - unit test for `elastic6-query-service`
+ * `os2-query-service.spec.ts`
+ * - unit test for `os2-query-service`
  *
  * @author      Tim Hong <tim@lemoncloud.io>
  * @date        2020-07-29 initial version
  * @date        2022-02-22 optimized w/ elastic client (elasticsearch-js)
  * @date        2026-10-27 v5 B2-b: `OS2QueryService`, OpenSearch versions only.
+ * @date        2026-10-28 v5 B3: renamed with `os2-query-service.ts`.
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -13,9 +14,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { GETERR, expect2, waited } from '../..';
-import { OS2QueryService } from './elastic6-query-service';
-import { canPerformTest, VERSIONS } from './elastic6-service.spec';
-import * as $elastic from './elastic6-service.spec';
+import { OS2QueryService } from './os2-query-service';
+import { canPerformTest, VERSIONS } from './os2-service.spec';
+import * as $elastic from './os2-service.spec';
 
 // build the core service and the query service for the version.
 const instance = (version: VERSIONS, indexName: string) => {

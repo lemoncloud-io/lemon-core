@@ -261,7 +261,7 @@ grep -rn "Elastic6\|ElasticIndexService\|ElasticOption\|ElasticItem\|_ES6\|\$ES6
 
 Kept: `$OS2`, `$ES6Routed`, `_OS2`, `OS2Instance` (now `extends AbstractOS2Instance`), `OS2Service`, `OS2FGACManager`, `OS2Option`, `$ERROR`, `RetryOptions`, `SearchType`, `SearchResponse`, `SearchParam`, `SearchProxyBody`, `SearchResult`, `HangulService`, `$hangul`. `Elastic6SimpleQueriable` and the other search types from `lemon-model` keep their names (they belong to `lemon-model`).
 
-File names (`cores/elastic/elastic6-service.ts` and the others) are unchanged in v5, so `lemon-core/dist/...` file deep imports still resolve.
+File names: `cores/elastic/elastic6-service.ts` and `cores/elastic/elastic6-query-service.ts` were renamed in v5 (B3) to `os2-service.ts` and `os2-query-service.ts`. The old names stay during v5 as one-line re-export shims, so `lemon-core/dist/cores/elastic/elastic6-service` and `…/elastic6-query-service` still resolve (§ 9.4). The folder `cores/elastic/` and `hangul-service.ts` keep their names.
 
 ### 7.2 Removed
 
@@ -420,6 +420,66 @@ lemon-core prints one `PERF` line per checkpoint, once per process, through the 
 
 Each file has its own loader, so the same package can show twice (for example `lazy-load @aws-sdk/lib-dynamodb` from `dynamo-service` and from `dynamo-query-service`); the second line is near 0 ms because Node already has the module. `lazy-load @aws-sdk/credential-providers` is printed only when `awsConfig()` loads the package first (not from `asyncCredentials()`).
 
+## 9. L1/L2 merge: one definition per name, removed aliases, renamed search files (B3)
+
+lemon-core had two layers that defined the same names twice: L1 (`helpers/`, `common/`, `extended/abstract-service.ts`) and L2 (`extended/cores/`). The root hid the collisions with 18 pinned exports in `src/index.ts`. v5 keeps **one definition** per name and removes the pins. The rule: the copy the root already exported wins, so **the root names and the root behaviour do not change** (294 names, `npm run api:check` unchanged).
+
+### 9.1 Root: no change
+
+| Name | Root before | Root now |
+| --- | --- | --- |
+| `$T` | the L2 object (32 members) | the same members, one object defined in `helpers/helpers.ts` |
+| `IdentityToken`, `IdentityTokenSite`, `IdentityTokenUser`, `IdentityTokenGroup`, `ListResult`, `PaginatedListResult`, `AggrKeyCount`, `ListParam`, `PaginateParam`, `BulkUpdateBody`, `BulkBody`, `BodyList`, `BulkItemsResult`, `AggrResult` | the L2 types | the same shape (minus `IdentityToken.iid`, § 9.2), defined in `helpers/types.ts` |
+| `parseListParam`, `parsePaginateParam` | L2 copies | the identical L1 functions |
+| `onlyDefined`, `sourceToItem`, `marshal`, `Filter` | L1 | unchanged |
+
+Function identity changed only: for example `$T.S2` is now the function defined in `helpers/helpers.ts`. Code that compares functions by reference across deep paths sees one object now (§ 9.3).
+
+### 9.2 Removed members
+
+| Removed | Use instead | Note |
+| --- | --- | --- |
+| `MyCoreService.isUseSssion()` (typo alias) | `isUseSession()` | class member |
+| `$U.crypto(passwd, algorithm?)` (and its `encrypt`/`decrypt`) | `$U.crypto2(passwd, algorithm?, …)` | `@deprecated` since Node.js 22. `crypto2` output is **not** compatible with `crypto` output: re-encrypt stored values before the upgrade |
+| `credentials(profile)` from `lemon-core/dist/environ` | `tools.asyncCredentials()` | it always threw in v4 |
+| `AbstractProxy.getCurrentIdentity$()` | `getCurrentIdentityId()` + `getIdentity$()` | `@deprecated` since 3.2.10 |
+| `IdentityToken.iid` | — | `@deprecated` field, not set by lemon-core. Declare it in your own type if you still carry it |
+
+Kept on purpose (still `@deprecated`): `CoreManager.insert` (removing it would switch to `AbstractManager.insert`, a silent behaviour change), `AbstractProxy.fetchIdentityAccess` / `_identity` / `getIdentity$` and `MyCoreProxy.fetchIdentityAccess`, `loadEnviron` (default export of `lemon-core/dist/environ`).
+
+Check your service:
+
+```bash
+grep -rnE "isUseSssion|\$U\.crypto\(|getCurrentIdentity\$|\biid\b|credentials\(" src
+```
+
+### 9.3 Deep paths (`lemon-core/dist/...`): names kept, content from the single definition
+
+The losing files now **re-export** the winning definition, so every deep path keeps its names in v5. What a deep path returns can change where the two copies were not the same:
+
+| Deep path | v5 B3 change |
+| --- | --- |
+| `lemon-core/dist/helpers/helpers` (and `…/helpers/index`) | `$T` is the merged object: `$T.S2(v, def)` ignores a 3rd `delim` argument and always collapses white-space to one space (`S2('a b  c', '', '-')` → `'a b c'`, was `'a-b-c'`); `$T.SS(v)` ignores `def` (`SS(null, ['x'])` → `[]`, was `['x']`) and collapses white-space inside array items (`SS([' a  b '])` → `['a b']`, was `['a  b']`); `$T.US` added. These are the root behaviours since 4.x |
+| `lemon-core/dist/helpers/types` | the L2 shapes: `IdentityToken.cid` is **required**, `IdentityToken.did?` added, `iid` removed, `ListResult.aggr` is `R \| R[]`, `AggrResult` added (types only) |
+| `lemon-core/dist/extended/cores/commons`, `…/extended/cores/types`, `…/extended/cores/abstract-services`, `lemon-core/dist/extended/cores` | same names, now re-exports (`$T`, `parseListParam`, `parsePaginateParam`, `onlyDefined`, the types, `sourceToItem`) |
+| `lemon-core/dist/cores/config/config-service` | same names; `Filter`/`marshal` are re-exports of the `lemon-core/testing` ones |
+
+The root (`lemon-core`) is not affected. Prefer the root import; `lemon-core/dist/*` is removed in v6 (§ 3).
+
+### 9.4 Search files renamed (`cores/elastic/`)
+
+| v4 file | v5 file | Old path in v5 |
+| --- | --- | --- |
+| `cores/elastic/elastic6-service.ts` | `cores/elastic/os2-service.ts` | `lemon-core/dist/cores/elastic/elastic6-service` is a re-export shim (same symbols) |
+| `cores/elastic/elastic6-query-service.ts` | `cores/elastic/os2-query-service.ts` | `lemon-core/dist/cores/elastic/elastic6-query-service` is a re-export shim |
+
+The shims are removed with `./dist/*` in v6. The folder name (`cores/elastic/`) and `hangul-service.ts` are unchanged. The root names (`OS2CoreService`, `OS2QueryService`, …) are unchanged.
+
+### 9.5 `lemon-templates-api`
+
+* `$X` (`src/view/transformer.ts`, a local copy of `$T` helpers with different `B`/`BN`/`N`/`F` semantics) is removed. Use `$T` from `lemon-core`.
+* `api/hello-api.ts` calls `isUseSession()`.
+
 ---
 
 ## At-a-Glance Checklist
@@ -439,3 +499,7 @@ Each file has its own loader, so the same package can show twice (for example `l
 - [ ] The AWS SDK peers your service uses are in your own `dependencies` (§ 8.1); DynamoDB comes with lemon-core
 - [ ] No `DynamoService.instance().dynamostr` (§ 8.3)
 - [ ] Code that typed `send()` results through lemon-core SDK types imports them from `@aws-sdk/*` itself (§ 8.4)
+- [ ] No `isUseSssion()`, `$U.crypto()`, `credentials()`, `getCurrentIdentity$()`, `IdentityToken.iid` (§ 9.2); values encrypted with `$U.crypto` are re-encrypted
+- [ ] Deep imports of `lemon-core/dist/helpers/helpers` or `…/helpers/types`: check `$T.S2` 3-argument / `$T.SS(v, def)` calls and `IdentityToken.cid` (§ 9.3)
+- [ ] Deep imports of `…/cores/elastic/elastic6-*` moved to `…/os2-*` or the root (§ 9.4)
+- [ ] Template copies of `$T` helpers (`$X`) replaced by `$T` (§ 9.5)

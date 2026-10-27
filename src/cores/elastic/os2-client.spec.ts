@@ -13,7 +13,7 @@ import http from 'http';
 import { AddressInfo } from 'net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import $cores from '../';
-import { OS2CoreService } from './elastic6-service';
+import { OS2CoreService } from './os2-service';
 import { GETERR } from '../../common/test-helper';
 import { OS2Service, OS2FGACManager, _OS2 } from '../../extended/cores/abstract-services';
 
