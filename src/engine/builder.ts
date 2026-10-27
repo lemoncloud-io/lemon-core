@@ -134,9 +134,15 @@ export const do_serialize = <T, U>(
 class MyEngineModules implements EngineModules {
     private mods: EngineModule[] = [];
     private inited: boolean = false;
-    public constructor() {}
+    public constructor(private readonly notice?: GeneralFuntion) {}
     public register(mod: EngineModule) {
         // console.info(`! mod.reg(${mod.getModuleName()})..`);
+        const name = mod.getModuleName();
+        //NOTE - keep the first module of the same name (e.g. two copies of lemon-core on one engine).
+        if (this.mods.some(_ => _.getModuleName() == name)) {
+            this.notice && this.notice(`! mod.reg(${name}) is already registered - ignored`);
+            return;
+        }
         this.mods.push(mod);
     }
     public module<T extends EngineModule>(name: string) {
@@ -232,7 +238,7 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     const createEngine = (): LemonEngine => {
         const $engine: LemonEngine = new (class extends MyEngineModules implements LemonEngine {
             public constructor() {
-                super();
+                super(_inf);
                 this.U = new Utilities(this);
             }
             public readonly STAGE: string = STAGE;

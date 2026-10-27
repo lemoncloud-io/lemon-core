@@ -76,6 +76,37 @@ describe(`core/builder.ts`, () => {
         expect2(await $engine.initialize(true)).toEqual([['mod1'], ['mod2', 'ERR[mod22] mod2'], ['mod4']]);
     });
 
+    //* same module name registered twice -> keep the first one (v5 B1)
+    test('check register() ignores the same module name', async () => {
+        const logs: string[] = [];
+        const console: EngineConsole = {
+            thiz: null,
+            auto_ts: false,
+            auto_color: false,
+            log: (...args: any[]) => logs.push(args.join(' ')),
+            error: (...args: any[]) => logs.push(args.join(' ')),
+        };
+        const { $engine } = instance({}, { console });
+        const make = (level: number) =>
+            new (class implements EngineModule {
+                public getModuleName = () => 'dup';
+                public initModule = async () => level;
+            })();
+        const first = make(1);
+        const second = make(2);
+
+        $engine.register(first);
+        const before = (($engine as any).mods as EngineModule[]).length;
+        logs.length = 0;
+        $engine.register(second);
+
+        expect2(($engine as any).mods.length).toEqual(before);
+        expect2((($engine as any).mods as EngineModule[]).filter(_ => _.getModuleName() == 'dup').length).toEqual(1);
+        expect2($engine.module('dup') === first).toEqual(true);
+        expect2(await ($engine as any).initialize(true, true)).toEqual([1]);
+        expect2(logs).toEqual([`! mod.reg(dup) is already registered - ignored`]);
+    });
+
     //* test Console w/o color
     test('check buildEngine() of Console', async () => {
         const console = new (class implements EngineConsole {
