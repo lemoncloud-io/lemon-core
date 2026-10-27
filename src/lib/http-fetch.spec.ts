@@ -10,6 +10,7 @@
 import http from 'http';
 import { AddressInfo } from 'net';
 import { fetchProxyBody, isJsonBody, toPayload, parseResponseText, HttpFetchRequest } from './http-fetch';
+import { LemonError } from '../common/lemon-error';
 
 /** one canned reply of the local server */
 interface Reply {
@@ -31,6 +32,7 @@ const REPLIES: { [path: string]: Reply } = {
     '/number': { status: 200, text: '123' },
     '/plain': { status: 200, text: 'hello' },
     '/array': { status: 200, text: '[1,2]' },
+    '/accepted': { status: 202, text: '{"queued":true}' },
 };
 
 describe('http-fetch', () => {
@@ -40,6 +42,12 @@ describe('http-fetch', () => {
     // start a local server on a random port.
     beforeAll(async () => {
         server = http.createServer((req, res) => {
+            //* `/slow` never answers within the test timeout (v5 B5 fetch timeout).
+            if (req.url === '/slow') {
+                const t = setTimeout(() => res.end('late'), 2000);
+                res.on('close', () => clearTimeout(t));
+                return;
+            }
             // `/echo` returns method, headers and the raw body as json.
             if (req.url === '/echo') {
                 const chunks: Buffer[] = [];
@@ -95,9 +103,28 @@ describe('http-fetch', () => {
         expect(await $get('/ok', false)).toEqual({ hello: 'world' }); // the `{`·`[` re-parse step
     });
 
-    // other 2xx is rejected, as before.
-    it('should reject 204', async () => {
-        await expect($get('/no-content')).rejects.toThrow('204 No Content - No Content');
+    //* v5 B5: any 2xx is a success, 204 → `null` (flipped from the v4 "reject 204").
+    it('should resolve any 2xx (204 → null)', async () => {
+        expect(await $get('/no-content')).toBe(null);
+        expect(await $get('/accepted')).toEqual({ queued: true });
+    });
+
+    //* v5 B5: a failure is a `LemonError` with the peer status, message unchanged.
+    it('should reject with LemonError carrying the peer status', async () => {
+        const e404: any = await $get('/not-found').catch(e => e);
+        expect(e404 instanceof LemonError).toBe(true);
+        expect(e404.status).toBe(404);
+        expect(e404.code).toBe('NOT FOUND');
+        expect(e404.message).toBe('404 NOT FOUND - {"error":"no item"}');
+        const e500: any = await $get('/fail').catch(e => e);
+        expect(e500.status).toBe(500);
+        expect(e500.message).toBe('500 Internal Server Error - boom');
+    });
+
+    //* v5 B5: per-request timeout, message keeps the errno-first rule and says `timeout`.
+    it('should reject on timeout with ETIMEDOUT', async () => {
+        const req: HttpFetchRequest = { method: 'GET', url: `${base}/slow`, json: true, timeout: 50 };
+        await expect(fetchProxyBody(req)).rejects.toThrow(/^ETIMEDOUT timeout after 50 ms$/);
     });
 
     // 400·404 message formats.

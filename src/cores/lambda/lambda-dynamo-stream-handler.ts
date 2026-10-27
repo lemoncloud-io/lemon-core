@@ -85,13 +85,24 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
 
     /**
      * Default Handler.
+     * - v5 B5: never rejects. a failed record goes to `batchItemFailures` (by `dynamodb.SequenceNumber`).
      */
-    public handle: DynamoStreamHandler = async (event, context): Promise<void> => {
+    public handle: DynamoStreamHandler = async (
+        event,
+        context,
+    ): Promise<{ batchItemFailures: { itemIdentifier: string }[] }> => {
         //* for each records.
         const records: DynamoDBRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
         // _log(NS, '> event =', $U.json(event));
         const $doReportError = buildReportError(LambdaDynamoStreamHandler.REPORT_ERROR);
+        //* v5: indexes of the failed records.
+        const failed = new Set<number>();
+        //* mark the record as failed, then report (resolves the error message).
+        const $fail = (index: number) => (e: any, context?: any, event?: any, data?: any) => {
+            failed.add(index);
+            return $doReportError(e, context, event, data);
+        };
 
         const onStreamRecord = async (record: DynamoDBRecord, i: number): Promise<string> => {
             const region = record.awsRegion;
@@ -122,7 +133,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             const asyncNext = (fn: DynamoStreamNextHandler, j: number) =>
                 new Promise(resolve => {
                     resolve(fn('!', param, body, context));
-                }).catch(e => $doReportError(e, null, null, { record, i, j }));
+                }).catch(e => $fail(i)(e, null, null, { record, i, j }));
             const res = await Promise.all(this.listeners.map(asyncNext));
             _log(NS, `>> result[${i}] =`, $U.json(res));
             return `${i}`;
@@ -131,9 +142,15 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
         //* serialize all record...
         this.$lastResult = await do_parrallel(
             records,
-            (record, i) => onStreamRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
+            (record, i) => onStreamRecord(record, i).catch(e => $fail(i)(e, null, null, { record, i })),
             1,
         );
+
+        //* v5: returns the partial batch response (empty if all succeeded).
+        const batchItemFailures = records
+            .filter((_, i) => failed.has(i))
+            .map(record => ({ itemIdentifier: `${record?.dynamodb?.SequenceNumber ?? ''}` }));
+        return { batchItemFailures };
     };
 
     /**

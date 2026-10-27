@@ -12,6 +12,7 @@
 import { describe, expect, it, vi, test } from 'vitest';
 import { do_parrallel, doReportError } from './engine';
 import { convDate, convDateToTime, convDateToTS } from './engine';
+import { $U } from './index';
 import { GETERR, expect2, _it } from '../common/test-helper';
 
 //* build context.
@@ -149,6 +150,13 @@ describe(`test the 'core/engine.ts'`, () => {
         expect(convDateToTS(1564711704963)).toEqual('2019-08-02 11:08:24');
         expect(convDateToTime('2019-08-02 11:08:24')).toEqual(1564711704000);
         expect(convDate('2019-08-02 11:08:24').getTime()).toEqual(1564711704000);
+        //* v5 B5: `convDate(str)` and `$U.dt(str)` agree (E-48), and a `Date` argument is never mutated.
+        const T = convDateToTime('2019-08-02 11:08:24');
+        expect($U.dt('2019-08-02 11:08:24').getTime()).toEqual(T);
+        const D = new Date(T + 963);
+        expect(convDateToTS(D)).toEqual('2019-08-02 11:08:24');
+        expect(D.getTime()).toEqual(T + 963);
+        expect(convDate(D)).not.toBe(D);
     });
 
     //* doReportError()

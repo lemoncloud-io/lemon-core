@@ -14,6 +14,7 @@
 //NOTE! - if loading this index.ts, it will trigger `bootloader` in `/engine`.
 export * from './common/types';
 export * from './common/test-helper';
+export { LemonError } from './common/lemon-error'; //* v5 B5: the only new root name (status-carrying error, SPEC § 6.6)
 export * from './engine/';
 export * from './cores/';
 export * from './tools/';

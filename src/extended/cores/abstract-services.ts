@@ -187,9 +187,14 @@ export abstract class MyCoreService<
 
     /**
      * make proxy, and use callback to handle.
-     * - it will save automatically.
+     * - it will save automatically on success.
+     * - v5: on exception it saves only when `options.saveOnError` is true (default false, B5 § 6.7).
      */
-    public guardProxy = async <T>(context: NextContext, callback: (proxy: Proxy) => Promise<T>): Promise<T> => {
+    public guardProxy = async <T>(
+        context: NextContext,
+        callback: (proxy: Proxy) => Promise<T>,
+        options?: { saveOnError?: boolean },
+    ): Promise<T> => {
         const proxy = this.createProxy(context);
         try {
             const result = await callback(proxy);
@@ -197,9 +202,11 @@ export abstract class MyCoreService<
             _log(`> saved[${saved?.length}] =`, $U.json(saved));
             return result;
         } catch (e) {
-            //WARN! force to save models even for exception @240613
-            const saved = await proxy.saveAllUpdates().catch(e => GETERR$(e));
-            _log(`> saved =`, $U.json(saved));
+            //* v5: save pending updates on exception only by opt-in (v4 always saved @240613).
+            if (options?.saveOnError) {
+                const saved = await proxy.saveAllUpdates().catch(e => GETERR$(e));
+                _log(`> saved =`, $U.json(saved));
+            }
             throw e;
         }
     };
@@ -260,7 +267,7 @@ export abstract class MyCoreManager<
         //* v5 B4: a `string[]` or a model class (resolved in `AbstractManager`).
         fields: string[] | ModelClass,
         public readonly options?: {
-            /** enable to sync with es6 (default true) */
+            /** enable to sync with the search engine (v5 default false — B5 § 6.7) */
             enableSync?: boolean;
             /** unique field */
             uniqueField?: string;
@@ -269,8 +276,9 @@ export abstract class MyCoreManager<
         },
     ) {
         super(type, parent, fields, options?.uniqueField);
-        const enableSync = options?.enableSync ?? true;
-        //* the first manager builds the lazy `$OS2` (1 listener when `OS2_ENDPOINT` is set).
+        //* v5: sync is opt-in (default false), so `$OS2` is built only when a manager asks (B5 § 6.7).
+        const enableSync = options?.enableSync ?? false;
+        //* the first manager with `enableSync: true` builds the lazy `$OS2` (1 listener when `OS2_ENDPOINT` is set).
         if (enableSync) $OS2.synchronizer?.enableSynchronization(this.type);
         this.logNS = $U.NS(type, 'yellow');
     }
@@ -999,7 +1007,8 @@ export class MyCoreProxy<
 
         const context = (options?.context ?? this.context) as unknown as NextContext<IdentityToken>;
         //* WARN - in case of local, no need to throw error.
-        const isLocal = context?.domain === 'localhost';
+        //* v5: local mode is a runtime setting (`LOCAL_MODE=1` off Lambda), never from `context.domain` (B5 § 6.3).
+        const isLocal = $U.isLocalMode();
 
         // load the `identity-token` from json file.
         const _load = (file: string): IdentityToken => {
@@ -1034,11 +1043,13 @@ export class MyCoreProxy<
             }
 
             //TODO - 아래 코드는 개선의 여지가 있음(문제점???) @241210
-            if (LOCAL_ACCOUNT) return _default();
+            //* v5: `LOCAL_ACCOUNT` is honoured only in local mode (B5 § 6.3).
+            if (LOCAL_ACCOUNT && isLocal) return _default();
             if (useSession) {
                 // _inf(this.service.NS, `> use-session =`, useSession, USE_SESSION);
                 if (useSession === true || useSession === 'true' || useSession === '1') {
-                    if (USE_SESSION?.endsWith('.json')) {
+                    //* v5: a session file (`USE_SESSION=*.json`) is honoured only in local mode (B5 § 6.3).
+                    if (isLocal && USE_SESSION?.endsWith('.json')) {
                         const $sess = _load(USE_SESSION);
                         _inf(this.service.NS, `> use-session-json =`, $U.json($sess));
                         return $sess;
@@ -1082,7 +1093,8 @@ export class MyCoreProxy<
      */
     public asCurrentIdentityId = (context?: NextContext): string | null => {
         context = context ?? this.context;
-        if (context?.domain === 'localhost' && !(context as any)?.identity?.identityId) {
+        //* v5: `LOCAL_ACCOUNT` fallback only in local mode, not from `context.domain` (B5 § 6.3).
+        if ($U.isLocalMode() && !(context as any)?.identity?.identityId) {
             const LOCAL_ACCOUNT = $U.env('LOCAL_ACCOUNT', '');
             return LOCAL_ACCOUNT ? LOCAL_ACCOUNT : null;
         }
@@ -1118,8 +1130,8 @@ export class MyCoreProxy<
         const errScope = options?.errScope ?? `assertContext()`;
         const $idt = context?.identity as NextIdentityCognito;
         const isS = (s: string) => typeof s === 'string' && s?.length > 0;
-        //* call in local
-        const isLocal = context?.domain === 'localhost';
+        //* call in local (v5: runtime local mode only, never from `context.domain` — B5 § 6.3)
+        const isLocal = $U.isLocalMode();
         //* signed call with access-key
         const isSigned = isS($idt?.accessKey);
         //* authed by cognito provider.
@@ -1153,7 +1165,7 @@ export class MyCoreProxy<
 
     /**
      * check if current context has `admin` access
-     * 1. run in local environ (or internal protocol with domin='localhost')
+     * 1. run in local mode (`$U.isLocalMode()`, v5 — no longer `domain='localhost'`)
      * 2. access via signed access-key
      * 3. authorized cognito and has `admin` role in identity-token.
      *
@@ -1317,12 +1329,11 @@ export class MyManagerProxy<
             errScope?: string;
         },
     ) {
-        const $ctx = this.proxy.context;
         const type = this.$mgr.type;
         const useSession = options?.useSession ?? false;
         const throwable = options?.throwable ?? true;
         const errScope = options?.errScope ?? `packSearchParam(${type})`;
-        const isLocal = $ctx?.domain === 'localhost';
+        const isLocal = $U.isLocalMode(); //* v5: drop the `sid` pin only in local mode (B5 § 6.3).
         const session = useSession ? this.proxy.getCurrentSession({ throwable }) : null;
 
         const _has = (name: string): boolean =>
@@ -1480,8 +1491,9 @@ export class MyManagerProxy<
                     break;
                 case 'update':
                 case 'delete':
-                    // (default) action is allowed if sid&uid matches or no sid.
-                    if (!M.sid) return true;
+                    // (default) action is allowed if sid&uid matches.
+                    //* v5: a `sid`-less record is admin-only for update/delete (B5 § 6.4).
+                    if (!M.sid) break;
                     if (S.sid === M.sid && S.uid === M.uid) return true;
                     break;
                 default:

@@ -76,7 +76,7 @@ describe('LambdaDynamoStreamHandler', () => {
             data = { id, param, body, context };
         });
         const res = await service.handle(event, null);
-        expect2(res).toEqual(undefined);
+        expect2(res).toEqual({ batchItemFailures: [] }); //* v5 B5: partial batch response (was `undefined`).
 
         //* check handled data.
         expect2(data, 'id').toEqual({ id: '!' });
@@ -94,6 +94,24 @@ describe('LambdaDynamoStreamHandler', () => {
         expect2(data.body, 'node').toEqual({
             node: { '@id': 'a_123_test', '@ts': 1574150700000, count: 6, hello: 'lemon' },
         });
+    });
+
+    //* v5 B5: 1 of 2 records fails → 1 `batchItemFailures` by `dynamodb.SequenceNumber`, and resolves.
+    it('should pass batchItemFailures of a failed record (v5)', async () => {
+        const { service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        const rec2 = JSON.parse(JSON.stringify(event.Records[0]));
+        rec2.dynamodb.SequenceNumber = 'seq-2';
+        event.Records.push(rec2);
+        let calls = 0;
+        //* fail only the 2nd record.
+        service.addListener(async () => {
+            calls++;
+            if (calls === 2) throw new Error('boom-dds');
+        });
+        const res = await service.handle(event, null);
+        expect2(res).toEqual({ batchItemFailures: [{ itemIdentifier: 'seq-2' }] });
+        expect2(calls).toEqual(2);
     });
 
     //* test sync to OpenSearch (in-memory fake)
@@ -144,7 +162,7 @@ describe('LambdaDynamoStreamHandler', () => {
 
         //* trigger event, handler
         const res = await service.handle(event, null);
-        expect2(res).toEqual(undefined);
+        expect2(res).toEqual({ batchItemFailures: [] }); //* v5 B5: partial batch response (was `undefined`).
 
         //* check post-condition.
         expect2(await os2.readItem(id).catch(GETERR)).toEqual({
@@ -163,7 +181,7 @@ describe('LambdaDynamoStreamHandler', () => {
         event.Records[0].eventName = 'REMOVE';
         handlersCalled = { filter: false, onBeforeSync: false, onAfterSync: false };
         const res2 = await service.handle(event, null);
-        expect2(res2).toEqual(undefined);
+        expect2(res2).toEqual({ batchItemFailures: [] }); //* v5 B5: partial batch response (was `undefined`).
         expect2(await os2.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`); // must be deleted.
         expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: true });
     });

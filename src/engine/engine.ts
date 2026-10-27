@@ -26,6 +26,7 @@
  */
 import { $engine, $U, _log, _inf, _err } from './index';
 import { NextContext } from 'lemon-model';
+import { DEFAULT_TIME_ZONE } from './utilities'; //* v5: the constant lives with `$U.dt`/`$U.ts` (B5 § 6.8).
 
 //* import sub-modules.
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
@@ -390,8 +391,8 @@ export const do_parallel = <T, U>(
  */
 export const do_parrallel = do_parallel;
 
-//* default time-zone for this api. (Asia/Seoul - 9 hours)
-export const DEFAULT_TIME_ZONE = 9;
+//* default time-zone for this api. (Asia/Seoul - 9 hours) — v5: defined in `utilities.ts`, re-exported here (root name unchanged).
+export { DEFAULT_TIME_ZONE };
 
 //* convert to date of input.
 export const convDate = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT_TIME_ZONE)!;

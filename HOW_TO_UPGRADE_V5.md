@@ -566,6 +566,91 @@ lemon-model 5.0.0 is published first. lemon-core and your service then move to `
 * `MockModel` (`src/modules/mock/model.ts`) is the first annotated model: `class MockModel extends CoreModel<ModelType> implements MockHead`; `$HEAD.mock`/`$FIELD.mock` come from `fieldsOf()` (same sets, parent-first order). Parity spec: `src/modules/mock/model.spec.ts`.
 * The other models still use `fieldKeys` and `fields:gen` (the registry has 10 entries now). They move one by one with the steps of § 10.3.
 
+## 11. Trust boundary and behaviour contract (B5)
+
+v5 stops trusting what a request says about itself. A protocol context sent from outside is dropped, internal calls are signed, "local" is a runtime setting, handlers never reject, and the time helpers no longer depend on the host time zone. Details: `docs/v5/B5-trust-boundary.md`.
+
+### 11.1 New env names
+
+| Name | Values | Default | Meaning |
+| --- | --- | --- | --- |
+| `PROTOCOL_SIGN_KEY` | a secret string; `*<base64>` is decrypted by KMS at init like other config values | unset | install-wide HMAC-SHA256 key for internal protocol calls (web, SNS, SQS). Unset = calls are sent unsigned |
+| `PROTOCOL_VERIFY` | `off` \| `warn` \| `enforce` | `warn` if the key is set, else `off` | `off`: no check. `warn`: accept an unsigned or mismatched call and log one `PROTOCOL unsigned <source>` line. `enforce`: reject it (`403 NOT ALLOWED - unsigned protocol context` for web, record failure for SQS, reported record for SNS) |
+| `LOCAL_MODE` | `1` | unset | local mode for the express harness (§ 11.3). Ignored in Lambda |
+
+Use the same `PROTOCOL_SIGN_KEY` in every service of one install. Keep `warn` while v4 callers remain (they send unsigned contexts), then switch to `enforce`. When the key is not set, init prints one line: `PROTOCOL sign key not set — contexts unsigned`.
+
+### 11.2 `x-protocol-context` from outside is ignored
+
+A web event with a `host` header (any case — API Gateway, ALB, Function URL and the devkit express server always set it) is external. Its `x-protocol-context` and `x-protocol-signature` headers are ignored in every mode, and the context is built from the request as for any other client. A host-less web event (a direct Lambda invoke) must carry a valid `x-protocol-signature` in `enforce`; the same rule covers a JSON `x-lemon-identity` on a host-less event. `MyHttpHeaderTool.isExternal()` now means "a `host` key is present" (an empty value counts).
+
+### 11.3 Local mode is a runtime setting
+
+`$U.isLocalMode()` is true only when `LOCAL_MODE=1` and `AWS_LAMBDA_FUNCTION_NAME` is unset. It replaces every `$ctx.domain === 'localhost'` and `STAGE === 'local'` trust check: admin in `hasAdminRole()`, no `403 IDENTITY-TOKEN`, no session `sid` pin in `packSearchParam()`, custom `id` on POST, `?destroy`, `getIdentityId()`/`isUserAuthorized()` with `LOCAL_ACCOUNT`, `confUseSession`/`modelAsView`. `LOCAL_ACCOUNT` and `USE_SESSION=<file>.json` are honoured only in local mode.
+
+* Set `LOCAL_MODE: '1'` in the `local` section of your env file for the harness.
+* `domain: 'localhost'` in a context grants nothing any more. If your code put it in an **outgoing** context to raise the callee's rights, claim the role instead (the call is signed):
+
+```ts
+const identity: any = this.proxy.context?.identity;
+const roles: string[] = [...(identity?.roles ?? []), 'admin'];
+const context = this.proxy.asNextContext(null, { identity: { ...identity, roles } });
+```
+
+* Specs that need local behaviour set `process.env.LOCAL_MODE = '1'` (and delete `AWS_LAMBDA_FUNCTION_NAME`) and restore both in `afterEach`.
+
+### 11.4 Handlers never reject; SQS and DynamoDB Stream return `batchItemFailures`
+
+| Source | v4 | v5 |
+| --- | --- | --- |
+| `LambdaHandler.handle` | reported, then **rethrew** (Lambda invocation error) | reported, then **resolved**: web → the HTTP failure response (bad `x-protocol-context` JSON → `400 INVALID CONTEXT - …`), SQS/DDS → every record in `batchItemFailures`, anything else (unknown event too) → `{ error: <message> }` |
+| SQS | swallowed each failure, resolved `undefined` | resolves `{ batchItemFailures: [{ itemIdentifier: messageId }] }` (empty list if all succeeded). `SQSHandler` type changed |
+| DynamoDB Stream | same as SQS | same shape, `itemIdentifier = dynamodb.SequenceNumber`. `DynamoStreamHandler` type changed |
+| SNS | swallowed, resolved | unchanged (report and resolve). SNS → Lambda is asynchronous; a reject means retries and the DLQ |
+| cron | the first listener error rejected | each listener is caught and reported; resolves `void` |
+| cognito | rejected | cognito: rethrow (response contract) — reported, then the original error is rethrown so its message reaches the client |
+
+The returned failures take effect **only** when the event source mapping has `FunctionResponseTypes: [ReportBatchItemFailures]` (a deploy setting). Without it the return value is ignored and every message is deleted, as in v4. With it, a failed record is redelivered, so listeners must be idempotent; for streams also set `MaximumRetryAttempts` and `BisectBatchOnFunctionError`.
+
+### 11.5 `LemonError` and status codes
+
+* New root class `LemonError(status, code, detail?)`: `message` is `<status> <code> - <detail>` (the existing wire format), `status` and `code` are readonly. The root has 295 names.
+* `mxNextFailure` reads `e.status` first. The message rule accepts only `3xx`–`5xx` prefixes: a thrown `200 OK - …` is no longer a 200 response (it becomes 503 and is reported).
+* The HTTP proxies and `invokeLambda` accept any 2xx (a 2xx other than 200/201 without a body resolves `null`). A failure carries the peer status (`e.status`); the message string is unchanged.
+* Every proxy request has a timeout: **25 000 ms** by default, per request `timeout` (ms). The error message is `ETIMEDOUT timeout after <ms> ms`.
+* `throw new Error('404 NOT FOUND - …')` and the other prefixed messages keep working.
+
+### 11.6 `guardProxy` and `enableSync`
+
+* `guardProxy(context, callback, { saveOnError })`: on an exception v5 does **not** save pending updates (v4 always did). Pass `{ saveOnError: true }` for the v4 behaviour.
+* **`MyCoreManager` `enableSync` now defaults to `false`.** A manager without `{ enableSync: true }` no longer synchronizes to OpenSearch, silently. Pass `{ enableSync: true }` to every manager that relies on the sync (`super('pet', parent, $FIELD.pet, { enableSync: true })`).
+
+### 11.7 Default CRUD: `sid`-less records
+
+`MyManagerProxy.canDo('update' | 'delete')` on a record without `sid` is allowed for admin only. `list`, `read` and `create` are unchanged.
+
+### 11.8 `$U.ts()` / `$U.dt()` use timeZone 9 by default
+
+| Input | v4 | v5 |
+| --- | --- | --- |
+| timeZone omitted | 0 (UTC) | `DEFAULT_TIME_ZONE` = 9. Pass `0` for UTC |
+| string | host offset at call time (DST error) | wall clock of `timeZone`, host TZ and DST free |
+| `dt(Date)` | the same object | a copy |
+| `ts(Date, tz)` | changed the argument | never changes it |
+
+**`$U.ts()` without arguments prints the time 9 hours later than v4** (KST wall clock instead of UTC); log time stamps follow it. `convDate`, `convDateToTS` and `convDateToTime` give the same results as before without changing a `Date` argument.
+
+### 11.9 `GeneralAPIController` is deprecated
+
+It has no authorization. Gate it in your own code or move to `AbstractCRUDController`. It will be removed in v6.
+
+### 11.10 `lemon-templates-api`
+
+* `env/lemon.yml` `local`: `LOCAL_MODE: '1'`.
+* `api-search.ts` and `api-callback.ts` use `$U.isLocalMode()` for their local-only routes.
+* `callback/proxy.ts` claims the `admin` role in its outgoing context instead of `domain: 'localhost'`.
+* `MockModelManager`, `TestModelManager`, `CallbackModelManager` pass `{ enableSync: true }`.
+
 ---
 
 ## At-a-Glance Checklist
@@ -593,3 +678,12 @@ lemon-model 5.0.0 is published first. lemon-core and your service then move to `
 - [ ] No `lemon-core/dist/generated/field-registry` import; no `fields:*` script calls into lemon-core (§ 10.1)
 - [ ] Each converted model: `@field()` on stored fields, `declare` on narrowed redeclarations, a parity spec with set comparison (§ 10.3, § 10.4)
 - [ ] Specs that compare field arrays by order compare sets (§ 10.5)
+- [ ] Same `PROTOCOL_SIGN_KEY` in every service of the install; `PROTOCOL_VERIFY=warn` until no v4 caller remains, then `enforce` (§ 11.1)
+- [ ] No caller relies on `x-protocol-context` through API Gateway, ALB or a URL (§ 11.2)
+- [ ] `LOCAL_MODE: '1'` in the local env; no `domain: 'localhost'` as an elevation token (§ 11.3)
+- [ ] SQS/Stream event sources get `ReportBatchItemFailures` when you want partial retries; listeners are idempotent (§ 11.4)
+- [ ] Code that checked a thrown `200 OK - …` or only 200/201 is updated; long calls pass `timeout` (§ 11.5)
+- [ ] **Every manager that needs OpenSearch sync passes `{ enableSync: true }`**; `guardProxy` callers that need save-on-error pass `{ saveOnError: true }` (§ 11.6)
+- [ ] Updates/deletes of `sid`-less records go through an admin (§ 11.7)
+- [ ] `$U.ts()`/`$U.dt()` callers that expected UTC pass `0` (§ 11.8)
+- [ ] No new use of `GeneralAPIController` (§ 11.9)

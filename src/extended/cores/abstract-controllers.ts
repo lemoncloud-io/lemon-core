@@ -140,9 +140,8 @@ export abstract class AbstractCRUDController<
      * get config of using session.
      */
     public get confUseSession(): boolean {
-        // _log(this.logNS, `! STAGE =`, $U.env('STAGE'));
-        const STAGE = $U.env('STAGE');
-        if (STAGE === 'local') return false;
+        //* v5: local mode (`LOCAL_MODE=1` off Lambda) disables session, not `STAGE` (B5 § 6.3).
+        if ($U.isLocalMode()) return false;
         const useSession = this.options?.useSession ?? this.service.isUseSession();
         return useSession;
     }
@@ -158,7 +157,7 @@ export abstract class AbstractCRUDController<
      * model transformer from model to view
      */
     public modelAsView(model: MyModel, options?: { useOnlyDefined?: boolean; hasCores?: boolean }): MyView {
-        const isLocal = $U.env('STAGE') === 'local';
+        const isLocal = $U.isLocalMode(); //* v5: runtime local mode, never from request (B5 § 6.3).
         const useOnlyDefined = options?.useOnlyDefined ?? true;
         const hasCores = options?.hasCores ?? (isLocal ? true : this.confUseSession); // show cores in local always.
 
@@ -410,7 +409,7 @@ export abstract class AbstractCRUDController<
         param && _log(this.logNS, `> param =`, $U.json(param));
         body && _log(this.logNS, `> body =`, $U.json(body));
         id = id === '0' ? '' : $T.S2(id).trim();
-        const isLocal = $ctx?.domain === 'localhost';
+        const isLocal = $U.isLocalMode(); //* v5: custom `id` only in local mode, not from `$ctx.domain` (B5 § 6.3).
 
         // STEP.0 validate paramters.
         if (id && !isLocal) throw new Error(`@id (string) is invalid - ${errScope}`);
@@ -596,7 +595,7 @@ export abstract class AbstractCRUDController<
         param && _log(this.logNS, `> param =`, $U.json(param));
         body && _log(this.logNS, `> body =`, $U.json(body));
         id = id === '0' ? '' : $T.S2(id).trim();
-        const isLocal = $ctx?.domain === 'localhost';
+        const isLocal = $U.isLocalMode(); //* v5: `?destroy` only in local mode, not from `$ctx.domain` (B5 § 6.3).
         const destroy = !!$T.B(param?.destroy, param?.destroy === '' ? 1 : 0);
 
         // STEP.0 validate paramters.

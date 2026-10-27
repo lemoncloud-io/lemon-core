@@ -13,6 +13,7 @@ import { $engine, EngineModule, LemonEngine } from '../../engine/';
 import { ConfigModule } from '../config';
 import { ProtocolService } from '../core-services';
 import { MyProtocolService } from './protocol-service';
+import { logSignKeyState } from './protocol-sign';
 
 export class ProtocolModule implements EngineModule {
     private engine: LemonEngine;
@@ -31,6 +32,8 @@ export class ProtocolModule implements EngineModule {
             return $conf ? (await $conf.initModule()) + 1 : 1;
         }
         // console.info(`! ProtocolModule.init()..`);
+        //* v5 B5: one init line if the signing key is not set (after the config is decrypted).
+        logSignKeyState();
     }
 }
 
