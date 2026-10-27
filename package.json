@@ -50,6 +50,8 @@
     "esm:smoke": "LS=1 node scripts/esm-smoke.mjs",
     "api:names": "node scripts/api-names.cjs --out -",
     "api:check": "node scripts/api-check.cjs",
+    "dup:check": "node scripts/dup-decls.cjs",
+    "l1l2:probe": "node scripts/l1l2-probe.cjs",
     "fields:migrate": "lemon-fields migrate --report --update-tsconfig",
     "fields:gen": "lemon-fields gen --report",
     "fields:check": "lemon-fields --check",

@@ -876,17 +876,6 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         if (!identityId && throwable) throw new Error(`400 NOT ALLOWED - getCurrentIdentity(${identityId || ''})`);
         return identityId;
     }
-
-    /**
-     * get the current identity object (or throw access-error)
-     *
-     * @deprecated useless anymore since 3.2.10
-     */
-    public async getCurrentIdentity$(throwable = true): Promise<NextIdentityAccess> {
-        const identityId = await this.getCurrentIdentityId(throwable);
-        if (!identityId && !throwable) return null;
-        return this.getIdentity$(identityId);
-    }
 }
 
 /**

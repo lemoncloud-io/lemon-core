@@ -99,7 +99,7 @@ describe('LambdaDynamoStreamHandler', () => {
     //* test sync to OpenSearch (in-memory fake)
     it('should pass createSyncToOS2()', async () => {
         const { service } = instance();
-        const elastic6 = new MemoryOS2Service();
+        const os2 = new MemoryOS2Service();
 
         const tableName = 'MetricsTest';
         const idName = '@id';
@@ -136,18 +136,18 @@ describe('LambdaDynamoStreamHandler', () => {
             // check extra field set
             expect2(item['X']).toBe('x');
         };
-        const handler = LambdaDynamoStreamHandler.createSyncToOS2(options, elastic6, filter, onBeforeSync, onAfterSync);
+        const handler = LambdaDynamoStreamHandler.createSyncToOS2(options, os2, filter, onBeforeSync, onAfterSync);
         service.addListener(handler);
 
         //* pre-condition.
-        expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`);
+        expect2(await os2.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`);
 
         //* trigger event, handler
         const res = await service.handle(event, null);
         expect2(res).toEqual(undefined);
 
         //* check post-condition.
-        expect2(await elastic6.readItem(id).catch(GETERR)).toEqual({
+        expect2(await os2.readItem(id).catch(GETERR)).toEqual({
             [idName]: `${id}`,
             '@ts': 1574150700000,
             count: 6,
@@ -164,7 +164,7 @@ describe('LambdaDynamoStreamHandler', () => {
         handlersCalled = { filter: false, onBeforeSync: false, onAfterSync: false };
         const res2 = await service.handle(event, null);
         expect2(res2).toEqual(undefined);
-        expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`); // must be deleted.
+        expect2(await os2.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`); // must be deleted.
         expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: true });
     });
 });

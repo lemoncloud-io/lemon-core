@@ -46,7 +46,7 @@
 import { $U, _log, _inf, _err, $engine } from '../../engine/';
 import $cores, { ConfigModule, SearchType, OS2CoreService, OS2BaseOption, OS2QueryService, $ERROR } from '../../cores/';
 import { DynamoScanService, DynamoScanFilter, DynamoScanResult, ApiHttpProxy, APIHeaders } from '../../cores/';
-import { SearchResponse, DynamoOption, OS2Item } from '../../cores/';
+import { DynamoOption, OS2Item } from '../../cores/'; //* v5 B3: `SearchResponse` went with the removed `search` override
 import type { Client } from '@opensearch-project/opensearch';
 import { NUL404, GETERR, GETERR$, waited } from '../../common/test-helper';
 import { asyncCredentials, loadJsonSync } from '../../tools/';
@@ -61,6 +61,8 @@ import {
     AbstractOS2Instance,
     OS2ConstructParams,
 } from '../abstract-service';
+//* v5 B3: the local copy was identical to the L1 one (the root already used that); re-exported to keep this deep path.
+export { sourceToItem } from '../abstract-service';
 import { lazyInstance } from '../../lib/lazy';
 import { measure } from '../../lib/perf';
 import {
@@ -216,13 +218,6 @@ export abstract class MyCoreService<
     public isUseSession(): boolean {
         const USE_SESSION = $T.S($U.env('USE_SESSION', '')).toLowerCase();
         return USE_SESSION && USE_SESSION != '0' && USE_SESSION != 'false' ? true : false;
-    }
-
-    /**
-     * @deprecated typo kept for 1 minor as a non-breaking alias — use `isUseSession()` instead. (cores-migration P1, decision #2)
-     */
-    public isUseSssion(): boolean {
-        return this.isUseSession();
     }
 
     /**
@@ -1655,81 +1650,7 @@ export class OS2Service<T extends OS2Item = any> extends OS2CoreService<any> {
         return this.newClient(auth);
     }
 
-    /**
-     * describe `settings` and `mappings` of index.
-     */
-    public async describe() {
-        const { indexName } = this.options;
-        //* call create index..
-        _log(NS, `- describe(${indexName})`);
-
-        //* read settings.
-        // const { client } = instance(endpoint);
-        const client = this.client;
-        const res = await client.indices.getSettings({ index: indexName }).catch(
-            // $ERROR.throwAsJson,
-            $ERROR.handler('describe', e => {
-                const msg = GETERR(e);
-                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
-                throw e;
-            }),
-        );
-        _log(NS, `> settings[${indexName}] =`, $U.json({ ...res, meta: undefined }));
-
-        const settings = (res.body && res.body[indexName] && res.body[indexName].settings) || {};
-        _log(NS, `> number_of_shards =`, settings.index && settings.index.number_of_shards); // 5
-        _log(NS, `> number_of_replicas =`, settings.index && settings.index.number_of_replicas); // 1
-
-        //* read mappings.
-        const res2 = await client.indices.getMapping({ index: indexName });
-        _log(NS, `> mappings[${indexName}] =`, $U.json(res2));
-        const mappings: any = (res2.body && res2.body[indexName] && res2.body[indexName].mappings) || {};
-
-        //* returns
-        return { settings, mappings };
-    }
-
-    /**
-     * create index by name
-     * @param settings - creating settings
-     */
-    public async createIndex(settings?: any) {
-        const { indexName, idName, timeSeries } = this.options;
-        // default: the typeless settings (`mappings.properties`)
-        settings = settings || OS2CoreService.prepareSettings({ idName, timeSeries });
-        if (!indexName) new Error('@index is required!');
-        _log(NS, `- createIndex(${indexName})`);
-
-        //* prepare payload
-        const payload = {
-            settings: {
-                number_of_shards: 5,
-                number_of_replicas: 1,
-            },
-            ...settings,
-        };
-        _log(NS, `> settings[${indexName}] = `, $U.json(payload));
-
-        //* call create index..
-        const client = this.client;
-        const res = await client.indices.create({ index: indexName, body: payload }).catch(
-            // $ERROR.throwAsJson,
-            $ERROR.handler('create', e => {
-                const msg = GETERR(e);
-                if (msg.startsWith('400 RESOURCE ALREADY EXISTS')) throw new Error(`400 IN USE - index:${indexName}`);
-                throw e;
-            }),
-        );
-        // if (res) throw res;
-        _log(NS, `> create[${indexName}] =`, $U.json({ ...res, meta: undefined }));
-
-        //* build result.
-        return {
-            status: res.statusCode,
-            index: indexName,
-            acknowledged: res.body.shards_acknowledged,
-        };
-    }
+    //* v5 B3: `describe`/`createIndex`/`search` are inherited from `OS2CoreService` (identical-body overrides removed).
 
     /**
      * delete index by name
@@ -2023,31 +1944,6 @@ export class OS2Service<T extends OS2Item = any> extends OS2CoreService<any> {
         //* return raw results.
         return $res;
     }
-
-    /**
-     * run search, and get the formatmted response.
-     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
-     * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
-     *
-     */
-    public async search(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
-        const size = $U.N(body.size, 0);
-        const response = await this.searchRaw(body, searchType);
-        // return w/ transformed id
-        const hits = response.hits;
-        if (typeof hits !== 'object') throw new Error(`.hits (object) is required - hits:${$U.json(hits)}`);
-        //NOTE - ES6.8 w/ OS1.1
-        return {
-            total: typeof (hits.total as any)?.value === 'number' ? (hits.total as any)?.value : hits.total,
-            list: hits.hits.map((hit: any) => ({
-                ...(hit._source as any),
-                _id: hit._id,
-                _score: hit._score,
-            })),
-            last: hits.hits.length === size && size > 0 ? hits.hits[size - 1]?.sort : undefined,
-            aggregations: response.aggregations,
-        };
-    }
 }
 
 /**
@@ -2297,6 +2193,9 @@ export class OS2Instance extends AbstractOS2Instance {
 
     public hello = () => `OS2Instance`;
 
+    //* v5 B3: `describeIndex` is inherited from `AbstractOS2Instance` (identical-body override removed).
+
+    //* kept (unlike the removed identical overrides): it narrows the return type to `OS2Option`.
     public get options(): OS2Option {
         if (!this.elastic) return null;
         return this.elastic.options;
@@ -2304,13 +2203,6 @@ export class OS2Instance extends AbstractOS2Instance {
 
     public get $X2(): typeof $X2 {
         return $X2;
-    }
-
-    /**
-     * display index settings and mappings
-     */
-    public async describeIndex(): Promise<any> {
-        return this.elastic && (await this.elastic.describe());
     }
 
     /**
@@ -2445,15 +2337,6 @@ export class OS2Instance extends AbstractOS2Instance {
     public async bulkItems(items: any[], options?: { idName?: string }): Promise<BulkItemsResult> {
         return this.elastic.bulkItems(items, options);
     }
-}
-
-export function sourceToItem<T>(_source: T, idName = '$id'): T {
-    const item: any = { ..._source };
-    if (idName in item) {
-        item._id = item[idName];
-        delete item[idName];
-    }
-    return item;
 }
 
 /**

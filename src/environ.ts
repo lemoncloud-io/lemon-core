@@ -123,15 +123,5 @@ export const loadProfile = ($proc?: { env?: any }, options?: any): string => {
     }
 };
 
-/**
- * (only for dev) dynamic loading credentials by profile. (search PROFILE -> NAME)
- *
- * @deprecated use `asyncCredentials` instead.
- */
-export const credentials = (profile: string): CrendentialForAWS => {
-    if (!profile) return;
-    throw new Error('WARN! credentials() is deprecated. use `asyncCredentials()` from lemon-devkit instead!');
-};
-
 //* export default.
 export default loadEnviron;
