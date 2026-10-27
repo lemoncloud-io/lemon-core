@@ -62,6 +62,7 @@ import {
     OS2ConstructParams,
 } from '../abstract-service';
 import { lazyInstance } from '../../lib/lazy';
+import { measure } from '../../lib/perf';
 import {
     Incrementable,
     CoreModel,
@@ -2544,7 +2545,10 @@ export const _OS2 = (options?: OS2Option): OS2Instance => {
  * - nothing is built at import: no client, no dynamo-stream listener.
  * - without `OS2_ENDPOINT` it is an `OS2Instance` with `options === null`.
  */
-export const $OS2: OS2Instance = lazyInstance(() => _OS2());
+//* the factory prints one `PERF > instance $OS2` line (D40; the namespace is built at call time).
+export const $OS2: OS2Instance = lazyInstance(() =>
+    measure(_inf, $U.NS('PERF', 'cyan'), 'instance $OS2', () => _OS2()),
+);
 
 /**
  * explicit alias of `$OS2` (the same object). The name is kept; the meaning is OS2.

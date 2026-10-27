@@ -12,11 +12,24 @@
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
 // eslint-disable-next-line prettier/prettier
-import { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
-// eslint-disable-next-line prettier/prettier
-import { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessageCommandInput, GetQueueAttributesCommandInput } from '@aws-sdk/client-sqs';
+import type { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessageCommandInput, GetQueueAttributesCommandInput } from '@aws-sdk/client-sqs';
 import { CoreServices } from '../core-services';
 import { awsConfig } from '../../tools';
+import { measureAsync } from '../../lib/perf';
+
+/**
+ * `@aws-sdk/client-sqs`, imported on the first use (not at import; v5 B2-c, K6).
+ */
+let $sqs: Promise<typeof import('@aws-sdk/client-sqs')>;
+// memoized loader (the first call prints one `PERF` line).
+const loadSqs = () =>
+    ($sqs ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sqs',
+        () => import('@aws-sdk/client-sqs'),
+    ));
+
 /**
  * interface: SQSService
  * - common interface type for `SQS`
@@ -124,6 +137,7 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
+        const { SQSClient, SendMessageCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new SendMessageCommand(params));
         _log(NS, '> result =', result);
@@ -153,6 +167,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call api
+        const { SQSClient, ReceiveMessageCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new ReceiveMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
@@ -195,6 +210,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
+        const { SQSClient, DeleteMessageCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new DeleteMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
@@ -214,6 +230,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
+        const { SQSClient, GetQueueAttributesCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new GetQueueAttributesCommand(params));
         _log(NS, '> result =', $U.json(result));

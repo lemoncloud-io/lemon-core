@@ -3,8 +3,23 @@ import { onlyDefined } from '../../common/test-helper';
 import { ProtocolParam } from '../core-services';
 import { AwsConfigParams } from '../../tools/tools';
 import { APIGatewayProxyEvent } from 'aws-lambda';
-import { InvocationRequest, InvokeCommand, InvokeCommandOutput, LambdaClient } from '@aws-sdk/client-lambda';
+import type { InvocationRequest, InvokeCommandOutput } from '@aws-sdk/client-lambda';
+import { measureAsync } from '../../lib/perf';
 const NS = $U.NS('PRTL', 'yellow'); // NAMESPACE TO BE PRINTED.
+
+/**
+ * `@aws-sdk/client-lambda`, imported on the first use (not at import; v5 B2-c, K6).
+ * - must stay `import()` (not `require`): `aws-lambda-helper.spec.ts` replaces the package with `vi.mock`.
+ */
+let $lambda: Promise<typeof import('@aws-sdk/client-lambda')>;
+// memoized loader (the first call prints one `PERF` line).
+const loadLambda = () =>
+    ($lambda ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-lambda',
+        () => import('@aws-sdk/client-lambda'),
+    ));
 
 const asPayloadText = (payload?: Uint8Array): string | undefined =>
     payload ? Buffer.from(payload).toString() : undefined;
@@ -44,7 +59,8 @@ export async function invokeLambda<T>(
     });
     // _log(NS, `> params =`, $U.json(params));
 
-    //* call lambda.
+    //* call lambda (a new client per call, so no `PERF > client` line).
+    const { LambdaClient, InvokeCommand } = await loadLambda();
     const lambda = new LambdaClient(config);
     const response = await lambda
         .send(new InvokeCommand(params))

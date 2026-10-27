@@ -22,6 +22,7 @@ export * from './controllers/';
 //* init an instance of core modules.
 import engine from './engine/';
 import cores from './cores/';
+import { $U, _inf } from './engine/';
 
 //* export as group.
 import * as lib from './lib/';
@@ -66,3 +67,6 @@ export { parseListParam, parsePaginateParam } from './extended/cores/commons';
 
 //* export as default.
 export default { engine, cores, tools, controllers };
+
+//* PERF (D40): process time at the end of this barrel (the baseline to compare the lazy loads against).
+_inf($U.NS('PERF', 'cyan'), '>', 'loaded lemon-core', `${(process.uptime() * 1000).toFixed(1)} ms`);
