@@ -99,7 +99,7 @@ lemon-templates-api:
 ## Deviations from SPEC § 5
 
 1. **`api:check` counts.** SPEC § 5.10 gate 3 expects `added=11 removed=21` with one allow line. `api-check.cjs` prints a kind change as one `-` and one `+` line and matches the allow list per sign, so the `CoreModel` kind change gives `added=12 removed=22` and needs two allow lines (`-CoreModel`, `+CoreModel`, one comment). `current=294`, `not-allowed=0` as expected; the `api-names` diff is the one `CoreModel` line.
-2. **Load probe 290, not 265 ± 1–2.** `require('lemon-model')` 1.6.0 loads 31 modules (1.1.1: 6): the 1.2–1.5 runtime modules (`socket`, `genai`, `buffer`, `sync`, `progress`, `logtrace`: 24) plus `fields` (1). In lemon-core: + `cores/storage/model-fields` (1), − `generated/field-registry` (1). 265 + 25 = 290. No third-party module is added; AWS scopes 0. Named re-exports do not reduce it (a CJS `require` of the root loads the whole lemon-model barrel; lemon-model has no `./types` subpath).
+2. **Load probe 290, not 265 ± 1–2.** `require('lemon-model')` 5.0.0 (the former 1.6.0 build) loads 31 modules (1.1.1: 6): the 1.2–1.5 runtime modules (`socket`, `genai`, `buffer`, `sync`, `progress`, `logtrace`: 24) plus `fields` (1). In lemon-core: + `cores/storage/model-fields` (1), − `generated/field-registry` (1). 265 + 25 = 290. No third-party module is added; AWS scopes 0. Named re-exports do not reduce it (a CJS `require` of the root loads the whole lemon-model barrel; lemon-model has no `./types` subpath).
 3. **Gate 9 grep.** `grep -rn 'fieldKeys.mock' src` returns 2 lines in templates-api: `fieldKeys.mockTestModel` (`TestModel`) and `fieldKeys.mockTransformerModel` (transformer spec). Both are out of scope (SPEC § 5.6: `TestModel` stays on the generator). The two removed calls are gone: `grep -rnE 'fieldKeys\.mock(Head|Model)\b' src` 0.
 4. **lemon-core test count +2 for one new test** (see Test count).
 
@@ -118,7 +118,7 @@ Rerun by the coordinator on the three linked worktrees; the implementer's values
 
 | # | Gate | Value |
 | --- | --- | --- |
-| 1 | lemon-model | `npm run build` 0 · `npm test` 21 suites, **293/293** (285 + 8) · `test:package-exports` passed · `tsc --noEmit` 0 · eslint (`--no-eslintrc -c .eslintrc.js`) 0 errors · version 1.6.0 · `CORE_FIELDS` 14 in the former order, `fieldsOf(CoreModel)` 16 |
+| 1 | lemon-model | `npm run build` 0 · `npm test` 21 suites, **293/293** (285 + 8) · `test:package-exports` passed · `tsc --noEmit` 0 · eslint (`--no-eslintrc -c .eslintrc.js`) 0 errors · version 5.0.0 (prepared as 1.6.0, renumbered by D43; code identical) · `CORE_FIELDS` 14 in the former order, `fieldsOf(CoreModel)` 16 |
 | 2 | lemon-core build | exit 0 without `fields:gen`; `gen-esm-wrapper` **136 named + default**, `testing.mjs` 10 named |
 | 3 | root names | `api-check: base=304 current=294 added=12 removed=22 allow=34 not-allowed=0` (kind change = one `-` + one `+` line) |
 | 4 | ESM | `esm-smoke: ok names=137 subpaths=4` |
