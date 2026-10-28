@@ -889,3 +889,6 @@ healthchecksdb
 MigrationBackup/
 
 # End of https://www.gitignore.io/api/node,linux,macos,python,windows,intellij,intellij+iml,intellij+all,visualstudio,visualstudiocode,serverless,python,flask
+
+# git worktrees of this repo (agent lanes)
+.wt/
