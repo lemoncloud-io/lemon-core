@@ -629,6 +629,8 @@ The returned failures take effect **only** when the event source mapping has `Fu
 
 `MyManagerProxy.canDo('update' | 'delete')` on a record without `sid` is allowed for admin only. `list`, `read` and `create` are unchanged.
 
+Configurable via `SID_LEGACY_ACCESS` (§ 11.8, last table).
+
 ### 11.8 `$U.ts()` / `$U.dt()` use timeZone 9 by default
 
 | Input | v4 | v5 |
@@ -639,6 +641,14 @@ The returned failures take effect **only** when the event source mapping has `Fu
 | `ts(Date, tz)` | changed the argument | never changes it |
 
 **`$U.ts()` without arguments prints the time 9 hours later than v4** (KST wall clock instead of UTC); log time stamps follow it. `convDate`, `convDateToTS` and `convDateToTime` give the same results as before without changing a `Date` argument.
+
+These three defaults can be changed by environment variables, read at call time (`process.env`):
+
+| Env | Default | Values | Effect |
+| --- | --- | --- | --- |
+| `DEFAULT_TIME_ZONE` | `9` | hours, a finite number (`0`, `-5`, `5.5`); else `9` | timeZone of `$U.ts()`/`$U.dt()`/`convDate*` when omitted |
+| `DATE_ONLY_CLOCK` | `noon` | `noon`, `midnight`; else `noon` | clock of `YYYY-MM-DD`, `YY-MM-DD`, `YYYYMMDD` (12:00:00 or 00:00:00) |
+| `SID_LEGACY_ACCESS` | `admin` | `admin`, `open` (v4), `deny` (nobody, not even admin); else `admin` | who may update/delete a `sid`-less record (§ 11.7); read/list stay open |
 
 ### 11.9 `GeneralAPIController` is deprecated
 

@@ -21,6 +21,18 @@ const NS = 'util';
 //* default time-zone for this api (Asia/Seoul +9 hours). v5: the default of `$U.ts()`/`$U.dt()` (B5 § 6.8).
 export const DEFAULT_TIME_ZONE = 9;
 
+//* v5: default time-zone of `$U.ts()`/`$U.dt()` — env `DEFAULT_TIME_ZONE` (hours) at call time, else 9 (B5 § 6.8).
+export const defaultTimeZone = (): number => {
+    const val = `${process?.env?.DEFAULT_TIME_ZONE ?? ''}`.trim();
+    //* a blank value is unset (`Number('')` would be 0).
+    const num = val ? Number(val) : NaN;
+    return Number.isFinite(num) ? num : DEFAULT_TIME_ZONE;
+};
+
+//* v5: clock of a date-only string — env `DATE_ONLY_CLOCK` `midnight` → 00:00:00, else noon (B5 § 6.8).
+export const dateOnlyClock = (): ' 12:00:00' | ' 00:00:00' =>
+    process?.env?.DATE_ONLY_CLOCK === 'midnight' ? ' 00:00:00' : ' 12:00:00';
+
 const COLORS = {
     red: '\x1b[31m',
     green: '\x1b[32m',
@@ -98,6 +110,16 @@ export class Utilities {
      */
     public isLocalMode(): boolean {
         return process?.env?.LOCAL_MODE === '1' && !process?.env?.AWS_LAMBDA_FUNCTION_NAME;
+    }
+
+    /**
+     * v5: who may update/delete a `sid`-less record — env `SID_LEGACY_ACCESS` (B5 § 6.4).
+     * - `admin` (default, unknown value too): admin only. `open`: the v4 rule. `deny`: nobody, not even admin.
+     * - read from `process.env` on every call (no cache). read/list stay open in every mode.
+     */
+    public sidLegacyAccess(): 'admin' | 'open' | 'deny' {
+        const val = process?.env?.SID_LEGACY_ACCESS;
+        return val === 'open' || val === 'deny' ? val : 'admin';
     }
 
     public is_dev(): boolean {
@@ -184,11 +206,11 @@ export class Utilities {
 
     /**
      * timestamp string like `2020-02-22 12:34:56`
-     * - v5: wall clock of `timeZone` (default `DEFAULT_TIME_ZONE` = 9), host TZ and DST free (B5 § 6.8).
+     * - v5: wall clock of `timeZone` (default `defaultTimeZone()`: env `DEFAULT_TIME_ZONE`, else 9), host TZ and DST free (B5 § 6.8).
      * - v5: never mutates the input `Date`.
      */
     public static timestamp(date?: undefined | number | Date, timeZone?: number): string {
-        const tz = timeZone ?? DEFAULT_TIME_ZONE;
+        const tz = timeZone ?? defaultTimeZone();
         //* the instant in ms (a `Date` is read, never changed).
         const ms = date && typeof date === 'object' ? date.getTime() : date ? new Date(date).getTime() : Date.now();
         //* shift by the zone offset, then read the UTC fields (= wall clock of `tz`).
@@ -210,23 +232,26 @@ export class Utilities {
 
     /**
      * parse timestamp to date.
-     * - v5: a string is read as the wall clock of `timeZone` (default `DEFAULT_TIME_ZONE` = 9) via `Date.UTC` (B5 § 6.8).
+     * - v5: a string is read as the wall clock of `timeZone` (default `defaultTimeZone()`: env `DEFAULT_TIME_ZONE`, else 9) via `Date.UTC` (B5 § 6.8).
+     * - v5: a date-only string is read at `dateOnlyClock()` (env `DATE_ONLY_CLOCK`, default noon).
      * - v5: number/`Date`/`undefined` ignore `timeZone`; a `Date` input returns a copy.
      */
     public static datetime(dt?: string | number | Date, timeZone?: number) {
         let ret = null;
         if (typeof dt == 'string') {
-            const tz = timeZone ?? DEFAULT_TIME_ZONE;
+            const tz = timeZone ?? defaultTimeZone();
+            //* v5: the clock of a date-only string, read once per call.
+            const clock = dateOnlyClock();
             let tstr = '';
             if (/^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 1978-12-01
-                tstr = dt + ' 12:00:00';
+                tstr = dt + clock;
             } else if (/^[4-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 79-12-01
-                tstr = '19' + dt + ' 12:00:00';
+                tstr = '19' + dt + clock;
             } else if (/^[0-3][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 19-12-01
-                tstr = '20' + dt + ' 12:00:00';
+                tstr = '20' + dt + clock;
             } else if (/^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]) ([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(dt)) {
                 // like 1978-12-01 12:34
                 tstr = dt + ':00';
@@ -237,7 +262,7 @@ export class Utilities {
                 tstr = dt + '';
             } else if (/^[12]\d{3}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 19781201
-                tstr = dt.substr(0, 4) + '-' + dt.substr(4, 2) + '-' + dt.substr(6, 2) + ' 12:00:00';
+                tstr = dt.substr(0, 4) + '-' + dt.substr(4, 2) + '-' + dt.substr(6, 2) + clock;
             } else if (/^[12]\d{3}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01]) ([01]?[0-9]|2[0-3])[0-5][0-9]$/.test(dt)) {
                 // like 19781201 1234
                 tstr =
