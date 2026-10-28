@@ -9,6 +9,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-27 v5 B2-c (D40)
+ * @date        2026-10-28 v5 B7: `PerfTrace` for the per-request `PERF` lines.
  *
  * @copyright (C) 2026 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -50,3 +51,67 @@ export const measureAsync = async <T>(log: PerfLogger, ns: string, label: string
     log(ns, '>', label, asMs(t0));
     return res;
 };
+
+/** a value of `PerfTrace.line()`: `undefined`, `null` and `''` drop the key. */
+export type PerfValue = string | number | boolean | null | undefined;
+
+/**
+ * class: `PerfTrace`
+ * - step marks of one request (v5 B7): each `mark(name)` keeps the ms since the previous mark (or the start).
+ * - holds numbers only; the caller prints the line with its own logger.
+ */
+export class PerfTrace {
+    //* start time (t0), and the cursor of the last mark.
+    private readonly t0: number;
+    private cursor: number;
+    //* marks by name (the insertion order is kept).
+    private readonly $marks: Record<string, number> = {};
+
+    //* start the trace now.
+    public constructor() {
+        this.t0 = nowMs();
+        this.cursor = this.t0;
+    }
+
+    /**
+     * keep the ms since the previous mark (or t0) as `name`, then move the cursor.
+     * @returns the ms of this mark.
+     */
+    public mark(name: string): number {
+        const now = nowMs();
+        const ms = now - this.cursor;
+        this.$marks[name] = ms;
+        this.cursor = now;
+        return ms;
+    }
+
+    /** the ms since t0. */
+    public elapsed(): number {
+        return nowMs() - this.t0;
+    }
+
+    /** a copy of the marks. */
+    public marks(): Record<string, number> {
+        return { ...this.$marks };
+    }
+
+    /**
+     * build the `key=value` tail in the given key order.
+     * - `undefined`, `null` and `''` drop the key; a boolean is `1`/`0`; a number (ms) has one decimal.
+     * - pass a number that is not ms (ex: an HTTP status) as a string.
+     */
+    public line(extra: Record<string, PerfValue>): string {
+        //* format one value (or `null` to drop the key).
+        const asText = (v: PerfValue): string | null => {
+            if (v === undefined || v === null || v === '') return null;
+            if (typeof v === 'boolean') return v ? '1' : '0';
+            if (typeof v === 'number') return v.toFixed(1);
+            return `${v}`;
+        };
+        return Object.entries(extra || {})
+            .map(([k, v]) => [k, asText(v)])
+            .filter(([, v]) => v !== null)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(' ');
+    }
+}
