@@ -136,7 +136,8 @@
     "prettier": "^2.7.1",
     "supertest": "^7.3.1",
     "ts-node": "^8.10.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.4"
   },
   "peerDependencies": {
     "@aws-sdk/client-iam": "^3.971.0",
