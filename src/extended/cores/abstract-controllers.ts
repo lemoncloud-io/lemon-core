@@ -27,6 +27,7 @@
  * @date        2025-09-03 optimized `makeModelBase()` to have `type` default.
  * @date        2026-02-03 optimized `modelAsView()` to show cores in local.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
+ * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` reports the field lists (local or direct invoke only).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -36,9 +37,10 @@ import { $U, _log, _inf, _err } from '../../engine/';
 import { my_sequence, my_parrallel } from '../../helpers/';
 import { $T } from './commons';
 import { onlyDefined } from '../../common/test-helper';
-import { loadDataYml } from '../../tools/';
+import { loadDataYml, loadJsonSync } from '../../tools/';
 import { GeneralWEBController } from '../../controllers/';
 import { CoreModel, AbstractTransformer, View, Body, NextContext, NextHandler, SimpleSet } from 'lemon-model';
+import { fieldsOf } from 'lemon-model'; //* v5 B4: L2 core fields, re-derived (the services' `CORE_FIELDS` is module-local).
 import { BulkBody, ListResult, PaginatedListResult, PaginateParam } from './types';
 import { MyCoreManager, MyCoreService, MyCoreProxy } from './abstract-services';
 export { CoreModel, AbstractTransformer, GeneralWEBController };
@@ -47,6 +49,17 @@ export { CoreModel, AbstractTransformer, GeneralWEBController };
  * convert as id string.
  */
 const _id = (id: any): string => (id === '' || id === 0 ? '' : $T.S2(id));
+
+/**
+ * v5 B4: the `lemon-core` version as `GET /` reports it (the service's `package.json`).
+ * - `dependencies['lemon-core']` without `^`; the package's own `version` when it is lemon-core itself.
+ */
+const _coreVersion = (): string => {
+    const $pack = loadJsonSync('package.json');
+    const dep: string = $pack?.dependencies?.['lemon-core'];
+    if (typeof dep === 'string') return dep.startsWith('^') ? dep.substring(1) : dep;
+    return $pack?.name === 'lemon-core' ? `${$pack.version ?? ''}` || null : null;
+};
 
 /**
  * type: `CRUDCreationOptions`
@@ -328,11 +341,15 @@ export abstract class AbstractCRUDController<
 
     /**
      * internal admin command
+     * - `GET /<type>/fields/admin`: the field lists (v5 B4) - see `doGetAdminFields()`, gated by channel not role.
      */
     public doGetAdmin: NextHandler = async (id, param, body, $ctx) => {
         const errScope = `doGetAdmin(${this.type()}/${id ?? ''})`;
         _log(this.logNS, `${errScope}...`);
         $ctx && _log(this.logNS, `> context =`, $U.json($ctx));
+
+        //* v5 B4: `fields` runs before the admin-role check - a direct invoke may carry no identity.
+        if (id === 'fields') return this.doGetAdminFields($ctx, errScope);
 
         const save = $T.B(param?.save, param?.save === '' ? 1 : 0);
         const clear = $T.B(param?.clear, param?.clear === '' ? 1 : 0);
@@ -365,6 +382,62 @@ export abstract class AbstractCRUDController<
             return { id, hello, param, body, context: { clientIp: $ctx.clientIp } };
         });
     };
+
+    /**
+     * v5 B4: report the manager's field list (`GET /<type>/fields/admin`) to verify it in Lambda too.
+     * - allowed only by channel: local express (`$U.isLocalMode()`) or an internal request (empty `$ctx.domain`).
+     * - internal = no `host` header (direct `lambda:Invoke`, see `isExternal()`); `packContext()` then leaves
+     *   `domain` empty, so the empty `domain` is the signal here (`NextContext` has no external flag).
+     * - no admin role is required: a direct invoke is already gated by IAM `lambda:InvokeFunction`.
+     */
+    protected async doGetAdminFields($ctx: NextContext, errScope: string) {
+        const local = $U.isLocalMode();
+        const external = !!`${$ctx?.domain ?? ''}`.trim();
+        if (!local && external)
+            throw new Error(`403 NOT ALLOWED - fields/admin is local or direct-invoke only @${errScope}`);
+
+        //* the lists: L2 core (16), the manager's full list, and the model-specific rest.
+        const core: string[] = fieldsOf(CoreModel);
+        const fields: string[] = [...(this.manager.FIELDS ?? [])];
+        const extra = fields.filter(k => !core.includes(k));
+        const source = this.manager.fieldsSource;
+
+        //* self-check: each failed check is one short line in `issues`.
+        const issues: string[] = [];
+        const dups = (list: string[]) => list.filter((k, i) => list.indexOf(k) !== i);
+        if (core.length < 14) issues.push(`core has ${core.length} names (< 14)`);
+        ['id', '_id'].forEach(k => !core.includes(k) && issues.push(`core misses ${k}`));
+        if (!fields.length) issues.push('fields is empty');
+        if (dups(core).length) issues.push(`core has duplicates: ${dups(core).join(',')}`);
+        if (dups(fields).length) issues.push(`fields has duplicates: ${dups(fields).join(',')}`);
+        //* a class-fed manager inherits all core fields; a list may filter some (ex: `$`, `_id`) by design.
+        const missing = core.filter(k => !fields.includes(k));
+        if (source === 'class' && missing.length) issues.push(`fields misses core: ${missing.join(',')}`);
+
+        //* runtime, to tell the local harness from the deployed Lambda.
+        const runtime = {
+            local,
+            external,
+            lambda: process.env.AWS_LAMBDA_FUNCTION_NAME ?? null,
+            node: process.version,
+            lemonCore: _coreVersion(),
+        };
+        const counts = { core: core.length, fields: fields.length, extra: extra.length };
+        const ok = issues.length === 0;
+        return {
+            id: 'fields',
+            type: this.type(),
+            model: this.modelType,
+            core,
+            fields,
+            extra,
+            counts,
+            source,
+            ok,
+            issues,
+            runtime,
+        };
+    }
 
     /**
      * read a `MyModel`

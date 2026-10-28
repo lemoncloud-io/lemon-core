@@ -566,6 +566,18 @@ lemon-model 5.0.0 is published first. lemon-core and your service then move to `
 * `MockModel` (`src/modules/mock/model.ts`) is the first annotated model: `class MockModel extends CoreModel<ModelType> implements MockHead`; `$HEAD.mock`/`$FIELD.mock` come from `fieldsOf()` (same sets, parent-first order). Parity spec: `src/modules/mock/model.spec.ts`.
 * The other models still use `fieldKeys` and `fields:gen` (the registry has 10 entries now). They move one by one with the steps of § 10.3.
 
+### 10.8 `fields/admin`
+
+`AbstractCRUDController.doGetAdmin` has a `fields` command that reports the manager's field list, so you can check the annotations in the deployed Lambda as well as locally:
+
+```sh
+$ http ':8888/<type>/fields/admin'
+```
+
+It returns `{ id: 'fields', type, model, core, fields, extra, counts, source, ok, issues, runtime }`: `core` is `fieldsOf(CoreModel)` (16), `fields` is the manager's `FIELDS`, `extra` is `fields` minus `core`, `source` is `class` (a model class was passed) or `list` (a `string[]`), `runtime` is `{ local, external, lambda, node, lemonCore }`. `ok` is false when a self-check fails; each failure is one line in `issues` (core < 14 names or without `id`/`_id`, empty `fields`, duplicates, and — for `source: 'class'` only — a core name missing from `fields`; a list may drop `$`/`_id` through `filterFields`).
+
+The gate is the channel, not the role: allowed when `$U.isLocalMode()` is true (the express harness) or the request is internal (`$ctx.domain` is empty — a direct `lambda:Invoke` without a `host` header). Anything else gets `403 NOT ALLOWED - fields/admin is local or direct-invoke only`. No admin role is needed, because a direct invoke is already gated by IAM `lambda:InvokeFunction`. The other admin commands keep the admin-role check.
+
 ## 11. Trust boundary and behaviour contract (B5)
 
 v5 stops trusting what a request says about itself. A protocol context sent from outside is dropped, internal calls are signed, "local" is a runtime setting, handlers never reject, and the time helpers no longer depend on the host time zone. Details: `docs/v5/B5-trust-boundary.md`.
