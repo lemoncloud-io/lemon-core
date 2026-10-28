@@ -2,6 +2,9 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+    // Legacy TS decorators (`@field()`) for spec files: tsconfig.json excludes `*.spec.ts`, so vite's oxc
+    // transform does not inherit `experimentalDecorators` for them (vite >= 8.3 left `@field()` untransformed).
+    oxc: { decorator: { legacy: true, emitDecoratorMetadata: true } },
     test: {
         globals: true,
         environment: 'node',
