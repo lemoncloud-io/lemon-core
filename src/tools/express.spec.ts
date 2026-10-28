@@ -90,7 +90,7 @@ describe('express', () => {
         if (!hasDevkit) return; // ignore.
 
         const $pack = loadJsonSync('package.json');
-        expect2(() => $pack.devDependencies['lemon-devkit']).toEqual('^0.0.11');
+        expect2(() => $pack.devDependencies['lemon-devkit']).toEqual('^0.2.1');
 
         const { $express } = instance();
         const $res = $express();

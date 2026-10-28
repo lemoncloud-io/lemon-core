@@ -47,7 +47,7 @@ export interface SQSAttribute {
 
 export interface SqsMessage {
     sent: number;
-    attr: SQSAttribute;
+    attr: SQSAttribute | undefined;
     data: any;
     id: string;
     handle: string;
@@ -173,9 +173,9 @@ export class AWSSQSService implements SQSService {
         _log(NS, '> result =', $U.json(result));
 
         //* transform list.
-        const list: SqsMessage[] = (result && result.Messages).map(_ => {
-            const N: any = {};
-            N.sent = _.Attributes.SentTimestamp;
+        const list: SqsMessage[] = (result?.Messages ?? []).map(_ => {
+            const N: Partial<SqsMessage> = {};
+            N.sent = $U.N(_?.Attributes?.SentTimestamp ?? 0);
             const $attr = _.MessageAttributes || {};
             N.attr = Object.keys($attr).reduce((O: any, key: string) => {
                 const V = $attr[key];
@@ -187,7 +187,7 @@ export class AWSSQSService implements SQSService {
             N.data = JSON.parse(_.Body || '{}');
             N.id = _.MessageId;
             N.handle = _.ReceiptHandle;
-            return N;
+            return N as SqsMessage;
         });
 
         //* returns.

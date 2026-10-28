@@ -177,6 +177,8 @@ describe(`test the 'core/engine.ts'`, () => {
     test('test doReportError() - account id', async () => {
         const data = 'test-error-data';
         const err = new Error('via doReportError() in `lemon-core`');
-        expect2(await doReportError(err, $context('', ''), data).catch(GETERR)).toEqual('!err - .accountId is missing');
+        expect2(await doReportError(err, $context('', ''), data).catch(GETERR)).toEqual(
+            '!err - .accountId[] is missing - getHelloArn(RPTE:)',
+        );
     });
 });

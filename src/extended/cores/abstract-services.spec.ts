@@ -915,15 +915,23 @@ describe('abstract-services', () => {
         expect2(() => proxy.hasAdminRole()).toEqual(false);
     });
 
-    it('should pass doScanLast', async () => {
-        const { service } = instance();
+    it('should pass doScanLast(real)', async () => {
         if (PROFILE !== 'lemon') return; // ignore this.
+        const { service } = instance('authed', { dummy: false });
 
+        //TODO - should comfirm the initial data set.
         const result = await service.$test.doScanLast({ limit: 3 });
+
         //* 1. doScanLast with { limit }
         expect2(() => result.count).toEqual(3);
         expect2(() => result.limit).toEqual(3);
         expect2(() => result.total).toEqual(3);
+        expect2(() => result.list?.map(N => N.id)).toEqual([
+            expect.any(String),
+            expect.any(String),
+            expect.any(String),
+        ]);
+
         expect2(() => result.last).toEqual({ _id: 'TT:test:1000243' });
         expect2(() => result.list).toEqual([
             {
