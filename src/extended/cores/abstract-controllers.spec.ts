@@ -10,6 +10,7 @@
  * @date        2023-01-20 optimized `doSearch()` w/ `SearchParam()`
  * @date        2023-02-15 optimized with `lemon-core@3.2.5`
  * @date        2023-10-12 optimized `doList()` w/o ES6.
+ * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` (gate by channel, shape, `source`).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -25,9 +26,11 @@ import { NextContext } from 'lemon-model';
 import { $ES6Routed as $ES6 } from './abstract-services'; // v5 B2-b: the L2 `$ES6` name is removed
 import { AbstractCRUDController, AbstractTransformer } from './abstract-controllers';
 import { View, Body } from './types';
+import { loadJsonSync } from '../../tools/';
+import { afterEach } from 'vitest';
 
 //* project dependant
-import { AuthType, ModelType, MyTestModel, TestModelManager } from './abstract-services.spec';
+import { AuthType, ModelType, MyTestModel, TestModelManager, ClassFieldsManager } from './abstract-services.spec';
 import * as $backend from './abstract-services.spec';
 
 export interface MyView extends View, Partial<MyTestModel> {
@@ -791,5 +794,127 @@ describe('AbstractCRUDController', () => {
             .findLookup$('test-depth', { resetRate: 0, isUseMeta: true })
             .catch(e => e.message);
         expect2(result).toEqual('@depth[101] is out of range - findLookup(test-depth)');
+    });
+});
+
+//* v5 B4: a controller over the class-fed manager (`fieldsSource: 'class'`).
+const classInstance = () => {
+    const { service, context } = $backend.instance('authed');
+    const $cls = new ClassFieldsManager(service);
+    const api = new (class extends AbstractCRUDController<
+        ModelType,
+        MyTestModel,
+        MyView,
+        MyBody,
+        any,
+        ClassFieldsManager,
+        MyTransformer
+    > {
+        public constructor() {
+            super('tests', service, $cls, new MyTransformer());
+        }
+    })();
+    return { api, context };
+};
+
+//* v5 B4: env names toggled by the `fields/admin` tests — restored after each test (B5 pattern).
+const $envB5 = {
+    LOCAL_MODE: process.env.LOCAL_MODE,
+    AWS_LAMBDA_FUNCTION_NAME: process.env.AWS_LAMBDA_FUNCTION_NAME,
+};
+//* restore one env name (delete if it was unset).
+const restoreEnvB5 = (name: keyof typeof $envB5) => {
+    if ($envB5[name] === undefined) delete process.env[name];
+    else process.env[name] = $envB5[name];
+};
+
+describe('AbstractCRUDController fields/admin (B4)', () => {
+    //* v5 B5: restore the toggled env.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+    });
+    const L1 = 'ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error';
+    const CORE = `$,${L1},id,_id`;
+    const coreVersion = loadJsonSync('package.json').version;
+
+    //* local express (`LOCAL_MODE=1`, not Lambda): allowed even with an external domain and no admin role.
+    it('should pass fields/admin in local mode', async () => {
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        const { api, context } = instance({ auth: 'authed' });
+        expect2(() => context.domain).toEqual('oauth.lemoncloud.io');
+        const res: any = await api.doGetAdmin('fields', {}, null, context);
+        expect2(() => res, 'id,type,model,source,ok,issues').toEqual({
+            id: 'fields',
+            type: 'tests',
+            model: 'test',
+            source: 'list',
+            ok: true,
+            issues: [],
+        });
+        expect2(() => res.core.join(',')).toEqual(CORE);
+        expect2(() => res.fields.join(',')).toEqual(`${L1},id,name,test,extra`);
+        expect2(() => res.extra.join(',')).toEqual('name,test,extra');
+        expect2(() => res.counts).toEqual({ core: 16, fields: 17, extra: 3 });
+        expect2(() => res.runtime).toEqual({
+            local: true,
+            external: true,
+            lambda: null,
+            node: process.version,
+            lemonCore: coreVersion,
+        });
+    });
+
+    //* not local + a domain (API-GW, ALB, URL) → 403, before the admin-role check.
+    it('should pass fields/admin 403 if external', async () => {
+        delete process.env.LOCAL_MODE;
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        const { api, context } = instance({ auth: 'authed', roles: ['admin'] });
+        expect2(await api.doGetAdmin('fields', {}, null, context).catch(GETERR)).toEqual(
+            '403 NOT ALLOWED - fields/admin is local or direct-invoke only @doGetAdmin(tests/fields)',
+        );
+    });
+
+    //* in Lambda (`LOCAL_MODE` is ignored there) + empty domain (direct invoke, no `host`) → allowed w/o identity.
+    it('should pass fields/admin by direct invoke', async () => {
+        process.env.LOCAL_MODE = '1';
+        process.env.AWS_LAMBDA_FUNCTION_NAME = 'lemon-core-spec';
+        const { api } = instance({ auth: 'authed' });
+        const context: NextContext = { domain: '' };
+        const res: any = await api.doGetAdmin('fields', {}, null, context);
+        expect2(() => res, 'id,source,ok,counts').toEqual({
+            id: 'fields',
+            source: 'list',
+            ok: true,
+            counts: { core: 16, fields: 17, extra: 3 },
+        });
+        expect2(() => res.runtime, 'local,external,lambda').toEqual({
+            local: false,
+            external: false,
+            lambda: 'lemon-core-spec',
+        });
+        //* no context at all reads as internal too.
+        expect2(await api.doGetAdmin('fields', {}, null, undefined).then(R => R.ok)).toEqual(true);
+        //* other admin commands keep the admin-role check.
+        expect2(await api.doGetAdmin('initialize', {}, null, context).catch(GETERR)).toEqual(
+            '403 NOT ALLOWED - only for admin @doGetAdmin(tests/initialize)',
+        );
+    });
+
+    //* a manager built from the annotated class reports `class` and keeps all 16 core names.
+    it('should pass fields/admin source of class', async () => {
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        const { api, context } = classInstance();
+        const res: any = await api.doGetAdmin('fields', {}, null, context);
+        expect2(() => res, 'source,ok,issues,counts').toEqual({
+            source: 'class',
+            ok: true,
+            issues: [],
+            counts: { core: 16, fields: 19, extra: 3 },
+        });
+        expect2(() => res.fields.join(',')).toEqual(`${CORE},name,test,extra`);
+        expect2(() => res.extra.join(',')).toEqual('name,test,extra');
     });
 });

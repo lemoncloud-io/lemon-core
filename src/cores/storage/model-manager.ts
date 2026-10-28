@@ -5,6 +5,7 @@
  * @author      Tim Hong <tim@lemoncloud.io>
  * @date        2020-06-05 initial version
  * @date        2026-10-28 v5 B4: `fields` may be a model class (`resolveFields()`).
+ * @date        2026-10-28 v5 B4: `fieldsSource` keeps whether `FIELDS` came from a class or a list.
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -32,6 +33,8 @@ export abstract class AbstractManager<
     public readonly parent: S;
     public readonly storage: TypedStorageService<T, ModelType>;
     public readonly $unique: UniqueFieldManager<T, ModelType>;
+    /** v5 B4: where `FIELDS` came from - `class` (`fieldsOf(cls)`) or `list` (a `string[]` as is) */
+    public readonly fieldsSource: 'class' | 'list';
 
     /**
      * default constructor
@@ -51,6 +54,7 @@ export abstract class AbstractManager<
     ) {
         //* resolve a model class into its field names once; the filter and the storage share the same list.
         super(resolveFields(fields));
+        this.fieldsSource = typeof fields === 'function' ? 'class' : 'list'; //* v5 B4: same test as `resolveFields()`.
         this.NS = ns === undefined ? NS : ns;
         this.parent = parent;
         this.storage = parent.makeStorageService(type, this.FIELDS, this);

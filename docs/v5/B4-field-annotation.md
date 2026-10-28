@@ -111,6 +111,7 @@ lemon-model PR → `v5` → **npm publish 5.0.0** → lemon-core and templates-a
 
 - lemon-core's `.eslintrc.js` has no `root: true` either; in a worktree plain `eslint` loads the parent checkout's config and fails on a duplicate `prettier` plugin. `eslint --no-eslintrc -c .eslintrc.js` on the changed files: 0 errors.
 - `listProjections()` with a class-fed manager drops `$`, `id`, `_id` because L2 `CORE_FIELDS` is 16; with the 14 L1 list it would keep `id` and `_id`.
+- Runtime check (added 2026-10-28): `GET /<type>/fields/admin` returns the manager's `FIELDS`, the L2 core list, `source` (`class`/`list`) and a self-check `ok`/`issues`; allowed in local mode or on a direct Lambda invoke (empty `domain`) only (`HOW_TO_UPGRADE_V5.md` § 10.8).
 
 ## Coordinator rerun (2026-10-28, SPEC § 5.10 gates 1–12)
 
