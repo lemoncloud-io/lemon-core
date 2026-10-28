@@ -28,6 +28,7 @@
  * @date        2026-02-03 optimized `modelAsView()` to show cores in local.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` reports the field lists (local or direct invoke only).
+ * @date        2026-10-28 v5 B4: `fields/admin` self-check uses the shared `checkFieldsAdmin()`.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -38,11 +39,14 @@ import { my_sequence, my_parrallel } from '../../helpers/';
 import { $T } from './commons';
 import { onlyDefined } from '../../common/test-helper';
 import { loadDataYml, loadJsonSync } from '../../tools/';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { GeneralWEBController } from '../../controllers/';
 import { CoreModel, AbstractTransformer, View, Body, NextContext, NextHandler, SimpleSet } from 'lemon-model';
 import { fieldsOf } from 'lemon-model'; //* v5 B4: L2 core fields, re-derived (the services' `CORE_FIELDS` is module-local).
 import { BulkBody, ListResult, PaginatedListResult, PaginateParam } from './types';
 import { MyCoreManager, MyCoreService, MyCoreProxy } from './abstract-services';
+import { checkFieldsAdmin, FieldsAdminReport } from './fields-admin';
 export { CoreModel, AbstractTransformer, GeneralWEBController };
 
 /**
@@ -51,14 +55,19 @@ export { CoreModel, AbstractTransformer, GeneralWEBController };
 const _id = (id: any): string => (id === '' || id === 0 ? '' : $T.S2(id));
 
 /**
- * v5 B4: the `lemon-core` version as `GET /` reports it (the service's `package.json`).
- * - `dependencies['lemon-core']` without `^`; the package's own `version` when it is lemon-core itself.
+ * v5 B4: the installed `lemon-core` version for `fields/admin` → `runtime.lemonCore`.
+ * - reads lemon-core's own `package.json` (three levels up from `dist/extended/cores/` or `src/extended/cores/`).
+ * - fallback: the service's declared dependency with a leading `^`/`~` stripped, else `null`.
  */
 const _coreVersion = (): string => {
-    const $pack = loadJsonSync('package.json');
-    const dep: string = $pack?.dependencies?.['lemon-core'];
-    if (typeof dep === 'string') return dep.startsWith('^') ? dep.substring(1) : dep;
-    return $pack?.name === 'lemon-core' ? `${$pack.version ?? ''}` || null : null;
+    try {
+        const own = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+        if (own?.name === 'lemon-core' && own?.version) return `${own.version}`;
+    } catch {
+        //* not installed as a package (ex: bundled) - fall through.
+    }
+    const dep: string = loadJsonSync('package.json')?.dependencies?.['lemon-core'];
+    return typeof dep === 'string' ? dep.replace(/^[\^~]/, '') : null;
 };
 
 /**
@@ -402,18 +411,6 @@ export abstract class AbstractCRUDController<
         const extra = fields.filter(k => !core.includes(k));
         const source = this.manager.fieldsSource;
 
-        //* self-check: each failed check is one short line in `issues`.
-        const issues: string[] = [];
-        const dups = (list: string[]) => list.filter((k, i) => list.indexOf(k) !== i);
-        if (core.length < 14) issues.push(`core has ${core.length} names (< 14)`);
-        ['id', '_id'].forEach(k => !core.includes(k) && issues.push(`core misses ${k}`));
-        if (!fields.length) issues.push('fields is empty');
-        if (dups(core).length) issues.push(`core has duplicates: ${dups(core).join(',')}`);
-        if (dups(fields).length) issues.push(`fields has duplicates: ${dups(fields).join(',')}`);
-        //* a class-fed manager inherits all core fields; a list may filter some (ex: `$`, `_id`) by design.
-        const missing = core.filter(k => !fields.includes(k));
-        if (source === 'class' && missing.length) issues.push(`fields misses core: ${missing.join(',')}`);
-
         //* runtime, to tell the local harness from the deployed Lambda.
         const runtime = {
             local,
@@ -423,8 +420,7 @@ export abstract class AbstractCRUDController<
             lemonCore: _coreVersion(),
         };
         const counts = { core: core.length, fields: fields.length, extra: extra.length };
-        const ok = issues.length === 0;
-        return {
+        const report: FieldsAdminReport = {
             id: 'fields',
             type: this.type(),
             model: this.modelType,
@@ -433,10 +429,13 @@ export abstract class AbstractCRUDController<
             extra,
             counts,
             source,
-            ok,
-            issues,
+            ok: true,
+            issues: [],
             runtime,
         };
+        //* self-check w/ the shared verifier (the same one every test or harness runs).
+        const { ok, issues } = checkFieldsAdmin(report);
+        return { ...report, ok, issues };
     }
 
     /**

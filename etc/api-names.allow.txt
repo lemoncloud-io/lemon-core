@@ -38,3 +38,8 @@
 +CoreModel
 # B5: one status-carrying error class (S-33, SPEC § 6.6) — `message` keeps the `<status> <CODE> - <detail>` wire contract
 +LemonError
+# B4: one verifier of the `fields/admin` report (`fields-admin.ts`) — server self-check, tests and harnesses share it
++checkFieldsAdmin
++FieldsAdminReport
++FieldsAdminRuntime
++FieldsAdminExpect
