@@ -11,6 +11,7 @@
  * @date        2023-02-15 optimized with `lemon-core@3.2.5`
  * @date        2023-10-12 optimized `doList()` w/o ES6.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` (gate by channel, shape, `source`).
+ * @date        2026-10-28 v5 B4: `checkFieldsAdmin()` on each report, and the in-process express route.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -28,6 +29,11 @@ import { AbstractCRUDController, AbstractTransformer } from './abstract-controll
 import { View, Body } from './types';
 import { loadJsonSync } from '../../tools/';
 import { afterEach } from 'vitest';
+import { checkFieldsAdmin } from './fields-admin';
+import { LambdaHandler, LambdaWEBHandler } from '../../cores/lambda';
+import { buildEngine } from '../../engine';
+import { buildExpress } from '../../tools';
+import request from 'supertest';
 
 //* project dependant
 import { AuthType, ModelType, MyTestModel, TestModelManager, ClassFieldsManager } from './abstract-services.spec';
@@ -864,6 +870,15 @@ describe('AbstractCRUDController fields/admin (B4)', () => {
             node: process.version,
             lemonCore: coreVersion,
         });
+        //* the shared verifier agrees, with the expectations of this case.
+        const expect = {
+            type: 'tests',
+            source: 'list' as const,
+            counts: { core: 16, fields: 17, extra: 3 },
+            extra: ['name', 'test', 'extra'],
+            runtime: { local: true, external: true, lambda: false },
+        };
+        expect2(() => checkFieldsAdmin(res, expect)).toEqual({ ok: true, issues: [] });
     });
 
     //* not local + a domain (API-GW, ALB, URL) → 403, before the admin-role check.
@@ -894,6 +909,16 @@ describe('AbstractCRUDController fields/admin (B4)', () => {
             external: false,
             lambda: 'lemon-core-spec',
         });
+        //* the shared verifier agrees: in Lambda, internal.
+        const expect = {
+            type: 'tests',
+            source: 'list' as const,
+            counts: { core: 16, fields: 17, extra: 3 },
+            extra: ['name', 'test', 'extra'],
+            runtime: { local: false, external: false, lambda: 'lemon-core-spec' },
+        };
+        expect2(() => checkFieldsAdmin(res, expect)).toEqual({ ok: true, issues: [] });
+        expect2(() => checkFieldsAdmin(res, { runtime: { lambda: true } })).toEqual({ ok: true, issues: [] });
         //* no context at all reads as internal too.
         expect2(await api.doGetAdmin('fields', {}, null, undefined).then(R => R.ok)).toEqual(true);
         //* other admin commands keep the admin-role check.
@@ -916,5 +941,64 @@ describe('AbstractCRUDController fields/admin (B4)', () => {
         });
         expect2(() => res.fields.join(',')).toEqual(`${CORE},name,test,extra`);
         expect2(() => res.extra.join(',')).toEqual('name,test,extra');
+        //* the shared verifier agrees, incl. the class rule (every core name in `fields`).
+        const expect = {
+            type: 'tests',
+            source: 'class' as const,
+            counts: { core: 16, fields: 19, extra: 3 },
+            extra: ['name', 'test', 'extra'],
+            runtime: { local: true, external: true, lambda: false },
+        };
+        expect2(() => checkFieldsAdmin(res, expect)).toEqual({ ok: true, issues: [] });
+    });
+});
+
+//* v5 B4: an express app (in process) that routes `/tests/*` to the CRUD controller.
+const expressInstance = () => {
+    const { api } = instance({ auth: 'authed' });
+    const $web = new LambdaWEBHandler(new LambdaHandler(), true);
+    //* decoder: `GET /tests/fields/admin` → `doGetAdmin('fields', ...)`.
+    $web.setHandler('tests', (mode, id, cmd) => api.decode(mode, id, cmd));
+    const $engine = buildEngine({});
+    const { app } = buildExpress($engine, $web);
+    return { app };
+};
+
+describe('AbstractCRUDController fields/admin via express (B4)', () => {
+    //* v5 B5: restore the toggled env.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+    });
+
+    //* local express (`LOCAL_MODE=1`, not Lambda): 200, and the shared verifier passes the body.
+    it('should pass fields/admin over express in local mode', async () => {
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        const { app } = expressInstance();
+        const res = await request(app).get('/tests/fields/admin');
+        expect2(() => res.status).toEqual(200);
+        const expect = {
+            type: 'tests',
+            model: 'test',
+            source: 'list' as const,
+            counts: { core: 16, fields: 17, extra: 3 },
+            extra: ['name', 'test', 'extra'],
+            lemonCore: loadJsonSync('package.json').version,
+            runtime: { local: true, external: true, lambda: false },
+        };
+        expect2(() => checkFieldsAdmin(res.body, expect)).toEqual({ ok: true, issues: [] });
+    });
+
+    //* not local: the express request has a `host` (external) → 403.
+    it('should pass fields/admin over express 403 if not local', async () => {
+        delete process.env.LOCAL_MODE;
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        const { app } = expressInstance();
+        const res = await request(app).get('/tests/fields/admin');
+        expect2(() => res, 'status,text').toEqual({
+            status: 403,
+            text: '403 NOT ALLOWED - fields/admin is local or direct-invoke only @doGetAdmin(tests/fields)',
+        });
     });
 });

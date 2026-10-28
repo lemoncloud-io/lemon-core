@@ -578,6 +578,16 @@ It returns `{ id: 'fields', type, model, core, fields, extra, counts, source, ok
 
 The gate is the channel, not the role: allowed when `$U.isLocalMode()` is true (the express harness) or the request is internal (`$ctx.domain` is empty — a direct `lambda:Invoke` without a `host` header). Anything else gets `403 NOT ALLOWED - fields/admin is local or direct-invoke only`. No admin role is needed, because a direct invoke is already gated by IAM `lambda:InvokeFunction`. The other admin commands keep the admin-role check.
 
+`checkFieldsAdmin(report, expect?)` is the single verifier of this report. The server runs it for its own `ok`/`issues`, and every test or harness runs the same function: vitest, an in-process express route, a downstream jest spec, a local express server, and the deployed Lambda. It checks the structure (lists, `counts`, `extra` = `fields` minus `core`, `source`, `ok` against `issues`, `runtime`), the self-checks above on the lists themselves (so a report edited to `ok: true` still fails), and only the expectations you pass. `runtime.lambda: true` means any function name, `false` means `null`. Each failure is one short line in `issues`. It is on the root (`import { checkFieldsAdmin } from 'lemon-core'`) and on a deep path without the engine (`lemon-core/dist/extended/cores/fields-admin`, also from an ESM `.mjs`):
+
+```ts
+import { checkFieldsAdmin } from 'lemon-core/dist/extended/cores/fields-admin';
+const res = await request(app).get('/pets/fields/admin');
+const expect = { type: 'pets', source: 'class' as const, extra: ['name', 'kind'], runtime: { local: true, lambda: false } };
+const { ok, issues } = checkFieldsAdmin(res.body, expect);
+if (!ok) throw new Error(issues.join('\n'));
+```
+
 ## 11. Trust boundary and behaviour contract (B5)
 
 v5 stops trusting what a request says about itself. A protocol context sent from outside is dropped, internal calls are signed, "local" is a runtime setting, handlers never reject, and the time helpers no longer depend on the host time zone. Details: `docs/v5/B5-trust-boundary.md`.
