@@ -159,6 +159,22 @@ describe(`test the 'core/engine.ts'`, () => {
         expect(convDate(D)).not.toBe(D);
     });
 
+    //* v5: `convDate*` follow env `DEFAULT_TIME_ZONE` like `$U.dt()`/`$U.ts()` (owner 2026-10-28).
+    test('test conv_date() with env DEFAULT_TIME_ZONE', () => {
+        const saved = process.env.DEFAULT_TIME_ZONE;
+        try {
+            process.env.DEFAULT_TIME_ZONE = '0';
+            expect(convDateToTS(1564711704963)).toEqual('2019-08-02 02:08:24');
+            expect(convDate('2019-08-02 02:08:24').getTime()).toEqual(1564711704000);
+            expect(convDate('2019-08-02').getTime()).toEqual($U.dt('2019-08-02').getTime());
+        } finally {
+            //* restore (delete if it was unset).
+            if (saved === undefined) delete process.env.DEFAULT_TIME_ZONE;
+            else process.env.DEFAULT_TIME_ZONE = saved;
+        }
+        expect(convDateToTS(1564711704963)).toEqual('2019-08-02 11:08:24');
+    });
+
     //* doReportError()
     test('test doReportError() - ignore', async () => {
         const data = 'test-error-data';

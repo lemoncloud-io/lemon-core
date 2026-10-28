@@ -117,6 +117,7 @@ Not changed (not trust gates): `ConfigService.getStage()`, the protocol `local` 
 - `guardProxy(context, callback, options?: { saveOnError?: boolean })`: success path unchanged; on an exception it saves pending updates only with `saveOnError: true`, then rethrows.
 - `MyCoreManager` `enableSync` defaults to `false`; `$OS2` is built by the first manager with `enableSync: true`.
 - `MyManagerProxy.canDo`: `update`/`delete` on a record without `sid` → not allowed unless admin. `list`/`read`/`create` unchanged; guests still get 403.
+  - Configurable via `SID_LEGACY_ACCESS` (`admin` default, `open` = v4, `deny` = nobody, not even admin; read/list stay open).
 - `GeneralAPIController` and its five handlers are `@deprecated` (no authorization; removal in v6). No behaviour change.
 
 ## 6. `$U.dt` / `$U.ts` contract
@@ -133,6 +134,9 @@ Not changed (not trust gates): `ConfigService.getStage()`, the protocol `local` 
 | `ts(Date, tz)` | changed the argument | unchanged argument; wall clock of `tz` |
 | `ts(N)` | UTC wall clock | KST wall clock |
 | `convDate`, `convDateToTS`, `convDateToTime` | `dt(…, 9)`; mutated a `Date` | same results, no mutation; `convDate(str)` equals `dt(str)` |
+
+- timeZone omitted: configurable via `DEFAULT_TIME_ZONE` (hours, default 9; `defaultTimeZone()` in `engine/utilities.ts`).
+- date only: configurable via `DATE_ONLY_CLOCK` (`noon` default, `midnight` = 00:00:00).
 
 The engine logger stamps lines with `Utilities.timestamp()`, so log time stamps are KST wall clock too.
 

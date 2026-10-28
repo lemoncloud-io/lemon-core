@@ -16,7 +16,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi, test, afterEach } from 'vitest';
 import { expect2 } from '../common/test-helper';
-import { Utilities } from './utilities';
+import { Utilities, DEFAULT_TIME_ZONE, defaultTimeZone, dateOnlyClock } from './utilities';
 
 import * as $builder from './builder.spec';
 
@@ -502,6 +502,112 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             expect($U.qs.stringify(obj)).toEqual($U.qs_stringify(obj));
             const qstr = 'a=10&b=x';
             expect($U.qs.parse(qstr)).toEqual($U.qs_parse(qstr));
+        });
+    });
+
+    //* ---------------------------------------------------------------------
+    //* v5: env `DEFAULT_TIME_ZONE` / `DATE_ONLY_CLOCK` (owner 2026-10-28, B5 § 6.8)
+    //* ---------------------------------------------------------------------
+    describe('env DEFAULT_TIME_ZONE / DATE_ONLY_CLOCK (v5)', () => {
+        //* the env names under test, restored after each case.
+        const $saved = {
+            DEFAULT_TIME_ZONE: process.env.DEFAULT_TIME_ZONE,
+            DATE_ONLY_CLOCK: process.env.DATE_ONLY_CLOCK,
+        };
+        afterEach(() => {
+            //* restore each name (delete if it was unset).
+            (Object.keys($saved) as (keyof typeof $saved)[]).forEach(name => {
+                if ($saved[name] === undefined) delete process.env[name];
+                else process.env[name] = $saved[name];
+            });
+        });
+        //* a fixed instant: 2026-01-01T00:00:00Z.
+        const T0 = Date.UTC(2026, 0, 1, 0, 0, 0);
+
+        it('defaultTimeZone(): unset -> 9 (DEFAULT_TIME_ZONE constant kept)', () => {
+            delete process.env.DEFAULT_TIME_ZONE;
+            expect(DEFAULT_TIME_ZONE).toEqual(9);
+            expect(defaultTimeZone()).toEqual(9);
+            const { $U } = instance();
+            expect($U.ts(T0)).toEqual('2026-01-01 09:00:00');
+        });
+
+        it.each([
+            ['0', 0, '2026-01-01 00:00:00'],
+            ['-5', -5, '2025-12-31 19:00:00'],
+            ['5.5', 5.5, '2026-01-01 05:30:00'],
+        ])('defaultTimeZone(): DEFAULT_TIME_ZONE=%j -> %j, $U.ts(T0) -> %j', (env, tz, ts) => {
+            process.env.DEFAULT_TIME_ZONE = env as string;
+            expect(defaultTimeZone()).toEqual(tz);
+            const { $U } = instance();
+            expect($U.ts(T0)).toEqual(ts);
+            //* an explicit timeZone still wins over the env.
+            expect($U.ts(T0, 9)).toEqual('2026-01-01 09:00:00');
+        });
+
+        it.each([['abc'], [''], ['  '], ['Infinity'], ['NaN']])(
+            'defaultTimeZone(): invalid DEFAULT_TIME_ZONE=%j -> 9',
+            env => {
+                process.env.DEFAULT_TIME_ZONE = env;
+                expect(defaultTimeZone()).toEqual(9);
+                const { $U } = instance();
+                expect($U.ts(T0)).toEqual('2026-01-01 09:00:00');
+            },
+        );
+
+        it('$U.ts()/$U.dt(): DEFAULT_TIME_ZONE=0 shifts the output by 9 h against unset', () => {
+            const { $U } = instance();
+            delete process.env.DEFAULT_TIME_ZONE;
+            const ts9 = $U.ts(T0);
+            const dt9 = $U.dt('2026-01-01 12:00:00').getTime();
+            process.env.DEFAULT_TIME_ZONE = '0';
+            const ts0 = $U.ts(T0);
+            const dt0 = $U.dt('2026-01-01 12:00:00').getTime();
+            expect([ts9, ts0]).toEqual(['2026-01-01 09:00:00', '2026-01-01 00:00:00']);
+            expect(dt0 - dt9).toEqual(9 * 3600 * 1000);
+        });
+
+        it('dateOnlyClock(): unset -> noon, midnight -> 00:00:00, noon -> noon, invalid -> noon', () => {
+            delete process.env.DATE_ONLY_CLOCK;
+            expect(dateOnlyClock()).toEqual(' 12:00:00');
+            process.env.DATE_ONLY_CLOCK = 'midnight';
+            expect(dateOnlyClock()).toEqual(' 00:00:00');
+            process.env.DATE_ONLY_CLOCK = 'noon';
+            expect(dateOnlyClock()).toEqual(' 12:00:00');
+            process.env.DATE_ONLY_CLOCK = 'MIDNIGHT';
+            expect(dateOnlyClock()).toEqual(' 12:00:00');
+        });
+
+        it("$U.dt('2026-01-01'): epoch moves by 12 h between noon and midnight", () => {
+            const { $U } = instance();
+            delete process.env.DEFAULT_TIME_ZONE;
+            process.env.DATE_ONLY_CLOCK = 'noon';
+            const noon = $U.dt('2026-01-01').getTime();
+            process.env.DATE_ONLY_CLOCK = 'midnight';
+            const midnight = $U.dt('2026-01-01').getTime();
+            expect(noon).toEqual(expectedUtcV5(2026, 0, 1, 12, 0, 0));
+            expect(midnight).toEqual(expectedUtcV5(2026, 0, 1, 0, 0, 0));
+            expect(noon - midnight).toEqual(12 * 3600 * 1000);
+        });
+
+        it.each([['2026-01-01'], ['26-01-01'], ['20260101']])(
+            '$U.dt(%j): every date-only form follows DATE_ONLY_CLOCK (unset = noon)',
+            input => {
+                const { $U } = instance();
+                delete process.env.DATE_ONLY_CLOCK;
+                expect($U.dt(input).getTime()).toEqual(expectedUtcV5(2026, 0, 1, 12, 0, 0));
+                process.env.DATE_ONLY_CLOCK = 'midnight';
+                expect($U.dt(input).getTime()).toEqual(expectedUtcV5(2026, 0, 1, 0, 0, 0));
+                process.env.DATE_ONLY_CLOCK = 'evening';
+                expect($U.dt(input).getTime()).toEqual(expectedUtcV5(2026, 0, 1, 12, 0, 0));
+            },
+        );
+
+        it("$U.dt('79-12-01'): the 19YY form follows DATE_ONLY_CLOCK, and a string with time does not", () => {
+            const { $U } = instance();
+            process.env.DATE_ONLY_CLOCK = 'midnight';
+            expect($U.dt('79-12-01').getTime()).toEqual(expectedUtcV5(1979, 11, 1, 0, 0, 0));
+            expect($U.dt('2026-01-01 12:34').getTime()).toEqual(expectedUtcV5(2026, 0, 1, 12, 34, 0));
         });
     });
 });

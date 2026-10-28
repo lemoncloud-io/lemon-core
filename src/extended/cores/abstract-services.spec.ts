@@ -167,7 +167,11 @@ export const instance = (type: AuthType = 'authed', params?: ServiceParams) => {
 
 //* main test body.
 //* v5 B5: env names toggled by the local-mode tests — restored after each test.
-const $envB5 = { LOCAL_MODE: process.env.LOCAL_MODE, AWS_LAMBDA_FUNCTION_NAME: process.env.AWS_LAMBDA_FUNCTION_NAME };
+const $envB5 = {
+    LOCAL_MODE: process.env.LOCAL_MODE,
+    AWS_LAMBDA_FUNCTION_NAME: process.env.AWS_LAMBDA_FUNCTION_NAME,
+    SID_LEGACY_ACCESS: process.env.SID_LEGACY_ACCESS, //* v5: `canDo` mode for `sid`-less records (owner 2026-10-28).
+};
 //* restore one env name (delete if it was unset).
 const restoreEnvB5 = (name: keyof typeof $envB5) => {
     if ($envB5[name] === undefined) delete process.env[name];
@@ -179,6 +183,7 @@ describe('abstract-services', () => {
     afterEach(() => {
         restoreEnvB5('LOCAL_MODE');
         restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+        restoreEnvB5('SID_LEGACY_ACCESS');
     });
 
     const PROFILE = loadProfile(process); // override process.env.
@@ -561,6 +566,62 @@ describe('abstract-services', () => {
             expect2(() => _can2('delete')).toEqual(true);
             expect2(() => _can2('some')).toEqual('400 INVALID - action[some] is invalid @canDo(some:test/1000001)');
         }
+    });
+
+    //* v5: env `SID_LEGACY_ACCESS` (admin | open | deny) for update/delete of a `sid`-less record (B5 § 6.4).
+    it('should pass canDo() with env SID_LEGACY_ACCESS', async () => {
+        const { service, context } = instance('session');
+        const proxy = service.createProxy(context);
+        //* a context with the identity overridden.
+        const _ctx = (N: NextIdentity): NextContext<NextIdentity> => {
+            const $ctx = proxy.context as NextContext<NextIdentity>;
+            return { ...$ctx, identity: { ...$ctx?.identity, ...N } };
+        };
+        const $user0 = _ctx({ roles: ['user'] });
+        const $admin = _ctx({ roles: ['admin'] });
+        const $guest = _ctx({ roles: [] });
+        const legacy: Model = { id: '1000001', uid: '1000001' }; // no `sid`.
+        const owned: Model = { id: '1000001', sid: '1000000', uid: '1000001' };
+        //* the 5 actions as `{ action: allowed }`, `throwable: false`.
+        const _all = ($ctx: NextContext<NextIdentity>, M: Model) =>
+            (['list', 'read', 'create', 'update', 'delete'] as CanDoActionType[]).reduce(
+                (N, A) => ({ ...N, [A]: proxy.tests.canDo(A, M, { context: $ctx, throwable: false }) }),
+                {} as Record<string, boolean>,
+            );
+        const OPEN = { list: true, read: true, create: true, update: true, delete: true };
+        const READ = { list: true, read: true, create: true, update: false, delete: false };
+        const NONE = { list: false, read: false, create: false, update: false, delete: false };
+
+        //* unset (default) and an unknown value → `admin`.
+        for (const val of [undefined, 'admin', 'ADMIN', 'unknown', '']) {
+            if (val === undefined) delete process.env.SID_LEGACY_ACCESS;
+            else process.env.SID_LEGACY_ACCESS = val;
+            expect2(() => $U.sidLegacyAccess()).toEqual('admin');
+            expect2(() => _all($user0, legacy)).toEqual(READ);
+            expect2(() => _all($admin, legacy)).toEqual(OPEN);
+            expect2(() => _all($guest, legacy)).toEqual(NONE);
+            expect2(() => _all($user0, owned)).toEqual(OPEN);
+        }
+
+        //* `open` → the v4 rule: a role holder may update/delete.
+        process.env.SID_LEGACY_ACCESS = 'open';
+        expect2(() => $U.sidLegacyAccess()).toEqual('open');
+        expect2(() => _all($user0, legacy)).toEqual(OPEN);
+        expect2(() => _all($admin, legacy)).toEqual(OPEN);
+        expect2(() => _all($guest, legacy)).toEqual(NONE);
+        expect2(() => _all($user0, owned)).toEqual(OPEN);
+
+        //* `deny` → nobody may update/delete, not even admin; read/list stay open.
+        process.env.SID_LEGACY_ACCESS = 'deny';
+        expect2(() => $U.sidLegacyAccess()).toEqual('deny');
+        expect2(() => _all($user0, legacy)).toEqual(READ);
+        expect2(() => _all($admin, legacy)).toEqual(READ);
+        expect2(() => _all($guest, legacy)).toEqual(NONE);
+        expect2(() => _all($user0, owned)).toEqual(OPEN);
+        expect2(() => _all($admin, owned)).toEqual(OPEN);
+        expect2(() => proxy.tests.canDo('delete', legacy, { context: $admin, throwable: true })).toEqual(
+            '403 NOT ALLOWED - action[delete] is invalid @canDo(delete:test/1000001)',
+        );
     });
 
     it('should pass packSearchParam(session)', async () => {

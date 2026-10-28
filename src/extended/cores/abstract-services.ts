@@ -1470,14 +1470,23 @@ export class MyManagerProxy<
         const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
         if (useSession && !$sess) return false;
 
+        // session & model information.
+        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid) };
+        const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid) };
+        //* v5: access mode for update/delete of a `sid`-less record, env `SID_LEGACY_ACCESS` (B5 § 6.4).
+        const legacy = $U.sidLegacyAccess();
+        const isLegacyWrite = !M.sid && (_act === 'update' || _act === 'delete');
+
+        //* v5: `deny` refuses update/delete of a `sid`-less record before the admin pass (B5 § 6.4).
+        if (isLegacyWrite && legacy === 'deny') {
+            if (throwable) throw new Error(`403 NOT ALLOWED - action[${_act}] is invalid @${errScope}`);
+            return false;
+        }
+
         // admin can do anything.
         const isAdmin = this.proxy.hasAdminRole(null, { errScope, context });
         const hasRole = $sess?.roles?.length > 0 ? true : false; // guest if empty.
         if (isAdmin) return true;
-
-        // session & model information.
-        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid) };
-        const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid) };
 
         // check action.
         if (hasRole) {
@@ -1492,8 +1501,11 @@ export class MyManagerProxy<
                 case 'update':
                 case 'delete':
                     // (default) action is allowed if sid&uid matches.
-                    //* v5: a `sid`-less record is admin-only for update/delete (B5 § 6.4).
-                    if (!M.sid) break;
+                    //* v5: a `sid`-less record is admin-only for update/delete (B5 § 6.4); `open` keeps the v4 rule.
+                    if (!M.sid) {
+                        if (legacy === 'open') return true;
+                        break;
+                    }
                     if (S.sid === M.sid && S.uid === M.uid) return true;
                     break;
                 default:
