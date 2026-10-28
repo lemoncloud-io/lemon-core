@@ -11,7 +11,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
-import { $U } from '../../engine/';
+import { $U, $engine } from '../../engine/';
 import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
 import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
@@ -205,7 +205,9 @@ describe('LambdaWEBHandler', () => {
             expect2(() => (err1 as string).startsWith('@signature[] is invalid')).toEqual(true);
             const err2 = await parse1($enc.message + '.' + $enc.signature.replace('0', '1'));
             expect2(() => (err2 as string).startsWith('@signature[] is invalid')).toEqual(true);
-            expect2(await parse1($enc.token + '.x')).toEqual(`@token[${$enc.token + '.x'}] is invalid (format) - verifyJWT(http)`);
+            expect2(await parse1($enc.token + '.x')).toEqual(
+                `@token[${$enc.token + '.x'}] is invalid (format) - verifyJWT(http)`,
+            );
             expect2(await parse1($enc.token)).toEqual({
                 iss: `kms/${alias}`,
                 exp: 1652235753,
@@ -224,7 +226,9 @@ describe('LambdaWEBHandler', () => {
 
             const parse3 = (t: string) =>
                 $t.parseIdentityJWT(t, { current: current + 24 * 60 * 60 * 1000 + 1 }).catch(GETERR);
-            expect2(await parse3($enc.token)).toEqual('.exp[2022-05-11 11:22:33] is invalid (expired) - verifyJWT(http)');
+            expect2(await parse3($enc.token)).toEqual(
+                '.exp[2022-05-11 11:22:33] is invalid (expired) - verifyJWT(http)',
+            );
         }
     });
 
@@ -815,5 +819,100 @@ describe('LambdaWEBHandler', () => {
         expect2(await $t.parseIdentityJWT(invalidIssToken, { current }).catch(GETERR)).toEqual(
             '@signature[] is invalid (@iss[unknown/issuer] is invalid (unsupportable issuer) - verifyToken(unknown/issuer)) - verifyJWT(http)',
         );
+    });
+});
+
+//! v5 B7: the per-request `PERF` lines.
+describe('LambdaWEBHandler PERF (v5 B7)', () => {
+    //* the parts of `PERF: > <label> <ms> ms <tail>` in the logged args (`LS=1` → spy on the engine console).
+    const perfLines = (calls: any[][], label: string) =>
+        calls
+            .map(args => args.map(a => `${a}`))
+            .filter(a => a.indexOf(label) > 0 && a[a.indexOf(label) - 1] === '>' && a.some(x => x.includes('PERF')))
+            .map(a => ({ total: a[a.indexOf(label) + 1], tail: a[a.indexOf(label) + 2] || '' }));
+    //* the keys and the values of a `key=value` tail.
+    const keysOf = (tail: string) => tail.split(' ').map(kv => kv.split('=')[0]);
+    const valuesOf = (tail: string) =>
+        tail.split(' ').reduce<Record<string, string>>((M, kv) => ({ ...M, [kv.split('=')[0]]: kv.split('=')[1] }), {});
+    //* a fresh web event for the `hello` type.
+    const eventOf = (id: string, cmd?: string): any => {
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+        event.pathParameters['id'] = id;
+        if (cmd) event.pathParameters['cmd'] = cmd;
+        return event;
+    };
+    const MS = /^\d+\.\d$/;
+
+    //* request lines: key order, `cmd` only when present, failure status, and `cold` only on the first line.
+    it('should print one request line per request', async () => {
+        //* fresh modules → a fresh `cold` counter in this test file.
+        vi.resetModules();
+        const $web = await import('./lambda-web-handler');
+        const $lam = await import('./lambda-handler');
+        const service = new $web.LambdaWEBHandler(new $lam.LambdaHandler(), true);
+        service.setHandler('hello', decode_next_handler);
+        const spy = vi.spyOn($engine.$console, 'log');
+        try {
+            //* 1) success: GET /hello/abc
+            const e1 = eventOf('abc');
+            expect2((await service.handle(e1, await service.packContext(e1, null))).statusCode).toEqual(200);
+            //* 2) success with cmd: GET /hello/abc/hi
+            const e2 = eventOf('abc', 'hi');
+            expect2((await service.handle(e2, await service.packContext(e2, null))).statusCode).toEqual(200);
+            //* 3) failure: GET /hello/0 → 404
+            const e3 = eventOf('0');
+            expect2((await service.handle(e3, await service.packContext(e3, null))).statusCode).toEqual(404);
+            //* 4) no `packContext()` for this event object (reuse a context) → `context=0.0`
+            const $ctx = await service.packContext(eventOf('ctx'), null);
+            expect2((await service.handle(eventOf('xyz'), $ctx)).statusCode).toEqual(200);
+
+            const lines = perfLines(spy.mock.calls, 'request');
+            expect2(lines.length).toEqual(4);
+            const [l1, l2, l3, l4] = lines;
+            expect2(keysOf(l1.tail)).toEqual('mode,type,status,context,param,handler,response,cold'.split(','));
+            expect2(keysOf(l2.tail)).toEqual('mode,type,cmd,status,context,param,handler,response,cold'.split(','));
+            expect2(keysOf(l3.tail)).toEqual(keysOf(l1.tail));
+            expect2(valuesOf(l1.tail), 'mode,type,status,cold').toEqual({
+                mode: 'GET',
+                type: 'hello',
+                status: '200',
+                cold: '1',
+            });
+            expect2(valuesOf(l2.tail), 'cmd,status,cold').toEqual({ cmd: 'hi', status: '200', cold: '0' });
+            expect2(valuesOf(l3.tail), 'status,cold').toEqual({ status: '404', cold: '0' });
+            expect2(valuesOf(l4.tail), 'context,cold').toEqual({ context: '0.0', cold: '0' });
+            //* every ms has one decimal, and no id/path is in the line.
+            lines.forEach(({ total, tail }) => {
+                expect2(total).toMatch(/^\d+\.\d ms$/);
+                const v = valuesOf(tail);
+                ['context', 'param', 'handler', 'response'].forEach(k => expect2(v[k]).toMatch(MS));
+                expect2(tail.includes('abc') || tail.includes('xyz') || tail.includes('/')).toEqual(false);
+            });
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    //* the `LambdaModule` wrapper: one handle line per call (with `initialize()`), `type=unknown` for a bad event.
+    it('should print one handle line per lambda call', async () => {
+        vi.resetModules();
+        const $mod = await import('./index');
+        const inf = vi.fn();
+        const engine: any = { register: () => {}, initialize: vi.fn(async () => {}), inf };
+        const mod = new $mod.LambdaModule(engine);
+        mod.web.setHandler('hello', decode_next_handler);
+
+        //* web event → `type=web cold=1`
+        expect2((await mod.lambda.handle(eventOf('abc'), null)).statusCode).toEqual(200);
+        //* unknown event → resolved failure, `type=unknown cold=0`
+        await mod.lambda.handle({}, null);
+        //* init failure → resolved failure, still one line.
+        engine.initialize.mockRejectedValueOnce(new Error('boom'));
+        await mod.lambda.handle(eventOf('abc'), null);
+
+        expect2(engine.initialize.mock.calls.length).toEqual(3);
+        const lines = perfLines(inf.mock.calls, 'handle');
+        expect2(lines.map(_ => _.tail)).toEqual(['type=web cold=1', 'type=unknown cold=0', 'type=web cold=0']);
+        lines.forEach(({ total }) => expect2(total).toMatch(/^\d+\.\d ms$/));
     });
 });

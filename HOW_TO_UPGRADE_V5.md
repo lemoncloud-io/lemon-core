@@ -420,6 +420,26 @@ lemon-core prints one `PERF` line per checkpoint, once per process, through the 
 
 Each file has its own loader, so the same package can show twice (for example `lazy-load @aws-sdk/lib-dynamodb` from `dynamo-service` and from `dynamo-query-service`); the second line is near 0 ms because Node already has the module. `lazy-load @aws-sdk/credential-providers` is printed only when `awsConfig()` loads the package first (not from `asyncCredentials()`).
 
+### 8.6 Per-request `PERF` lines (B7)
+
+Web requests also print one `PERF` summary line each, and the `LambdaModule` handler prints one line per Lambda call. They use the same logger and switches as § 8.5 (`LS=1` silences them). A line has route words, the HTTP status and times only (no path, id, host, header or body):
+
+```
+2026-10-28 10:00:00 I PERF: > request 3.9 ms mode=GET type=hello status=200 context=1.2 param=0.6 handler=1.4 response=0.3 cold=1
+2026-10-28 10:00:00 I PERF: > handle 1003.1 ms type=web cold=1
+```
+
+| Key | Time measured |
+| --- | --- |
+| `request <total>` | from `packContext()` to the built response (on failure, also the error report) |
+| `context` | `packContext()` (`0.0` if it was not called with the same event object) |
+| `param` | `transformToParam()` (`promised()`) |
+| `handler` | `handleProtocol()`, up to the result or the throw |
+| `response` | `success()`, or `asFailureResult()` on failure |
+| `handle <ms>` | the `LambdaModule` handler call, including `engine.initialize()` |
+
+`cmd=` is printed only when the route has one. `type=` on the `handle` line is the event type (`web`, `sqs`, …, or `unknown`). `cold=1` is on the first `request` line and the first `handle` line of the process only. The local express server prints the `request` line only. No API change: `promised`, `mxNextHandler` and `mxNextFailure` keep their signatures. Details: `docs/v5/B7-perf-trace.md`.
+
 ## 9. L1/L2 merge: one definition per name, removed aliases, renamed search files (B3)
 
 lemon-core had two layers that defined the same names twice: L1 (`helpers/`, `common/`, `extended/abstract-service.ts`) and L2 (`extended/cores/`). The root hid the collisions with 18 pinned exports in `src/index.ts`. v5 keeps **one definition** per name and removes the pins. The rule: the copy the root already exported wins, so **the root names and the root behaviour do not change** (294 names, `npm run api:check` unchanged).

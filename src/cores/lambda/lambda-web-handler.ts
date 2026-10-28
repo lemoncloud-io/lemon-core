@@ -12,6 +12,7 @@
  * @date        2019-11-20 initial version via backbone
  * @date        2022-04-07 use env, and opt header-parser
  * @date        2025-05-09 improved to support `referer` and `origin` header.
+ * @date        2026-10-28 v5 B7: one `PERF: > request` line per request.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -35,10 +36,11 @@ import { HEADER_PROTOCOL_SIGNATURE, assertSigned, verifyContext } from '../proto
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
-import { measureAsync } from '../../lib/perf';
+import { measureAsync, PerfTrace } from '../../lib/perf';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
+const PERF = $U.NS('PERF', 'cyan'); // v5 B7: namespace of the `PERF` lines.
 
 /**
  * `@aws-sdk/client-sts`, imported on the first use (not at import; v5 B2-c, K6).
@@ -167,6 +169,52 @@ export const redirect = (location: any, status?: number) => {
     return res;
 };
 
+//* v5 B7: the request trace per event object (from `packContext()` to `handle()`).
+const $traces = new WeakMap<object, PerfTrace>();
+//* v5 B7: count of `request` lines in this process (only the first one is `cold=1`).
+let $requests = 0;
+
+//* v5 B7: start a new trace for the event (kept only if the event is an object).
+const startTrace = (event: any): PerfTrace => {
+    const trace = new PerfTrace();
+    if (event && typeof event === 'object') $traces.set(event, trace);
+    return trace;
+};
+
+//* v5 B7: take the trace of the event out of the map, or start a new one (`context=0`).
+const takeTrace = (event: any): PerfTrace => {
+    const trace = event && typeof event === 'object' ? $traces.get(event) : undefined;
+    if (!trace) return new PerfTrace();
+    $traces.delete(event);
+    return trace;
+};
+
+/**
+ * v5 B7: print one `PERF: > request <total> ms mode=… type=… [cmd=…] status=… context=… param=… handler=… response=… cold=…` line.
+ * - values are the route words and numbers only (no path, id, host, header or body). never throws.
+ */
+const logRequest = (trace: PerfTrace, param: ProtocolParam | undefined, res: ProxyResult): void => {
+    try {
+        const total = trace.elapsed();
+        const m = trace.marks();
+        const status = res && res.statusCode !== undefined ? `${res.statusCode}` : undefined;
+        const tail = trace.line({
+            mode: param?.mode,
+            type: param?.type,
+            cmd: param?.cmd,
+            status,
+            context: m.context ?? 0,
+            param: m.param,
+            handler: m.handler,
+            response: m.response,
+            cold: ++$requests === 1,
+        });
+        _inf(PERF, '>', 'request', `${total.toFixed(1)} ms`, tail);
+    } catch (e) {
+        //* a log line must not break the response.
+    }
+};
+
 /**
  * start proxy-chain by event & context.
  * @param event     event
@@ -187,10 +235,11 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
 };
 
 /**
- * builder for default handler
+ * (internal) the default handler with an optional trace.
+ * - v5 B7: marks `handler` after `handleProtocol()`, and `response` after the response is built.
  */
-export const mxNextHandler =
-    (thiz: LambdaWEBHandler) =>
+const nextHandlerOf =
+    (thiz: LambdaWEBHandler, trace: PerfTrace | null) =>
     async (params: ProxyChain): Promise<ProxyResult> => {
         //* determine if param or func.
         const fx: ProxyResponser = typeof params == 'function' ? params : null;
@@ -199,20 +248,31 @@ export const mxNextHandler =
 
         //* call the main handler()
         const R = $param ? await thiz.handleProtocol(param, event) : fx;
+        trace?.mark('handler');
 
-        //* - if like to override the full response, then return function.
-        if (R && typeof R == 'function') return R();
+        //* build the response (the same rules as before).
+        const res = await ((): ProxyResult => {
+            //* - if like to override the full response, then return function.
+            if (R && typeof R == 'function') return R();
 
-        //* - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
-        const { httpMethod: method, headers } = event || {};
-        if (method && method != 'GET') {
-            const origin = `${(headers && headers['origin']) || ''}`;
-            return success(R, null, origin);
-        }
+            //* - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+            const { httpMethod: method, headers } = event || {};
+            if (method && method != 'GET') {
+                const origin = `${(headers && headers['origin']) || ''}`;
+                return success(R, null, origin);
+            }
 
-        //* returns response..
-        return success(R);
+            //* returns response..
+            return success(R);
+        })();
+        trace?.mark('response');
+        return res;
     };
+
+/**
+ * builder for default handler
+ */
+export const mxNextHandler = (thiz: LambdaWEBHandler) => nextHandlerOf(thiz, null);
 
 /**
  * v5 B5: classify an error by the `mxNextFailure` rules — the HTTP failure response and whether to report it.
@@ -253,12 +313,20 @@ export const asFailureResult = (
 };
 
 /**
- * builder for failure promised.
- * - v5 B5: the rules live in `asFailureResult()`; this adds the log and the report.
+ * (internal) the failure handler with an optional trace.
+ * - v5 B7: closes the open steps at the throw (`param` too if it failed before the handler),
+ *   and marks `response` after `asFailureResult()`.
  */
-export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) => {
+const nextFailureOf = (event: WEBEvent, $ctx: NextContext, trace: PerfTrace | null) => (e: any) => {
+    //* v5 B7: the step that threw ends here.
+    if (trace) {
+        const m = trace.marks();
+        if (m.param === undefined) trace.mark('param');
+        if (m.handler === undefined) trace.mark('handler');
+    }
     _err(NS, `! err =`, e instanceof Error ? e : $U.json(e));
     const { message, response, report } = asFailureResult(e);
+    trace?.mark('response');
     if (message.startsWith('404 NOT FOUND')) return response;
     _err(NS, `! err.msg =`, message);
 
@@ -269,6 +337,12 @@ export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) =>
             .then(() => response);
     return response;
 };
+
+/**
+ * builder for failure promised.
+ * - v5 B5: the rules live in `asFailureResult()`; this adds the log and the report.
+ */
+export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => nextFailureOf(event, $ctx, null);
 
 /**
  * class: LambdaWEBHandler
@@ -335,6 +409,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * Default WEB Handler.
      */
     public handle: WEBHandler = async (event, $ctx) => {
+        //* v5 B7: the trace from `packContext()` (or a new one), and the param for the `request` line.
+        const trace = takeTrace(event);
+        let param: ProtocolParam;
+
         //* inspect API parameters.
         _log(NS, `handle()....`);
         const $path = event.pathParameters || {};
@@ -344,7 +422,20 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         _log(NS, '! $param =', $U.json($param));
 
         //* start promised..
-        return promised(event, $ctx).then(mxNextHandler(this)).catch(mxNextFailure(event, $ctx));
+        return promised(event, $ctx)
+            .then(chain => {
+                //* v5 B7: the param step ends here.
+                trace.mark('param');
+                param = chain && typeof chain == 'object' ? chain.param : undefined;
+                return chain;
+            })
+            .then(nextHandlerOf(this, trace))
+            .catch(nextFailureOf(event, $ctx, trace))
+            .then(res => {
+                //* v5 B7: one `PERF: > request` line per request (success and failure).
+                logRequest(trace, param, res);
+                return res;
+            });
     };
 
     /**
@@ -435,6 +526,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     public async packContext(event: APIGatewayProxyEvent, orgContext?: Context): Promise<NextContext> {
         _log(NS, `packContext(${event ? '' : 'null'})..`);
         if (!event) return null;
+        //* v5 B7: start the request trace (`handle()` takes it by the same event object).
+        const trace = startTrace(event);
         //* prepare chain object.
         const reqContext: APIGatewayEventRequestContext = event?.requestContext;
         orgContext && _log(NS, `> orgContext =`, $U.S(orgContext, 256, 32));
@@ -458,6 +551,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 //* if it is protocol request via lambda, then returns valid context (bad JSON → `400 INVALID CONTEXT`).
                 try {
                     const $param = $protocol.service.asTransformer('web').transformToParam(event);
+                    trace.mark('context');
                     return $param?.context;
                 } catch (e) {
                     const msg = GETERR(e);
@@ -485,6 +579,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         $ctx.source = $protocol.service.myProtocolURI($ctx); // self service-uri as source
 
         // FINIAL. returns
+        trace.mark('context');
         return $ctx;
     }
 }
