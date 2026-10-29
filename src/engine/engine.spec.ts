@@ -10,7 +10,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi, test } from 'vitest';
-import { do_parrallel, doReportError } from './engine';
+import { do_parrallel, doReportError, doReportSlack, getHelloArn } from './engine';
 import { convDate, convDateToTime, convDateToTS } from './engine';
 import { $U } from './index';
 import { GETERR, expect2, _it } from '../common/test-helper';
@@ -196,5 +196,88 @@ describe(`test the 'core/engine.ts'`, () => {
         expect2(await doReportError(err, $context('', ''), data).catch(GETERR)).toEqual(
             '!err - .accountId[] is missing - getHelloArn(RPTE:)',
         );
+    });
+
+    //* v5 B10-6: account id candidates — `invokedFunctionArn` first, then context; 12 digits only.
+    describe('getHelloArn() - account id (B10-6)', () => {
+        const ACCOUNT = '123456789012'; // dummy account id.
+        const LAMBDA_ARN = `arn:aws:lambda:us-west-2:${ACCOUNT}:function:x`;
+        let savedArn: string | undefined;
+        //* make sure the env override is not in the way.
+        const clearEnv = () => {
+            savedArn = process.env.REPORT_ERROR_ARN;
+            delete process.env.REPORT_ERROR_ARN;
+        };
+        //* restore (delete if it was unset).
+        const restoreEnv = () => {
+            if (savedArn === undefined) delete process.env.REPORT_ERROR_ARN;
+            else process.env.REPORT_ERROR_ARN = savedArn;
+        };
+
+        it('rejects a non-numeric accountId without echoing it', () => {
+            clearEnv();
+            try {
+                let e = '';
+                try {
+                    getHelloArn({ accountId: 'dujung' } as any, 'T:');
+                } catch (err) {
+                    e = GETERR(err);
+                }
+                expect(e).toEqual('.accountId[] is missing - getHelloArn(T:)');
+                expect(`${e}`.includes('dujung')).toEqual(false);
+            } finally {
+                restoreEnv();
+            }
+        });
+
+        it('prefers the account (and region) of invokedFunctionArn over context.accountId', () => {
+            clearEnv();
+            try {
+                const arn = getHelloArn({ invokedFunctionArn: LAMBDA_ARN, accountId: 'dujung' } as any);
+                expect(arn).toEqual(`arn:aws:sns:us-west-2:${ACCOUNT}:lemon-hello-sns`);
+            } finally {
+                restoreEnv();
+            }
+        });
+
+        it('uses a 12-digit context.accountId when there is no invokedFunctionArn', () => {
+            clearEnv();
+            try {
+                const arn = getHelloArn({ accountId: ACCOUNT } as any);
+                expect(arn).toEqual(`arn:aws:sns:ap-northeast-2:${ACCOUNT}:lemon-hello-sns`);
+            } finally {
+                restoreEnv();
+            }
+        });
+
+        it('rejects an accountId that is not 12 digits', () => {
+            clearEnv();
+            try {
+                expect(() => getHelloArn({ accountId: '12345' } as any, 'T:')).toThrow(
+                    '.accountId[] is missing - getHelloArn(T:)',
+                );
+            } finally {
+                restoreEnv();
+            }
+        });
+    });
+
+    //* v5 B10-6: local mode (`LOCAL_MODE=1` outside Lambda) never reports — no SNS call.
+    test('doReportError()/doReportSlack() - ignore in local mode (B10-6)', async () => {
+        const saved = { local: process.env.LOCAL_MODE, fn: process.env.AWS_LAMBDA_FUNCTION_NAME };
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        try {
+            //* a context that would be reported outside local mode.
+            const ctx = { source: 'api://123456789012@lemon-core-dev#5.0.4', accountId: '123456789012' };
+            const err = new Error('via doReportError() in `lemon-core`');
+            expect(await doReportError(err, ctx, null, 'test-error-data')).toEqual('!ignore');
+            expect(await doReportSlack('public', { text: 'hello' } as any, ctx)).toEqual('!ignore');
+        } finally {
+            //* restore (delete if it was unset).
+            if (saved.local === undefined) delete process.env.LOCAL_MODE;
+            else process.env.LOCAL_MODE = saved.local;
+            if (saved.fn !== undefined) process.env.AWS_LAMBDA_FUNCTION_NAME = saved.fn;
+        }
     });
 });

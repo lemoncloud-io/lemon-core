@@ -61,13 +61,17 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
         const $ncx: NextContext = context as NextContext;
         //* build arn via context information.
         const invokedFunctionArn = `${$ctx.invokedFunctionArn || ''}`; // if called via lambda call ex: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-messages-api-prod-user'
-        const accountId = $ncx?.accountId || invokedFunctionArn?.split(':')[4] || $req?.accountId;
+        //* v5 B10-6: own account first (Lambda always has `invokedFunctionArn`), then context; only 12-digit ids pass.
+        const isAccount = (v: unknown): v is string => typeof v === 'string' && /^\d{12}$/.test(v);
+        const candidates: unknown[] = [invokedFunctionArn.split(':')[4], $ncx?.accountId, $req?.accountId];
+        const accountId = candidates.find(isAccount);
         const region = invokedFunctionArn.split(':')[3] || `ap-northeast-2`;
-        _inf(NS, '! accountId =', accountId);
-        if (!accountId || typeof accountId !== 'string') {
-            _err(NS, 'ERROR! missing accountId. context =', $U.json(context));
-            throw new Error(`.accountId[${accountId ?? ''}] is missing - ${errScope}`);
+        if (!accountId) {
+            //* v5 B10-6: never log or throw the rejected value (it can be an OS user name from a local runner).
+            _err(NS, 'ERROR! missing accountId. context =', $U.json({ ...context, accountId: undefined }));
+            throw new Error(`.accountId[] is missing - ${errScope}`);
         }
+        _inf(NS, '! accountId =', accountId);
         return `arn:aws:sns:${region}:${accountId}:${target}`;
     }
 };
@@ -84,7 +88,8 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
     const NS = $U.NS('RPTE');
 
     //* ignore only if local express-run or empty accountId.
-    const ignored = context?.source === 'express' || context?.accountId === '';
+    //* v5 B10-6: also ignore in local mode (`LOCAL_MODE=1` outside Lambda) — `source` is never 'express' after `packContext()`.
+    const ignored = context?.source === 'express' || context?.accountId === '' || $U.isLocalMode();
     if (ignored) {
         _err(NS, `! err(report) :=`, e);
         return '!ignore';
@@ -180,7 +185,8 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
     _log(NS, `doReportSlack()...`);
 
     //* ignore only if local express-run or empty accountId.
-    const ignored = context?.source === 'express' || context?.accountId === '';
+    //* v5 B10-6: also ignore in local mode, same as `doReportError()`.
+    const ignored = context?.source === 'express' || context?.accountId === '' || $U.isLocalMode();
     if (ignored) {
         _err(NS, `! slack(report) :=`, $U.json(body));
         return '!ignore';

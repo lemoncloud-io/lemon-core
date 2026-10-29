@@ -60,7 +60,7 @@ const instance = () => {
 
 //* a protocol web event (host-less) built by the real transformer.
 const context: NextContext = {
-    accountId: 'acc-1',
+    accountId: '123456789012', //* v5 B10-6: `getHelloArn()` accepts a 12-digit account only (SQS/SNS transformer builds its ARN from it).
     requestId: 'req-1',
     identity: { sid: 'S', uid: 'U', roles: ['admin'] },
 };
