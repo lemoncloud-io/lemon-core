@@ -576,7 +576,13 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         // STEP.3. prepare the final `next-context`.
         const $ctx = await $tool.prepareContext(_prepare(), reqContext);
-        $ctx.source = $protocol.service.myProtocolURI($ctx); // self service-uri as source
+        //* v5 B10: self service-uri + the first request path (`/{type}/{id}/{cmd}`) as source (no path if no `pathParameters`).
+        const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || null;
+        //* v5 B10: `type` by the same rule as `web.transformToParam()` (path param, or the 1st segment of resource/path).
+        const type = $path ? $path.type || `${event.resource || event.path || ''}`.split('/')[1] || '' : '';
+        $ctx.source = $path
+            ? $protocol.service.myProtocolURI($ctx, type, $path.id, $path.cmd)
+            : $protocol.service.myProtocolURI($ctx);
 
         // FINIAL. returns
         trace.mark('context');

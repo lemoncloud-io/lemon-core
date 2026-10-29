@@ -748,6 +748,12 @@ Measured in the five DoU backend repos (read-only census):
 | `lemon-model` not declared | 4 of 5 (the fifth pins `^1.2.2`) |
 | `ReportBatchItemFailures` on an event source | 0 |
 
+## 13. `context.source` carries the first request path (B10)
+
+`packContext()` now adds the request path to `context.source`: `api://<account>@<service>/<type>/<id>/<cmd>#<version>` (v4: `api://<account>@<service>#<version>`). `type`, `id` and `cmd` come from `pathParameters` by the same rule as `web.transformToParam()`. An event without `pathParameters` keeps the v4 value. An internal call (host-less, `x-protocol-context`) keeps the caller's context as before, so every service down the chain sees the path of the first external request. Details: `docs/v5/B10-context-source.md`.
+
+* Code that compares `context.source` with a service URI by equality compares the service part only: `new URL(source).host` is the service, `.pathname` the path, `.hash` the version. lemon-core itself only checks `source === 'express'` (`doReportError()`, `doReportSlack()`), which this change does not touch.
+
 ---
 
 ## At-a-Glance Checklist
@@ -787,3 +793,4 @@ Measured in the five DoU backend repos (read-only census):
 - [ ] `src/cores/` copy removed, or every removed search name inside it replaced (§ 12)
 - [ ] `require('lemon-core/dist/exec-cli')` branch deleted from `src/index.ts` (§ 12)
 - [ ] Every `MyCoreManager` subclass that relied on the copy's default passes `{ enableSync: true }` (§ 12, § 11.6)
+- [ ] Code that compares `context.source` by equality compares the service part only; the value now ends with the request path (§ 13)
