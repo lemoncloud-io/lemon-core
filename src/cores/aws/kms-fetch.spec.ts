@@ -1,7 +1,7 @@
 /**
  * `kms-fetch.spec.ts`
- * - unit test for `kms-fetch` (v5 B8): KMS `Decrypt` by a SigV4-signed `fetch`, and the routing in `AWSKMSService.decrypt()`.
- * - offline: `fetch` is a stub, and the credentials are fake test values.
+ * - unit test for `kms-fetch` (v5 B8): KMS `Decrypt` by one SigV4-signed HTTPS call, and the routing in `AWSKMSService.decrypt()`.
+ * - offline: the transport is a stub, and the credentials are fake test values.
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-29 initial version
@@ -9,7 +9,8 @@
  * @copyright (C) 2026 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { decryptViaFetch, hasEnvCredentials, isKmsHttpError } from './kms-fetch';
+import { decryptViaHttp, hasEnvCredentials, isKmsHttpError, transportOf } from './kms-fetch';
+import { PassThrough } from 'stream';
 import { AWSKMSService } from './aws-kms-service';
 
 //* fake test credentials (not real keys).
@@ -65,10 +66,10 @@ describe('kms-fetch', () => {
     });
 
     // b. request shape: url, method, headers, signature, body.
-    it('decryptViaFetch() sends a signed KMS Decrypt request', async () => {
+    it('decryptViaHttp() sends a signed KMS Decrypt request', async () => {
         const fetchFn = okFetch();
         const log = vi.fn();
-        await decryptViaFetch(INPUT, { region: REGION, env: envOf(), fetchFn: fetchFn as any, log });
+        await decryptViaHttp(INPUT, { region: REGION, env: envOf(), transport: fetchFn as any, log });
         expect(fetchFn).toHaveBeenCalledTimes(1);
         //* one `kms decrypt` PERF line through the given logger.
         expect(log.mock.calls.some(args => args.join(' ').includes('kms decrypt'))).toBe(true);
@@ -92,12 +93,12 @@ describe('kms-fetch', () => {
     });
 
     // c. session token: header is sent and signed.
-    it('decryptViaFetch() signs the session token', async () => {
+    it('decryptViaHttp() signs the session token', async () => {
         const fetchFn = okFetch();
-        await decryptViaFetch(INPUT, {
+        await decryptViaHttp(INPUT, {
             region: REGION,
             env: envOf('fake-session-token'),
-            fetchFn: fetchFn as any,
+            transport: fetchFn as any,
             log: quiet,
         });
         const H = headersOf(fetchFn.mock.calls[0][1]);
@@ -107,14 +108,14 @@ describe('kms-fetch', () => {
     });
 
     // d. response decode: base64 plaintext, or '' when missing.
-    it('decryptViaFetch() decodes the plaintext', async () => {
+    it('decryptViaHttp() decodes the plaintext', async () => {
         const opts = { region: REGION, env: envOf(), log: quiet };
-        await expect(decryptViaFetch(INPUT, { ...opts, fetchFn: okFetch() as any })).resolves.toBe('hello lemon');
-        await expect(decryptViaFetch(INPUT, { ...opts, fetchFn: okFetch({ KeyId: 'k' }) as any })).resolves.toBe('');
+        await expect(decryptViaHttp(INPUT, { ...opts, transport: okFetch() as any })).resolves.toBe('hello lemon');
+        await expect(decryptViaHttp(INPUT, { ...opts, transport: okFetch({ KeyId: 'k' }) as any })).resolves.toBe('');
     });
 
     // e. KMS error: `<type>: <message>`, marked as a KMS HTTP error.
-    it('decryptViaFetch() throws the KMS error', async () => {
+    it('decryptViaHttp() throws the KMS error', async () => {
         const body = { __type: 'com.amazonaws.kms#InvalidCiphertextException', message: 'bad' };
         const fetchFn = vi.fn(async () => ({
             ok: false,
@@ -122,10 +123,10 @@ describe('kms-fetch', () => {
             json: async () => body,
             text: async () => JSON.stringify(body),
         }));
-        const e: any = await decryptViaFetch(INPUT, {
+        const e: any = await decryptViaHttp(INPUT, {
             region: REGION,
             env: envOf(),
-            fetchFn: fetchFn as any,
+            transport: fetchFn as any,
             log: quiet,
         }).catch(e => e);
         expect(e).toBeInstanceOf(Error);
@@ -134,15 +135,15 @@ describe('kms-fetch', () => {
     });
 
     // f. network error: rethrown as is, not a KMS HTTP error.
-    it('decryptViaFetch() rethrows a network error', async () => {
+    it('decryptViaHttp() rethrows a network error', async () => {
         const err = new Error('getaddrinfo ENOTFOUND');
         const fetchFn = vi.fn(async () => {
             throw err;
         });
-        const e: any = await decryptViaFetch(INPUT, {
+        const e: any = await decryptViaHttp(INPUT, {
             region: REGION,
             env: envOf(),
-            fetchFn: fetchFn as any,
+            transport: fetchFn as any,
             log: quiet,
         }).catch(e => e);
         expect(e).toBe(err);
@@ -158,8 +159,8 @@ describe('kms-fetch', () => {
         vi.stubEnv('AWS_SECRET_ACCESS_KEY', SECRET);
         vi.stubEnv('AWS_SESSION_TOKEN', '');
         const fetchFn = okFetch();
-        vi.stubGlobal('fetch', fetchFn);
-        const service = new AWSKMSService('alias/lemon-hello-api');
+        const service: any = new AWSKMSService('alias/lemon-hello-api');
+        service._transport = fetchFn;
         await expect(service.decrypt(INPUT)).resolves.toBe('hello lemon');
         expect(fetchFn).toHaveBeenCalledTimes(1);
         //NOTE - skip when the SDK was loaded before this case (shared worker cache).
@@ -171,16 +172,13 @@ describe('kms-fetch', () => {
         vi.stubEnv('AWS_ACCESS_KEY_ID', KEY);
         vi.stubEnv('AWS_SECRET_ACCESS_KEY', SECRET);
         const body = { __type: 'AccessDeniedException', message: 'denied' };
-        vi.stubGlobal(
-            'fetch',
-            vi.fn(async () => ({
-                ok: false,
-                status: 400,
-                json: async () => body,
-                text: async () => JSON.stringify(body),
-            })),
-        );
         const service: any = new AWSKMSService('alias/lemon-hello-api');
+        service._transport = vi.fn(async () => ({
+            ok: false,
+            status: 400,
+            json: async () => body,
+            text: async () => JSON.stringify(body),
+        }));
         const send = vi.fn(async () => ({ Plaintext: Buffer.from('x') }));
         service._instance = { send };
         await expect(service.decrypt(INPUT)).rejects.toThrow('AccessDeniedException: denied');
@@ -194,8 +192,8 @@ describe('kms-fetch', () => {
         const fetchFn = vi.fn(async () => {
             throw new Error('getaddrinfo ENOTFOUND');
         });
-        vi.stubGlobal('fetch', fetchFn);
         const service: any = new AWSKMSService('alias/lemon-hello-api');
+        service._transport = fetchFn;
         const send = vi.fn(async () => ({ Plaintext: Buffer.from('x') }));
         service._instance = { send };
         await expect(service.decrypt(INPUT)).resolves.toBe('x');
@@ -208,12 +206,78 @@ describe('kms-fetch', () => {
         vi.stubEnv('AWS_ACCESS_KEY_ID', '');
         vi.stubEnv('AWS_SECRET_ACCESS_KEY', '');
         const fetchFn = okFetch();
-        vi.stubGlobal('fetch', fetchFn);
         const service: any = new AWSKMSService('alias/lemon-hello-api');
+        service._transport = fetchFn;
         const send = vi.fn(async () => ({ Plaintext: Buffer.from('x') }));
         service._instance = { send };
         await expect(service.decrypt(INPUT)).resolves.toBe('x');
         expect(send).toHaveBeenCalledTimes(1);
         expect(fetchFn).not.toHaveBeenCalled();
+    });
+
+    // h. the default transport on a fake `request()`: body sent, status/json/text read, errors rejected.
+    describe('transportOf()', () => {
+        //* a fake `https.request`: captures options and body, answers with `status` and `payload` (or emits `error`).
+        const fakeRequest = (status: number, payload: string, error?: Error) => {
+            const seen: any = {};
+            const request: any = (opts: any, cb: (res: any) => void) => {
+                seen.opts = opts;
+                const req: any = new PassThrough();
+                req.setTimeout = vi.fn();
+                req.destroy = vi.fn();
+                req.end = (body: string) => {
+                    seen.body = body;
+                    if (error) return req.emit('error', error);
+                    const res: any = new PassThrough();
+                    res.statusCode = status;
+                    cb(res);
+                    res.end(payload);
+                };
+                return req;
+            };
+            return { request, seen };
+        };
+
+        it('posts the body and reads a 2xx JSON', async () => {
+            const { request, seen } = fakeRequest(200, JSON.stringify({ Plaintext: 'aGk=' }));
+            const send = transportOf(request);
+            const res = await send('https://kms.ap-northeast-2.amazonaws.com/', {
+                method: 'POST',
+                headers: { 'x-amz-target': 'TrentService.Decrypt' },
+                body: '{"CiphertextBlob":"x"}',
+            });
+            expect(seen.opts).toMatchObject({
+                method: 'POST',
+                hostname: 'kms.ap-northeast-2.amazonaws.com',
+                path: '/',
+            });
+            expect(seen.opts.headers['x-amz-target']).toBe('TrentService.Decrypt');
+            expect(seen.body).toBe('{"CiphertextBlob":"x"}');
+            expect(res.ok).toBe(true);
+            expect(res.status).toBe(200);
+            await expect(res.json()).resolves.toEqual({ Plaintext: 'aGk=' });
+            await expect(res.text()).resolves.toBe('{"Plaintext":"aGk="}');
+        });
+
+        it('marks a non-2xx as not ok and keeps the body', async () => {
+            const body = { __type: 'AccessDeniedException', message: 'denied' };
+            const send = transportOf(fakeRequest(400, JSON.stringify(body)).request);
+            const res = await send('https://kms.ap-northeast-2.amazonaws.com/', {
+                method: 'POST',
+                headers: {},
+                body: '{}',
+            });
+            expect(res.ok).toBe(false);
+            expect(res.status).toBe(400);
+            await expect(res.json()).resolves.toEqual(body);
+        });
+
+        it('rejects on a socket error', async () => {
+            const err = new Error('connect ECONNREFUSED');
+            const send = transportOf(fakeRequest(200, '', err).request);
+            await expect(
+                send('https://kms.ap-northeast-2.amazonaws.com/', { method: 'POST', headers: {}, body: '{}' }),
+            ).rejects.toBe(err);
+        });
     });
 });

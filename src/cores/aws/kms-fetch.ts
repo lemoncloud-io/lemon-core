@@ -1,7 +1,8 @@
 /**
  * `cores/aws/kms-fetch.ts`
- * - (internal) KMS `Decrypt` by a SigV4-signed `fetch` to the KMS JSON API (v5 B8, D55).
+ * - (internal) KMS `Decrypt` by one SigV4-signed HTTPS call to the KMS JSON API (v5 B8, D55).
  * - used by `AWSKMSService.decrypt()` when the env has credentials, so the boot path does not load `@aws-sdk/client-kms`.
+ * - transport is Node `https` (not `fetch`: the first `fetch` call loads undici, ~250 ms on a cold Lambda); `fetch` is a compatible transport.
  * - not exported by any barrel. No SDK or `@smithy` type in the signatures.
  *
  * @author      Steve Jung <steve@lemoncloud.io>
@@ -10,6 +11,7 @@
  * @copyright (C) 2026 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import { createHash, createHmac, Hash, Hmac } from 'crypto';
+import * as https from 'https';
 import { _inf, $U } from '../../engine/';
 import { measure, nowMs } from '../../lib/perf';
 
@@ -26,17 +28,34 @@ interface SignableRequest {
     body: string;
 }
 
-/** options of `decryptViaFetch()`. */
-export interface DecryptViaFetchOptions {
+/** the response a transport returns (the part of `Response` this module reads). */
+export interface KmsHttpResponse {
+    ok: boolean;
+    status: number;
+    json: () => Promise<any>;
+    text: () => Promise<string>;
+}
+
+/** a transport: `(url, { method, headers, body })` → response. Node `https` by default; `globalThis.fetch` is compatible. */
+export type KmsTransport = (
+    url: string,
+    init: { method: string; headers: Record<string, string>; body: string },
+) => Promise<KmsHttpResponse>;
+
+/** options of `decryptViaHttp()`. */
+export interface DecryptViaHttpOptions {
     /** AWS region (ex: `ap-northeast-2`) */
     region: string;
     /** env with the credentials (default `process.env`) */
     env?: NodeJS.ProcessEnv;
-    /** fetch to use (default `globalThis.fetch`) */
-    fetchFn?: typeof fetch;
-    /** logger of the `PERF` line (default `_inf`) */
+    /** transport to use (default `httpsTransport`) */
+    transport?: KmsTransport;
+    /** logger of the `PERF` lines (default `_inf`) */
     log?: KmsFetchLogger;
 }
+
+/** socket idle timeout of the default transport; a timeout is a network error (the caller falls back to the SDK). */
+export const KMS_HTTPS_TIMEOUT_MS = 10_000;
 
 /**
  * true when the env has `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (both non-empty).
@@ -86,6 +105,45 @@ export class NodeSha256 {
 }
 
 /**
+ * build a transport on a `request()` like Node `https.request` (injectable for tests).
+ * - reads the whole body; `ok` is 2xx; a socket error or the idle timeout rejects.
+ */
+export const transportOf =
+    (request: typeof https.request): KmsTransport =>
+    (url, init) =>
+        new Promise<KmsHttpResponse>((resolve, reject) => {
+            const u = new URL(url);
+            const req = request(
+                { method: init.method, hostname: u.hostname, path: `${u.pathname}${u.search}`, headers: init.headers },
+                res => {
+                    //* collect the body, then resolve a `Response`-like object.
+                    const chunks: Buffer[] = [];
+                    res.on('data', (c: Buffer | string) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+                    res.on('error', reject);
+                    res.on('end', () => {
+                        const text = Buffer.concat(chunks).toString('utf-8');
+                        const status = res.statusCode ?? 0;
+                        resolve({
+                            ok: status >= 200 && status < 300,
+                            status,
+                            text: async () => text,
+                            json: async () => JSON.parse(text),
+                        });
+                    });
+                },
+            );
+            //* a socket error or the idle timeout is a network error.
+            req.on('error', reject);
+            req.setTimeout(KMS_HTTPS_TIMEOUT_MS, () =>
+                req.destroy(new Error(`kms https timeout (${KMS_HTTPS_TIMEOUT_MS} ms)`)),
+            );
+            req.end(init.body);
+        });
+
+/** the default transport: Node `https` (no undici load on the boot path). */
+export const httpsTransport: KmsTransport = transportOf(https.request);
+
+/**
  * `@smithy/signature-v4`, required on the first use (not at import).
  */
 let $sigv4: typeof import('@smithy/signature-v4');
@@ -115,18 +173,18 @@ const asKmsError = async (res: { status: number; json?: () => Promise<any>; text
 };
 
 /**
- * decrypt a base64 ciphertext by KMS `Decrypt` (`TrentService.Decrypt`) with a SigV4-signed `fetch`.
+ * decrypt a base64 ciphertext by KMS `Decrypt` (`TrentService.Decrypt`) with one SigV4-signed HTTPS call.
  * - KMS error (non-2xx): throws `<type>: <message>` (see `isKmsHttpError()`).
- * - network error: the `fetch` rejection is thrown as is.
+ * - network error (socket, timeout): the transport rejection is thrown as is.
  *
  * @param encryptedBase64 ciphertext blob in base64
  * @returns the plaintext in utf-8, or `''` when KMS returns no `Plaintext`.
  */
-export const decryptViaFetch = async (encryptedBase64: string, opts: DecryptViaFetchOptions): Promise<string> => {
+export const decryptViaHttp = async (encryptedBase64: string, opts: DecryptViaHttpOptions): Promise<string> => {
     const { region } = opts;
     const env = opts.env ?? process.env;
     const log = opts.log ?? _inf;
-    const fetchFn = opts.fetchFn ?? globalThis.fetch;
+    const send = opts.transport ?? httpsTransport;
     const hostname = `kms.${region}.amazonaws.com`;
 
     //* the same body string is signed and sent.
@@ -153,14 +211,14 @@ export const decryptViaFetch = async (encryptedBase64: string, opts: DecryptViaF
     };
     const signer = new SignatureV4({ service: 'kms', region, credentials, sha256: NodeSha256 as any });
 
-    //* one `PERF` line for the whole call, with the split `sign=` (SigV4) `fetch=` (connect + request + headers) `decode=` (body + base64).
+    //* one `PERF` line for the whole call, split `sign=` (SigV4) `send=` (connect + request + response) `decode=` (base64).
     const t0 = nowMs();
     const signed: SignableRequest = (await signer.sign(request as any)) as any;
     const t1 = nowMs();
 
     //* send (a network error rejects here, as is).
-    const res = await fetchFn(`https://${hostname}/`, { method: 'POST', headers: signed.headers, body });
-    if (!res.ok) throw await asKmsError(res as any);
+    const res = await send(`https://${hostname}/`, { method: 'POST', headers: signed.headers, body });
+    if (!res.ok) throw await asKmsError(res);
     const t2 = nowMs();
 
     //* decode the plaintext.
@@ -173,7 +231,7 @@ export const decryptViaFetch = async (encryptedBase64: string, opts: DecryptViaF
         '>',
         'kms decrypt',
         `${ms(t0, t3)} ms`,
-        `sign=${ms(t0, t1)} fetch=${ms(t1, t2)} decode=${ms(t2, t3)}`,
+        `sign=${ms(t0, t1)} send=${ms(t1, t2)} decode=${ms(t2, t3)}`,
     );
     return plain;
 };

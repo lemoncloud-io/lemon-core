@@ -29,7 +29,7 @@ import { CoreKmsService } from '../core-services';
 import { awsConfig } from '../../tools';
 import { GETERR } from '../../common/test-helper';
 import { measure } from '../../lib/perf';
-import { decryptViaFetch, hasEnvCredentials, isKmsHttpError } from './kms-fetch';
+import { decryptViaHttp, hasEnvCredentials, isKmsHttpError, KmsTransport } from './kms-fetch';
 const NS = $U.NS('KMSS', 'blue'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -137,6 +137,8 @@ export class AWSKMSService implements CoreKmsService {
     };
 
     protected _instance: KmsClientLike;
+    /** transport of the SDK-less decrypt (v5 B8; tests inject one, default Node `https`). */
+    protected _transport?: KmsTransport;
     /**
      * get KMS instance in stock (sync; the SDK package is loaded on the first call)
      */
@@ -173,10 +175,10 @@ export class AWSKMSService implements CoreKmsService {
      */
     public decrypt = async (encryptedSecret: string): Promise<string> => {
         _inf(NS, `decrypt(${encryptedSecret.substring(0, 12)}...)..`);
-        //* env credentials → SigV4 `fetch` without the SDK (v5 B8); a network error falls back to the SDK once.
+        //* env credentials → one SigV4-signed HTTPS call without the SDK (v5 B8); a network error falls back to the SDK once.
         if (hasEnvCredentials()) {
             try {
-                return await decryptViaFetch(encryptedSecret, { region: region() });
+                return await decryptViaHttp(encryptedSecret, { region: region(), transport: this._transport });
             } catch (e) {
                 if (isKmsHttpError(e)) throw e;
                 _err(NS, '! kms fetch failed, fallback to sdk =', GETERR(e));

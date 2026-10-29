@@ -442,19 +442,19 @@ Web requests also print one `PERF` summary line each, and the `LambdaModule` han
 
 ### 8.7 KMS Decrypt without the SDK (B8)
 
-`AWSKMSService.decrypt()` (and so `ConfigService.init()` for env values that start with `*`) no longer loads `@aws-sdk/client-kms` when the env has credentials. It sends one SigV4-signed `fetch` to the KMS JSON API (`TrentService.Decrypt`) instead. On Lambda the runtime sets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, so the boot path takes the fetch path.
+`AWSKMSService.decrypt()` (and so `ConfigService.init()` for env values that start with `*`) no longer loads `@aws-sdk/client-kms` when the env has credentials. It sends one SigV4-signed HTTPS call (Node `https.request`, not `fetch` — the first `fetch` call loads undici) to the KMS JSON API (`TrentService.Decrypt`) instead. On Lambda the runtime sets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, so the boot path takes the fetch path.
 
 - **No API change.** `AWSKMSService` keeps its names and signatures. The new module is internal (no new root export).
 - **Path selection.** `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` both non-empty → fetch. Otherwise (for example a local `AWS_PROFILE`) → the SDK path as before. `encrypt`, `sign`, `verify` and `getPublicKey` always use the SDK.
-- **Errors.** A KMS error (non-2xx) is thrown as `<type>: <message>` (for example `InvalidCiphertextException: …`), so `ConfigService` makes the same `ERROR - …` value. A network error logs `! kms fetch failed, fallback to sdk = <message>` once and the call goes through the SDK.
+- **Errors.** A KMS error (non-2xx) is thrown as `<type>: <message>` (for example `InvalidCiphertextException: …`), so `ConfigService` makes the same `ERROR - …` value. A network error (socket error, 10 s idle timeout) logs `! kms fetch failed, fallback to sdk = <message>` once and the call goes through the SDK.
 - **One new direct dependency:** `@smithy/signature-v4` (`^5.3.8`). It was already installed through `@aws-sdk/core`, so a consumer lock gains no package. Keep `@aws-sdk/client-kms` installed if you call the other KMS methods.
 - **IAM is the same:** the role needs `kms:Decrypt` on the key, as before.
 
-The boot log shows these lines instead of `lazy-load @aws-sdk/client-kms` and `client KMS` (the second one is each fetch-path decrypt, split into `sign=` SigV4, `fetch=` connect + request + response headers, `decode=` body + base64):
+The boot log shows these lines instead of `lazy-load @aws-sdk/client-kms` and `client KMS` (the second one is each SDK-less decrypt, split into `sign=` SigV4, `send=` connect + request + whole response, `decode=` base64):
 
 ```
 2026-10-29 10:00:00 I PERF: > lazy-load @smithy/signature-v4 3.4 ms
-2026-10-29 10:00:00 I PERF: > kms decrypt 412.0 ms sign=1.2 fetch=410.5 decode=0.3
+2026-10-29 10:00:00 I PERF: > kms decrypt 212.0 ms sign=1.2 send=210.5 decode=0.3
 ```
 
 Details: `docs/v5/B8-kms-fetch.md`.
