@@ -406,7 +406,7 @@ export class MyProtocolService implements ProtocolService {
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
         const params: PublishCommandInput = this.sns.transformToEvent(uri, param, cbUrl);
-        const arn = params.TopicArn; // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
+        const arn = params.TopicArn; // "arn:aws:sns:ap-northeast-2:123456789012:lemon-metrics-sns-dev"
         // _inf(NS, `> arn[${service}] =`, arn);
         _inf(NS, `> payload[${arn}] =`, $U.json(params));
 
@@ -678,7 +678,7 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
     public transformToEvent(uri: string, param: ProtocolParam, callback?: string): MySNSEventParam {
         // const uri = this.service.asProtocolURI('sns', param);
         const context = param.context || {};
-        const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
+        const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:123456789012:lemon-metrics-sns-dev"
         //* build TopicArn via url.
         const url = URL.parse(uri);
         const end = url.host || url.hostname;
@@ -769,7 +769,7 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
     public transformToEvent(uri: string, param: ProtocolParam, callback?: string): SQSEventParam {
         // const uri = this.service.asProtocolURI('sns', param);
         const context = param.context || {};
-        const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:796730245826:lemon-metrics-sns-dev"
+        const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:123456789012:lemon-metrics-sns-dev"
         //* build TopicArn via url.
         const url = URL.parse(uri);
         const arr = arn.split(':');

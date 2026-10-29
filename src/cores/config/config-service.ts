@@ -23,6 +23,7 @@ import { STAGE, CoreKmsService, CoreConfigService } from './../core-services';
 import { loadJsonSync } from '../../tools/';
 //* v5 B3: `Filter`/`marshal` were verbatim copies of the test-helper ones; one definition, imported here.
 import { Filter, marshal } from '../../common/test-helper';
+import { maskValue } from '../../lib/log-mask'; //* v5 B10-4: decrypted config values never reach the log.
 const NS = $U.NS('CFGS', 'red'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
@@ -145,7 +146,8 @@ export class MyConfigService implements ConfigService {
                         _log(NS, `ERR@${key} =`, e);
                         return `ERROR - ${e.message || $U.json(e)}`;
                     });
-                    _log(NS, `> config[${key}] :=`, val2.substring(0, 12), val2.length > 12 ? '...' : '');
+                    //* v5 B10-4: a decrypted value is a secret (sign key, token, password) → log its length only (was: first 12 chars).
+                    _log(NS, `> config[${key}] :=`, maskValue(val2));
                     return { key, val: val2 };
                 }
                 return { key, val };
