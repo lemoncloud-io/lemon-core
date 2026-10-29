@@ -29,7 +29,8 @@ flowchart TD
 - The region is the same as the SDK path: `$engine.environ('REGION', 'ap-northeast-2')`.
 - The fallback runs once per call. The log line has the error message only (no credentials, no headers, no body).
 - A KMS HTTP error propagates. `ConfigService` turns it into an `ERROR - …` value as before (the message format is the same family as the SDK error: `<type>: <message>`).
-- Without env credentials (a local `AWS_PROFILE`, an instance role through the SDK chain, …) nothing changes: the SDK path runs.
+- "Env credentials" in Lambda are the **execution role's** temporary credentials: the runtime sets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` as reserved variables (user config cannot override them). No static key is involved, the signer adds the session token, and the only permission needed is the role's `kms:Decrypt`, exactly as for the SDK path. The values are read at each call, so rotated container credentials are picked up.
+- Without env credentials (a local `AWS_PROFILE`, an ECS task role or EC2 instance profile — both hand credentials through a metadata endpoint, not env — …) nothing changes: the SDK path and its credential chain run.
 
 ## Request
 
