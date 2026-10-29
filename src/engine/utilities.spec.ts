@@ -38,6 +38,9 @@ describe(`core/utilities.ts`, () => {
 
         expect2($U.uuid().length).toEqual('e82f0f6e-3b06-4cfb-8e56-12e046a8814e'.length);
         expect2($U.uuid().split('-').length).toEqual('e82f0f6e-3b06-4cfb-8e56-12e046a8814e'.split('-').length);
+        //* v5 B11: lower-case v4 form (`crypto.randomUUID()`), unique per call.
+        expect2($U.uuid()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        expect2($U.uuid() !== $U.uuid()).toEqual(true);
     });
 
     //* test qs()

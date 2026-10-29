@@ -337,7 +337,7 @@ Prefix checks such as `msg.startsWith('400 ILLEGAL ARGUMENT - Cannot apply')` ke
 ### 8.1 Packages
 
 * DynamoDB is the required storage (D41): `@aws-sdk/client-dynamodb` and `@aws-sdk/lib-dynamodb` stay in lemon-core `dependencies`. They are installed with lemon-core, and still loaded only on first use.
-* The other **8** packages are **optional peers** (`^3.971.0`). npm does not install them for you. Add the ones your service uses to **your own** `dependencies`:
+* The other **8** packages are **optional peers** (`^3.1159.0` since B11, § 14; was `^3.971.0`). npm does not install them for you. Add the ones your service uses to **your own** `dependencies`:
 
 | You use | Add to your `package.json` |
 | --- | --- |
@@ -754,6 +754,17 @@ Measured in the five DoU backend repos (read-only census):
 
 * Code that compares `context.source` with a service URI by equality compares the service part only: `new URL(source).host` is the service, `.pathname` the path, `.hash` the version. lemon-core itself only checks `source === 'express'` (`doReportError()`, `doReportSlack()`), which this change does not touch.
 
+## 14. Dependency audit: `query-string` and `uuid` removed, AWS SDK `^3.1159.0` (B11)
+
+`npm audit --omit=dev` on lemon-core is 0. Details: `docs/v5/B11-deps-audit.md`.
+
+* **`query-string` and `uuid` are no longer lemon-core dependencies.** If your service imports either one and got it only through lemon-core, add it to your own `package.json` (`npm i query-string@7 uuid@9`, or move to `qs` and `crypto.randomUUID()`).
+* **AWS SDK peers: lower bound `^3.1159.0`** (was `^3.971.0`) for all 8 optional peers, and the 2 DynamoDB packages in `dependencies` use the same range. `@aws-sdk/core` ≤ 3.972.0 pulls a critical `fast-xml-parser`; 3.1159.0 no longer depends on it. Update the peers in your own `package.json` to the same version, so `npm ls @aws-sdk/core` shows one copy.
+* **`$U.qs.parse()` / `$U.qs.stringify()` keep their output.** They now run on `qs` (already a lemon-core dependency) with options that reproduce `query-string` 7: sorted keys, `a=1&a=2` arrays, `a` for `null`, flat `a[b]` keys, strict `%XX` encoding, null-prototype result, no parameter limit. The same holds for the `$protocol()` callback query and the query string of `createSigV4Proxy()`/`createHttpWebProxy()`. Intentional differences:
+  * A `__proto__=…` pair is dropped (prototype-pollution guard in `qs`); `constructor` and `hasOwnProperty` keys stay.
+  * Every invalid `%XX` byte decodes to `\uFFFD` (`query-string` 7 kept the raw `%XX`, and only `%C2` became `\uFFFD`), in linear time.
+* **`$U.uuid()` is unchanged in form** (lower-case 36-char v4). It now calls Node's `crypto.randomUUID()`. The automatic S3 key of `AWSS3Service.putObject()` also uses it.
+
 ---
 
 ## At-a-Glance Checklist
@@ -794,3 +805,5 @@ Measured in the five DoU backend repos (read-only census):
 - [ ] `require('lemon-core/dist/exec-cli')` branch deleted from `src/index.ts` (§ 12)
 - [ ] Every `MyCoreManager` subclass that relied on the copy's default passes `{ enableSync: true }` (§ 12, § 11.6)
 - [ ] Code that compares `context.source` by equality compares the service part only; the value now ends with the request path (§ 13)
+- [ ] Direct imports of `query-string` or `uuid` are in your own `package.json` (§ 14)
+- [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)

@@ -20,7 +20,7 @@ const NS = $U.NS('S3', 'blue');
 import type { GetObjectCommandOutput, GetObjectTaggingCommandOutput, PutObjectCommandInput, ListObjectsV2CommandInput } from '@aws-sdk/client-s3';
 import path from 'path';
 import mime from 'mime-types';
-import { v4 } from 'uuid';
+import { randomUUID } from 'crypto'; //* v5 B11: `uuid` -> Node built-in (same v4 form).
 import { CoreServices } from '../core-services';
 import { GETERR } from '../../common/test-helper';
 import { Readable } from 'stream';
@@ -614,7 +614,7 @@ class S3PutObjectRequestBuilder {
         //  - get extension from content-type or use 'json'
         if (!Key) {
             const ext = (this.ContentType && mime.extension(this.ContentType)) || 'json';
-            Key = `${v4()}.${ext}`;
+            Key = `${randomUUID()}.${ext}`;
         }
         // generate content-type if not specified
         if (!ContentType) ContentType = this.getContentType(Key);
