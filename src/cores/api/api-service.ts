@@ -485,7 +485,7 @@ export class APIService implements APIServiceClient {
  ** ********************************************************************************************************************/
 import URL from 'url';
 import { fetchProxyBody, isJsonBody, toPayload } from '../../lib/http-fetch';
-import queryString from 'query-string';
+import { qsStringify } from '../../lib/qs-compat'; //* v5 B11: `query-string` -> `qs` (same output).
 
 /**
  * create http-web-proxy agent which using endpoint as proxy server.
@@ -539,7 +539,7 @@ export const createHttpWebProxy = (
 
             //* prepare request parameters
             // eslint-disable-next-line prettier/prettier
-            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? qsStringify($param) : `${$param}`);
             const url =
                 endpoint +
                 (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +

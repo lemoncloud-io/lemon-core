@@ -13,9 +13,8 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
-import QUERY_STRING from 'query-string';
 import $jwt, { DecodeOptions } from 'jsonwebtoken';
-import * as uuid from 'uuid';
+import { qsParse, qsStringify } from '../lib/qs-compat'; //* v5 B11: `query-string` -> `qs` (same output).
 const NS = 'util';
 
 //* default time-zone for this api (Asia/Seoul +9 hours). v5: the default of `$U.ts()`/`$U.dt()` (B5 § 6.8).
@@ -741,7 +740,7 @@ export class Utilities {
      * @param query
      */
     public qs_parse(query: string) {
-        const param: any = QUERY_STRING.parse(query);
+        const param: any = qsParse(query);
         Object.keys(param).forEach(key => {
             if (false) {
             }
@@ -762,7 +761,7 @@ export class Utilities {
      * @param query
      */
     public qs_stringify(query: { [key: string]: any }) {
-        const param = QUERY_STRING.stringify(query);
+        const param = qsStringify(query);
         return param;
     }
 
@@ -974,9 +973,10 @@ export class Utilities {
     };
 
     /**
-     * get UUID as `uuid.v4()`
+     * get UUID v4 (lower-case, 36 chars).
      */
     public uuid() {
-        return uuid.v4();
+        //* v5 B11: `uuid.v4()` -> Node built-in `crypto.randomUUID()` (same v4 form).
+        return crypto.randomUUID();
     }
 }

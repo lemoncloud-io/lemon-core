@@ -27,7 +27,7 @@ import { sigV4Client, sigV4ClientConfig } from '../extended/libs/sig-v4';
 import { performance } from 'perf_hooks';
 
 import { fetchProxyBody, isJsonBody, toPayload } from '../lib/http-fetch';
-import queryString from 'query-string';
+import { qsParse, qsStringify } from '../lib/qs-compat'; //* v5 B11: `query-string` -> `qs` (same output).
 import { ListParam, PaginateParam } from './types';
 
 /**
@@ -585,7 +585,7 @@ export const $protocol = (
             const [path, qs] = callback.split('?');
             if (path) {
                 const [type, id, cmd] = path.split('/');
-                const param = queryString.parse(qs);
+                const param = qsParse(qs);
                 return { type, id, cmd, param };
             }
         }
@@ -952,11 +952,7 @@ export const createSigV4Proxy = (
 
             //* prepare request parameters
             // eslint-disable-next-line prettier/prettier
-            const query_string = _isNa($param)
-                ? ''
-                : typeof $param == 'object'
-                ? queryString.stringify($param)
-                : `${$param}`;
+            const query_string = _isNa($param) ? '' : typeof $param == 'object' ? qsStringify($param) : `${$param}`;
             const url =
                 endpoint +
                 (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
