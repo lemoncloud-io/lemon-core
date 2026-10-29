@@ -22,7 +22,7 @@
  * @date        2022-02-21 remove `$_` the lodash libs.
  * @date        2026-05-08 optimized to ignore of reporting.
  * @date        2026-10-30 `getHelloArn()`: placeholder account `000000000000` only with the local transport (`LOCAL_TRANSPORT=mock`).
- * @date        2026-10-30 v5 B13: `doReportError()` payload has the `trace` of the context.
+ * @date        2026-10-30 v5 B14: `doReportError()` payload has the `trace` of the context.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -122,7 +122,7 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const identity = context?.identity || {};
         const service = `api://${$pack.name || 'lemon-core'}/${name}-${stage}#${$pack.version || '0.0.0'}`;
 
-        //* prepare payload to publish (v5 B13: + the call-chain `trace` of the context).
+        //* prepare payload to publish (v5 B14: + the call-chain `trace` of the context).
         const payload = {
             service,
             message,

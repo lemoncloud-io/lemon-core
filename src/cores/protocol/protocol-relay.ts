@@ -1,6 +1,6 @@
 /**
  * `cores/protocol/protocol-relay.ts`
- * - v5 B13: the relay envelope of an internal hop — a whitelisted identity and the trace, nothing else.
+ * - v5 B14: the relay envelope of an internal hop — a whitelisted identity and the trace, nothing else.
  * - web: header `x-lemon-relay`. SNS/SQS: the `relay` field of the protocol param (no `context` field).
  * - value `r1.<base64url(JSON)>`, JSON keys `idt tid hop src via pid iat`. signed by the existing signature
  *   (web: the relay string in the context slot of the canonical; SNS/SQS: the message signature).
@@ -10,7 +10,7 @@
  * - NOTE: deep module only (`./dist/cores/protocol/protocol-relay`). not re-exported by the root.
  *
  * @author      Steve Jung <steve@lemoncloud.io>
- * @date        2026-10-30 initial version (v5 B13)
+ * @date        2026-10-30 initial version (v5 B14)
  * @date        2026-10-30 a safe trace id (`SAFE_TRACE_ID`), and `nextHopContext()` for an in-process (same-service) callback.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
@@ -221,7 +221,7 @@ const decodeIdentity = (idt: any): RelayIdentity => {
 };
 
 /**
- * the receiver context of a relay (B13 D2 table).
+ * the receiver context of a relay (B14 D2 table).
  * - `identity` = `idt`, `channel` = `internal`, `depth` = `hop`, `source` = `src`, `trace` = `{ tid, hop, via, pid, src }`.
  * - `requestId`, `accountId` = the receiver's own values (`own`). nothing else of the caller crosses the hop.
  */

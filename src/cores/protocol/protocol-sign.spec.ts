@@ -5,7 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-28 initial version (v5 B5)
- * @date        2026-10-30 v5 B13: the outgoing web event carries the relay (signed in the context slot).
+ * @date        2026-10-30 v5 B14: the outgoing web event carries the relay (signed in the context slot).
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -158,7 +158,7 @@ describe('protocol-sign', () => {
         resetProtocolSign();
         const event = webEvent({ a: 1 });
         const sig = event.headers[HEADER_PROTOCOL_SIGNATURE];
-        //* v5 B13: the relay header (no `x-protocol-context` by default), signed in the context slot.
+        //* v5 B14: the relay header (no `x-protocol-context` by default), signed in the context slot.
         expect2(() => Object.keys(event.headers)).toEqual(['x-lemon-relay', HEADER_PROTOCOL_SIGNATURE]);
         expect2(() => verifyContext(sig, event.headers['x-lemon-relay'], event.body).ok).toEqual(true);
     });
@@ -198,7 +198,7 @@ describe('protocol-sign', () => {
 
         //* host-less JSON `x-lemon-identity` follows the same rule.
         const idt: any = webEvent();
-        delete idt.headers['x-lemon-relay']; //* v5 B13: the relay header of the transformer.
+        delete idt.headers['x-lemon-relay']; //* v5 B14: the relay header of the transformer.
         delete idt.headers['x-protocol-context'];
         delete idt.headers[HEADER_PROTOCOL_SIGNATURE];
         idt.headers['x-lemon-identity'] = $U.json({ sid: 'S2', roles: ['admin'] });

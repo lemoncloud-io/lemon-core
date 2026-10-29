@@ -13,7 +13,7 @@
  * @date        2022-04-07 use env, and opt header-parser
  * @date        2025-05-09 improved to support `referer` and `origin` header.
  * @date        2026-10-28 v5 B7: one `PERF: > request` line per request.
- * @date        2026-10-30 v5 B13: `context.channel`, `context.trace`, the relay `x-lemon-relay` and the legacy modes.
+ * @date        2026-10-30 v5 B14: `context.channel`, `context.trace`, the relay `x-lemon-relay` and the legacy modes.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -558,10 +558,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         // STEP.1 support lambda call JWT Token authentication.
         const headers = event.headers;
         const $tool = this.tools(headers);
-        //* v5 B13: the relay of an internal hop (`r1.<base64url(JSON)>`).
+        //* v5 B14: the relay of an internal hop (`r1.<base64url(JSON)>`).
         const relayText = $tool.getHeader(HEADER_LEMON_RELAY);
         //* v5 B5: a `host` header (any case) means external → `x-protocol-context`/`-signature` are ignored (S-29).
-        //* v5 B13: the relay too (exactly like the legacy header).
+        //* v5 B14: the relay too (exactly like the legacy header).
         if (!hasHostHeader(headers)) {
             const contextJson = headers?.[HEADER_PROTOCOL_CONTEXT];
             const idt = $tool.getHeader(HEADER_LEMON_IDENTITY);
@@ -569,12 +569,12 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             //* host-less internal claim (relay, protocol context or JSON identity) → verify the signature, then apply the mode.
             if (relayText || contextJson || hasJsonIdentity) {
                 const signature = $tool.getHeader(HEADER_PROTOCOL_SIGNATURE);
-                //* v5 B13: the relay string is in the context slot of the canonical (else the legacy header as before).
+                //* v5 B14: the relay string is in the context slot of the canonical (else the legacy header as before).
                 const ctxText = relayText ? relayText : typeof contextJson === 'string' ? contextJson : '';
                 assertSigned('web', () => verifyContext(signature, ctxText, event.body));
             }
             if (relayText) {
-                //* v5 B13: the relay wins over the legacy header → the receiver context (D2), hop cap `508`.
+                //* v5 B14: the relay wins over the legacy header → the receiver context (D2), hop cap `508`.
                 const $ctx = relayContextOf(relayText, reqContext, orgContext);
                 logTrace($ctx);
                 trace.mark('context');
@@ -584,7 +584,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 //* if it is protocol request via lambda, then returns valid context (bad JSON → `400 INVALID CONTEXT`).
                 try {
                     const $param = $protocol.service.asTransformer('web').transformToParam(event);
-                    //* v5 B13: deprecated legacy context by `PROTOCOL_LEGACY_ACCEPT` (reject → 400), kept as is + internal.
+                    //* v5 B14: deprecated legacy context by `PROTOCOL_LEGACY_ACCEPT` (reject → 400), kept as is + internal.
                     const legacy: NextContext = $param?.context;
                     acceptLegacy('web', legacy);
                     const $ctx: NextContext = { ...legacy, channel: 'internal', trace: entryTrace(legacy) };
@@ -596,7 +596,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                     throw new Error(/^[1-5][0-9]{2} [A-Z]/.test(msg) ? msg : `400 INVALID CONTEXT - ${msg}`);
                 }
             }
-            //* v5 B13: a JSON identity of an internal call is deprecated (one line; the behaviour is unchanged).
+            //* v5 B14: a JSON identity of an internal call is deprecated (one line; the behaviour is unchanged).
             if (hasJsonIdentity) warnJsonIdentity('web');
         } else if (headers?.[HEADER_PROTOCOL_CONTEXT] || relayText) {
             _log(NS, `> ignore ${relayText ? HEADER_LEMON_RELAY : HEADER_PROTOCOL_CONTEXT} (external request)`);
@@ -623,7 +623,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         $ctx.source = $path
             ? $protocol.service.myProtocolURI($ctx, type, $path.id, $path.cmd)
             : $protocol.service.myProtocolURI($ctx);
-        //* v5 B13: the channel of this entry (local mode wins, else `host` → external, else internal), and hop 0.
+        //* v5 B14: the channel of this entry (local mode wins, else `host` → external, else internal), and hop 0.
         $ctx.channel = entryChannel(hasHostHeader(headers));
         $ctx.trace = entryTrace($ctx);
         logTrace($ctx);
@@ -635,7 +635,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 }
 
 /**
- * v5 B13: the receiver context of a web relay (D2).
+ * v5 B14: the receiver context of a web relay (D2).
  * - decode (400), hop cap (508), the caller's requestId = `requestContext.requestId` (the sender sets both).
  * - own ids: the Lambda `awsRequestId` (else a new id), the account of `invokedFunctionArn` (else `requestContext`).
  */

@@ -1,6 +1,6 @@
-# v5 B13 — 호출 채널과 relay 구현 기록 (WP1–WP3)
+# v5 B14 — 호출 채널과 relay 구현 기록 (WP1–WP3)
 
-상태: 2026-10-30 구현. lemon-model `feat/v5-b13-context-channel` (기준 `v5` @ `2591c21`), lemon-core `feat/v5-b13-relay` (기준 `v5` @ `90da90ed`, 5.0.5). 계획은 `docs/v5/B13-relay-context.md`(D1–D4, § 4 WP1–WP3)다. 업그레이드 안내는 `HOW_TO_UPGRADE_V5.md` § 15. WP4(templates-api 적용)는 별건이다.
+상태: 2026-10-30 구현. lemon-model `feat/v5-b13-context-channel` (기준 `v5` @ `2591c21`), lemon-core `feat/v5-b13-relay` (기준 `v5` @ `90da90ed`, 5.0.5). 계획은 `docs/v5/B14-relay-context.md`(D1–D4, § 4 WP1–WP3)다. 업그레이드 안내는 `HOW_TO_UPGRADE_V5.md` § 15. WP4(templates-api 적용)는 별건이다.
 
 ## 변경
 

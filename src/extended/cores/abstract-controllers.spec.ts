@@ -11,7 +11,7 @@
  * @date        2023-02-15 optimized with `lemon-core@3.2.5`
  * @date        2023-10-12 optimized `doList()` w/o ES6.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` (gate by channel, shape, `source`).
- * @date        2026-10-30 v5 B13: the `fields/admin` gate reads `context.channel` (not `domain`).
+ * @date        2026-10-30 v5 B14: the `fields/admin` gate reads `context.channel` (not `domain`).
  * @date        2026-10-28 v5 B4: `checkFieldsAdmin()` on each report, and the in-process express route.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -882,7 +882,7 @@ describe('AbstractCRUDController fields/admin (B4)', () => {
         expect2(() => checkFieldsAdmin(res, expect)).toEqual({ ok: true, issues: [] });
     });
 
-    //* v5 B13: channel `external` (API-GW, ALB, URL) → 403, before the admin-role check.
+    //* v5 B14: channel `external` (API-GW, ALB, URL) → 403, before the admin-role check.
     it('should pass fields/admin 403 if external', async () => {
         delete process.env.LOCAL_MODE;
         delete process.env.AWS_LAMBDA_FUNCTION_NAME;
@@ -890,14 +890,14 @@ describe('AbstractCRUDController fields/admin (B4)', () => {
         expect2(await api.doGetAdmin('fields', {}, null, { ...context, channel: 'external' }).catch(GETERR)).toEqual(
             '403 NOT ALLOWED - fields/admin is local or direct-invoke only @doGetAdmin(tests/fields)',
         );
-        //* v5 B13: also in local mode (the gate reads the channel only).
+        //* v5 B14: also in local mode (the gate reads the channel only).
         process.env.LOCAL_MODE = '1';
         expect2(await api.doGetAdmin('fields', {}, null, { channel: 'external' }).catch(GETERR)).toEqual(
             '403 NOT ALLOWED - fields/admin is local or direct-invoke only @doGetAdmin(tests/fields)',
         );
     });
 
-    //* v5 B13: the gate reads `channel` only — `internal` and `local` pass even with a `domain` (a relayed context).
+    //* v5 B14: the gate reads `channel` only — `internal` and `local` pass even with a `domain` (a relayed context).
     it('should pass fields/admin by channel (not domain)', async () => {
         delete process.env.LOCAL_MODE;
         process.env.AWS_LAMBDA_FUNCTION_NAME = 'lemon-core-spec';

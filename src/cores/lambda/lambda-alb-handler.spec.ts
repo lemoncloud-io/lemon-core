@@ -5,7 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2025-05-14 initial version via backbone
- * @date        2026-10-30 v5 B13: `channel` and `trace` in the packed context.
+ * @date        2026-10-30 v5 B14: `channel` and `trace` in the packed context.
  *
  * @copyright (C) 2025 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -62,9 +62,9 @@ describe('LambdaAlbHandler', () => {
             identity: { lang: undefined },
             userAgent:
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.190 Safari/537.36',
-            channel: 'external', //* v5 B13: an ALB request has `host`.
+            channel: 'external', //* v5 B14: an ALB request has `host`.
         };
-        //* v5 B13: no requestId in an ALB event → the trace has a new tid (hop 0).
+        //* v5 B14: no requestId in an ALB event → the trace has a new tid (hop 0).
         const $ctx = await service.packContext(event);
         expect2(() => ({ ...$ctx, trace: undefined })).toEqual({ ...expCtx });
         expect2(() => [typeof $ctx.trace?.tid, $ctx.trace?.hop]).toEqual(['string', 0]);

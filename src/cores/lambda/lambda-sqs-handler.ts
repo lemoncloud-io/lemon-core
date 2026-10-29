@@ -5,8 +5,8 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
- * @date        2026-10-30 v5 B13: the receiver's own ids (`packContext()`) for a relay; channel `internal`.
- * @date        2026-10-30 v5 B13: a same-service callback advances `trace.hop` (cap `PROTOCOL_MAX_HOP`), `depth` in sync.
+ * @date        2026-10-30 v5 B14: the receiver's own ids (`packContext()`) for a relay; channel `internal`.
+ * @date        2026-10-30 v5 B14: a same-service callback advances `trace.hop` (cap `PROTOCOL_MAX_HOP`), `depth` in sync.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -46,7 +46,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
     protected $lastResult: any = null;
 
     /**
-     * v5 B13: the receiver's own ids of this invocation (the relay context uses them, D2).
+     * v5 B14: the receiver's own ids of this invocation (the relay context uses them, D2).
      * - `requestId` = Lambda `awsRequestId`, `accountId` = the account of `invokedFunctionArn` (12 digits).
      */
     public async packContext(event: any, context: Context): Promise<NextContext> {
@@ -94,7 +94,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                 //* v5 B5: verify the signature before dispatch (`enforce` → this record fails).
                 const signature = `${record.messageAttributes?.[ATTR_PROTOCOL_SIGNATURE]?.stringValue ?? ''}`;
                 assertSigned('sqs', () => verifyMessage(signature, record.body));
-                //* v5 B13: own ids — the invocation's, else the message id and the queue account.
+                //* v5 B14: own ids — the invocation's, else the message id and the queue account.
                 const own: NextContext = {
                     requestId: `${$ctx?.requestId || record.messageId || ''}` || undefined,
                     accountId: `${$ctx?.accountId || accountOfArn(record.eventSourceARN) || ''}` || undefined,
@@ -114,7 +114,7 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         _log(NS, `> config.service =`, this.lambda.config && this.lambda.config.getService());
                         //* check if service is in same..
                         if (proto && this.lambda.config && proto.service == this.lambda.config.getService()) {
-                            //* v5 B13: an in-process next hop — hop + 1 (cap → 508), same tid, via/pid of this receiver.
+                            //* v5 B14: an in-process next hop — hop + 1 (cap → 508), same tid, via/pid of this receiver.
                             proto.context = nextHopContext(proto.context, $protocol.service.myProtocolURI(context));
                             logTrace(proto.context);
                             proto.body = body;

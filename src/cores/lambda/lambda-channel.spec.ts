@@ -1,12 +1,12 @@
 /**
  * `lambda-channel.spec.ts`
- * - v5 B13 D1: `context.channel` is set once at the entry (web host/host-less, local mode, protocol receive, ALB),
+ * - v5 B14 D1: `context.channel` is set once at the entry (web host/host-less, local mode, protocol receive, ALB),
  *   and `context.trace` starts at hop 0 for an entry without a relay.
  * - no network: the engine is not initialized, env names come from `process.env` (restored after each test).
  *
  * @author      Steve Jung <steve@lemoncloud.io>
- * @date        2026-10-30 initial version (v5 B13)
- * @date        2026-10-30 v5 B13: a safe trace id for the local express requestId.
+ * @date        2026-10-30 initial version (v5 B14)
+ * @date        2026-10-30 v5 B14: a safe trace id for the local express requestId.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -82,7 +82,7 @@ const instance = () => {
     return { lambda, web, got };
 };
 
-describe('context.channel (B13 D1)', () => {
+describe('context.channel (B14 D1)', () => {
     beforeEach(() => ENV_NAMES.forEach(k => setEnv(k)));
     //* restore the env.
     afterEach(() => Object.entries($envKeep).forEach(([key, val]) => setEnv(key, val)));

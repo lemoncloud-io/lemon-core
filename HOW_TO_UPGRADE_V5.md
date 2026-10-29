@@ -812,9 +812,9 @@ Options, output format, and limits: `docs/v5/B10-fields-types.md`.
   * Every invalid `%XX` byte decodes to `\uFFFD` (`query-string` 7 kept the raw `%XX`, and only `%C2` became `\uFFFD`), in linear time.
 * **`$U.uuid()` is unchanged in form** (lower-case 36-char v4). It now calls Node's `crypto.randomUUID()`. The automatic S3 key of `AWSS3Service.putObject()` also uses it.
 
-## 15. Call channel, relay and trace (B13)
+## 15. Call channel, relay and trace (B14)
 
-Internal calls no longer carry the caller's full context. Each entry sets `context.channel` once, an internal hop carries a small signed relay (identity summary + trace), and every entry logs one `TRACE` line. `x-protocol-context` is deprecated. Plan: `docs/v5/B13-relay-context.md`; implementation record: `docs/v5/B13-relay-context-impl.md`. Needs lemon-model with `NextContext.channel` and `NextContext.trace` (`NextTrace`).
+Internal calls no longer carry the caller's full context. Each entry sets `context.channel` once, an internal hop carries a small signed relay (identity summary + trace), and every entry logs one `TRACE` line. `x-protocol-context` is deprecated. Plan: `docs/v5/B14-relay-context.md`; implementation record: `docs/v5/B14-relay-context-impl.md`. Needs lemon-model with `NextContext.channel` and `NextContext.trace` (`NextTrace`).
 
 ### 15.1 `context.channel`
 

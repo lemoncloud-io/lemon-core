@@ -5,7 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2025-05-14 initial version via backbone
- * @date        2026-10-30 v5 B13: `context.channel` and `context.trace` of an ALB request.
+ * @date        2026-10-30 v5 B14: `context.channel` and `context.trace` of an ALB request.
  *
  * @copyright (C) 2025 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -167,7 +167,7 @@ export class LambdaALBHandler extends LambdaSubHandler<ALBHandler> {
 
         // STEP.3. prepare the final `next-context`.
         const $ctx = await $tool.prepareContext(_prepare(), reqContext);
-        //* v5 B13: the channel (an ALB request has `host` → external; local mode → local), and hop 0.
+        //* v5 B14: the channel (an ALB request has `host` → external; local mode → local), and hop 0.
         $ctx.channel = entryChannel($tool.getHeaders('host').length > 0);
         $ctx.trace = entryTrace($ctx);
 

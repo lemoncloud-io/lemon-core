@@ -1,12 +1,12 @@
 /**
  * `protocol-relay.spec.ts`
- * - v5 B13: relay envelope (`x-lemon-relay`, `r1.<base64url(JSON)>`), hop cap, trace, and the legacy
+ * - v5 B14: relay envelope (`x-lemon-relay`, `r1.<base64url(JSON)>`), hop cap, trace, and the legacy
  *   `x-protocol-context` modes — sender (web/SNS/SQS transformers) to receiver (web/SNS/SQS handlers).
  * - no network: the engine is not initialized, env names come from `process.env` (restored after each test).
  *
  * @author      Steve Jung <steve@lemoncloud.io>
- * @date        2026-10-30 initial version (v5 B13)
- * @date        2026-10-30 v5 B13: a safe trace id (local express requestId), the same-service callback hop.
+ * @date        2026-10-30 initial version (v5 B14)
+ * @date        2026-10-30 v5 B14: a safe trace id (local express requestId), the same-service callback hop.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */

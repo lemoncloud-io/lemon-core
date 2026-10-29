@@ -28,7 +28,7 @@
  * @date        2026-02-03 optimized `modelAsView()` to show cores in local.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` reports the field lists (local or direct invoke only).
- * @date        2026-10-30 v5 B13: the `fields/admin` gate reads `context.channel` (not `domain`).
+ * @date        2026-10-30 v5 B14: the `fields/admin` gate reads `context.channel` (not `domain`).
  * @date        2026-10-28 v5 B4: `fields/admin` self-check uses the shared `checkFieldsAdmin()`.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -395,7 +395,7 @@ export abstract class AbstractCRUDController<
 
     /**
      * v5 B4: report the manager's field list (`GET /<type>/fields/admin`) to verify it in Lambda too.
-     * - v5 B13: allowed only when `$ctx.channel !== 'external'` (set once by the entry: `local` for the local
+     * - v5 B14: allowed only when `$ctx.channel !== 'external'` (set once by the entry: `local` for the local
      *   express, `internal` for a host-less invoke or a protocol call). `domain` is information only, never the gate.
      * - no admin role is required: a direct invoke is already gated by IAM `lambda:InvokeFunction`.
      */

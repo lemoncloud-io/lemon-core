@@ -5,7 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-27 initial version.
- * @date        2026-10-30 v5 B13: the web event carries `x-lemon-relay` (the context only with `PROTOCOL_LEGACY_CONTEXT=send`).
+ * @date        2026-10-30 v5 B14: the web event carries `x-lemon-relay` (the context only with `PROTOCOL_LEGACY_CONTEXT=send`).
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -193,7 +193,7 @@ describe('ProtocolService', () => {
         const param = asParam('', 'test', { id: 'abc' });
         const uri = service.asProtocolURI('web', param, config);
         expect2(uri).toEqual('web://lemon-hello-api-dev-lambda/test/abc');
-        //* v5 B13: the relay header only (no `x-protocol-context` by default); an empty context → hop 1, no ids.
+        //* v5 B14: the relay header only (no `x-protocol-context` by default); an empty context → hop 1, no ids.
         const headers0 = (service.transformEvent(uri, param) as APIGatewayProxyEvent).headers;
         expect2(() => Object.keys(headers0)).toEqual(['x-lemon-relay']);
         expect2(() => decodeRelay(headers0['x-lemon-relay']), 'idt,hop,pid').toEqual({ hop: 1 });
@@ -239,7 +239,7 @@ describe('ProtocolService', () => {
         const uri = service.asProtocolURI('web', param, config);
         const path = '/metrics/0';
         expect2(uri).toEqual('web://0908@lemon-metrics-api-dev-lambda/metrics/0');
-        //* v5 B13: the relay of the context (tid/pid = requestId); the full context only with `send`.
+        //* v5 B14: the relay of the context (tid/pid = requestId); the full context only with `send`.
         const headers1 = (service.transformEvent(uri, param) as APIGatewayProxyEvent).headers;
         expect2(() => Object.keys(headers1)).toEqual(['x-lemon-relay']);
         expect2(() => decodeRelay(headers1['x-lemon-relay']), 'tid,hop,pid').toEqual({
