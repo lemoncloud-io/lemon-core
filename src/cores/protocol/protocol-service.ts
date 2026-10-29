@@ -32,7 +32,13 @@ import $aws from '../aws/'; // load config-module.
 import queryString from 'qs';
 import { invokeLambda } from './aws-lambda-helper';
 import { measureAsync } from '../../lib/perf';
-import { signContext, signMessage, HEADER_PROTOCOL_SIGNATURE, ATTR_PROTOCOL_SIGNATURE } from './protocol-sign';
+import {
+    signContext,
+    signMessage,
+    HEADER_PROTOCOL_CONTEXT,
+    HEADER_PROTOCOL_SIGNATURE,
+    ATTR_PROTOCOL_SIGNATURE,
+} from './protocol-sign';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -70,8 +76,9 @@ interface MyMessageAttributeValue {
 /**
  * header name to exchange `next-context`
  * ONLY for internal communication.
+ * - v5 B10-3: defined in `protocol-sign.ts`, re-exported here (same name, same value).
  */
-export const HEADER_PROTOCOL_CONTEXT = $U.env('HEADER_PROTOCOL_CONTEXT', 'x-protocol-context');
+export { HEADER_PROTOCOL_CONTEXT };
 
 /**
  * type: MyProtocolType

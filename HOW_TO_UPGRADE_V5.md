@@ -762,6 +762,10 @@ Measured in the five DoU backend repos (read-only census):
 
 The error report path (`doReportError()` → `AWSSNSService.reportError()` → `asErrorPayload()` → `publish()`) and `GETERR()` now print objects with an internal circular-safe stringify instead of a bare `JSON.stringify()`. Before, a thrown http response or axios error (`req` ↔ `res`), or a circular object in `Error.errors`/`cause`, `data` or `context`, made the report fail with `Converting circular structure to JSON`, and the report was lost. Now a back-reference to an ancestor is printed as the string `'[Circular]'`, an `Error` inside an object is printed as `{ name, message, stack, …own props, errors?, cause? }` (bare `JSON.stringify()` printed `{}`), and a `BigInt` as its decimal string. Other values give the same text as before. A consumer that parses the report payload can meet `'[Circular]'` in place of an object. `$U.json()` is unchanged and still throws on a circular object. Details: `docs/v5/B10-report-circular.md`.
 
+### 13.3 Secret header values are masked in logs (B10)
+
+`LambdaHandler.findService()` logs the headers of every event, and the SNS HTTP subscription handler logs the headers of every notification. These lines now print a masked copy: the value of `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-amz-security-token`, `x-protocol-context`, `x-protocol-signature` and `x-lemon-identity` (key match is case-insensitive; the last three follow `HEADER_PROTOCOL_CONTEXT`/`HEADER_LEMON_IDENTITY` if you set them) becomes `[masked:<length>]`, with no character of the value. Other headers are printed as before. `signToken()` logs `[masked:<length>]` instead of the signature, a failed identity header parse logs `[masked:<length>]` instead of the header value, and the Cognito `identity(req)`/`identity(new)` lines of `prepareContext()` print `apiKey` and `accessKey` as `[masked:<length>]` (the `NextIdentity` object itself is unchanged). Only the log text changes: the handler still reads the original headers, so the service type and the request path are the same. If you debugged with header values in CloudWatch, read them from the request itself (for example a local run) instead. Details: `docs/v5/B10-header-log-mask.md`.
+
 ## 14. Dependency audit: `query-string` and `uuid` removed, AWS SDK `^3.1159.0` (B11)
 
 `npm audit --omit=dev` on lemon-core is 0. Details: `docs/v5/B11-deps-audit.md`.
@@ -815,5 +819,6 @@ The error report path (`doReportError()` → `AWSSNSService.reportError()` → `
 - [ ] Code that compares `context.source` by equality compares the service part only; the value now ends with the request path (§ 13)
 - [ ] Local runs that expected `doReportError()` to publish to SNS: it returns `'!ignore'` in local mode; the SNS account comes from `invokedFunctionArn` first (§ 13.1)
 - [ ] Consumers that parse error report payloads accept `'[Circular]'` strings and `Error` objects as `{ name, message, stack }` (§ 13.2)
+- [ ] Debugging that read header values (token, cookie, `x-protocol-context`, signature) from CloudWatch now sees only `[masked:<len>]` (§ 13.3)
 - [ ] Direct imports of `query-string` or `uuid` are in your own `package.json` (§ 14)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)

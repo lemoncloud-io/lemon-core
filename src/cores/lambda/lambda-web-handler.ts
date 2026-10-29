@@ -32,7 +32,13 @@ import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from '
 import { GETERR, onlyDefined } from '../../common/test-helper';
 import { loadJsonSync, awsConfig } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
-import { HEADER_PROTOCOL_SIGNATURE, assertSigned, verifyContext } from '../protocol/protocol-sign';
+import {
+    HEADER_PROTOCOL_SIGNATURE,
+    HEADER_LEMON_IDENTITY,
+    assertSigned,
+    verifyContext,
+} from '../protocol/protocol-sign';
+import { maskValue, maskHeaders } from '../../lib/log-mask';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
@@ -61,7 +67,9 @@ const hasHostHeader = (headers: { [key: string]: any }): boolean =>
     Object.keys(headers || {}).some(key => key.toLowerCase() === 'host');
 
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
-const HEADER_LEMON_IDENTITY = $U.env('HEADER_LEMON_IDENTITY', 'x-lemon-identity');
+//* v5 B10-3: `HEADER_LEMON_IDENTITY` is defined in `protocol-sign.ts` (same env name, same default).
+//* v5 B10-3: fields of the API Gateway `requestContext.identity` (and `NextIdentity`) masked in logs.
+const IDENTITY_LOG_MASKED_FIELDS: readonly string[] = ['apiKey', 'accessKey'];
 const HEADER_COOKIE = $U.env('HEADER_COOKIE', 'cookie');
 const JWT_MAGIC_KEY = $U.env('JWT_MAGIC_KEY', '~jwt@MGC&key~'); // hard to modify.
 const JWT_SIGN_KEY = $U.env('JWT_SIGN_KEY', 'lemon'); // used to make sign key. (use change this)
@@ -803,7 +811,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             }
         } catch (e) {
             _err(NS, '!WARN! parse.err =', e);
-            _err(NS, '!WARN! identity =', val);
+            //* v5 B10-3: the identity header value is a token or an internal context → length only.
+            _err(NS, '!WARN! identity =', maskValue(val));
             result.error = GETERR(e);
         }
         //* overwrite finally language selection.
@@ -980,7 +989,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             if (!$idt) throw new Error(`.identity (NextIdentity) is required - ${errScope}`);
 
             const $req = reqContext.identity;
-            _inf(NS, '! identity(req) :=', $U.json($req));
+            //* v5 B10-3: `apiKey` (usage-plan key) and `accessKey` (temporary IAM key id) are credentials → length only in logs.
+            _inf(NS, '! identity(req) :=', $U.json(maskHeaders($req as any, IDENTITY_LOG_MASKED_FIELDS)));
             $idt.identityProvider = $req.cognitoAuthenticationProvider; // provider string.
             $idt.identityPoolId = $req.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
             $idt.identityId = $req.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
@@ -989,7 +999,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             if (typeof $req.caller == 'string') $idt.caller = $req.caller;
             if (typeof $req.accessKey == 'string') $idt.accessKey = $req.accessKey;
             if (typeof $req.apiKey == 'string') $idt.apiKey = $req.apiKey;
-            _inf(NS, '! identity(new) :=', $U.json({ ...$idt }));
+            _inf(NS, '! identity(new) :=', $U.json(maskHeaders({ ...$idt }, IDENTITY_LOG_MASKED_FIELDS)));
         }
 
         // STEP.5 extract additional request infor from req-context.
@@ -1083,13 +1093,15 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             if (!alias) return '';
             const $kms = new AWSKMSService(`alias/${alias}`);
             const signature = await $kms.sign(message, true);
-            _inf(NS, `> signature[${alias}] with KMS =`, signature);
+            //* v5 B10-3: no signature value in logs.
+            _inf(NS, `> signature[${alias}] with KMS =`, maskValue(signature));
             return signature;
         } else {
             // HS256: sign directly with secret
             const secret = await this.buildJwtSecret();
             const signature = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
-            _inf(NS, `> signature[${alias}] with HS256 =`, signature);
+            //* v5 B10-3: no signature value in logs.
+            _inf(NS, `> signature[${alias}] with HS256 =`, maskValue(signature));
             return signature;
         }
     }

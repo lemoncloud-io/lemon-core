@@ -22,6 +22,22 @@ export const PROTOCOL_SIGN_KEY = 'PROTOCOL_SIGN_KEY';
 export const PROTOCOL_VERIFY = 'PROTOCOL_VERIFY';
 /** header name of the web signature */
 export const HEADER_PROTOCOL_SIGNATURE = 'x-protocol-signature';
+/**
+ * header name to exchange `next-context`, ONLY for internal communication.
+ * - v5 B10-3: defined here (was `protocol-service.ts`, which re-exports it) so that `lambda-handler.ts` reads it without an import cycle.
+ */
+export const HEADER_PROTOCOL_CONTEXT = $U.env('HEADER_PROTOCOL_CONTEXT', 'x-protocol-context');
+/**
+ * header name of the identity of an internal call (JSON) or a JWT.
+ * - v5 B10-3: defined here (was a private const of `lambda-web-handler.ts`) for the same reason.
+ */
+export const HEADER_LEMON_IDENTITY = $U.env('HEADER_LEMON_IDENTITY', 'x-lemon-identity');
+/** v5 B10-3: protocol header names whose values are masked in logs (`maskHeaders()` of `lib/log-mask.ts`) */
+export const PROTOCOL_LOG_MASKED_HEADERS: readonly string[] = [
+    HEADER_PROTOCOL_CONTEXT,
+    HEADER_PROTOCOL_SIGNATURE,
+    HEADER_LEMON_IDENTITY,
+];
 /** message attribute name of the SNS/SQS signature */
 export const ATTR_PROTOCOL_SIGNATURE = 'signature';
 /** web freshness window (seconds). SNS/SQS have none (queue delay, retry and DLQ redrive exceed any window) */

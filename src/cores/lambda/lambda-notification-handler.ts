@@ -21,6 +21,8 @@ import {
 } from './lambda-handler';
 import { success } from './lambda-web-handler';
 import { APIGatewayEventRequestContext } from 'aws-lambda';
+import { maskHeaders } from '../../lib/log-mask';
+import { PROTOCOL_LOG_MASKED_HEADERS } from '../protocol/protocol-sign';
 const NS = $U.NS('HNOT', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -136,7 +138,8 @@ export class LambdaNotificationHandler extends LambdaSubHandler<NotificationHand
     public packNotificationParamBody(event: WEBEvent): { param: NotificationParam; body: NotificationBody } {
         _log(NS, `packNotificationParam()....`);
         // _log(NS, '! event =', $U.json(event));
-        _inf(NS, '! event.headers =', $U.json(event.headers));
+        //* v5 B10-3: log a masked copy of the headers (secret values as `[masked:<len>]`).
+        _inf(NS, '! event.headers =', $U.json(maskHeaders(event.headers, PROTOCOL_LOG_MASKED_HEADERS)));
         const headers = (event && event.headers) || {};
         const $ctx: APIGatewayEventRequestContext = event && event.requestContext;
         const method = ($ctx && $ctx.httpMethod) || event.httpMethod || '';
