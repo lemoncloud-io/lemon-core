@@ -11,7 +11,7 @@
  */
 import { createHash, createHmac, Hash, Hmac } from 'crypto';
 import { _inf, $U } from '../../engine/';
-import { measure, measureAsync } from '../../lib/perf';
+import { measure, nowMs } from '../../lib/perf';
 
 /** a logger like `_inf`. */
 type KmsFetchLogger = (...args: any[]) => void;
@@ -153,16 +153,27 @@ export const decryptViaFetch = async (encryptedBase64: string, opts: DecryptViaF
     };
     const signer = new SignatureV4({ service: 'kms', region, credentials, sha256: NodeSha256 as any });
 
-    //* one `PERF` line for sign + round trip + decode (the signer load has its own line above).
-    return measureAsync(log, $U.NS('PERF', 'cyan'), 'kms decrypt', async () => {
-        const signed: SignableRequest = (await signer.sign(request as any)) as any;
+    //* one `PERF` line for the whole call, with the split `sign=` (SigV4) `fetch=` (connect + request + headers) `decode=` (body + base64).
+    const t0 = nowMs();
+    const signed: SignableRequest = (await signer.sign(request as any)) as any;
+    const t1 = nowMs();
 
-        //* send (a network error rejects here, as is).
-        const res = await fetchFn(`https://${hostname}/`, { method: 'POST', headers: signed.headers, body });
-        if (!res.ok) throw await asKmsError(res as any);
+    //* send (a network error rejects here, as is).
+    const res = await fetchFn(`https://${hostname}/`, { method: 'POST', headers: signed.headers, body });
+    if (!res.ok) throw await asKmsError(res as any);
+    const t2 = nowMs();
 
-        //* decode the plaintext.
-        const json: any = await res.json();
-        return json?.Plaintext ? Buffer.from(json.Plaintext, 'base64').toString('utf-8') : '';
-    });
+    //* decode the plaintext.
+    const json: any = await res.json();
+    const plain = json?.Plaintext ? Buffer.from(json.Plaintext, 'base64').toString('utf-8') : '';
+    const t3 = nowMs();
+    const ms = (a: number, b: number) => (b - a).toFixed(1);
+    log(
+        $U.NS('PERF', 'cyan'),
+        '>',
+        'kms decrypt',
+        `${ms(t0, t3)} ms`,
+        `sign=${ms(t0, t1)} fetch=${ms(t1, t2)} decode=${ms(t2, t3)}`,
+    );
+    return plain;
 };
