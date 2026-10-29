@@ -280,4 +280,32 @@ describe(`test the 'core/engine.ts'`, () => {
             if (saved.fn !== undefined) process.env.AWS_LAMBDA_FUNCTION_NAME = saved.fn;
         }
     });
+
+    //* v5 B10-2: a circular error object must not break the report path.
+    describe('circular structure (B10-2)', () => {
+        // http-response like object: `r.req.res === r`.
+        const circular = (): any => {
+            const r: any = { statusMessage: 'Bad' };
+            r.req = { res: r };
+            return r;
+        };
+
+        it('doReportError() reaches the report step with a circular non-Error', async () => {
+            // before B10-2, `$message(e)` threw outside of `try` ('Converting circular structure to JSON').
+            const e: any = { code: 'ECONNRESET' }; // no `message`·`statusMessage`, so the object itself is printed.
+            e.req = { res: e };
+            const res = await doReportError(e, $context('', ''), null, circular()).catch(GETERR);
+            expect2(res).toEqual('!err - .accountId[] is missing - getHelloArn(RPTE:)');
+        });
+
+        it('do_parrallel() wraps a circular rejection into Error', async () => {
+            const res = await do_parrallel([1, 2], async (n: number) => {
+                if (n == 2) throw circular();
+                return `N${n}`;
+            });
+            expect2(res[0] as any).toEqual('N1');
+            expect(res[1]).toBeInstanceOf(Error);
+            expect2((res[1] as Error).message).toEqual('{"statusMessage":"Bad","req":{"res":"[Circular]"}}');
+        });
+    });
 });
