@@ -775,6 +775,17 @@ The error report path (`doReportError()` → `AWSSNSService.reportError()` → `
 
 Then check one host-less unsigned call returns `403 NOT ALLOWED - unsigned protocol context` and one real internal call still succeeds. Roll back by setting `warn` (or removing the value). Measurement commands and the order: `docs/v5/B10-verify-enforce.md`.
 
+### 13.5 `lemon-fields-types`: one field name, one type per index (B10)
+
+lemon-core now ships a CLI, `lemon-fields-types` (`bin/lemon-fields-types.mjs`, from 5.0.5). One OpenSearch index has one dynamic mapping, so the first document that writes a field fixes its type, and a later model that writes the same name with another type gets `400 mapper_parsing_exception` (the document is stored but never reaches the index). The CLI reads the declared TypeScript types of the models in your `$FIELD` object, normalizes each field to `string`/`number`/`boolean`/`date`/`object`, and lists every field name with two or more kinds. It compiles nothing, runs nothing, and calls no AWS or OpenSearch.
+
+* Add `"fields:types": "lemon-fields-types"` to your `scripts` and run `npm run fields:types`. Exit 1 on a `hard` conflict (`object` vs a scalar, `boolean` vs `number`/`date`: fails in both write orders); `--fail-on order` also fails on order-dependent pairs (`string` vs `number` …). Exit 2 on bad arguments or no TypeScript program.
+* `typescript` is an optional peer (`>=4.7`, no upper bound so a TS 6.x service does not hit ERESOLVE). The CLI uses your repo's own `typescript` (devDependency) first, then each `--fallback <node_modules>`, then the copy next to lemon-core; none → exit 2. The summary line ends with `ts=<version>`, and `--json` has `typescript: { version, from }`.
+* Services that write into the same index check together: `npx lemon-fields-types --root ../other-api --json > other.json`, then `npm run fields:types -- --with other.json`.
+* A repo still on lemon-core 4.x can borrow the bin without changing its dependencies: `npx -p lemon-core@5 lemon-fields-types --root .`.
+
+Options, output format, and limits: `docs/v5/B10-fields-types.md`.
+
 ## 14. Dependency audit: `query-string` and `uuid` removed, AWS SDK `^3.1159.0` (B11)
 
 `npm audit --omit=dev` on lemon-core is 0. Details: `docs/v5/B11-deps-audit.md`.
@@ -830,5 +841,6 @@ Then check one host-less unsigned call returns `403 NOT ALLOWED - unsigned proto
 - [ ] Consumers that parse error report payloads accept `'[Circular]'` strings and `Error` objects as `{ name, message, stack }` (§ 13.2)
 - [ ] Debugging that read header values (token, cookie, `x-protocol-context`, signature) from CloudWatch now sees only `[masked:<len>]` (§ 13.3)
 - [ ] `PROTOCOL_VERIFY=enforce` only after the key is set everywhere, every caller is on v5, and a `warn` window shows no `PROTOCOL unsigned` line (§ 13.4)
+- [ ] `npm run fields:types` (`lemon-fields-types`) shows no `hard` conflict; services that share one index are checked together with `--with` (§ 13.5)
 - [ ] Direct imports of `query-string` or `uuid` are in your own `package.json` (§ 14)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
