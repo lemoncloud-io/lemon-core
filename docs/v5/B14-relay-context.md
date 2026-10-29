@@ -1,4 +1,4 @@
-# v5 B13 — 호출 채널과 relay 정리 (계획)
+# v5 B14 — 호출 채널과 relay 정리 (계획)
 
 상태: 계획 2026-10-30. 기준 `v5` @ `90da90ed` (lemon-core 5.0.5), lemon-model `v5` @ `2591c21`. 구현은 이 계획의 P0부터 진행한다.
 
@@ -32,7 +32,7 @@
 
 - DoU 다섯 repo는 lemon-core v4(`^4.3.0`, `^4.1.15`)다. 서로 `x-protocol-context`로 호출한다(B10-verify-enforce § 현황).
 - 그래서 v5 수신 함수는 당분간 `x-protocol-context`를 받아야 한다.
-- DoU 다섯 repo는 모두 v5 이관 대상이다. 이관은 이 계획(B13)이 끝난 뒤 진행한다(오너 2026-10-30). 그래서 이관 중에는 v4와 v5가 섞인다.
+- DoU 다섯 repo는 모두 v5 이관 대상이다. 이관은 이 계획(B14)이 끝난 뒤 진행한다(오너 2026-10-30). 그래서 이관 중에는 v4와 v5가 섞인다.
 
 ## 2. 목표
 
@@ -143,7 +143,7 @@ relay JSON:
 | P1 | WP5 도구 JWT | D5. `bin/lib`에서 KMS JWT 발급, `loop:check`·`lambda:invoke`·`fields:admin` 적용 | `enforce`에서도 도구가 동작 |
 | P1 | WP6 모드 전환 | D6. dev 키와 `enforce` | IAM만으로 admin 주장 차단 |
 | P2 | WP7 | local transport가 relay를 그대로 쓰는지 확인 (같은 transformer) | 로컬과 Lambda 같은 경로 |
-| P2 | WP8 | DoU 다섯 repo의 v5 이관(B13 뒤 별도 진행). D4 이관 중 설정표를 따른 뒤 `PROTOCOL_LEGACY_ACCEPT=reject` | legacy 수신 종료 |
+| P2 | WP8 | DoU 다섯 repo의 v5 이관(B14 뒤 별도 진행). D4 이관 중 설정표를 따른 뒤 `PROTOCOL_LEGACY_ACCEPT=reject` | legacy 수신 종료 |
 
 **P0 최소 경로:** WP1 → WP2·WP3 → WP4. 개발 중에는 `npm link`로 lemon-model → lemon-core → templates-api를 잇는다. 릴리스는 lemon-model → lemon-core → templates-api 순서다.
 
@@ -170,6 +170,6 @@ relay JSON:
 
 ## 7. 범위 밖
 
-- DoU repo 코드 변경. DoU v5 이관은 B13 뒤 별도로 진행한다.
+- DoU repo 코드 변경. DoU v5 이관은 B14 뒤 별도로 진행한다.
 - relay 암호화. relay는 서명만 한다. 값은 base64url이라 읽을 수 있다. 그래서 화이트리스트에 비밀 값을 넣지 않는다.
 - API Gateway·ALB 설정 변경.
