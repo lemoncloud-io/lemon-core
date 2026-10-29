@@ -440,6 +440,24 @@ Web requests also print one `PERF` summary line each, and the `LambdaModule` han
 
 `cmd=` is printed only when the route has one. `type=` on the `handle` line is the event type (`web`, `sqs`, …, or `unknown`). `cold=1` is on the first `request` line and the first `handle` line of the process only. The local express server prints the `request` line only. No API change: `promised`, `mxNextHandler` and `mxNextFailure` keep their signatures. Details: `docs/v5/B7-perf-trace.md`.
 
+### 8.7 KMS Decrypt without the SDK (B8)
+
+`AWSKMSService.decrypt()` (and so `ConfigService.init()` for env values that start with `*`) no longer loads `@aws-sdk/client-kms` when the env has credentials. It sends one SigV4-signed `fetch` to the KMS JSON API (`TrentService.Decrypt`) instead. On Lambda the runtime sets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, so the boot path takes the fetch path.
+
+- **No API change.** `AWSKMSService` keeps its names and signatures. The new module is internal (no new root export).
+- **Path selection.** `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` both non-empty → fetch. Otherwise (for example a local `AWS_PROFILE`) → the SDK path as before. `encrypt`, `sign`, `verify` and `getPublicKey` always use the SDK.
+- **Errors.** A KMS error (non-2xx) is thrown as `<type>: <message>` (for example `InvalidCiphertextException: …`), so `ConfigService` makes the same `ERROR - …` value. A network error logs `! kms fetch failed, fallback to sdk = <message>` once and the call goes through the SDK.
+- **One new direct dependency:** `@smithy/signature-v4` (`^5.3.8`). It was already installed through `@aws-sdk/core`, so a consumer lock gains no package. Keep `@aws-sdk/client-kms` installed if you call the other KMS methods.
+- **IAM is the same:** the role needs `kms:Decrypt` on the key, as before.
+
+The boot log shows this line instead of `lazy-load @aws-sdk/client-kms` and `client KMS`:
+
+```
+2026-10-29 10:00:00 I PERF: > lazy-load @smithy/signature-v4 3.4 ms
+```
+
+Details: `docs/v5/B8-kms-fetch.md`.
+
 ## 9. L1/L2 merge: one definition per name, removed aliases, renamed search files (B3)
 
 lemon-core had two layers that defined the same names twice: L1 (`helpers/`, `common/`, `extended/abstract-service.ts`) and L2 (`extended/cores/`). The root hid the collisions with 18 pinned exports in `src/index.ts`. v5 keeps **one definition** per name and removes the pins. The rule: the copy the root already exported wins, so **the root names and the root behaviour do not change** (294 names, `npm run api:check` unchanged).
