@@ -62,7 +62,8 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
                     throw new Error(`404 NOT FOUND - id:${id}`);
                 };
             // eslint-disable-next-line prettier/prettier
-            else if (id == '!') next = async (id, param, body, context) => ({ id, param, body, context });  // dump parameter if '!'
+            else if (id == '!')
+                next = async (id, param, body, context) => ({ id, param, body, context }); // dump parameter if '!'
             else next = async id => ({ id, hello: `${id}` });
     }
     return next;
@@ -532,7 +533,7 @@ describe('LambdaWEBHandler', () => {
             cookie: undefined,
             clientIp: '221.149.250.0',
             userAgent: 'HTTPie/1.0.2',
-            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+            source: `api://796730245826@lemon-core-dev/hello/a_123_test#${$pack.version}`, // v5 B10: + request path
             authorization: 'Bearer 12345678',
             origin: 'http://localhost:5004',
             referer: 'http://localhost:5004/',
@@ -632,10 +633,48 @@ describe('LambdaWEBHandler', () => {
             cookie: undefined,
             clientIp: '221.149.50.0',
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
-            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+            source: `api://796730245826@lemon-core-dev/user/0#${$pack.version}`, // v5 B10: + request path
             origin: 'http://localhost:8888',
             referer: 'http://localhost:8888/?code=auth:bc7dd7fe-5d27-45d8-ba45-fa5dc64a7c0a',
         });
+    });
+
+    //* v5 B10: `context.source` carries the first request path, and an internal call keeps the caller's source.
+    it('should pass context.source with the first request path (v5 B10)', async () => {
+        const { service: $web } = instance();
+        const $pack = loadJsonSync('package.json');
+        const base = `api://796730245826@lemon-core-dev`;
+        const sourceOf = async (event: any) => (await $web.packContext(event, null).catch(GETERR))?.source;
+
+        //* with `pathParameters` → `/{type}/{id}/{cmd}` (encoded by `asPath()`).
+        if (1) {
+            const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+            event.pathParameters = { type: 'hello', id: 'a b', cmd: 'c/d' };
+            expect2(await sourceOf(event)).toEqual(`${base}/hello/a%20b/c/d#${$pack.version}`);
+        }
+
+        //* without `pathParameters` → the service uri only (same as v4).
+        if (1) {
+            const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+            event.pathParameters = null;
+            expect2(await sourceOf(event)).toEqual(`${base}#${$pack.version}`);
+        }
+
+        //* internal call (host-less, `x-protocol-context`) → the caller's source is kept as is.
+        if (1) {
+            const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+            Object.keys(event.headers)
+                .filter(key => key.toLowerCase() === 'host')
+                .forEach(key => delete event.headers[key]);
+            const source = 'api://caller@lemon-caller-api-dev/first/1/start#1.0.0';
+            const context: NextContext = {
+                accountId: '796730245826',
+                requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
+                source,
+            };
+            event.headers['x-protocol-context'] = $U.json(context);
+            expect2(await sourceOf(event)).toEqual(source);
+        }
     });
 
     //* test packContext() via web-handler-servce
