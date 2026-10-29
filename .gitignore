@@ -892,3 +892,6 @@ MigrationBackup/
 
 # git worktrees of this repo (agent lanes)
 .wt/
+
+# v5 B10-5: the published CLI `lemon-fields-types` lives in /bin (the VisualStudio `[Bb]in/` rule above ignores it).
+!/bin/
