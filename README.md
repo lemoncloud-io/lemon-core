@@ -2,46 +2,68 @@
 [![npm version](https://badge.fury.io/js/lemon-core.svg)](https://badge.fury.io/js/lemon-core)
 [![GitHub version](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core.svg)](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core)
 
-# lemon-core / V4
+# lemon-core
 
-Lemon Core Bootloader for Serverless Micro-Service
+Bootloader for serverless micro-services on AWS Lambda: one function, several event sources, an engine with modules, a protocol service.
+This README is the entry point for people and AI agents; every path and command below is in this repo. `§` refers to `HOW_TO_UPGRADE_V5.md`.
+v5 status: npm `latest` is `5.0.4`. The `v5` branch holds all 5.x work, unreleased changes included; `develop` is the default branch.
+`CONTRIBUTING.md` describes the `develop` flow; 5.x changes are merged into `v5` until it lands on `develop`.
 
-- Support `multiple` event sources with single lambda function as below figure.
-- Fully support `typescript` types (80%).
-- Support Data Synchronization to `Elasticsearch` from `DynomoDB` via `DynamoStream`.
-- The way to migrate v3 to v4: SEE [HOW_TO_UPGRADE_V4](HOW_TO_UPGRADE_V4.md)
+## At a glance
 
-    ![](assets/2019-11-26-23-43-47.png)
+| Item | Value |
+|---|---|
+| Runtime | Node `>=24.0.0` (`engines.node`), `.nvmrc` `24.15.0` |
+| Build | TypeScript `^5.9.3`. `npm run build` = `build-ts` (`tsc`) + `scripts/gen-esm-wrapper.cjs` |
+| Tests | vitest `^4.1.4`: `src/**/*.spec.ts`, `bin/**/*.spec.mjs` (`vitest.config.ts`) |
+| Formats | CJS `dist/` + ESM `dist/esm/*.mjs`. `exports`: `.`, `./testing`, `./dist/environ`, `./dist/cores/lambda/lambda-web-handler`, `./dist/extended/cores`, `./dist/*` (until v6), `./package.json` |
+| Dependencies | `@aws-sdk/client-dynamodb, @aws-sdk/lib-dynamodb, @opensearch-project/opensearch, @smithy/signature-v4, @types/aws-lambda, @types/jsonwebtoken, async, crypto-js, js-yaml, jsonwebtoken, lemon-model, mime-types, node-cache, qs, source-map-support` |
+| Optional peers | 8 AWS SDK packages `^3.1159.0`, loaded on first use. `typescript` `>=4.7` (CLI) |
+| Published | `files`: `dist/**/*`, `bin/lemon-fields-types.mjs`, `bin/lib/fields-types.mjs`. CLI `lemon-fields-types` (merged in the `v5` branch after 5.0.4; see § 13.5) |
+| Branches | `develop` is the default branch (its `version` is 4.3.0). `v5` holds the 5.x work. `master` was last updated in 2024 (3.2.9). |
+| Version | The `version` field of `package.json`. |
 
-## Architecture
+## Repository map
 
-Basic MicroService Architecutre with `API` + `SNS` + `SQS`.
+| Path | What it holds | Who changes it |
+|---|---|---|
+| `src/index.ts` | Root barrel | Only through the `api:check` allow list |
+| `src/engine/` | `$engine` singleton, `$U`, `_log`/`_inf`/`_err` | Rarely; every module and service depends on it |
+| `src/cores/` | `lambda/`, `protocol/`, `config/`, `aws/`, `dynamo/`, `elastic/`, `storage/`, `cache/`, `api/` | Developer |
+| `src/extended/` | `CoreService`, `ManagerProxy`; `cores/`: template layer (`MyCoreService`, `checkFieldsAdmin()`) | Developer |
+| `src/controllers/`, `tools/`, `helpers/` | Controllers, `express`, `$T`, `$protocol()` | Developer |
+| `src/lib/` | Internal: `safe-json`, `log-mask`, `qs-compat`, `http-fetch`, `lazy`, `perf`. `lib` barrel: `dynamodb-value` only | Developer. Internal; never re-exported from a barrel |
+| `src/common/test-helper.ts`, `src/environ.ts` | Sub-paths `lemon-core/testing`, `lemon-core/dist/environ` | Rarely; both are published sub-paths |
+| `bin/` | `lemon-fields-types` CLI, `lib/` logic, spec, fixtures | Developer |
+| `scripts/` | Build and API gates, lazy-load probes | Developer |
+| `etc/api-names.v4.txt`, `etc/api-names.allow.txt` | v4 public-name baseline; allowed `+Name`/`-Name` | The baseline stays; add lines to the allow list only |
+| `env/` | Configuration profiles | **Agents do not open it** |
+| `docs/v5/`, `docs/specs/` | v5 design record (B0–B11); `$T`/`$U` specs | Updated with the change they describe |
+| `dist/`, `coverage/` | Build and test output, ignored by git | **Never edited by hand** |
+| `.github/workflows/` | `docgen.yaml`: typedoc on push to `develop`. No test job | A person |
 
-- `NextHandler`: basic controller method to handle user service
-- `NextDecoder`: mapper from `httpMethod + id + cmd` to `NextHandler`
-- `NextContext`: initial requester's context with `identity`.
+## Request flow
 
-    ![](assets/lemon-core-ms-arch.png)
-
-### Protocol Service
-
-- support inter-communication between micro services
-- `execute()`: synchronized call via lambda execution by `API` Handler.
-- `notifiy()`: async call by `SNS` handler w/ lambda callback.
-- `enqueue()`: async call by `SQS` handler w/ lambda callback.
-- `broadcast()`: publish message via `SNS`, and handled by `Notification` handler.
-
-    ![](assets/lemon-protocol-flow.png)
-
-```ts
-import $engine, { ProtocolParam, ProtocolService, CallbackParam } from 'lemon-core';
-// use the internal instance from $engine.
-const service: ProtocolService = $engine.cores.protocol.service;
-const protocol: ProtocolParam = service.fromURL(context, 'api://lemon-hello-api/hello/echo', param, body);
-const callback: CallbackParam = { type: 'hooks', id: `${id}` };
-// queue protocol in 30 seconds delayed.
-const queueId = await service.enqueue(protocol, callback, 30);
+```mermaid
+flowchart LR
+    SRC["API Gateway, ALB, WebSocket, SNS, SQS,<br/>cron, DynamoDB stream, Cognito"] --> LH["LambdaHandler<br/>findService()"]
+    LH -- web --> WEB["LambdaWEBHandler"]
+    LH -- "sns / sqs" --> MQ["LambdaSNSHandler, LambdaSQSHandler"]
+    LH -- "alb, cron, dds, ..." --> SUB["other handlers"]
+    MQ -- "x-protocol-service" --> WEB
+    MQ -- other --> LIS["addListener()"]
+    WEB --> CTRL["NextDecoder → NextHandler"]
+    CTRL --> PS["ProtocolService"]
+    PS -- "execute(): Lambda invoke" --> OUT["other service"]
+    PS -- "notify(), broadcast(): SNS" --> OUT
+    PS -- "enqueue(): SQS" --> OUT
 ```
+
+- `LambdaModule` (`cores/lambda/`) runs `$engine.initialize()`, then `LambdaHandler.handle()`.
+- Web: the type's controller (`addController()`) decodes to a `NextHandler` with a `NextContext`.
+- SNS/SQS with `Subject` `x-protocol-service` pass a signature check, then `handleProtocol()`.
+- `ProtocolService` (`core-services.ts`): `execute()` waits (unless `useEvent`); `notify()`, `enqueue()`, `broadcast()` do not.
+- Failures resolve (Cognito rethrows); SQS/stream return `batchItemFailures` (§ 11.4).
 
 ## Usage
 
@@ -51,132 +73,135 @@ const queueId = await service.enqueue(protocol, callback, 30);
 npm install lemon-core --save
 ```
 
-Requires Node `>=24.0.0` (`package.json#engines.node`).
+Add the AWS SDK peers you use to your own `dependencies` (§ 8.1).
 
 ### 2. Minimal bootstrap — engine initialization
 
-Importing `lemon-core` creates the `$engine` singleton immediately at module
-load time (not lazily):
-
 ```ts
-// src/engine/index.ts:23
-//   export const $engine: LemonEngine = buildEngine(global, { env: process.env });
-// src/engine/index.ts:26,30-32
-//   export const $U = $engine.U;
-//   export const _log = $engine.log; export const _inf = $engine.inf; export const _err = $engine.err;
-import { $U, _log, _inf, _err } from 'lemon-core';
-
+// `$engine` is built at the first import, not lazily: set `process.env` before.
+import $lemon, { $U, _inf } from 'lemon-core'; // default: { engine, cores, tools, controllers }
 _inf('lemon-core loaded, NS=', $U.env('NS', 'TT'));
+await $lemon.engine.initialize(); // resolves once every module's initModule() settles
 ```
 
-The root package also exposes a default export that bundles the four
-top-level groups (`engine`, `cores`, `tools`, `controllers`):
-
-```ts
-// src/index.ts:68 — export default { engine, cores, tools, controllers };
-import $lemon from 'lemon-core';
-
-await $lemon.engine.initialize(); // resolves once every registered module's initModule() settles
-```
+ESM `import` gives the same instances (§ 2). Specs use `lemon-core/testing` (§ 4).
 
 ### 3. Engine module registration — the "3-piece set"
 
-Any module that hangs off `$engine` (built-in or your own) follows the same
-contract: register in the constructor, name itself, expose an init level.
-The built-in `ProtocolModule` is the smallest real example:
-
 ```ts
-// src/cores/protocol/index.ts:16-34
-// export class ProtocolModule implements EngineModule {
-//     public constructor(engine?: LemonEngine) {
-//         this.engine = engine || $engine;
-//         if (this.engine) this.engine.register(this);      // (1) register
-//     }
-//     public readonly service: ProtocolService = new MyProtocolService();
-//     public getModuleName = () => 'protocol';               // (2) name
-//     public async initModule(level?: number): Promise<number> { // (3) init level
-//         const $conf = this.engine.module<ConfigModule>('config');
-//         if (level === undefined) return $conf ? (await $conf.initModule()) + 1 : 1;
-//     }
-// }
-// export default new ProtocolModule();   // <- import-time instance, not lazy
+// src/cores/protocol/index.ts (excerpt)
+export class ProtocolModule implements EngineModule {
+    public constructor(engine?: LemonEngine) {
+        this.engine = engine || $engine;
+        if (this.engine) this.engine.register(this); // (1) register; a same-name module is ignored
+    }
+    public getModuleName = () => 'protocol'; // (2) name
+    public async initModule(level?: number): Promise<number> {
+        const $conf = this.engine.module<ConfigModule>('config'); // (3) init level
+        if (level === undefined) return $conf ? (await $conf.initModule()) + 1 : 1;
+    }
+    public readonly service: ProtocolService = new MyProtocolService();
+}
+export default new ProtocolModule(); // import-time instance, not lazy (`cores` group)
 ```
-
-`cores/index.ts:33` re-exports it as part of the `cores` default group
-(`export default { aws, config, lambda, protocol }`), which is why the
-existing `$engine.cores.protocol.service` example below resolves.
 
 ### 4. Manager / proxy registration — inter-service call example
 
-`ProtocolService` (registered above) is the mechanism for calling another
-micro-service — synchronously via `execute()`, or asynchronously via
-`notify()` / `enqueue()` / `broadcast()`:
-
 ```ts
-// import path verified: root barrel re-exports src/cores/core-services.ts
-// (ProtocolParam: :99, CallbackParam: :88, ProtocolService: :150)
-import $engine, { ProtocolParam, ProtocolService, CallbackParam } from 'lemon-core';
+import $lemon, { CallbackParam, ProtocolParam, ProtocolService } from 'lemon-core';
 
-const service: ProtocolService = $engine.cores.protocol.service;
+const service: ProtocolService = $lemon.cores.protocol.service;
 const protocol: ProtocolParam = service.fromURL(context, 'api://lemon-hello-api/hello/echo', param, body);
 const callback: CallbackParam = { type: 'hooks', id: `${id}` };
-// queue protocol in 30 seconds delayed.
-const queueId = await service.enqueue(protocol, callback, 30);
+const queueId = await service.enqueue(protocol, callback, 30); // 30 seconds delayed
 ```
 
-For model persistence, lemon-core's storage/model layer (see the class table
-below) is meant to be **subclassed**, not used directly — `AbstractManager`
-and `MyCoreService` are abstract:
+Controllers: `$lemon.cores.lambda.web.addController()`. Models: subclass `MyCoreService` (abstract `createProxy()`), `MyCoreManager`, `MyCoreProxy`. v5: `guardProxy()` saves on a throw only with `{ saveOnError: true }`; managers sync to OpenSearch only with `{ enableSync: true }` (§ 11.6).
 
-```ts
-// class contracts (all exported from the root barrel):
-// - CoreService            src/extended/abstract-service.ts:115  (table/ns/idName, makeStorageService())
-// - AbstractManager        src/cores/storage/model-manager.ts:23  (storage owner; must implement
-//                          `protected abstract prepareDefault($def: T): T` — model-manager.ts:66)
-// - MyCoreService          src/extended/cores/abstract-services.ts:171
-//                          (adds `guardProxy(context, cb)` — auto-saves via `proxy.saveAllUpdates()`
-//                          on both success and throw — abstract-services.ts:189-202)
-// - MyCoreProxy            src/extended/cores/abstract-services.ts:912
-// - ManagerProxy           src/extended/abstract-service.ts:399  (auto-registers via `proxy.register(this)`
-//                          in its own constructor — abstract-service.ts:406)
-// - AbstractProxy          src/extended/abstract-service.ts:652  (container; `saveAllUpdates()` persists
-//                          every registered ManagerProxy's changes in one call)
-// - NextContext            re-exported from the `lemon-model` package via
-//                          `export * from 'lemon-model';` — src/cores/index.ts:12
+## Commands
 
-class MyService extends MyCoreService<MyModel, 'my-type', MyProxy> {
-    createProxy(context: NextContext): MyProxy {
-        return new MyProxy(context, this);
-    }
-}
+| Command | What it does | Note |
+|---|---|---|
+| `npm test` | `LS=1 vitest run` | Writes `coverage/`. |
+| `npm run test:watch` | `LS=1 vitest` | Re-runs on file changes. |
+| `npm run build` | `tsc` + ESM wrapper | Writes `dist/`. |
+| `npx tsc --noEmit` | Type check only | Writes nothing. |
+| `npm run lint` | `tsc --noEmit` + `eslint --fix` | **Rewrites files.** |
+| `npm run format` | `prettier --write` on `src/` | **Rewrites files.** |
+| `npm run api:names` | Root public names of `dist/index.d.ts` | Run `npm run build` first. |
+| `npm run api:check` | Names vs `etc/api-names.v4.txt` + allow list | Run after `build`. Expect `not-allowed=0`; otherwise exit 1. |
+| `npm run esm:smoke` | ESM and CJS entries are one instance | Run after `build`. Expect `esm-smoke: ok …`. |
+| `npm run dup:check` | One declaring file per exported name | Expect `not-allowed=0`. |
+| `npm run l1l2:probe` | Root/L1/L2 identity, deep paths (`dist/`) | Run after `build`. Expect `fails=0`. |
+| `npm run fields:types` | `lemon-fields-types` here | Reports `models=0` in this repo. Consumers run `npx lemon-fields-types --root .`. |
+| `npm audit --omit=dev` | Audit runtime dependencies | Expect `found 0 vulnerabilities`. |
 
-// typical call site:
-const result = await service.guardProxy(context, async proxy => {
-    // read/modify via proxy.<manager>.get()/.set() ...
-    return something;
-}); // saveAllUpdates() runs automatically, even if the callback throws
-```
+## Verifying a change
 
-This is a skeleton, not a runnable app — see the reference links below for a
-worked model + manager + proxy example.
-
-### 5. Run tests
+Before saying a change is done, run:
 
 ```sh
-LS=1 vitest run
+npm test              # all test files pass, exit 0
+npm run build         # exit 0
+npx tsc --noEmit      # no output
+npm run api:check     # api-check: … not-allowed=0
+npm run esm:smoke     # esm-smoke: ok …
+npm audit --omit=dev  # found 0 vulnerabilities
 ```
 
-(exact value of `package.json#scripts.test`, 2026-09-02)
+- `api:check`: no root name changes without an allow-list line.
+- `esm:smoke`: the dual package keeps one `$engine`.
+- `npm audit --omit=dev`: runtime dependencies stay at 0 (§ 14).
+- Moved exports: also `dup:check`, `l1l2:probe`.
 
-### 6. Reference
+## Agent rules
 
-- Full `ProtocolService` surface: `src/cores/core-services.ts`.
-- Storage/model layer: `src/extended/abstract-service.ts`,
-  `src/extended/cores/abstract-services.ts`, `src/cores/storage/model-manager.ts`.
-- Generated API docs: *(typedoc output — link TBD, see B1 re-review doc,
-  item 5 "API 문서 공개 전략"; current CI publishes to both an S3 bucket and
-  `gh-pages` with no README link — not resolved in this draft)*.
-- `docs/header-identity-token.md` (existing hand-written doc in this repo).
+- Public names change only via `api:check`: a `+Name`/`-Name` line in `etc/api-names.allow.txt`; the v4 baseline stays.
+- `src/lib/*` is internal: never re-export it from `src/index.ts` or any barrel.
+- No new runtime dependency unless `npm audit --omit=dev` stays 0 (§ 14).
+- The 8 AWS SDK peers stay optional; SDK code loads on first use (§ 8).
+- No `npm publish`, deploy or version bump: a person does those.
+- 5.x work branches from `v5`.
+- `lint` and `format` rewrite files: run them on purpose.
+- Never open or print `env/*` or configuration values.
+- When the docs and the source disagree, the source is right.
+- New functions and blocks get a one-line comment (`src/lib/log-mask.ts`).
+
+## Document index
+
+| Document | Content |
+|---|---|
+| [HOW_TO_UPGRADE_V5.md](HOW_TO_UPGRADE_V5.md) | § 1 Node 24 · § 2 ESM · § 3 `exports` · § 4 testing · § 5 modules · § 6 deps · § 7 OpenSearch · § 8 AWS SDK · § 9 L1/L2 · § 10 `@field()` · § 11 trust · § 12 `src/cores/` · § 13 B10 · § 14 audit |
+| [HOW_TO_UPGRADE_V4.md](HOW_TO_UPGRADE_V4.md) | v3 → v4 (historical) |
+| [baseline.md](docs/v5/baseline.md) | B0-a baseline: link state, boot, run modes, test counts, public names |
+| [B0-local-harness.md](docs/v5/B0-local-harness.md) | B0 local harness: the local run path as the verification gate |
+| [B1-packaging.md](docs/v5/B1-packaging.md) | B1 packaging: dual entry, `exports`, single instance |
+| [B2-inventory.md](docs/v5/B2-inventory.md) | B2 (dependencies and coupling): measured inventory |
+| [B2-a-deps.md](docs/v5/B2-a-deps.md) | B2-a: dependencies out: `request`, `lodash`, `ioredis`, `memcached` |
+| [B2-b-inventory.md](docs/v5/B2-b-inventory.md) | B2-b (search): measured inventory |
+| [B2-b-search.md](docs/v5/B2-b-search.md) | B2-b search: OpenSearch client, ES names out, lazy `$OS2` |
+| [B2-c-inventory.md](docs/v5/B2-c-inventory.md) | B2-c (AWS SDK soft coupling): measured inventory |
+| [B2-c-aws.md](docs/v5/B2-c-aws.md) | B2-c AWS SDK: optional peers, lazy loading, local types, `PERF` lines |
+| [B3-inventory.md](docs/v5/B3-inventory.md) | B3 (L1/L2 integration): measured inventory |
+| [B3-l1-l2.md](docs/v5/B3-l1-l2.md) | B3 L1/L2 merge: one definition per name, removed aliases, renamed files |
+| [B4-inventory.md](docs/v5/B4-inventory.md) | B4 (field annotations): measured inventory and experiments |
+| [B4-field-annotation.md](docs/v5/B4-field-annotation.md) | B4: `@field()` in lemon-model, generated registry removed |
+| [B5-inventory.md](docs/v5/B5-inventory.md) | B5 inventory: trust boundary and behaviour contract |
+| [B5-trust-boundary.md](docs/v5/B5-trust-boundary.md) | B5: trust boundary and behaviour contract |
+| [B6-dou-migration.md](docs/v5/B6-dou-migration.md) | B6: migrating a service that carries a `src/cores/` copy |
+| [B7-perf-trace.md](docs/v5/B7-perf-trace.md) | B7: per-request `PERF` lines (`handle`, `request` + 4 steps) |
+| [B8-kms-fetch.md](docs/v5/B8-kms-fetch.md) | B8: KMS `Decrypt` without the SDK (SigV4 + Node `https`) |
+| [B10-context-source.md](docs/v5/B10-context-source.md) | B10: the first request path in `context.source` (Korean) |
+| [B10-fields-types.md](docs/v5/B10-fields-types.md) | B10: field name/type consistency check `lemon-fields-types` (Korean) |
+| [B10-header-log-mask.md](docs/v5/B10-header-log-mask.md) | B10: masking sensitive headers in logs (Korean) |
+| [B10-report-account.md](docs/v5/B10-report-account.md) | B10: choosing the SNS account number in `doReportError()` (Korean) |
+| [B10-report-circular.md](docs/v5/B10-report-circular.md) | B10: circular structures in error reports (Korean) |
+| [B10-verify-enforce.md](docs/v5/B10-verify-enforce.md) | B10: runbook for switching to `PROTOCOL_VERIFY=enforce` (Korean) |
+| [B11-deps-audit.md](docs/v5/B11-deps-audit.md) | B11: `npm audit --omit=dev` 0, `query-string` → `qs`, `uuid` removed (Korean) |
+| [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
+| [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
+| [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |
+| [CHANGELOG.md](CHANGELOG.md) | Stops at 1.2.0 (2019); see VERSION INFO |
 
 ## Contribution
 
@@ -194,6 +219,12 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| unreleased (v5) | B10: `getHelloArn()` account (§ 13.1), circular-safe reports (§ 13.2), masked header logs (§ 13.3), enforce runbook + masked config log (§ 13.4), `lemon-fields-types` (§ 13.5); `LOCAL_TRANSPORT=mock` opt-in (§ 11.3.1).
+| 5.0.4     | `context.source` carries the first request path; `npm audit --omit=dev` 0 (`qs`, `randomUUID()`, AWS SDK `^3.1159.0`).
+| 5.0.3     | KMS `Decrypt` via SigV4 + Node `https`, without `@aws-sdk/client-kms` on the boot path.
+| 5.0.2     | per-request `PERF` lines (`request`, `handle`).
+| 5.0.1     | `GET /<type>/fields/admin` + `checkFieldsAdmin()`; env `DEFAULT_TIME_ZONE`, `DATE_ONLY_CLOCK`, `SID_LEGACY_ACCESS`.
+| 5.0.0     | Node 24, ESM entry + `exports`, AWS SDK optional peers, OpenSearch client, `@field()`, signed protocol calls.
 | 4.3.0     | embed cores template layer as extended/cores
 | 4.2.6     | optimized `$protocol.execute()` to support async lambda invocation.
 | 4.2.5     | optimized `isBase64Encoded` to support apigwBinary. (from `4.1.17`)
