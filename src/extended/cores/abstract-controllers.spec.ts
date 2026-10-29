@@ -12,6 +12,7 @@
  * @date        2023-10-12 optimized `doList()` w/o ES6.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` (gate by channel, shape, `source`).
  * @date        2026-10-28 v5 B4: `checkFieldsAdmin()` on each report, and the in-process express route.
+ * @date        2026-10-30 v5 B13: default data-access policy through the 7 handlers (SPEC § 14, T-01..T-36).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -25,10 +26,12 @@ import { $rand } from '../../helpers/';
 import { GETERR, GETERR$ } from '../../common/test-helper';
 import { NextContext } from 'lemon-model';
 import { $ES6Routed as $ES6 } from './abstract-services'; // v5 B2-b: the L2 `$ES6` name is removed
+import { AccessPolicy, CanDoActionType, CanDoOptions, MyCoreProxy, MyManagerProxy } from './abstract-services'; //* v5 B13
+import { loadSample } from './contexts.spec';
 import { AbstractCRUDController, AbstractTransformer } from './abstract-controllers';
 import { View, Body } from './types';
 import { loadJsonSync } from '../../tools/';
-import { afterEach } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { checkFieldsAdmin } from './fields-admin';
 import { LambdaHandler, LambdaWEBHandler } from '../../cores/lambda';
 import { buildEngine } from '../../engine';
@@ -64,7 +67,14 @@ export class MyTransformer extends AbstractTransformer<MyTestModel, MyView, MyBo
 }
 
 //* create instance.
-export const instance = (options?: { auth?: AuthType; session?: boolean; domain?: string; roles?: string[] }) => {
+export const instance = (options?: {
+    auth?: AuthType;
+    session?: boolean;
+    domain?: string;
+    roles?: string[];
+    /** (optional) v5 B13: controller `policy` option */
+    policy?: Partial<AccessPolicy>;
+}) => {
     const { service, current, context } = $backend.instance(options?.auth, {
         domain: options?.domain,
         roles: options?.roles,
@@ -88,7 +98,7 @@ export const instance = (options?: { auth?: AuthType; session?: boolean; domain?
         MyTransformer
     > {
         public constructor() {
-            super('tests', service, service.$test, trans, { useSession });
+            super('tests', service, service.$test, trans, { useSession, policy: options?.policy });
         }
     })();
     return { api, current, service, trans, context };
@@ -1001,4 +1011,491 @@ describe('AbstractCRUDController fields/admin via express (B4)', () => {
             text: '403 NOT ALLOWED - fields/admin is local or direct-invoke only @doGetAdmin(tests/fields)',
         });
     });
+});
+
+//* v5 B13: a manager proxy that overrides `canDo` (DoU style) and the type policy (`accessPolicy()`).
+class B13TestsProxy extends MyManagerProxy<MyTestModel, TestModelManager, $backend.BackendService, ModelType> {
+    public constructor(
+        proxy: MyCoreProxy<ModelType, $backend.BackendService>,
+        mgr: TestModelManager,
+        readonly typePolicy?: Partial<AccessPolicy>,
+    ) {
+        super(proxy, mgr);
+    }
+    //* the type default with `typePolicy` on top.
+    public accessPolicy(): AccessPolicy {
+        return { ...super.accessPolicy(), ...this.typePolicy };
+    }
+    //* a semi-public read of `public` rows and a silent refusal of `deny*` rows run before the default.
+    public canDo<T extends MyTestModel>(action: CanDoActionType, model?: T, options?: CanDoOptions): boolean {
+        if (action === 'read' && model?.name === 'public') return true;
+        if (`${model?.name ?? ''}`.startsWith('deny')) return false;
+        return super.canDo(action, model, options);
+    }
+}
+
+//* v5 B13: a core proxy that registers only `B13TestsProxy` for the `test` type.
+class B13Proxy extends MyCoreProxy<ModelType, $backend.BackendService> {
+    public readonly tests: B13TestsProxy;
+    public constructor(context: NextContext, service: $backend.BackendService, typePolicy?: Partial<AccessPolicy>) {
+        super(context, service);
+        this.tests = new B13TestsProxy(this, service.$test, typePolicy);
+    }
+}
+
+//* v5 B13: one more controller over the same service (to read rows of another controller).
+const _b13Ctrl = (service: any, trans: MyTransformer, options: { useSession?: boolean; policy?: any }) =>
+    new (class extends AbstractCRUDController<
+        ModelType,
+        MyTestModel,
+        MyView,
+        MyBody,
+        any,
+        TestModelManager,
+        MyTransformer
+    > {
+        public constructor() {
+            super('tests', service, service.$test, trans, options);
+        }
+    })();
+
+describe('AbstractCRUDController B13 access policy', () => {
+    const $legacy0 = process.env.SID_LEGACY_ACCESS;
+    //* restore the toggled env and spies.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+        if ($legacy0 === undefined) delete process.env.SID_LEGACY_ACCESS;
+        else process.env.SID_LEGACY_ACCESS = $legacy0;
+        vi.restoreAllMocks();
+    });
+    loadProfile(process); // override process.env (same profile as above).
+
+    //* the fixture: a session controller, the caller states of § 14.2, and rows A (OWN), B (SITE), C (OTHER).
+    const _setup = async (options?: {
+        session?: boolean;
+        policy?: Partial<AccessPolicy>;
+        override?: boolean;
+        typePolicy?: Partial<AccessPolicy>;
+    }) => {
+        const session = options?.session ?? true;
+        const { api, service, context, trans } = instance({ auth: 'session', session, policy: options?.policy });
+        //* the DoU-style override proxy, when asked.
+        if (options?.override)
+            service.createProxy = (ctx: NextContext) => new B13Proxy(ctx, service, options?.typePolicy) as any;
+        //* a context with the identity overridden.
+        const _ctx = (N: any): NextContext => ({ ...context, identity: { ...context?.identity, ...N } });
+        const $ = {
+            own: _ctx({}),
+            site: _ctx({ uid: '2002' }),
+            other: _ctx({ sid: '999', uid: '2002' }),
+            admin: _ctx({ roles: ['admin'], sid: '999', uid: '9009' }),
+            guest: _ctx({ roles: [] }),
+            nouid: _ctx({ uid: '' }),
+            hashUid: _ctx({ uid: '#x' }),
+            nosid: _ctx({ sid: '#' }),
+            nosess: { identity: { lang: 'ko' } } as NextContext, // direct invoke, no headers
+            signed: loadSample('signed').context as NextContext, // IAM SigV4 caller
+            claim: { identity: { roles: ['admin'] } } as NextContext, // `roles: ['admin']` claim, no `userAgent`
+        };
+        //* rows created with the session on (a second controller when this one has it off).
+        const $on = session ? api : _b13Ctrl(service, trans, { useSession: true });
+        const A = await $on.doPost('', null, { name: 'own' }, $.own);
+        const B = await $on.doPost('', null, { name: 'site' }, $.site);
+        const C = await $on.doPost('', null, { name: 'other' }, $.other);
+        //* capture `$param` of `manager.list()` (no search engine in this profile).
+        const seen: any[] = [];
+        vi.spyOn(service.$test, 'list').mockImplementation(async ($page: any, $param: any) => {
+            seen.push({ ...$param });
+            return { list: [], total: 0 } as any;
+        });
+        //* `doList()` → the `$param` it searched with (or the error).
+        const _list = async (ctx: NextContext, param: any = {}, $api: any = api) => {
+            seen.length = 0;
+            const err = await $api.doList('', param, null, ctx).then(() => null, GETERR);
+            return err ?? seen[0];
+        };
+        //* the error message (or the value), cut before the context dump.
+        const _e = (P: Promise<any>) =>
+            P.catch(GETERR).then(R => (typeof R === 'string' ? R.split(' - context:')[0] : R));
+        //* the 5 handlers for one caller → the first 3 chars of each error, or `ok`.
+        const _five = async (ctx: NextContext, id: string = A.id) => {
+            const _h = (P: Promise<any>) => _e(P).then(R => (typeof R === 'string' ? R.substring(0, 3) : 'ok'));
+            return [
+                await _h(api.doList('', {}, null, ctx)),
+                await _h(api.doGet(id, null, null, ctx)),
+                await _h(api.doPost('', null, { name: 'new' }, ctx)),
+                await _h(api.doPut(id, null, { name: 'put' }, ctx)),
+                await _h(api.doDelete(id, null, null, ctx)),
+            ];
+        };
+        return { api, service, trans, $, A, B, C, seen, _list, _e, _five };
+    };
+    const OK5 = ['ok', 'ok', 'ok', 'ok', 'ok'];
+    const DENY5 = ['403', '403', '403', '403', '403'];
+
+    it('B13 T-01 ADM doList: own site, `?sid=` picks any site', async () => {
+        const { $, _list } = await _setup();
+        expect2(await _list($.admin), 'sid,uid').toEqual({ sid: '999' });
+        expect2(await _list($.admin, { sid: '1000000' }), 'sid,uid').toEqual({ sid: '1000000' });
+    });
+
+    it('B13 T-02 ADM doGet of other users and sites', async () => {
+        const { api, $, A, C } = await _setup();
+        expect2(await api.doGet(A.id, null, null, $.admin).catch(GETERR), 'id,name').toEqual({ id: A.id, name: 'own' });
+        expect2(await api.doGet(C.id, null, null, $.admin).catch(GETERR), 'id').toEqual({ id: C.id });
+    });
+
+    it('B13 T-03 ADM doPost stamps the admin session', async () => {
+        const { api, $ } = await _setup();
+        expect2(await api.doPost('', null, { name: 'adm' }, $.admin).catch(GETERR), '$').toEqual({
+            $: { sid: '999', uid: '9009' },
+        });
+    });
+
+    it('B13 T-04 ADM doPut of another user row', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doPut(A.id, null, { name: 'adm' }, $.admin).catch(GETERR), 'name').toEqual({ name: 'adm' });
+    });
+
+    it('B13 T-05 ADM doDelete of another user row', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doDelete(A.id, null, null, $.admin).catch(GETERR), 'id').toEqual({ id: A.id });
+    });
+
+    it('B13 T-06 IAM SigV4 caller (no session) and `roles: [admin]` claim: all 5 handlers as admin', async () => {
+        const { api, $, A, B, _list } = await _setup();
+        //* list: no session site → no site filter.
+        expect2(await _list($.signed), 'sid').toEqual({ sid: null });
+        expect2(await _list($.signed, { sid: '1000000' }), 'sid').toEqual({ sid: '1000000' });
+        expect2(await api.doGet(A.id, null, null, $.signed).catch(GETERR), 'id').toEqual({ id: A.id });
+        //* create: no session → empty `sid`/`uid` (a `sid`-less row, admin only by default; was `403 IDENTITY-TOKEN`).
+        const made = await api.doPost('', null, { name: 'iam' }, $.signed).catch(GETERR);
+        expect2(() => made, 'name').toEqual({ name: 'iam' });
+        expect2(() => made, '$').toEqual({ $: { sid: '', uid: '' } });
+        expect2(await api.doPut(A.id, null, { name: 'iam' }, $.signed).catch(GETERR), 'name').toEqual({ name: 'iam' });
+        expect2(await api.doDelete(A.id, null, null, $.signed).catch(GETERR), 'id').toEqual({ id: A.id });
+        expect2(await api.doGet(B.id, null, null, $.claim).catch(GETERR), 'id').toEqual({ id: B.id });
+        expect2(await _list($.claim), 'sid').toEqual({ sid: null });
+    });
+
+    it('B13 T-07 OWN doList pinned to own site', async () => {
+        const { $, _list } = await _setup();
+        expect2(await _list($.own), 'sid,uid').toEqual({ sid: '1000000' });
+    });
+
+    it('B13 T-08 OWN doGet', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doGet(A.id, null, null, $.own).catch(GETERR), 'id,name').toEqual({ id: A.id, name: 'own' });
+    });
+
+    it('B13 T-09 doPost stamps the session sid/uid/gid (OWN, SITE, OTHER)', async () => {
+        const { api, $, A, B, C } = await _setup();
+        expect2(() => [A, B, C].map(N => N.$)).toEqual([
+            { sid: '1000000', uid: '1000001' },
+            { sid: '1000000', uid: '2002' },
+            { sid: '999', uid: '2002' },
+        ]);
+        //* `gid` from the session (new); the body cannot set the cores.
+        const $g1 = { ...$.own, identity: { ...$.own.identity, gid: 'g1' } } as NextContext;
+        const made = await api.doPost('', null, { name: 'g', sid: 'x', uid: 'y', gid: 'z' } as any, $g1);
+        expect2(() => made.$).toEqual({ sid: '1000000', uid: '1000001', gid: 'g1' });
+    });
+
+    it('B13 T-10 OWN doPut', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doPut(A.id, null, { name: 'mine' }, $.own).catch(GETERR), 'name').toEqual({ name: 'mine' });
+    });
+
+    it('B13 T-11 OWN doDelete', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doDelete(A.id, null, null, $.own).catch(GETERR), 'id').toEqual({ id: A.id });
+    });
+
+    it('B13 T-12 SITE doList pinned to own site, `?uid=` narrows', async () => {
+        const { $, _list } = await _setup();
+        expect2(await _list($.site), 'sid,uid').toEqual({ sid: '1000000' });
+        expect2(await _list($.site, { uid: '1000001' }), 'sid,uid').toEqual({ sid: '1000000', uid: '1000001' });
+    });
+
+    it('B13 T-13 SITE doGet of another user row → 403', async () => {
+        const { api, $, A } = await _setup();
+        // B13 § 14.2 T-13: was ✔ (same `sid`, any `uid`).
+        expect2(await api.doGet(A.id, null, null, $.site).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${A.id})`,
+        );
+    });
+
+    it('B13 T-14 SITE doPut of another user row → 403', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doPut(A.id, null, { name: 'x' }, $.site).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${A.id})`,
+        );
+    });
+
+    it('B13 T-15 SITE doDelete of another user row → 403', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doDelete(A.id, null, null, $.site).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[delete] is invalid @doDelete(tests/${A.id})`,
+        );
+    });
+
+    it('B13 T-16 OTHER doList: own site only, `?sid=` ignored', async () => {
+        const { $, _list } = await _setup();
+        expect2(await _list($.other, { sid: '1000000' }), 'sid,uid').toEqual({ sid: '999' });
+    });
+
+    it('B13 T-17 OTHER doGet → 403', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doGet(A.id, null, null, $.other).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${A.id})`,
+        );
+    });
+
+    it('B13 T-18 OTHER doPut → 403', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doPut(A.id, null, { name: 'x' }, $.other).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${A.id})`,
+        );
+    });
+
+    it('B13 T-19 OTHER doDelete → 403', async () => {
+        const { api, $, A } = await _setup();
+        expect2(await api.doDelete(A.id, null, null, $.other).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[delete] is invalid @doDelete(tests/${A.id})`,
+        );
+    });
+
+    it('B13 T-20 NOUID (empty or `#` uid) → 403 on all 5 handlers', async () => {
+        const { $, _five, _list } = await _setup();
+        expect2(await _five($.nouid)).toEqual(DENY5);
+        expect2(await _five($.hashUid)).toEqual(DENY5);
+        expect2(await _list($.hashUid)).toEqual('403 NOT ALLOWED - action[list] is invalid @doList(tests/)');
+    });
+
+    it('B13 T-21 NOSID (offsite `#`) → 403 on all 5 handlers, list too', async () => {
+        const { $, _five, _list } = await _setup();
+        expect2(await _five($.nosid)).toEqual(DENY5);
+        // B13 § 14.2 T-21: was an unfiltered list.
+        expect2(await _list($.nosid)).toEqual('403 NOT ALLOWED - action[list] is invalid @doList(tests/)');
+    });
+
+    it('B13 T-22 GUEST (empty roles) → 403 on all 5 handlers', async () => {
+        const { $, _five, _list } = await _setup();
+        expect2(await _five($.guest)).toEqual(DENY5);
+        expect2(await _list($.guest)).toEqual('403 NOT ALLOWED - action[list] is invalid @doList(tests/)');
+    });
+
+    it('B13 T-23 NOSESS (no session in Lambda) → 403 IDENTITY-TOKEN on all 5 handlers', async () => {
+        const { api, $, A, _e } = await _setup();
+        const MSG = '403 IDENTITY-TOKEN - .identity (IdentityToken) is required';
+        expect2(await _e(api.doList('', {}, null, $.nosess))).toEqual(MSG);
+        expect2(await _e(api.doGet(A.id, null, null, $.nosess))).toEqual(MSG);
+        expect2(await _e(api.doPost('', null, { name: 'x' }, $.nosess))).toEqual(MSG);
+        expect2(await _e(api.doPut(A.id, null, { name: 'x' }, $.nosess))).toEqual(MSG);
+        expect2(await _e(api.doDelete(A.id, null, null, $.nosess))).toEqual(MSG);
+        expect2(await _e(api.doPutBulk('', null, [{ id: A.id }], $.nosess))).toEqual(MSG);
+    });
+
+    it('B13 T-24 a row with an empty uid → admin only', async () => {
+        const { api, $ } = await _setup();
+        //* an admin with a `#` uid creates a row of site 1000000 without `uid`.
+        const $adm = { ...$.own, identity: { ...$.own.identity, roles: ['admin'], uid: '#adm' } } as NextContext;
+        const row = await api.doPost('', null, { name: 'nouid' }, $adm);
+        expect2(() => row.$).toEqual({ sid: '1000000', uid: '' });
+        expect2(await api.doGet(row.id, null, null, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${row.id})`,
+        );
+        expect2(await api.doPut(row.id, null, { name: 'x' }, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${row.id})`,
+        );
+        expect2(await api.doDelete(row.id, null, null, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[delete] is invalid @doDelete(tests/${row.id})`,
+        );
+        expect2(await api.doGet(row.id, null, null, $.admin).catch(GETERR), 'id').toEqual({ id: row.id });
+    });
+
+    //* a `sid`-less row: created by an offsite admin (`sid: '#'` → stored `''`).
+    const _sidless = async (api: any, $: any) => {
+        const $off = { ...$.own, identity: { ...$.own.identity, roles: ['admin'], sid: '#' } } as NextContext;
+        return api.doPost('', null, { name: 'legacy' }, $off);
+    };
+
+    it('B13 T-25 a `sid`-less row, SID_LEGACY_ACCESS=admin (default) → read admin only', async () => {
+        delete process.env.SID_LEGACY_ACCESS;
+        const { api, $ } = await _setup();
+        const row = await _sidless(api, $);
+        expect2(() => row.$).toEqual({ sid: '', uid: '1000001' });
+        // B13 § 14.2 T-25: read was ✔ for role holders (B5 § 6.4 read stayed open).
+        expect2(await api.doGet(row.id, null, null, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${row.id})`,
+        );
+        expect2(await api.doPut(row.id, null, { name: 'x' }, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${row.id})`,
+        );
+        expect2(await api.doGet(row.id, null, null, $.admin).catch(GETERR), 'id').toEqual({ id: row.id });
+    });
+
+    it('B13 T-26 a `sid`-less row, SID_LEGACY_ACCESS=open → every role holder (v4)', async () => {
+        process.env.SID_LEGACY_ACCESS = 'open';
+        const { api, $ } = await _setup();
+        const row = await _sidless(api, $);
+        expect2(await api.doGet(row.id, null, null, $.other).catch(GETERR), 'id').toEqual({ id: row.id });
+        expect2(await api.doPut(row.id, null, { name: 'v4' }, $.site).catch(GETERR), 'name').toEqual({ name: 'v4' });
+        expect2(await api.doDelete(row.id, null, null, $.own).catch(GETERR), 'id').toEqual({ id: row.id });
+        expect2(await api.doGet(row.id, null, null, $.guest).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${row.id})`,
+        );
+    });
+
+    it('B13 T-27 a `sid`-less row, SID_LEGACY_ACCESS=deny → write 403 even for admin, read as `admin`', async () => {
+        delete process.env.SID_LEGACY_ACCESS;
+        const { api, $ } = await _setup();
+        const row = await _sidless(api, $);
+        process.env.SID_LEGACY_ACCESS = 'deny';
+        expect2(await api.doPut(row.id, null, { name: 'x' }, $.admin).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${row.id})`,
+        );
+        expect2(await api.doDelete(row.id, null, null, $.signed).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[delete] is invalid @doDelete(tests/${row.id})`,
+        );
+        expect2(await api.doGet(row.id, null, null, $.admin).catch(GETERR), 'id').toEqual({ id: row.id });
+        expect2(await api.doGet(row.id, null, null, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${row.id})`,
+        );
+    });
+
+    it('B13 T-28 doPostBulk: denied items → 403 with every denied index, zero writes', async () => {
+        const { api, $ } = await _setup({ override: true });
+        const made = vi.spyOn(MyManagerProxy.prototype, 'makeModel');
+        //* `deny*` rows are refused by the override with `false` (not thrown); a `false` counts as denied.
+        expect2(
+            await api.doPostBulk('', null, [{ name: 'ok' }, { name: 'deny1' }, { name: 'deny2' }], $.own).catch(GETERR),
+        ).toEqual('403 NOT ALLOWED - bulk[create] denied ids[#1,#2] @doPostBulk(tests/)');
+        expect2(() => made.mock.calls.length).toEqual(0);
+        //* a `null` never reaches `makeModel()` (the v5.0 bug of the `throwable: false` path).
+        expect2(await api.doPostBulk('', null, [{ name: 'deny' }], $.own).catch(GETERR)).toEqual(
+            '403 NOT ALLOWED - bulk[create] denied ids[#0] @doPostBulk(tests/)',
+        );
+        expect2(() => made.mock.calls.length).toEqual(0);
+    });
+
+    it('B13 T-29 doPostBulk: all allowed → all written', async () => {
+        const { api, $ } = await _setup();
+        const list = await api.doPostBulk('', null, [{ name: 'b1' }, { name: 'b2' }], $.own);
+        expect2(() => list.map(N => N.$)).toEqual([
+            { sid: '1000000', uid: '1000001' },
+            { sid: '1000000', uid: '1000001' },
+        ]);
+        expect2(await api.doGet(list[1].id, null, null, $.own).catch(GETERR), 'name').toEqual({ name: 'b2' });
+    });
+
+    it('B13 T-30 doPutBulk: denied rows → 403 with every denied id, zero writes; 404 first', async () => {
+        const { api, $, A, B, C } = await _setup();
+        const body = [A, B, C].map(N => ({ id: N.id, name: 'bulk' }));
+        expect2(await api.doPutBulk('', null, body, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - bulk[update] denied ids[${B.id},${C.id}] @doPutBulk(tests/)`,
+        );
+        //* zero writes: A (allowed) keeps its name.
+        expect2(await api.doGet(A.id, null, null, $.own).catch(GETERR), 'name').toEqual({ name: 'own' });
+        //* a missing id is a 404 in phase 1, before the denial.
+        expect2(await api.doPutBulk('', null, [body[0], { id: 'nope' }, body[1]], $.own).catch(GETERR)).toEqual(
+            '404 NOT FOUND - not found @doPutBulk(tests:1/nope)',
+        );
+    });
+
+    it('B13 T-31 doPutBulk: all allowed → all written', async () => {
+        const { api, $, A } = await _setup();
+        const A2 = await api.doPost('', null, { name: 'own2' }, $.own);
+        const res = await api.doPutBulk(
+            '',
+            null,
+            [A, A2].map(N => ({ id: N.id, name: 'bulk' })),
+            $.own,
+        );
+        expect2(() => res.list.map(N => N.name)).toEqual(['bulk', 'bulk']);
+        expect2(await api.doGet(A2.id, null, null, $.own).catch(GETERR), 'name').toEqual({ name: 'bulk' });
+    });
+
+    it('B13 T-32 a `canDo` override runs before the default', async () => {
+        const { api, $ } = await _setup({ override: true });
+        const pub = await api.doPost('', null, { name: 'public' }, $.own);
+        //* semi-public read for SITE and OTHER (the default would 403).
+        expect2(await api.doGet(pub.id, null, null, $.site).catch(GETERR), 'id').toEqual({ id: pub.id });
+        expect2(await api.doGet(pub.id, null, null, $.other).catch(GETERR), 'id').toEqual({ id: pub.id });
+        //* the override falls back to the default for the rest.
+        expect2(await api.doPut(pub.id, null, { name: 'x' }, $.site).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${pub.id})`,
+        );
+    });
+
+    it('B13 T-33 controller `policy: { read: site }` restores the site-wide read', async () => {
+        const { api, $, A, _list } = await _setup({ policy: { read: 'site' } });
+        expect2(await api.doGet(A.id, null, null, $.site).catch(GETERR), 'id').toEqual({ id: A.id });
+        expect2(await api.doGet(A.id, null, null, $.other).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${A.id})`,
+        );
+        expect2(await api.doPut(A.id, null, { name: 'x' }, $.site).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${A.id})`,
+        );
+        expect2(await _list($.site), 'sid,uid').toEqual({ sid: '1000000' });
+        //* `{ list: 'owner' }` → own rows only (`?uid=` overridden).
+        const { $: $2, _list: _list2 } = await _setup({ policy: { list: 'owner' } });
+        expect2(await _list2($2.site, { uid: '1000001' }), 'sid,uid').toEqual({ sid: '1000000', uid: '2002' });
+    });
+
+    it('B13 T-34 `accessPolicy()` override per type; the controller `policy` wins', async () => {
+        const { api, $, A, _list } = await _setup({ override: true, typePolicy: { read: 'site', list: 'owner' } });
+        expect2(await api.doGet(A.id, null, null, $.site).catch(GETERR), 'id').toEqual({ id: A.id });
+        expect2(await _list($.site), 'sid,uid').toEqual({ sid: '1000000', uid: '2002' });
+        const {
+            api: api2,
+            $: $2,
+            A: A2,
+        } = await _setup({
+            override: true,
+            typePolicy: { read: 'site' },
+            policy: { read: 'owner' },
+        });
+        expect2(await api2.doGet(A2.id, null, null, $2.site).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${A2.id})`,
+        );
+    });
+
+    it('B13 T-35 useSession=false controller → v5 § 6.4 rules, no list check or pin', async () => {
+        const { api, $, A, B, _list } = await _setup({ session: false, policy: { read: 'any' } });
+        //* same site → read for any user; other site → 403; update needs the uid (§ 6.4).
+        expect2(await api.doGet(A.id, null, null, $.site).catch(GETERR), 'id').toEqual({ id: A.id });
+        expect2(await api.doGet(A.id, null, null, $.other).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${A.id})`,
+        );
+        expect2(await api.doPut(B.id, null, { name: 'x' }, $.own).catch(GETERR)).toEqual(
+            `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${B.id})`,
+        );
+        //* list: no `canDo('list')` (a guest lists), `?sid=` as given.
+        expect2(await _list($.guest, { sid: 'x' }), 'sid').toEqual({ sid: 'x' });
+        expect2(await _list($.nosid), 'sid').toEqual({});
+        //* create: no session stamp.
+        expect2(await api.doPost('', null, { name: 'off' }, $.own).then(R => R.$)).toEqual(undefined);
+    });
+
+    it('B13 T-36 local mode → unchanged (admin for all, no pin)', async () => {
+        const { api, $, A, _list } = await _setup();
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        expect2(await _five_local(api, $, A)).toEqual(OK5);
+        expect2(await _list($.other, { sid: 'a' }), 'sid').toEqual({ sid: 'a' });
+        expect2(await _list($.guest), 'sid').toEqual({});
+    });
+    //* the 5 handlers in local mode for OTHER and GUEST (both pass as admin).
+    const _five_local = async (api: any, $: any, A: any) => {
+        const _h = (P: Promise<any>) => P.then(() => 'ok', GETERR);
+        return [
+            await _h(api.doList('', {}, null, $.guest)),
+            await _h(api.doGet(A.id, null, null, $.other)),
+            await _h(api.doPost('', null, { name: 'loc' }, $.guest)),
+            await _h(api.doPut(A.id, null, { name: 'loc' }, $.other)),
+            await _h(api.doDelete(A.id, null, null, $.guest)),
+        ];
+    };
 });

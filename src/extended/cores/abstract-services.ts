@@ -39,6 +39,7 @@
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
  * @date        2026-10-27 v5 B2-b: OpenSearch client, lazy `$OS2` (= `$ES6Routed`), one service set per instance.
  * @date        2026-10-28 v5 B4: `CORE_FIELDS = fieldsOf(CoreModel)`; manager `fields` may be a model class.
+ * @date        2026-10-30 v5 B13: default data-access policy (`AccessPolicy`, `canDo` scopes, `list` pin by scope).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -117,17 +118,45 @@ const $LUT = {
 export type CanDoActionType = keyof typeof $LUT.CanDoAction;
 
 /**
+ * type: `AccessScope`
+ * - v5 B13: which rows one action may touch, against the caller's session (SPEC § 14.1).
+ * - `owner`: same `sid` and same non-empty `uid`. `group`: same `sid` and same non-empty `gid`.
+ * - `site`: same non-empty `sid`. `any`: every role holder.
+ */
+export type AccessScope = 'owner' | 'group' | 'site' | 'any';
+
+/**
+ * type: `AccessPolicy`
+ * - v5 B13: the scope of each CRUD action.
+ */
+export type AccessPolicy = Record<CanDoActionType, AccessScope>;
+
+/**
+ * v5 B13: the core default policy - list in the caller's site, the other four on own rows only.
+ * - override per type with `MyManagerProxy.accessPolicy()`, per controller with `options.policy`.
+ */
+export const DEFAULT_ACCESS_POLICY: Readonly<AccessPolicy> = Object.freeze({
+    list: 'site',
+    read: 'owner',
+    create: 'owner',
+    update: 'owner',
+    delete: 'owner',
+});
+
+/**
  * Optional parameters for `canDo()`
  */
 export interface CanDoOptions {
     /** error scope to print */
     errScope?: string;
-    /** flag to throw error if not allowed (default false) */
+    /** flag to throw error if not allowed (default true) */
     throwable?: boolean;
-    /** flag to use session (default true) */
+    /** flag to use session (default env `USE_SESSION`) */
     useSession?: boolean;
     /** current context to override */
     context?: NextContext;
+    /** (optional) v5 B13: scopes to override the manager-proxy policy (used only with the session on) */
+    policy?: Partial<AccessPolicy>;
 }
 
 /**
@@ -1241,17 +1270,23 @@ export class MyCoreProxy<
         const useSession = options?.useSession ?? false;
         const throwable = options?.throwable ?? false;
         const base = model ?? ({} as any);
+        //* v5 B13: copy a non-empty `gid` only (an absent group adds no `gid` key).
+        const _gid = (gid?: string) => {
+            if (base['gid'] === undefined && typeof gid === 'string' && gid) base['gid'] = gid;
+        };
         // STEP.0 populate with current parent.
         if (options?.parent) {
             const parent = options.parent;
             base['sid'] = base['sid'] ?? parent?.sid;
             base['uid'] = base['uid'] ?? parent?.uid;
+            _gid(parent?.gid); //* v5 B13: `gid` from the parent too.
         }
         // STEP.1 use session if applicable
         if (useSession) {
             const parent = this.getCurrentSession({ throwable });
             base['sid'] = base['sid'] ?? parent?.sid;
             base['uid'] = base['uid'] ?? parent?.uid;
+            _gid(parent?.gid); //* v5 B13: stamp the session `gid` (SPEC § 14.3 create).
         }
         return base;
     }
@@ -1327,6 +1362,8 @@ export class MyManagerProxy<
             limit?: number;
             /** (optional) error scope to use */
             errScope?: string;
+            /** (optional) v5 B13: list scope to pin (default: the effective policy `list`, session on only) */
+            scope?: AccessScope;
         },
     ) {
         const type = this.$mgr.type;
@@ -1334,12 +1371,13 @@ export class MyManagerProxy<
         const throwable = options?.throwable ?? true;
         const errScope = options?.errScope ?? `packSearchParam(${type})`;
         const isLocal = $U.isLocalMode(); //* v5: drop the `sid` pin only in local mode (B5 § 6.3).
-        const session = useSession ? this.proxy.getCurrentSession({ throwable }) : null;
+        //* v5 B13: admin is decided before the session, so a session-less admin (IAM SigV4) lists without 403.
+        const isAdmin = useSession && !isLocal ? this.proxy.hasAdminRole('admin') : false;
+        const session = useSession ? this.proxy.getCurrentSession({ throwable: throwable && !isAdmin }) : null;
 
         const _has = (name: string): boolean =>
             param && (typeof param[name] === 'string' || typeof param[name] === 'number');
         const _val = (name: string): string => (param ? $T.S2(param[name]) : undefined);
-        const _hasAdm = () => this.proxy.hasAdminRole('admin');
 
         // parse params
         const sort = _has('sort') ? $T.S2(param?.sort, '') : undefined;
@@ -1359,14 +1397,44 @@ export class MyManagerProxy<
         }, {} as SearchParam<MyModel>);
 
         // use w/ `identity-token` (known as session)
-        if (useSession && !isLocal) {
-            if (_hasAdm()) {
-                $param['sid'] = _has('sid') ? (_val('sid') === '0' ? session?.sid : _val('sid')) : session?.sid;
-            } else {
-                $param['sid'] = session?.sid;
-            }
+        if (useSession && !isLocal && isAdmin) {
+            //* admin: `?sid=` (or `0` = own site), else the session site (unchanged).
+            //* v5 B13: a session-less admin (empty `sid`) gets `null` = no site filter, not the `sid`-less rows.
+            const ownSid = session?.sid || null;
+            $param['sid'] = _has('sid') ? (_val('sid') === '0' ? ownSid : _val('sid')) : ownSid;
             //* use the current session's uid.
             if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
+        } else if (useSession && !isLocal) {
+            //* v5 B13: pin per the list scope (SPEC § 14.3 list).
+            const scope: AccessScope = options?.scope ?? this.effectivePolicy().list;
+            const S = { sid: $T.S2(session?.sid), uid: $T.S2(session?.uid), gid: $T.S2(session?.gid) };
+            const _deny = (name: string) =>
+                new Error(`403 NOT ALLOWED - list[${scope}] needs session .${name} @${errScope}`);
+            if (scope === 'any') {
+                //* `any`: no pin, `?sid=` and `?uid=` as given (`0` = the session value).
+                if (_has('sid')) $param['sid'] = _val('sid') === '0' ? session?.sid : _val('sid');
+                if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
+            } else if (scope === 'site' || scope === 'owner' || scope === 'group') {
+                //* every pinned scope needs the session site; an empty one lists nothing (was: no filter).
+                if (!S.sid) throw _deny('sid');
+                $param['sid'] = S.sid;
+                if (scope === 'owner') {
+                    //* `owner`: own rows only, `?uid=` is overridden.
+                    if (!S.uid) throw _deny('uid');
+                    $param['uid'] = S.uid;
+                } else {
+                    //* `site`/`group`: `?uid=` stays a narrowing filter (`0` = own uid).
+                    if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
+                    if (scope === 'group') {
+                        //* `group`: the caller's group only.
+                        if (!S.gid) throw _deny('gid');
+                        $param['gid'] = S.gid;
+                    }
+                }
+            } else {
+                //* an unknown scope never lists.
+                throw new Error(`403 NOT ALLOWED - list[${scope ?? ''}] is invalid @${errScope}`);
+            }
         } else {
             if (_has('sid')) $param['sid'] = _val('sid');
             if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
@@ -1447,11 +1515,38 @@ export class MyManagerProxy<
     }
 
     /**
+     * v5 B13: the default policy of this model type (override per type).
+     * - merged as `{ ...DEFAULT_ACCESS_POLICY, ...accessPolicy(), ...options.policy }`.
+     *
+     * @returns the scope per action
+     */
+    public accessPolicy(): AccessPolicy {
+        return { ...DEFAULT_ACCESS_POLICY };
+    }
+
+    /**
+     * v5 B13: the effective policy - core default, then `accessPolicy()`, then `policy` (undefined values skipped).
+     *
+     * @param policy (optional) scopes from the caller (ex: controller `options.policy`)
+     * @returns the merged policy
+     */
+    public effectivePolicy(policy?: Partial<AccessPolicy>): AccessPolicy {
+        //* keep only the defined scopes, so `{ read: undefined }` does not erase a default.
+        const _defined = (P?: Partial<AccessPolicy>) =>
+            Object.entries(P ?? {}).reduce<Partial<AccessPolicy>>((M, [k, v]) => {
+                if (v !== undefined && v !== null) (M as any)[k] = v;
+                return M;
+            }, {});
+        return { ...DEFAULT_ACCESS_POLICY, ..._defined(this.accessPolicy()), ..._defined(policy) };
+    }
+
+    /**
      * Check if the current user can perform the specified action on the given model.
-     * - override this method to implement custom logic.
+     * - override this method to implement custom logic (an override runs before this default).
+     * - v5 B13: with the session on, the effective `AccessPolicy` decides (SPEC § 14.2); with it off, § 6.4 as before.
      *
      * @param action The action to check.
-     * @param model The model to check against.
+     * @param model The model to check against. (`undefined` for `list` = the caller check only)
      * @param options Additional options for the check.
      * @returns True if the action is allowed, false otherwise.
      */
@@ -1462,13 +1557,80 @@ export class MyManagerProxy<
         const context = options?.context;
 
         // STEP.0 validate parameters.
-        const _act = $T.asLut(action, $LUT.CanDoAction, { throwable: false, default: null });
+        const _act = $T.asLut(action, $LUT.CanDoAction, { throwable: false, default: null }) as CanDoActionType;
         if (!_act || typeof _act !== 'string')
             throw new Error(`400 INVALID - action[${action ?? ''}] is invalid @${errScope}`);
 
+        //* v5 B13: session off → the § 6.4 rules, unchanged (SPEC § 14.3 "세션 꺼짐").
+        if (!useSession) return this.canDoWithoutSession(_act, model, { errScope, throwable, context });
+
+        //* v5 B13: one way to refuse (throw 403 or return false).
+        const _deny = (): boolean => {
+            if (throwable) throw new Error(`403 NOT ALLOWED - action[${_act}] is invalid @${errScope}`);
+            return false;
+        };
+        const hasModel = model !== undefined && model !== null;
+        const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid), gid: $T.S2(model?.gid) };
+        const legacy = $U.sidLegacyAccess();
+
+        //* v5 B13 (1): `deny` refuses update/delete of a `sid`-less record before the admin pass (B5 § 6.4, kept).
+        if (hasModel && !M.sid && (_act === 'update' || _act === 'delete') && legacy === 'deny') return _deny();
+
+        //* v5 B13 (2): admin before the session fetch - IAM SigV4 and `roles: ['admin']` claims pass (SPEC § 14.3).
+        if (this.proxy.hasAdminRole(null, { errScope, context })) return true;
+
+        //* v5 B13 (3): the session is required (throwable → the current `403 IDENTITY-TOKEN` messages).
+        const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
+        if (!$sess) return _deny();
+
+        //* v5 B13 (4): caller state - a role holder with a site and a user (T-20, T-21, T-22).
+        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid), gid: $T.S2($sess?.gid) };
+        const hasRole = $sess?.roles?.length > 0 ? true : false; // guest if empty.
+        if (!hasRole || !S.uid || !S.sid) return _deny();
+
+        //* v5 B13 (6): `list` without a model = the caller check only; the rows are pinned by `packSearchParam()`.
+        if (_act === 'list' && !hasModel) return true;
+
+        //* v5 B13 (5): the scope of this action against the row.
+        const scope = this.effectivePolicy(options?.policy)[_act];
+        if (scope === 'any') return true;
+        //* a `sid`-less row → `SID_LEGACY_ACCESS` (`open` = v4, else admin only) (T-25, T-26, T-27).
+        if (!M.sid) return legacy === 'open' ? true : _deny();
+        switch (scope) {
+            case 'owner':
+                //* same site and same non-empty user (an empty `uid` never matches, T-24).
+                return S.sid === M.sid && S.uid === M.uid && !!S.uid ? true : _deny();
+            case 'group':
+                //* same site and same non-empty group.
+                return S.sid === M.sid && S.gid === M.gid && !!S.gid ? true : _deny();
+            case 'site':
+                //* same non-empty site.
+                return S.sid === M.sid && !!S.sid ? true : _deny();
+            default:
+                //* an unknown scope never allows.
+                return _deny();
+        }
+    }
+
+    /**
+     * the `canDo()` rules with the session off (v5 § 6.4, unchanged by B13).
+     * - `list`/`read`/`create`: same `sid` or a `sid`-less row; `update`/`delete`: same `sid` and `uid`.
+     *
+     * @param _act the validated action
+     * @param model the model to check against
+     * @param options { errScope, throwable, context }
+     * @returns True if the action is allowed, false otherwise.
+     */
+    protected canDoWithoutSession<T extends MyModel>(
+        _act: CanDoActionType,
+        model: T,
+        options: { errScope: string; throwable: boolean; context?: NextContext },
+    ): boolean {
+        const { errScope, throwable, context } = options;
+        const useSession = false;
+
         // no session but required.
         const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
-        if (useSession && !$sess) return false;
 
         // session & model information.
         const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid) };

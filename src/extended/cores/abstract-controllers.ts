@@ -29,6 +29,7 @@
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` reports the field lists (local or direct invoke only).
  * @date        2026-10-28 v5 B4: `fields/admin` self-check uses the shared `checkFieldsAdmin()`.
+ * @date        2026-10-30 v5 B13: handlers pass `{ useSession, policy }` to `canDo`, `doList` checks `list`, bulk in 2 phases.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -45,7 +46,7 @@ import { GeneralWEBController } from '../../controllers/';
 import { CoreModel, AbstractTransformer, View, Body, NextContext, NextHandler, SimpleSet } from 'lemon-model';
 import { fieldsOf } from 'lemon-model'; //* v5 B4: L2 core fields, re-derived (the services' `CORE_FIELDS` is module-local).
 import { BulkBody, ListResult, PaginatedListResult, PaginateParam } from './types';
-import { MyCoreManager, MyCoreService, MyCoreProxy } from './abstract-services';
+import { MyCoreManager, MyCoreService, MyCoreProxy, AccessPolicy, CanDoOptions } from './abstract-services';
 import { checkFieldsAdmin, FieldsAdminReport } from './fields-admin';
 export { CoreModel, AbstractTransformer, GeneralWEBController };
 
@@ -89,6 +90,13 @@ interface CRUDCreationOptions {
      * @see proxy.makeModelBase()
      */
     throwable?: boolean;
+    /**
+     * (optional) v5 B13: access scopes for the 7 CRUD handlers of this controller (session on only).
+     * - merged over the manager-proxy `accessPolicy()`; ex: `{ read: 'site' }` restores the v5 § 6.4 read rule.
+     *
+     * @see MyManagerProxy.canDo()
+     */
+    policy?: Partial<AccessPolicy>;
 }
 
 /**
@@ -176,6 +184,20 @@ export abstract class AbstractCRUDController<
     }
 
     /**
+     * v5 B13: access scopes of this controller (override this getter to compute them).
+     */
+    protected get confPolicy(): Partial<AccessPolicy> | undefined {
+        return this.options?.policy;
+    }
+
+    /**
+     * v5 B13: the `canDo()` options of the CRUD handlers - session switch and policy of this controller.
+     */
+    protected canDoOptions(errScope: string, options?: CanDoOptions): CanDoOptions {
+        return { errScope, useSession: this.confUseSession, policy: this.confPolicy, ...options };
+    }
+
+    /**
      * model transformer from model to view
      */
     public modelAsView(model: MyModel, options?: { useOnlyDefined?: boolean; hasCores?: boolean }): MyView {
@@ -212,7 +234,8 @@ export abstract class AbstractCRUDController<
     ): Promise<MyModel> {
         const parent = options?.parent ?? null;
         const useSession = options?.useSession ?? this.confUseSession;
-        const throwable = options?.throwable ?? this.confThrowable;
+        //* v5 B13: an admin without a session (IAM SigV4, `roles: ['admin']` claim) creates without `403 IDENTITY-TOKEN`.
+        const throwable = options?.throwable ?? (this.confThrowable && !(useSession && proxy.hasAdminRole()));
         const $model = onlyDefined<CoreModel<ModelType>>({
             type: this.manager.type,
         });
@@ -307,7 +330,12 @@ export abstract class AbstractCRUDController<
             const useSession = this.confUseSession;
 
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
-            const { $page, $param } = $prxy.packSearchParam(param, model, { useSession });
+            //* v5 B13: the caller may list at all (guest, no session, empty `sid`/`uid` → 403), session on only.
+            if (useSession && !$prxy.canDo('list', undefined, this.canDoOptions(errScope)))
+                throw new Error(`403 NOT ALLOWED - action[list] is invalid @${errScope}`);
+            //* v5 B13: pin the rows per the effective `list` scope (the same merge as `canDo`).
+            const scope = useSession ? $prxy.effectivePolicy(this.confPolicy).list : undefined;
+            const { $page, $param } = $prxy.packSearchParam(param, model, { useSession, scope, errScope });
             _log(this.logNS, `>> $param =`, $U.json($param));
 
             //* search from manager.
@@ -460,7 +488,8 @@ export abstract class AbstractCRUDController<
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
             const model = await $prxy.get(id, false);
             if (!model?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
-            if (!proxy.canDo('read', model, { errScope })) return null; // no permission to read.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('read', model, this.canDoOptions(errScope))) return null; // no permission to read.
             // STEP.2 returns as view.
             if (model?.deletedAt > 0)
                 throw new Error(`404 NOT FOUND - deleted at ${$U.ts(model.deletedAt)} @${errScope}`);
@@ -498,7 +527,8 @@ export abstract class AbstractCRUDController<
             if (!$base.type) throw new Error(`.type (ModelType) is missing - ${errScope}`); // confirm type explicitly.
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
             const $valid = await $prxy.validateModel(toCreate, null);
-            if (!proxy.canDo('create', { ...$valid, ...$base }, { errScope })) return null; // no permission to create.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('create', { ...$valid, ...$base }, this.canDoOptions(errScope))) return null; // no permission to create.
             const $saves = await $prxy.onBeforeSave($valid, null);
             const $saved = await $prxy.makeModel({ ...$saves, ...$base }, false); //WARN! - already validated.
             const $final = await $prxy.onAfterSave($saved, null);
@@ -536,11 +566,16 @@ export abstract class AbstractCRUDController<
             const $base = await this.makeModelBase(proxy);
             if (!$base.type) throw new Error(`.type (ModelType) is missing - ${errScope}`); // confirm type explicitly.
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
-            const _can = (model: MyModel) => proxy.canDo('create', { ...model, ...$base }, { errScope });
-            const $valid = await Promise.all(
-                models.map(N => $prxy.validateModel(N, null).then(N => (_can(N) ? N : null))),
-            );
-            //* only for all validated models.
+            //* v5 B13 phase 1: validate every item and collect the denied ones (`false` counts as denied), no write.
+            const $valid = await Promise.all(models.map(N => $prxy.validateModel(N, null)));
+            const $opts = this.canDoOptions(errScope, { throwable: false });
+            const denied = $valid.reduce<string[]>((L, N, i) => {
+                if (!proxy.canDo('create', { ...N, ...$base }, $opts)) L.push(N?.id ? `${N.id}` : `#${i}`);
+                return L;
+            }, []);
+            if (denied.length)
+                throw new Error(`403 NOT ALLOWED - bulk[create] denied ids[${denied.join(',')}] @${errScope}`);
+            //* v5 B13 phase 2: every item passed, so write them all.
             const filtered = await my_sequence($valid, async validated => {
                 const filtered = await $prxy.onBeforeSave(validated, null);
                 const created = await $prxy.makeModel({ ...filtered, ...$base }, false); //WARN! - already validated.
@@ -576,7 +611,8 @@ export abstract class AbstractCRUDController<
             const $org = await $prxy.get(id, false);
             if (!$org?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
             if ($org?.deletedAt) throw new Error(`404 NOT FOUND - deleted @${errScope}`);
-            if (!proxy.canDo('update', $org, { errScope })) return null; // no permission to update.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('update', $org, this.canDoOptions(errScope))) return null; // no permission to update.
 
             // STEP.3 validate and update.
             const $valid = await $prxy.validateModel(toUpdate, id);
@@ -619,16 +655,26 @@ export abstract class AbstractCRUDController<
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
             if (!$prxy) throw new Error(`.model-type[${this.modelType}] is required - ${errScope}`);
 
+            //* v5 B13: a session-less non-admin caller keeps the `403 IDENTITY-TOKEN` message (as the single handlers).
+            if (this.confUseSession && !proxy.hasAdminRole())
+                proxy.getCurrentSession({ throwable: this.confThrowable });
+
+            //* v5 B13 phase 1: load every stored row (404 first, current messages) and check it, no write.
             const _can = async (N: MyModel, i?: number) => {
                 const errScope = `doPutBulk(${this.type()}:${i}/${N?.id ?? ''})`;
                 const model = N?.id ? await $prxy.get(N?.id, false) : null;
                 if (!model?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
                 if (model?.deletedAt) throw new Error(`404 NOT FOUND - deleted @${errScope}`);
-                if (!proxy.canDo('update', model, { errScope })) return null; // no permission to update.
-                // return model;
-                return N; // 업데이트할 새 데이터를 반환 (기존 model이 아님)
+                const allowed = proxy.canDo('update', model, this.canDoOptions(errScope, { throwable: false }));
+                return { N, allowed }; // 업데이트할 새 데이터를 반환 (기존 model이 아님)
             };
-            const list = await Promise.all(models.map(N => _can(N)));
+            const checked = await Promise.all(models.map((N, i) => _can(N, i)));
+            //* v5 B13: one denied row → 403 with every denied id, before any write.
+            const denied = checked.filter(C => !C.allowed).map(C => `${C.N?.id ?? ''}`);
+            if (denied.length)
+                throw new Error(`403 NOT ALLOWED - bulk[update] denied ids[${denied.join(',')}] @${errScope}`);
+            //* v5 B13 phase 2: every row passed, so write them all.
+            const list = checked.map(C => C.N);
 
             //* validate and update.
             const $res = await my_parrallel(
@@ -679,7 +725,8 @@ export abstract class AbstractCRUDController<
             const model = await $prxy.get(id, false);
             if (!model?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
             if (!destroy && model?.deletedAt) throw new Error(`404 NOT FOUND - deleted @${errScope}`);
-            if (!proxy.canDo('delete', model, { errScope })) return null; // no permission to update.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('delete', model, this.canDoOptions(errScope))) return null; // no permission to delete.
 
             const deleted = await $prxy.$mgr.delete(id, isLocal && destroy);
             const $final = await $prxy.onAfterSave(null, deleted);

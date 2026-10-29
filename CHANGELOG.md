@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## Unreleased (5.x)
+
+### Behaviour changes
+
+* **B13 default data-access policy** of `AbstractCRUDController` (session on only; `docs/v5/B13-access-policy.md`, `HOW_TO_UPGRADE_V5.md` § 11.7). Restore the v5 read rule with `policy: { read: 'site' }`.
+  1. A same-site user's `read` of another user's row → 403 (default `read: 'owner'`).
+  2. An empty `uid` in the session or the row → 403 for every action (admin excepted).
+  3. An offsite session (`sid` empty) `list` → 403 (was: an unfiltered list); `doList` calls `canDo('list')` first.
+  4. A `sid`-less row: `read` is admin only like update/delete (`SID_LEGACY_ACCESS=open` keeps v4).
+  5. `create` stamps the session `gid` (when the model has none).
+  6. Admin is decided before the session: IAM SigV4 callers and `roles: ['admin']` claims pass without `403 IDENTITY-TOKEN`.
+  7. `doPostBulk`/`doPutBulk` check every item first and report every denied id (`403 NOT ALLOWED - bulk[<action>] denied ids[…]`); nothing is written on a denial.
+
+### Features
+
+* Root names `AccessScope`, `AccessPolicy`, `DEFAULT_ACCESS_POLICY`; `CanDoOptions.policy`, controller option `policy`, `MyManagerProxy.accessPolicy()` / `effectivePolicy()`, `packSearchParam` option `scope`.
+
+
 ## [1.2.0](https://github.com/lemoncloud-io/lemon-core/compare/v1.1.2...v1.2.0) (2019-08-16)
 
 
