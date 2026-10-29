@@ -440,6 +440,8 @@ Web requests also print one `PERF` summary line each, and the `LambdaModule` han
 
 `cmd=` is printed only when the route has one. `type=` on the `handle` line is the event type (`web`, `sqs`, …, or `unknown`). `cold=1` is on the first `request` line and the first `handle` line of the process only. The local express server prints the `request` line only. No API change: `promised`, `mxNextHandler` and `mxNextFailure` keep their signatures. Details: `docs/v5/B7-perf-trace.md`.
 
+**Contract (D56).** The `request` and `handle` lines are a contract for all of 5.x. The key names, the key order (`request`: `mode type [cmd] status context param handler response cold`; `handle`: `type cold`) and the units (ms with one decimal; `status` is the HTTP code, `cold` is `1` or `0`) are fixed. A new key is added at the end of a line only. Renaming, removing or reordering a key is a major change. Values never carry paths, ids, hosts or headers. The consumer is the templates-api harness `perf:lambda`. `src/cores/lambda/perf-contract.spec.ts` checks the contract.
+
 ### 8.7 KMS Decrypt without the SDK (B8)
 
 `AWSKMSService.decrypt()` (and so `ConfigService.init()` for env values that start with `*`) no longer loads `@aws-sdk/client-kms` when the env has credentials. It sends one SigV4-signed HTTPS call (Node `https.request`, not `fetch` — the first `fetch` call loads undici) to the KMS JSON API (`TrentService.Decrypt`) instead. On Lambda the runtime sets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, so the boot path takes the fetch path.
