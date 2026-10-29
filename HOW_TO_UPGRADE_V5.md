@@ -848,9 +848,11 @@ The receiver builds its context from the relay: `identity` = `idt`, `channel` = 
 
 `PROTOCOL_MAX_HOP` (default 8). A relay with `hop` over the cap → web `508 LOOP DETECTED - protocol hop <n>`, SNS reported (not dispatched), SQS record failure. The sender refuses to build a hop over the cap with the same error, before any AWS call.
 
+A same-service callback of an SNS/SQS protocol call (the `callback` attribute names this service, so it runs in-process) is a hop too: `trace.hop` + 1 with the same `tid`, `via`/`pid` of the current receiver, `depth` = the new hop (was `depth + 1` by hand), one `TRACE` line, and the same cap (over the cap → SNS reported, SQS record failure).
+
 ### 15.4 Trace
 
-* Every entry sets `context.trace`: `{ tid: requestId, hop: 0 }` without a relay (external, local, direct invoke, legacy context), or the relay trace.
+* Every entry sets `context.trace`: `{ tid: requestId, hop: 0 }` without a relay (external, local, direct invoke, legacy context), or the relay trace. `tid` is the requestId only when it is a safe id (`/^[\w.:-]{1,128}$/`, as Lambda and API Gateway ids are); otherwise a new uuid. The local express requestId (`YYYY-MM-DD hh:mm:ss.SSS`, with a space, not unique within a millisecond) therefore gets a uuid; `context.requestId` itself is unchanged.
 * One line per web entry and per SNS/SQS protocol receive: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|->` (the via service host and the src path only; no identity value, no account). Join the lines of a chain by `tid` in CloudWatch Logs Insights.
 * `doReportError()` adds `trace` to the report payload.
 

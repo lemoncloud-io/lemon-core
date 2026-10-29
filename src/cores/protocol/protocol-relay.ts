@@ -11,6 +11,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B13)
+ * @date        2026-10-30 a safe trace id (`SAFE_TRACE_ID`), and `nextHopContext()` for an in-process (same-service) callback.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -39,6 +40,12 @@ export const PROTOCOL_LEGACY_ACCEPT = 'PROTOCOL_LEGACY_ACCEPT';
 export const PROTOCOL_MAX_HOP = 'PROTOCOL_MAX_HOP';
 /** default hop cap */
 export const DEFAULT_MAX_HOP = 8;
+/** a requestId used as a trace id as is (else a new uuid): the local express id `YYYY-MM-DD hh:mm:ss.SSS` is not */
+export const SAFE_TRACE_ID = /^[\w.:-]{1,128}$/;
+
+/** the requestId as a trace id if it is a safe token, else a new uuid (unique, no whitespace) */
+export const traceIdOf = (requestId?: string): string =>
+    typeof requestId === 'string' && SAFE_TRACE_ID.test(requestId) ? requestId : randomUUID();
 
 /** send mode of the legacy context: `off` = relay only, `send` = relay and legacy (for v4 receivers) */
 export type LegacySendMode = 'off' | 'send';
@@ -133,7 +140,7 @@ export const buildRelay = (
     const text = (v: unknown): string => (typeof v === 'string' && v ? v : undefined);
     const relay: ProtocolRelay = {
         idt: relayIdentityOf(context?.identity),
-        tid: text(trace?.tid) ?? text(context?.requestId) ?? randomUUID(),
+        tid: text(trace?.tid) ?? traceIdOf(context?.requestId),
         hop,
         src: text(trace?.src) ?? text(context?.source),
         via: text(options?.via),
@@ -243,11 +250,31 @@ export const asRelayContext = (relay: ProtocolRelay, own?: NextContext): NextCon
 export const entryChannel = (hasHost: boolean): NextContext['channel'] =>
     $U.isLocalMode() ? 'local' : hasHost ? 'external' : 'internal';
 
-/** the trace of an entry without a relay: `{ tid: requestId, hop: 0 }` (a new tid if no requestId) */
+/** the trace of an entry without a relay: `{ tid: requestId, hop: 0 }` (a new tid if the requestId is not a safe id) */
 export const entryTrace = (context?: NextContext): NextTrace => ({
-    tid: `${context?.requestId || ''}` || randomUUID(),
+    tid: traceIdOf(context?.requestId),
     hop: 0,
 });
+
+/**
+ * the context of an in-process next hop (a same-service callback): the same rules as a relay hop.
+ * - `trace.hop` + 1 (cap → `508 LOOP DETECTED`), the same `tid`/`src`, `via` = this service, `pid` = this requestId.
+ * - `depth` = the new hop (kept in sync for v4-style code). the other fields of the context are kept.
+ *
+ * @param context   the current receiver context (copied, not changed)
+ * @param via       this service's uri
+ */
+export const nextHopContext = (context: NextContext, via?: string): NextContext => {
+    const trace = context?.trace;
+    const hop = (Number.isInteger(trace?.hop) && trace.hop >= 0 ? trace.hop : 0) + 1;
+    assertHop(hop);
+    const next: NextTrace = { tid: trace?.tid || traceIdOf(context?.requestId), hop };
+    if (via) next.via = via;
+    if (context?.requestId) next.pid = context.requestId;
+    const src = trace?.src ?? context?.source;
+    if (src) next.src = src;
+    return { ...context, depth: hop, trace: next };
+};
 
 /**
  * apply `PROTOCOL_LEGACY_ACCEPT` to a legacy context (`x-protocol-context` or the SNS/SQS `context` field).

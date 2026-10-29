@@ -6,6 +6,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B13)
+ * @date        2026-10-30 v5 B13: a safe trace id for the local express requestId.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -127,6 +128,23 @@ describe('context.channel (B13 D1)', () => {
         const event = new WEBProtocolTransformer().transformToEvent('api://self/hello/!', paramOf(caller));
         expect2(await lambda.handle(event, null), 'statusCode').toEqual({ statusCode: 200 });
         expect2(() => got[0], 'channel').toEqual({ channel: 'internal' });
+    });
+
+    //* local express: the requestId is a ms time string (`YYYY-MM-DD hh:mm:ss.SSS`) → the trace id is a new uuid.
+    it('should use a safe trace id for a local express requestId', async () => {
+        localMode();
+        const { web } = instance();
+        const event = apiEvent();
+        event.requestContext.requestId = '2026-10-30 03:32:57.040';
+        const $ctx = await web.packContext(event, null);
+        expect2(() => $ctx, 'channel,requestId').toEqual({ channel: 'local', requestId: '2026-10-30 03:32:57.040' });
+        expect2(() => [/^[\w.:-]{1,128}$/.test($ctx.trace.tid), $ctx.trace.tid === $ctx.requestId]).toEqual([
+            true,
+            false,
+        ]);
+        //* two requests in the same ms → two trace ids.
+        const $ctx2 = await web.packContext(event, null);
+        expect2(() => $ctx2.trace.tid === $ctx.trace.tid).toEqual(false);
     });
 
     //* protocol receive (web relay, web legacy, SNS, SQS) → internal.

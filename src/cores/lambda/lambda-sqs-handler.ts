@@ -6,6 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
  * @date        2026-10-30 v5 B13: the receiver's own ids (`packContext()`) for a relay; channel `internal`.
+ * @date        2026-10-30 v5 B13: a same-service callback advances `trace.hop` (cap `PROTOCOL_MAX_HOP`), `depth` in sync.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -17,7 +18,7 @@ import { NextHandler, NextContext } from 'lemon-model';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
 import { ATTR_PROTOCOL_SIGNATURE, assertSigned, verifyMessage } from '../protocol/protocol-sign';
-import { accountOfArn } from '../protocol/protocol-relay';
+import { accountOfArn, nextHopContext, logTrace } from '../protocol/protocol-relay';
 const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -113,7 +114,9 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                         _log(NS, `> config.service =`, this.lambda.config && this.lambda.config.getService());
                         //* check if service is in same..
                         if (proto && this.lambda.config && proto.service == this.lambda.config.getService()) {
-                            proto.context.depth = $U.N(proto.context.depth, 1) + 1;
+                            //* v5 B13: an in-process next hop — hop + 1 (cap → 508), same tid, via/pid of this receiver.
+                            proto.context = nextHopContext(proto.context, $protocol.service.myProtocolURI(context));
+                            logTrace(proto.context);
                             proto.body = body;
                             _log(NS, `! body[${index}] =`, $U.json(body));
                             return this.lambda.handleProtocol(proto).then(body => {

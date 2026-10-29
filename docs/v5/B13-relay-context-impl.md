@@ -38,6 +38,8 @@
 | SNS·SQS에서 relay도 context도 없으면 `{ channel: 'internal', trace, 자기 id }` | D1 "protocol 수신은 `internal`". 예전에는 `undefined`였다 |
 | `trace`에 `src`도 넣는다 | `NextTrace`에 `src`가 있고, 다음 hop 송신이 `trace.src`를 먼저 읽는다 |
 | `tid`가 없으면(호출자 `trace.tid`·`requestId` 둘 다 없음, 또는 ALB처럼 requestId 없는 진입) 새 uuid | 그 지점부터라도 사슬을 잇는다 |
+| (후속) `requestId`는 안전한 id(`/^[\w.:-]{1,128}$/`)일 때만 `tid`로 쓴다. 아니면 새 uuid. 채널이 아니라 값으로 판정한다 | 로컬 express의 requestId는 `2026-10-30 03:32:57.040`처럼 공백이 있고 같은 ms 안에서 겹친다. 값 규칙이면 legacy context로 들어온 같은 값도 함께 막는다. Lambda `awsRequestId`·API Gateway id는 규칙에 맞아 그대로다. `context.requestId`는 바꾸지 않는다 |
+| (후속) SNS·SQS의 같은 서비스 callback(in-process `handleProtocol`)도 한 hop이다: `nextHopContext()`로 `trace.hop` + 1, 같은 `tid`·`src`, `via` = 이 서비스, `pid` = 이 수신의 requestId, `depth` = 새 hop. 같은 상한(`508`)과 `TRACE` 줄 | 예전에는 `depth`만 손으로 올려 한 서비스 안의 callback 고리를 막지 못했다. 원격 callback은 원래 `execute()` → relay로 hop이 오른다 |
 | relay 디코딩: 모르는 키·화이트리스트 밖 identity 키는 버린다. 형식 오류는 `400 INVALID CONTEXT - relay <reason>`. 문자열 필드 2048자, 전체 4096바이트 상한 | 앞으로 키가 늘어도 받는다. 오류 범주는 legacy의 `INVALID CONTEXT`와 같다 |
 | `TRACE` 줄의 `via`는 서비스 호스트만, `src`는 경로만. 값의 공백은 `_`로 바꾸고 128자에서 자른다 | identity·계정 번호를 로그에 남기지 않는다. relay 값으로 줄을 깨지 못하게 한다 |
 | `PROTOCOL deprecated x-protocol-context <서비스> (<web\|sns\|sqs>)`. `<서비스>`는 legacy context `source`의 호스트 | legacy에는 `via`가 없다. `source`는 최초 진입 서비스다. 전송 종류는 `PROTOCOL unsigned` 줄과 같은 꼴로 붙였다 |
@@ -70,12 +72,12 @@
 | lemon-model `npm test` | 21 suites, 293 passed | 22 suites, 294 passed |
 | lemon-model `npm run build`·`tsc --noEmit` | — | 0 |
 | lemon-core `npx tsc --noEmit` | — | 0 |
-| lemon-core 새 spec | — | `protocol-relay.spec.ts` 13, `lambda-channel.spec.ts` 5 통과 |
-| lemon-core `npm test` | 61 files, 704 tests, 9 failed | 63 files, 723 tests, 9 failed (같은 9건) |
+| lemon-core 새 spec | — | `protocol-relay.spec.ts` 15, `lambda-channel.spec.ts` 6 통과 (후속 3건 포함) |
+| lemon-core `npm test` | 61 files, 704 tests, 9 failed | 63 files, 726 tests, 9 failed (같은 9건, 후속 포함) |
 | `npm run build` | — | 0, `gen-esm-wrapper` 139 named + default |
 | `npm run api:check` | `base=304 current=301 added=19 removed=22 allow=41 not-allowed=0` | 같음 |
 | `npm run esm:smoke` | `ok names=140 subpaths=4` | 같음 |
-| `npm run dup:check` | `files=92 decls=426 dup-names=5 not-allowed=0 b3-names=21 b3-not-single=0` | `files=93 decls=456 dup-names=5 not-allowed=0 b3-names=21 b3-not-single=0` |
+| `npm run dup:check` | `files=92 decls=426 dup-names=5 not-allowed=0 b3-names=21 b3-not-single=0` | `files=93 decls=459 dup-names=5 not-allowed=0 b3-names=21 b3-not-single=0` (후속 포함) |
 
 기준선의 실패 9건(변경 뒤에도 같은 9건): `bin/lib/fields-types.spec.mjs` 1, `dummy-controller` 1, `general-api-controller` 2, `general-controller` 2, `tools.spec` `awsConfig()` 1, `abstract-controllers` express 2(`fields/admin over express …`, 없는 프로필로 자격 증명을 찾다가 5초 시간 초과).
 

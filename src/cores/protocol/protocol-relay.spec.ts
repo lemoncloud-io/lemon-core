@@ -6,6 +6,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B13)
+ * @date        2026-10-30 v5 B13: a safe trace id (local express requestId), the same-service callback hop.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -36,6 +37,7 @@ import {
     readLegacyAccept,
     readMaxHop,
     traceLine,
+    entryTrace,
 } from './protocol-relay';
 
 //* a test-only key (not a secret).
@@ -110,7 +112,8 @@ const lambdaCtx = (): any => ({
 const viaOf = (context: NextContext) => new MyProtocolService().myProtocolURI(context);
 
 //* lambda with web, sqs and sns handlers; `got` keeps the contexts the dump handler received.
-const instance = () => {
+//* - `service`: the lambda config's service name (a same-service callback runs in-process).
+const instance = (service?: string) => {
     const got: NextContext[] = [];
     const decoder: NextDecoder = mode => {
         const dump: NextHandler = async (id, param, body, context) => {
@@ -119,7 +122,8 @@ const instance = () => {
         };
         return mode === 'GET' || mode === 'POST' ? dump : null;
     };
-    const lambda = new (class extends LambdaHandler {})();
+    const config: any = service ? { getService: () => service } : undefined;
+    const lambda = new (class extends LambdaHandler {})(config);
     const web = new LambdaWEBHandler(lambda, true);
     web.setHandler('hello', decoder);
     const sqs = new LambdaSQSHandler(lambda, true);
@@ -144,8 +148,8 @@ const paramOf = (context: NextContext, body?: any): any => ({
 const webEvent = (context: NextContext = caller, body?: any): any =>
     new WEBProtocolTransformer().transformToEvent('api://self/hello/!', paramOf(context, body));
 //* SNS record from the real transformer (as the Lambda event has it).
-const snsRecord = (context: NextContext = caller, messageId = 'sns-msg-1'): any => {
-    const $msg = new SNSProtocolTransformer(null).transformToEvent('sns://self/hello/!', paramOf(context));
+const snsRecord = (context: NextContext = caller, messageId = 'sns-msg-1', callback?: string): any => {
+    const $msg = new SNSProtocolTransformer(null).transformToEvent('sns://self/hello/!', paramOf(context), callback);
     const MessageAttributes = Object.entries($msg.MessageAttributes).reduce(
         (M: any, [k, v]) => ({ ...M, [k]: { Type: v.DataType, Value: v.StringValue } }),
         {},
@@ -162,8 +166,8 @@ const snsRecord = (context: NextContext = caller, messageId = 'sns-msg-1'): any 
     };
 };
 //* SQS record from the real transformer (as the Lambda event has it).
-const sqsRecord = (context: NextContext = caller, messageId = 'sqs-msg-1'): any => {
-    const $msg = new SQSProtocolTransformer(null).transformToEvent('sqs://self/hello/!', paramOf(context));
+const sqsRecord = (context: NextContext = caller, messageId = 'sqs-msg-1', callback?: string): any => {
+    const $msg = new SQSProtocolTransformer(null).transformToEvent('sqs://self/hello/!', paramOf(context), callback);
     const messageAttributes = Object.entries($msg.MessageAttributes).reduce(
         (M: any, [k, v]) => ({ ...M, [k]: { dataType: v.DataType, stringValue: v.StringValue } }),
         {},
@@ -641,6 +645,74 @@ describe('protocol-relay', () => {
         setEnv('PROTOCOL_LEGACY_ACCEPT', 'accept');
         const a = await withLog(() => lambda.handle(event, lambdaCtx()));
         expect2(() => linesOf(a.lines, 'PROTOCOL deprecated').length).toEqual(0);
+    });
+
+    //* a trace id is a safe token: an unsafe requestId (local express: `YYYY-MM-DD hh:mm:ss.SSS`) → a new uuid.
+    it('should use a safe trace id', () => {
+        const SAFE = /^[\w.:-]{1,128}$/;
+        const local = '2026-10-30 03:32:57.040';
+        const t1 = entryTrace({ requestId: local });
+        const t2 = entryTrace({ requestId: local });
+        expect2(() => [t1.tid === local, SAFE.test(t1.tid), t1.tid === t2.tid, t1.hop]).toEqual([
+            false,
+            true,
+            false,
+            0,
+        ]);
+        //* a Lambda / API Gateway id is kept as is.
+        expect2(() => entryTrace({ requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b' })).toEqual({
+            tid: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
+            hop: 0,
+        });
+        //* the relay of a caller without a trace: the same rule (the requestId is still the `pid`).
+        const relay = buildRelay({ requestId: local });
+        expect2(() => [relay.tid === local, SAFE.test(relay.tid), relay.pid]).toEqual([false, true, local]);
+        expect2(() => buildRelay({ requestId: 'req-1' }).tid).toEqual('req-1');
+    });
+
+    //* a same-service callback (SNS/SQS) runs in-process as the next hop: hop + 1, same tid, via/pid of the receiver, cap.
+    it('should advance the hop of a same-service callback (SNS/SQS)', async () => {
+        const { lambda, sns, got } = instance('lemon-hello-api');
+        const callback = 'api://lemon-hello-api-dev/hello/cb#1.0.0';
+        const via = viaOf(caller);
+        const own = { requestId: 'req-recv-1', accountId: '123456789012' };
+        //* the callback context from the first receive.
+        const nextOf = (first: NextContext) => ({
+            ...first,
+            depth: 2,
+            trace: { tid: 'req-caller-1', hop: 2, via: viaOf(first), pid: 'req-recv-1', src: caller.source },
+        });
+
+        //* SNS: the receive (hop 1), then the callback (hop 2) in-process.
+        const r1 = await withLog(() =>
+            lambda.handle({ Records: [snsRecord(caller, 'sns-cb', callback)] }, lambdaCtx()),
+        );
+        expect2(() => got.length).toEqual(2);
+        expect2(() => got[0]).toEqual(
+            expected({ hop: 1, tid: 'req-caller-1', via, pid: 'req-caller-1', src: caller.source }, own),
+        );
+        expect2(() => got[1]).toEqual(nextOf(got[0]));
+        expect2(() => linesOf(r1.lines, 'TRACE ').map(s => s.substring(s.indexOf('TRACE')))).toEqual([
+            'TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run',
+            'TRACE tid=req-caller-1 hop=2 ch=internal via=lemon-core-dev src=/hello/a_1/run',
+        ]);
+
+        //* SQS: the same.
+        expect2(await lambda.handle({ Records: [sqsRecord(caller, 'sqs-cb', callback)] }, lambdaCtx())).toEqual({
+            batchItemFailures: [],
+        });
+        expect2(() => got.length).toEqual(4);
+        expect2(() => got[3]).toEqual(nextOf(got[2]));
+
+        //* the cap: a receive at hop 8 → the callback would be hop 9 → 508 (SNS reported, SQS record failure).
+        const deep: NextContext = { ...caller, trace: { tid: 'T', hop: 7 } };
+        await lambda.handle({ Records: [snsRecord(deep, 'sns-cap', callback)] }, lambdaCtx());
+        expect2(() => sns.last()).toEqual(['508 LOOP DETECTED - protocol hop 9']);
+        expect2(await lambda.handle({ Records: [sqsRecord(deep, 'sqs-cap', callback)] }, lambdaCtx())).toEqual({
+            batchItemFailures: [{ itemIdentifier: 'sqs-cap' }],
+        });
+        //* the receives ran (hop 8), the callbacks did not.
+        expect2(() => got.slice(4).map(c => c.trace?.hop)).toEqual([8, 8]);
     });
 
     //* size: the relay vs the legacy context JSON (a representative external context, and a real API-GW one).
