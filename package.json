@@ -92,6 +92,7 @@
     "@aws-sdk/client-dynamodb": "^3.971.0",
     "@aws-sdk/lib-dynamodb": "^3.971.0",
     "@opensearch-project/opensearch": "^3.9.0",
+    "@smithy/signature-v4": "^5.3.8",
     "@types/aws-lambda": "^8.10.62",
     "@types/jsonwebtoken": "^8.5.9",
     "async": "^3.2.4",
