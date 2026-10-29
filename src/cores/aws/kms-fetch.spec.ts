@@ -67,8 +67,11 @@ describe('kms-fetch', () => {
     // b. request shape: url, method, headers, signature, body.
     it('decryptViaFetch() sends a signed KMS Decrypt request', async () => {
         const fetchFn = okFetch();
-        await decryptViaFetch(INPUT, { region: REGION, env: envOf(), fetchFn: fetchFn as any, log: quiet });
+        const log = vi.fn();
+        await decryptViaFetch(INPUT, { region: REGION, env: envOf(), fetchFn: fetchFn as any, log });
         expect(fetchFn).toHaveBeenCalledTimes(1);
+        //* one `kms decrypt` PERF line through the given logger.
+        expect(log.mock.calls.some(args => args.join(' ').includes('kms decrypt'))).toBe(true);
         const [url, init] = fetchFn.mock.calls[0];
         expect(url).toBe('https://kms.ap-northeast-2.amazonaws.com/');
         expect(init.method).toBe('POST');

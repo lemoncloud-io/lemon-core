@@ -450,10 +450,11 @@ Web requests also print one `PERF` summary line each, and the `LambdaModule` han
 - **One new direct dependency:** `@smithy/signature-v4` (`^5.3.8`). It was already installed through `@aws-sdk/core`, so a consumer lock gains no package. Keep `@aws-sdk/client-kms` installed if you call the other KMS methods.
 - **IAM is the same:** the role needs `kms:Decrypt` on the key, as before.
 
-The boot log shows this line instead of `lazy-load @aws-sdk/client-kms` and `client KMS`:
+The boot log shows these lines instead of `lazy-load @aws-sdk/client-kms` and `client KMS` (the second one is the sign + round trip + decode of each fetch-path decrypt):
 
 ```
 2026-10-29 10:00:00 I PERF: > lazy-load @smithy/signature-v4 3.4 ms
+2026-10-29 10:00:00 I PERF: > kms decrypt 412.0 ms
 ```
 
 Details: `docs/v5/B8-kms-fetch.md`.

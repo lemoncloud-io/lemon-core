@@ -11,7 +11,7 @@
  */
 import { createHash, createHmac, Hash, Hmac } from 'crypto';
 import { _inf, $U } from '../../engine/';
-import { measure } from '../../lib/perf';
+import { measure, measureAsync } from '../../lib/perf';
 
 /** a logger like `_inf`. */
 type KmsFetchLogger = (...args: any[]) => void;
@@ -152,13 +152,17 @@ export const decryptViaFetch = async (encryptedBase64: string, opts: DecryptViaF
         ...(env.AWS_SESSION_TOKEN ? { sessionToken: `${env.AWS_SESSION_TOKEN}` } : {}),
     };
     const signer = new SignatureV4({ service: 'kms', region, credentials, sha256: NodeSha256 as any });
-    const signed: SignableRequest = (await signer.sign(request as any)) as any;
 
-    //* send (a network error rejects here, as is).
-    const res = await fetchFn(`https://${hostname}/`, { method: 'POST', headers: signed.headers, body });
-    if (!res.ok) throw await asKmsError(res as any);
+    //* one `PERF` line for sign + round trip + decode (the signer load has its own line above).
+    return measureAsync(log, $U.NS('PERF', 'cyan'), 'kms decrypt', async () => {
+        const signed: SignableRequest = (await signer.sign(request as any)) as any;
 
-    //* decode the plaintext.
-    const json: any = await res.json();
-    return json?.Plaintext ? Buffer.from(json.Plaintext, 'base64').toString('utf-8') : '';
+        //* send (a network error rejects here, as is).
+        const res = await fetchFn(`https://${hostname}/`, { method: 'POST', headers: signed.headers, body });
+        if (!res.ok) throw await asKmsError(res as any);
+
+        //* decode the plaintext.
+        const json: any = await res.json();
+        return json?.Plaintext ? Buffer.from(json.Plaintext, 'base64').toString('utf-8') : '';
+    });
 };

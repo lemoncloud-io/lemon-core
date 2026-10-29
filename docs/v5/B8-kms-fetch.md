@@ -64,10 +64,11 @@ authorization: AWS4-HMAC-SHA256 Credential=<key>/<yyyymmdd>/<region>/kms/aws4_re
 
 ## Logs
 
-The signer package is required on the first decrypt and prints one D40 line through `_inf`:
+The signer package is required on the first decrypt and prints one D40 line through `_inf`; every fetch-path decrypt then prints one line for sign + round trip + decode:
 
 ```
 2026-10-29 10:00:00 I PERF: > lazy-load @smithy/signature-v4 3.4 ms
+2026-10-29 10:00:00 I PERF: > kms decrypt 412.0 ms
 ```
 
 On the fetch path there is no `lazy-load @aws-sdk/client-kms` line and no `client KMS` line at boot. They show again only when a later `encrypt`/`sign`/`verify`/`getPublicKey` call, or the network fallback, uses the SDK. `LS=1` silences the lines like every other line.
