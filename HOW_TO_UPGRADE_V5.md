@@ -703,11 +703,28 @@ The returned failures take effect **only** when the event source mapping has `Fu
 * `guardProxy(context, callback, { saveOnError })`: on an exception v5 does **not** save pending updates (v4 always did). Pass `{ saveOnError: true }` for the v4 behaviour.
 * **`MyCoreManager` `enableSync` now defaults to `false`.** A manager without `{ enableSync: true }` no longer synchronizes to OpenSearch, silently. Pass `{ enableSync: true }` to every manager that relies on the sync (`super('pet', parent, $FIELD.pet, { enableSync: true })`).
 
-### 11.7 Default CRUD: `sid`-less records
+### 11.7 Default CRUD access policy (B13)
 
-`MyManagerProxy.canDo('update' | 'delete')` on a record without `sid` is allowed for admin only. `list`, `read` and `create` are unchanged.
+With the session on (`useSession` of the controller, env `USE_SESSION` for a direct `proxy.canDo()`), the built-in CRUD handlers apply a default policy: **list the caller's site, read/create/update/delete only the caller's own rows** (same `sid` and the same non-empty `uid`), admin everything, anyone else 403. Admin (`hasAdminRole()`: local mode, an IAM SigV4 caller, `roles` with `admin`) is decided before the session, so the `roles: ['admin']` claim of § 11.3 works without a session. Rules, spec ids and examples: `docs/v5/B13-access-policy.md`.
 
-Configurable via `SID_LEGACY_ACCESS` (§ 11.8, last table).
+| Caller (non-admin) | Before | B13 |
+| --- | --- | --- |
+| same site, other user: `read` | allowed | 403 |
+| empty `uid` (session or row, incl. `#…`) | read allowed, writes refused | 403 for every action |
+| offsite session (`sid` empty): `list` | listed without a site filter | 403 |
+| guest, or no session: `list` | guest listed the site; no session got `403 IDENTITY-TOKEN` from the pin | 403 (`doList` calls `canDo('list')` first) |
+| `create` | stamped `sid`/`uid` | also stamps the session `gid` when the model has none |
+| bulk (`doPostBulk`, `doPutBulk`) | the first denied item threw, earlier ones could be written | every item is checked first; one denial → `403 NOT ALLOWED - bulk[<action>] denied ids[<id,…>]`, nothing is written |
+
+**`sid`-less records.** A record without `sid` follows `SID_LEGACY_ACCESS` for read, update and delete (read was open before B13): `admin` (default) → admin only, `open` → every role holder (v4), `deny` → update/delete refused even for admin, read as `admin`. With the session on, a `list` is pinned to the session `sid`, so such records never appear in it.
+
+**Session off and local mode are unchanged.** A controller with `useSession: false` (and every call in local mode) keeps the v5 rules above: same-site read for any role holder, update/delete for the same `sid` and `uid`, no list check or pin.
+
+**Override** (highest first): a `MyManagerProxy.canDo()` override (runs first, falls back to `super.canDo()`); the controller option `policy` (`CRUDCreationOptions.policy?: Partial<AccessPolicy>`); `MyManagerProxy.accessPolicy()` per model type; the core `DEFAULT_ACCESS_POLICY` (`list: 'site'`, the other four `'owner'`). Scopes: `owner`, `group`, `site`, `any`. New root names: `AccessScope`, `AccessPolicy`, `DEFAULT_ACCESS_POLICY`.
+
+* **Restore the v5 read rule in one line:** `{ useSession: true, policy: { read: 'site' } }` in the controller options.
+* Services that share rows by another field (`model.id`, `userId`, member lists) keep or add a `canDo` override; it runs before the default.
+* The env table of § 11.8 has no new name: `SID_LEGACY_ACCESS` keeps its values and default (its row now says that read follows it too).
 
 ### 11.8 `$U.ts()` / `$U.dt()` use timeZone 9 by default
 
@@ -726,7 +743,7 @@ These three defaults can be changed by environment variables, read at call time 
 | --- | --- | --- | --- |
 | `DEFAULT_TIME_ZONE` | `9` | hours, a finite number (`0`, `-5`, `5.5`); else `9` | timeZone of `$U.ts()`/`$U.dt()`/`convDate*` when omitted |
 | `DATE_ONLY_CLOCK` | `noon` | `noon`, `midnight`; else `noon` | clock of `YYYY-MM-DD`, `YY-MM-DD`, `YYYYMMDD` (12:00:00 or 00:00:00) |
-| `SID_LEGACY_ACCESS` | `admin` | `admin`, `open` (v4), `deny` (nobody, not even admin); else `admin` | who may update/delete a `sid`-less record (§ 11.7); read/list stay open |
+| `SID_LEGACY_ACCESS` | `admin` | `admin`, `open` (v4), `deny` (nobody, not even admin); else `admin` | who may update/delete a `sid`-less record (§ 11.7); with the session on, read follows it too (B13) |
 
 ### 11.9 `GeneralAPIController` is deprecated
 
@@ -846,6 +863,7 @@ Options, output format, and limits: `docs/v5/B10-fields-types.md`.
 - [ ] Code that checked a thrown `200 OK - …` or only 200/201 is updated; long calls pass `timeout` (§ 11.5)
 - [ ] **Every manager that needs OpenSearch sync passes `{ enableSync: true }`**; `guardProxy` callers that need save-on-error pass `{ saveOnError: true }` (§ 11.6)
 - [ ] Updates/deletes of `sid`-less records go through an admin (§ 11.7)
+- [ ] Same-site reads of other users' rows are intended? Add `policy: { read: 'site' }` or a `canDo` override; offsite sessions no longer list (§ 11.7, B13)
 - [ ] `$U.ts()`/`$U.dt()` callers that expected UTC pass `0` (§ 11.8)
 - [ ] No new use of `GeneralAPIController` (§ 11.9)
 - [ ] `src/cores/` copy removed, or every removed search name inside it replaced (§ 12)

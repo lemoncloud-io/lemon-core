@@ -46,3 +46,7 @@
 # 2026-10-30: opt-in local transport (`LOCAL_TRANSPORT=mock`, mock delivery in local mode; HOW_TO_UPGRADE_V5 § 11.3.1)
 +$localTransport
 +LocalDelivery
+# B13: default data-access policy of the CRUD controller (`canDo` scopes; docs/v5/B13-access-policy.md)
++AccessScope
++AccessPolicy
++DEFAULT_ACCESS_POLICY
