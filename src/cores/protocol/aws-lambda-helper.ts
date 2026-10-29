@@ -1,3 +1,13 @@
+/**
+ * `aws-lambda-helper.ts`
+ * - invoke a lambda function (sync or event), and parse its result.
+ *
+ *
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2026-10-30 `asInvokeResult()`: the result parser of `invokeLambda()`, shared with the local transport.
+ *
+ * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
+ */
 import { _log, _inf, _err, $U } from '../../engine/';
 import { onlyDefined } from '../../common/test-helper';
 import { ProtocolParam } from '../core-services';
@@ -70,45 +80,61 @@ export async function invokeLambda<T>(
             // return this.doReportError(e, param.context, null, { protocol: uri, param });
             throw e;
         })
-        .then((data: InvokeCommandOutput) => {
-            const payloadText = asPayloadText(data?.Payload);
-            _log(NS, `! execute[${param?.service ?? ''}].res =`, $U.S(asInvokeLogData(data), 320, 64, ' .... '));
-            const payload = payloadText ? JSON.parse(payloadText) : {};
-            const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
-            _log(NS, `> Lambda[${params.FunctionName}].StatusCode :=`, statusCode);
-            _log(NS, `> Lambda[${params.FunctionName}].ContentSize :=`, payloadText ? payloadText.length : 0);
-
-            //* if useEvent is true and status code is 202, then return directly without parsing payload.
-            if (useEvent && statusCode == 202) return asInvokeLogData(data);
-
-            //* v5 B5: any 2xx is a success (SPEC § 6.6).
-            const isOk = statusCode >= 200 && statusCode < 300;
-            //* for debug, print whole data if status code is not 2xx.
-            const hasWarn = !isOk;
-            if (hasWarn) _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(asInvokeLogData(data)));
-
-            //* safe parse payload.body.
-            const body = (() => {
-                try {
-                    if (payload.text && typeof payload.text == 'string') return payload.text;
-                    return payload.body && typeof payload.body == 'string' ? JSON.parse(payload.body) : payload.body;
-                } catch (e) {
-                    _log(NS, `> WARN! payload.body =`, $U.S(payload.body));
-                    return payload.body;
-                }
-            })();
-
-            //* returns — v5: a `LemonError` with the peer status, the message string is unchanged (wire contract).
-            if (statusCode == 400 || statusCode == 404)
-                return Promise.reject(asLemonError(statusCode, $U.S(body) || '404 NOT FOUND'));
-            else if (!isOk) {
-                if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw asLemonError(statusCode, body);
-                throw asLemonError(statusCode, $U.S(body) || `Lambda Error. status:${statusCode}`);
-            }
-            //* v5: a 2xx without body (ex: 204) → `null`.
-            if (body === undefined || body === '') return statusCode == 200 || statusCode == 201 ? body : null;
-            return body;
-        });
+        .then((data: InvokeCommandOutput) => asInvokeResult(params.FunctionName, data, { param, useEvent }));
     const res: T = response as T;
     return res;
 }
+
+/**
+ * parse the output of a sync invoke like `invokeLambda()` (the status, then the body).
+ * - v5 (2026-10-30): extracted from `invokeLambda()` as is, so the local transport parses its result the same way.
+ *
+ * @param target    the function name (for logging).
+ * @param data      the invoke output (`StatusCode`, `Payload`).
+ * @param options   `param` for logging, `useEvent` to return a 202 as is.
+ */
+export const asInvokeResult = (
+    target: string,
+    data: InvokeCommandOutput,
+    options?: { param?: ProtocolParam; useEvent?: boolean },
+): any => {
+    const param: ProtocolParam | undefined = options?.param;
+    const useEvent = options?.useEvent ?? false;
+    const payloadText = asPayloadText(data?.Payload);
+    _log(NS, `! execute[${param?.service ?? ''}].res =`, $U.S(asInvokeLogData(data), 320, 64, ' .... '));
+    const payload = payloadText ? JSON.parse(payloadText) : {};
+    const statusCode = $U.N(payload.statusCode || (data && data.StatusCode), 200);
+    _log(NS, `> Lambda[${target}].StatusCode :=`, statusCode);
+    _log(NS, `> Lambda[${target}].ContentSize :=`, payloadText ? payloadText.length : 0);
+
+    //* if useEvent is true and status code is 202, then return directly without parsing payload.
+    if (useEvent && statusCode == 202) return asInvokeLogData(data);
+
+    //* v5 B5: any 2xx is a success (SPEC § 6.6).
+    const isOk = statusCode >= 200 && statusCode < 300;
+    //* for debug, print whole data if status code is not 2xx.
+    const hasWarn = !isOk;
+    if (hasWarn) _inf(NS, `> WARN! status[${statusCode}] data =`, $U.S(asInvokeLogData(data)));
+
+    //* safe parse payload.body.
+    const body = (() => {
+        try {
+            if (payload.text && typeof payload.text == 'string') return payload.text;
+            return payload.body && typeof payload.body == 'string' ? JSON.parse(payload.body) : payload.body;
+        } catch (e) {
+            _log(NS, `> WARN! payload.body =`, $U.S(payload.body));
+            return payload.body;
+        }
+    })();
+
+    //* returns — v5: a `LemonError` with the peer status, the message string is unchanged (wire contract).
+    if (statusCode == 400 || statusCode == 404)
+        return Promise.reject(asLemonError(statusCode, $U.S(body) || '404 NOT FOUND'));
+    else if (!isOk) {
+        if (typeof body == 'string' && body.startsWith('404 NOT FOUND')) throw asLemonError(statusCode, body);
+        throw asLemonError(statusCode, $U.S(body) || `Lambda Error. status:${statusCode}`);
+    }
+    //* v5: a 2xx without body (ex: 204) → `null`.
+    if (body === undefined || body === '') return statusCode == 200 || statusCode == 201 ? body : null;
+    return body;
+};
