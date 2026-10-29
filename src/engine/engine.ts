@@ -32,6 +32,7 @@ import { DEFAULT_TIME_ZONE, defaultTimeZone } from './utilities'; //* v5: the co
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
 import { loadJsonSync } from '../tools/';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
+import { safeStringify } from '../lib/safe-json'; //* v5 B10-2: circular-safe stringify for error reports (internal).
 
 import * as $lambda from 'aws-lambda';
 type Context = $lambda.Context;
@@ -95,10 +96,10 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         return '!ignore';
     }
 
-    //TODO - optimize message extractor.
+    //* v5 B10-2: message extractor — circular-safe (`$U.json()` throws on a circular object, outside of `try`).
     const $message = (e: any) => {
         const m = (e && (e.message || e.statusMessage)) || e;
-        return typeof m == 'object' ? $U.json(m) : `${m}`;
+        return typeof m == 'object' ? safeStringify(m) : `${m}`;
     };
     _log(NS, `doReportError(${$message(e)})...`);
 
@@ -354,15 +355,15 @@ export const do_parallel = <T, U>(
                 const R2: Promise<any> = R as Promise<any>; // avoid compile error.
                 return R2.catch(e => {
                     _err(`!ERR@1 node[${index}] =`, e);
-                    //* make sure error instance.
-                    return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
+                    //* make sure error instance. (v5 B10-2: circular-safe)
+                    return e instanceof Error ? e : new Error(typeof e == 'string' ? e : safeStringify(e));
                 });
             }
             return R;
         } catch (e) {
             _err(`!ERR@2 node[${index}] =`, e);
-            //* make sure error instance.
-            return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
+            //* make sure error instance. (v5 B10-2: circular-safe)
+            return e instanceof Error ? e : new Error(typeof e == 'string' ? e : safeStringify(e));
         }
     });
     //* do parrallel.

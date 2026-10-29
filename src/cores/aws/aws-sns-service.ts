@@ -20,6 +20,7 @@ import { asErrorPayload } from '../../common/test-helper';
 import { CoreSnsService } from '../core-services';
 import { awsConfig, AwsConfigParams } from '../../tools';
 import { measureAsync } from '../../lib/perf';
+import { safeStringify } from '../../lib/safe-json'; //* v5 B10-2: circular-safe stringify for the payload (internal).
 
 /**
  * SDK packages, imported on the first use (not at import: this file is in the engine closure; v5 B2-c, K6).
@@ -176,12 +177,14 @@ export class AWSSNSService implements CoreSnsService {
         _inf(NS(), `publish(${target}, ${subject})...`);
         const arn = await this.endpoint(target);
         if (!arn) throw new Error(`.arn is required! target:${target}`);
-        _log(NS(), `> payload[${arn}] =`, $U.json(payload));
+        //* v5 B10-2: stringify the payload once, circular-safe (a circular `data`·`context` must not drop the report).
+        const body = payload && typeof payload == 'object' ? safeStringify(payload) : payload;
+        _log(NS(), `> payload[${arn}] =`, payload && typeof payload == 'object' ? body : $U.json(payload));
         const params = {
             TopicArn: arn,
             Subject: subject,
             Message: JSON.stringify({
-                default: payload && typeof payload == 'object' ? JSON.stringify(payload) : payload,
+                default: body,
             }),
             MessageStructure: 'json',
         };

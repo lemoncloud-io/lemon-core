@@ -758,6 +758,10 @@ Measured in the five DoU backend repos (read-only census):
 
 `getHelloArn()` now picks the SNS account in this order: the account of `context.invokedFunctionArn` → `NextContext.accountId` → `RequestContext.accountId`, and takes a candidate only when it is 12 digits. In Lambda the target is therefore always the function's own account, also for a downstream call that received another account's `x-protocol-context`. When no candidate passes, it throws `.accountId[] is missing - …` without the rejected value (a local runner can put the OS user name there). `REPORT_ERROR_ARN` (`arn:aws:sns:…`) still wins. `doReportError()` and `doReportSlack()` also return `'!ignore'` in local mode (`$U.isLocalMode()`, § 11.3), next to the old `source === 'express'` and empty-`accountId` rules. If your service expected `doReportError()` to reach SNS from a local run, it now gets `'!ignore'`. Details: `docs/v5/B10-report-account.md`.
 
+### 13.2 Error reports with a circular structure (B10)
+
+The error report path (`doReportError()` → `AWSSNSService.reportError()` → `asErrorPayload()` → `publish()`) and `GETERR()` now print objects with an internal circular-safe stringify instead of a bare `JSON.stringify()`. Before, a thrown http response or axios error (`req` ↔ `res`), or a circular object in `Error.errors`/`cause`, `data` or `context`, made the report fail with `Converting circular structure to JSON`, and the report was lost. Now a back-reference to an ancestor is printed as the string `'[Circular]'`, an `Error` inside an object is printed as `{ name, message, stack, …own props, errors?, cause? }` (bare `JSON.stringify()` printed `{}`), and a `BigInt` as its decimal string. Other values give the same text as before. A consumer that parses the report payload can meet `'[Circular]'` in place of an object. `$U.json()` is unchanged and still throws on a circular object. Details: `docs/v5/B10-report-circular.md`.
+
 ## 14. Dependency audit: `query-string` and `uuid` removed, AWS SDK `^3.1159.0` (B11)
 
 `npm audit --omit=dev` on lemon-core is 0. Details: `docs/v5/B11-deps-audit.md`.
@@ -810,5 +814,6 @@ Measured in the five DoU backend repos (read-only census):
 - [ ] Every `MyCoreManager` subclass that relied on the copy's default passes `{ enableSync: true }` (§ 12, § 11.6)
 - [ ] Code that compares `context.source` by equality compares the service part only; the value now ends with the request path (§ 13)
 - [ ] Local runs that expected `doReportError()` to publish to SNS: it returns `'!ignore'` in local mode; the SNS account comes from `invokedFunctionArn` first (§ 13.1)
+- [ ] Consumers that parse error report payloads accept `'[Circular]'` strings and `Error` objects as `{ name, message, stack }` (§ 13.2)
 - [ ] Direct imports of `query-string` or `uuid` are in your own `package.json` (§ 14)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
