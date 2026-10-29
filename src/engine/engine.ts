@@ -21,6 +21,7 @@
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2022-02-21 remove `$_` the lodash libs.
  * @date        2026-05-08 optimized to ignore of reporting.
+ * @date        2026-10-30 `getHelloArn()`: placeholder account `000000000000` only with the local transport (`LOCAL_TRANSPORT=mock`).
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -67,6 +68,11 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
         const candidates: unknown[] = [invokedFunctionArn.split(':')[4], $ncx?.accountId, $req?.accountId];
         const accountId = candidates.find(isAccount);
         const region = invokedFunctionArn.split(':')[3] || `ap-northeast-2`;
+        //* local transport (`LOCAL_TRANSPORT=mock` in local mode, never in Lambda): nothing is sent, so a placeholder account.
+        if (!accountId && process.env.LOCAL_TRANSPORT === 'mock' && $U.isLocalMode()) {
+            _log(NS, '! accountId = 000000000000 (local transport)');
+            return `arn:aws:sns:${region}:000000000000:${target}`;
+        }
         if (!accountId) {
             //* v5 B10-6: never log or throw the rejected value (it can be an OS user name from a local runner).
             _err(NS, 'ERROR! missing accountId. context =', $U.json({ ...context, accountId: undefined }));

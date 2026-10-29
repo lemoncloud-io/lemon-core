@@ -640,6 +640,7 @@ v5 stops trusting what a request says about itself. A protocol context sent from
 | `PROTOCOL_SIGN_KEY` | a secret string; `*<base64>` is decrypted by KMS at init like other config values | unset | install-wide HMAC-SHA256 key for internal protocol calls (web, SNS, SQS). Unset = calls are sent unsigned |
 | `PROTOCOL_VERIFY` | `off` \| `warn` \| `enforce` | `warn` if the key is set, else `off` | `off`: no check. `warn`: accept an unsigned or mismatched call and log one `PROTOCOL unsigned <source>` line. `enforce`: reject it (`403 NOT ALLOWED - unsigned protocol context` for web, record failure for SQS, reported record for SNS) |
 | `LOCAL_MODE` | `1` | unset | local mode for the express harness (§ 11.3). Ignored in Lambda |
+| `LOCAL_TRANSPORT` | `mock` | unset | opt-in local transport: SNS/SQS/protocol sends to this service are delivered in-process (§ 11.3.1). Only in local mode; ignored in Lambda (one warn line) |
 
 Use the same `PROTOCOL_SIGN_KEY` in every service of one install. Keep `warn` while v4 callers remain (they send unsigned contexts), then switch to `enforce`. When the key is not set, init prints one line: `PROTOCOL sign key not set — contexts unsigned`.
 
@@ -661,6 +662,20 @@ const context = this.proxy.asNextContext(null, { identity: { ...identity, roles 
 ```
 
 * Specs that need local behaviour set `process.env.LOCAL_MODE = '1'` (and delete `AWS_LAMBDA_FUNCTION_NAME`) and restore both in `afterEach`.
+
+#### 11.3.1 Local transport (`LOCAL_TRANSPORT=mock`, opt-in)
+
+With `LOCAL_TRANSPORT=mock` in local mode, the send side does not call AWS. `AWSSNSService.publish()`, `AWSSQSService.sendMessage()` and the protocol `execute()`/`notify()`/`enqueue()`/`broadcast()` build the Lambda event record and run it through the engine's `LambdaHandler.handle()`, in the same process. Signature checks, transformers, sub-handlers and `batchItemFailures` work as in Lambda. Without the env nothing changes. In Lambda (`AWS_LAMBDA_FUNCTION_NAME` set) the env is ignored and one `WARN! env.LOCAL_TRANSPORT[mock] is ignored - in Lambda` line is logged.
+
+| Item | Rule |
+| --- | --- |
+| Targets | This service only: the topic of `MY_SNS_ENDPOINT` or the `sns://self` host, the queue of `MY_SQS_ENDPOINT` or the `sqs://self` host, the `web://self` function for `execute()`. No target and no `MY_SNS_ENDPOINT`/`MY_SQS_ENDPOINT` (a local run) means this service's topic/queue, as the Lambda deploy sets these env names. Any other target throws `501 NOT SUPPORTED - local transport: <name> is not this service` (no AWS call, no silent drop) |
+| Timing | SNS/SQS kinds (incl. `notify`/`enqueue`/`broadcast`) are async (`setImmediate`, no `DelaySeconds`) and return `mock-<uuid>`. `execute()` waits for the handler and parses the result like `invokeLambda()` (`useEvent` → async, 202) |
+| Records | ARNs and URLs use the placeholder account `000000000000` and env `REGION`; the fake Lambda context too. `getHelloArn()` returns the placeholder account when no 12-digit account is found (local transport only; the Lambda rule is unchanged) |
+| Loop guard | 50 deliveries in one burst, or a chain depth of 8 (a send from inside a delivery is +1). A burst ends at `drain()` or when nothing is pending (idle), so a long-running server without `drain()` is not capped for good. Over the cap: `508 LOOP DETECTED - local transport` and one `[MOCK] cap` line per burst |
+| Log | one line per delivery: `[MOCK] deliver kind=<sns\|sqs\|protocol> target=<name> message=<id>` |
+
+`$localTransport` (root) has `isActive()`, `drain()` (waits for every pending delivery, also the ones they send, then returns `{ kind, target, messageId, result?, error? }[]` and clears) and `deliveries()` (a copy, no wait). Only the last 100 finished deliveries are kept; older ones are dropped. `drain()` is process-wide, and it must not run inside an SNS/SQS delivery. SQS `batchItemFailures` and an SNS failure result are copied to `error`. Root names: `$localTransport`, `LocalDelivery` (type).
 
 ### 11.4 Handlers never reject; SQS and DynamoDB Stream return `batchItemFailures`
 

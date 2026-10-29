@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-09-27 initial version
+ * @date        2026-10-30 `sendMessage()`: the local transport (`LOCAL_TRANSPORT=mock`) delivers in-process, no AWS call.
  *
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -16,6 +17,7 @@ import type { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessage
 import { CoreServices } from '../core-services';
 import { awsConfig } from '../../tools';
 import { measureAsync } from '../../lib/perf';
+import { isActive as isLocalTransport, localSqs } from '../protocol/local-transport';
 
 /**
  * `@aws-sdk/client-sqs`, imported on the first use (not at import; v5 B2-c, K6).
@@ -136,6 +138,9 @@ export class AWSSQSService implements SQSService {
             QueueUrl: this.endpoint(),
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
+
+        //* local transport (opt-in, local mode only): deliver to this service in-process (no AWS call).
+        if (isLocalTransport()) return localSqs(this.endpoint(), params);
 
         const { SQSClient, SendMessageCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));

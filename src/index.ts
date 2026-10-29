@@ -8,6 +8,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-08-09 initial commit
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2026-10-30 export `$localTransport` and `LocalDelivery` (opt-in local transport, `LOCAL_TRANSPORT=mock`).
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -15,6 +16,8 @@
 export * from './common/types';
 export * from './common/test-helper';
 export { LemonError } from './common/lemon-error'; //* v5 B5: the only new root name (status-carrying error, SPEC § 6.6)
+export { $localTransport } from './cores/protocol/local-transport'; //* opt-in local transport (mock delivery in local mode)
+export type { LocalDelivery } from './cores/protocol/local-transport';
 export * from './engine/';
 export * from './cores/';
 export * from './tools/';

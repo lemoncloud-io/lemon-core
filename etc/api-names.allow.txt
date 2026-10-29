@@ -43,3 +43,6 @@
 +FieldsAdminReport
 +FieldsAdminRuntime
 +FieldsAdminExpect
+# 2026-10-30: opt-in local transport (`LOCAL_TRANSPORT=mock`, mock delivery in local mode; HOW_TO_UPGRADE_V5 § 11.3.1)
++$localTransport
++LocalDelivery

@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-27 initial version.
+ * @date        2026-10-30 `execute/notify/enqueue/broadcast`: the local transport (`LOCAL_TRANSPORT=mock`) delivers in-process.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -31,6 +32,8 @@ import $conf from '../config/'; // load config-module.
 import $aws from '../aws/'; // load config-module.
 import queryString from 'qs';
 import { invokeLambda } from './aws-lambda-helper';
+import { isActive as isLocalTransport, localSns, localSqs, localWeb, selfHostOf } from './local-transport';
+import { snsTargetOf } from '../aws/aws-sns-service';
 import { measureAsync } from '../../lib/perf';
 import {
     signContext,
@@ -385,6 +388,11 @@ export class MyProtocolService implements ProtocolService {
         // const url = new URL(uri);
         const $url = URL.parse(uri);
         const payload = this.transformEvent(uri, param) as APIGatewayProxyEvent;
+        //* local transport (opt-in, local mode only): run this service's handler in-process (sync), no AWS call.
+        if (isLocalTransport()) {
+            const selfHost = await selfHostOf('web', this, config);
+            return localWeb<T>(`${$url.hostname || ''}`, payload, selfHost, { param, useEvent });
+        }
         const awsCfg = awsConfig($engine);
         return invokeLambda<T>($url.hostname!, payload, { param, config: awsCfg, useEvent });
     }
@@ -406,6 +414,11 @@ export class MyProtocolService implements ProtocolService {
 
         const cbUrl = callback ? this.asCallbackURI(param.context, callback) : null;
         const params: PublishCommandInput = this.sns.transformToEvent(uri, param, cbUrl);
+        //* local transport (opt-in, local mode only): deliver to this service's topic in-process, no AWS call.
+        if (isLocalTransport()) {
+            const message = { ...params, Message: JSON.parse(params.Message).default };
+            return localSns(params.TopicArn, message, await selfHostOf('sns', this, config));
+        }
         const arn = params.TopicArn; // "arn:aws:sns:ap-northeast-2:123456789012:lemon-metrics-sns-dev"
         // _inf(NS, `> arn[${service}] =`, arn);
         _inf(NS, `> payload[${arn}] =`, $U.json(params));
@@ -455,6 +468,8 @@ export class MyProtocolService implements ProtocolService {
         _inf(NS, `> callback[${service}] =`, cbUrl);
         const params = this.sqs.transformToEvent(uri, param, cbUrl);
         params.DelaySeconds = delaySeconds;
+        //* local transport (opt-in, local mode only): deliver to this service's queue in-process (no delay), no AWS call.
+        if (isLocalTransport()) return localSqs(params.QueueUrl, params, await selfHostOf('sqs', this, config));
         const endpoint = params.QueueUrl; // https://sqs.${arr[3]}.amazonaws.com
         // _inf(NS, `> endpoint[${service}] =`, endpoint);
         _inf(NS, `> payload[${endpoint}] =`, $U.json(params));
@@ -489,6 +504,16 @@ export class MyProtocolService implements ProtocolService {
         const service = this.myProtocolURI(context);
         _log(NS, `broadcast(${service})..`);
         _log(NS, `> body[${service}] =`, $U.json(body));
+
+        //* local transport (opt-in, local mode only): deliver to this service's topic in-process (no endpoint lookup).
+        if (isLocalTransport()) {
+            const [accountId, requestId] = [`${context?.accountId || ''}`, `${context?.requestId || ''}`];
+            const MessageAttributes: Record<string, MyMessageAttributeValue> = {};
+            if (accountId) MessageAttributes['accountId'] = { DataType: 'String', StringValue: accountId };
+            if (requestId) MessageAttributes['requestId'] = { DataType: 'String', StringValue: requestId };
+            const message = { Subject: `x-protocol-service/broadcast`, Message: $U.json(body), MessageAttributes };
+            return localSns(snsTargetOf(endpoint), message, await selfHostOf('sns', this));
+        }
 
         const arn = await $aws.sns.endpoint(endpoint);
         _inf(NS, `> arn[${endpoint}] =`, arn);
