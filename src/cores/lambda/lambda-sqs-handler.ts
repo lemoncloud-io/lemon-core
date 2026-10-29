@@ -5,17 +5,19 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2026-10-30 v5 B13: the receiver's own ids (`packContext()`) for a relay; channel `internal`.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err, do_parrallel } from '../../engine/';
-import { SQSRecord } from 'aws-lambda';
+import { SQSRecord, Context } from 'aws-lambda';
 import { SQSHandler, LambdaHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { NextHandler, NextContext } from 'lemon-model';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
 import { ATTR_PROTOCOL_SIGNATURE, assertSigned, verifyMessage } from '../protocol/protocol-sign';
+import { accountOfArn } from '../protocol/protocol-relay';
 const NS = $U.NS('HSQS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -43,10 +45,22 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
     protected $lastResult: any = null;
 
     /**
+     * v5 B13: the receiver's own ids of this invocation (the relay context uses them, D2).
+     * - `requestId` = Lambda `awsRequestId`, `accountId` = the account of `invokedFunctionArn` (12 digits).
+     */
+    public async packContext(event: any, context: Context): Promise<NextContext> {
+        const own: NextContext = {};
+        if (context?.awsRequestId) own.requestId = `${context.awsRequestId}`;
+        const accountId = accountOfArn(context?.invokedFunctionArn);
+        if (accountId) own.accountId = accountId;
+        return own;
+    }
+
+    /**
      * Default SQS Handler.
      * - v5 B5: never rejects. a failed record goes to `batchItemFailures` (by `messageId`).
      */
-    public handle: SQSHandler = async (event): Promise<{ batchItemFailures: { itemIdentifier: string }[] }> => {
+    public handle: SQSHandler = async (event, $ctx): Promise<{ batchItemFailures: { itemIdentifier: string }[] }> => {
         //* for each records.
         const records: SQSRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
@@ -79,7 +93,12 @@ export class LambdaSQSHandler extends LambdaSubHandler<SQSHandler> {
                 //* v5 B5: verify the signature before dispatch (`enforce` → this record fails).
                 const signature = `${record.messageAttributes?.[ATTR_PROTOCOL_SIGNATURE]?.stringValue ?? ''}`;
                 assertSigned('sqs', () => verifyMessage(signature, record.body));
-                const param: MyProtocolParam = $protocol.service.asTransformer('sqs').transformToParam(record);
+                //* v5 B13: own ids — the invocation's, else the message id and the queue account.
+                const own: NextContext = {
+                    requestId: `${$ctx?.requestId || record.messageId || ''}` || undefined,
+                    accountId: `${$ctx?.accountId || accountOfArn(record.eventSourceARN) || ''}` || undefined,
+                };
+                const param: MyProtocolParam = $protocol.service.asTransformer('sqs').transformToParam(record, own);
                 const context: NextContext = param.context;
                 const callback = param.callback || '';
                 const result = await this.lambda

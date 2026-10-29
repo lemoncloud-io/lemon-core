@@ -13,6 +13,7 @@
  * @date        2022-04-07 use env, and opt header-parser
  * @date        2025-05-09 improved to support `referer` and `origin` header.
  * @date        2026-10-28 v5 B7: one `PERF: > request` line per request.
+ * @date        2026-10-30 v5 B13: `context.channel`, `context.trace`, the relay `x-lemon-relay` and the legacy modes.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -38,7 +39,20 @@ import {
     assertSigned,
     verifyContext,
 } from '../protocol/protocol-sign';
+import {
+    HEADER_LEMON_RELAY,
+    decodeRelay,
+    asRelayContext,
+    assertHop,
+    acceptLegacy,
+    warnJsonIdentity,
+    entryTrace,
+    entryChannel,
+    logTrace,
+    accountOfArn,
+} from '../protocol/protocol-relay';
 import { maskValue, maskHeaders } from '../../lib/log-mask';
+import { randomUUID } from 'crypto';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
@@ -544,30 +558,48 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         // STEP.1 support lambda call JWT Token authentication.
         const headers = event.headers;
         const $tool = this.tools(headers);
+        //* v5 B13: the relay of an internal hop (`r1.<base64url(JSON)>`).
+        const relayText = $tool.getHeader(HEADER_LEMON_RELAY);
         //* v5 B5: a `host` header (any case) means external → `x-protocol-context`/`-signature` are ignored (S-29).
+        //* v5 B13: the relay too (exactly like the legacy header).
         if (!hasHostHeader(headers)) {
             const contextJson = headers?.[HEADER_PROTOCOL_CONTEXT];
             const idt = $tool.getHeader(HEADER_LEMON_IDENTITY);
             const hasJsonIdentity = typeof idt === 'string' && idt.startsWith('{') && idt.endsWith('}');
-            //* host-less internal claim (protocol context or JSON identity) → verify the signature, then apply the mode.
-            if (contextJson || hasJsonIdentity) {
+            //* host-less internal claim (relay, protocol context or JSON identity) → verify the signature, then apply the mode.
+            if (relayText || contextJson || hasJsonIdentity) {
                 const signature = $tool.getHeader(HEADER_PROTOCOL_SIGNATURE);
-                const ctxText = typeof contextJson === 'string' ? contextJson : '';
+                //* v5 B13: the relay string is in the context slot of the canonical (else the legacy header as before).
+                const ctxText = relayText ? relayText : typeof contextJson === 'string' ? contextJson : '';
                 assertSigned('web', () => verifyContext(signature, ctxText, event.body));
+            }
+            if (relayText) {
+                //* v5 B13: the relay wins over the legacy header → the receiver context (D2), hop cap `508`.
+                const $ctx = relayContextOf(relayText, reqContext, orgContext);
+                logTrace($ctx);
+                trace.mark('context');
+                return $ctx;
             }
             if (contextJson) {
                 //* if it is protocol request via lambda, then returns valid context (bad JSON → `400 INVALID CONTEXT`).
                 try {
                     const $param = $protocol.service.asTransformer('web').transformToParam(event);
+                    //* v5 B13: deprecated legacy context by `PROTOCOL_LEGACY_ACCEPT` (reject → 400), kept as is + internal.
+                    const legacy: NextContext = $param?.context;
+                    acceptLegacy('web', legacy);
+                    const $ctx: NextContext = { ...legacy, channel: 'internal', trace: entryTrace(legacy) };
+                    logTrace($ctx);
                     trace.mark('context');
-                    return $param?.context;
+                    return $ctx;
                 } catch (e) {
                     const msg = GETERR(e);
                     throw new Error(/^[1-5][0-9]{2} [A-Z]/.test(msg) ? msg : `400 INVALID CONTEXT - ${msg}`);
                 }
             }
-        } else if (headers?.[HEADER_PROTOCOL_CONTEXT]) {
-            _log(NS, `> ignore ${HEADER_PROTOCOL_CONTEXT} (external request)`);
+            //* v5 B13: a JSON identity of an internal call is deprecated (one line; the behaviour is unchanged).
+            if (hasJsonIdentity) warnJsonIdentity('web');
+        } else if (headers?.[HEADER_PROTOCOL_CONTEXT] || relayText) {
+            _log(NS, `> ignore ${relayText ? HEADER_LEMON_RELAY : HEADER_PROTOCOL_CONTEXT} (external request)`);
         }
 
         // STEP.2 use internal identity json data via python lambda call.
@@ -591,12 +623,35 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         $ctx.source = $path
             ? $protocol.service.myProtocolURI($ctx, type, $path.id, $path.cmd)
             : $protocol.service.myProtocolURI($ctx);
+        //* v5 B13: the channel of this entry (local mode wins, else `host` → external, else internal), and hop 0.
+        $ctx.channel = entryChannel(hasHostHeader(headers));
+        $ctx.trace = entryTrace($ctx);
+        logTrace($ctx);
 
         // FINIAL. returns
         trace.mark('context');
         return $ctx;
     }
 }
+
+/**
+ * v5 B13: the receiver context of a web relay (D2).
+ * - decode (400), hop cap (508), the caller's requestId = `requestContext.requestId` (the sender sets both).
+ * - own ids: the Lambda `awsRequestId` (else a new id), the account of `invokedFunctionArn` (else `requestContext`).
+ */
+const relayContextOf = (
+    relayText: string,
+    reqContext: APIGatewayEventRequestContext,
+    orgContext?: Context,
+): NextContext => {
+    const relay = decodeRelay(relayText);
+    assertHop(relay.hop);
+    const reqId = `${reqContext?.requestId || ''}`;
+    if (reqId && relay.pid !== undefined && relay.pid !== reqId) throw new Error(`400 INVALID CONTEXT - relay pid`);
+    const requestId = `${orgContext?.awsRequestId || ''}` || randomUUID();
+    const accountId = accountOfArn(orgContext?.invokedFunctionArn) || `${reqContext?.accountId || ''}` || undefined;
+    return asRelayContext(relay, { requestId, accountId });
+};
 
 /**
  * class: `HttpHeaderSet`

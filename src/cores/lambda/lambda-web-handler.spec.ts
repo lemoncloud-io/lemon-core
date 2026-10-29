@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2026-10-30 v5 B13: `channel`/`trace` in the packed context; a legacy context gets `channel: 'internal'`.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -537,6 +538,8 @@ describe('LambdaWEBHandler', () => {
             authorization: 'Bearer 12345678',
             origin: 'http://localhost:5004',
             referer: 'http://localhost:5004/',
+            channel: 'external', // v5 B13: `Host` → external
+            trace: { tid: context.requestId, hop: 0 }, // v5 B13: entry → hop 0
         });
 
         //* v5 B5: the fixture has `Host` (external) → `x-protocol-context` is ignored whatever it holds (S-29).
@@ -595,7 +598,12 @@ describe('LambdaWEBHandler', () => {
         const $res2 = await lambda.handle(internal, null).catch(GETERR$);
         expect2(() => $res2, 'statusCode,error').toEqual({ statusCode: 200 });
         const body2 = JSON.parse($res2.body);
-        expect2(body2.context, '').toEqual({ ...context });
+        //* v5 B13: a legacy context is kept as is + channel `internal` + an entry trace.
+        expect2(body2.context, '').toEqual({
+            ...context,
+            channel: 'internal',
+            trace: { tid: context.requestId, hop: 0 },
+        });
     });
 
     //* test packContext() via lambda protocol
@@ -636,6 +644,8 @@ describe('LambdaWEBHandler', () => {
             source: `api://796730245826@lemon-core-dev/user/0#${$pack.version}`, // v5 B10: + request path
             origin: 'http://localhost:8888',
             referer: 'http://localhost:8888/?code=auth:bc7dd7fe-5d27-45d8-ba45-fa5dc64a7c0a',
+            channel: 'external', // v5 B13: `Host` → external
+            trace: { tid: context.requestId, hop: 0 }, // v5 B13: entry → hop 0
         });
     });
 

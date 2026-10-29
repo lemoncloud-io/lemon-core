@@ -8,6 +8,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-28 initial version (v5 B5)
+ * @date        2026-10-30 v5 B13: `HEADER_LEMON_RELAY` (masked in logs), `readConfig()` exported, `HEADER_PROTOCOL_CONTEXT` deprecated.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -25,8 +26,16 @@ export const HEADER_PROTOCOL_SIGNATURE = 'x-protocol-signature';
 /**
  * header name to exchange `next-context`, ONLY for internal communication.
  * - v5 B10-3: defined here (was `protocol-service.ts`, which re-exports it) so that `lambda-handler.ts` reads it without an import cycle.
+ *
+ * @deprecated v5 B13: the full context is replaced by the relay (`HEADER_LEMON_RELAY`). v5 sends it only with
+ *  `PROTOCOL_LEGACY_CONTEXT=send` and accepts it by `PROTOCOL_LEGACY_ACCEPT`. removal in v6.
  */
 export const HEADER_PROTOCOL_CONTEXT = $U.env('HEADER_PROTOCOL_CONTEXT', 'x-protocol-context');
+/**
+ * v5 B13: header name of the relay envelope (`r1.<base64url(JSON)>`) of an internal web call (see `protocol-relay.ts`).
+ * - defined here (no import cycle with `lambda-handler.ts`), re-exported by `protocol-relay.ts`.
+ */
+export const HEADER_LEMON_RELAY = 'x-lemon-relay';
 /**
  * header name of the identity of an internal call (JSON) or a JWT.
  * - v5 B10-3: defined here (was a private const of `lambda-web-handler.ts`) for the same reason.
@@ -37,6 +46,7 @@ export const PROTOCOL_LOG_MASKED_HEADERS: readonly string[] = [
     HEADER_PROTOCOL_CONTEXT,
     HEADER_PROTOCOL_SIGNATURE,
     HEADER_LEMON_IDENTITY,
+    HEADER_LEMON_RELAY, //* v5 B13: the relay carries identity ids like the context.
 ];
 /** message attribute name of the SNS/SQS signature */
 export const ATTR_PROTOCOL_SIGNATURE = 'signature';
@@ -62,7 +72,7 @@ let $signKey: string = null;
 let $keyLogged = false;
 
 /** read a config value via the config service (KMS-decrypted). before `init()`, a plain (not `*`) env value is used */
-const readConfig = (name: string): string => {
+export const readConfig = (name: string): string => {
     const val = $conf?.config?.get(name);
     if (val !== undefined && val !== null) return `${val}`;
     //* config not initialized yet (ex: unit tests): never use an encrypted `*...` value as is.

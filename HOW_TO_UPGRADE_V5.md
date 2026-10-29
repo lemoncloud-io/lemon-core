@@ -812,6 +812,72 @@ Options, output format, and limits: `docs/v5/B10-fields-types.md`.
   * Every invalid `%XX` byte decodes to `\uFFFD` (`query-string` 7 kept the raw `%XX`, and only `%C2` became `\uFFFD`), in linear time.
 * **`$U.uuid()` is unchanged in form** (lower-case 36-char v4). It now calls Node's `crypto.randomUUID()`. The automatic S3 key of `AWSS3Service.putObject()` also uses it.
 
+## 15. Call channel, relay and trace (B13)
+
+Internal calls no longer carry the caller's full context. Each entry sets `context.channel` once, an internal hop carries a small signed relay (identity summary + trace), and every entry logs one `TRACE` line. `x-protocol-context` is deprecated. Plan: `docs/v5/B13-relay-context.md`; implementation record: `docs/v5/B13-relay-context-impl.md`. Needs lemon-model with `NextContext.channel` and `NextContext.trace` (`NextTrace`).
+
+### 15.1 `context.channel`
+
+| Entry | `channel` |
+| --- | --- |
+| web with a `host` header (API Gateway, ALB, Function URL, the devkit express server) | `external` |
+| web without `host` and without a protocol header (direct invoke) | `internal` |
+| local mode (`$U.isLocalMode()`), web or ALB without a protocol header | `local` (wins over the `host` rule) |
+| protocol receive: web relay or legacy context, SNS/SQS `x-protocol-service` | `internal` (also in local mode, so the local transport takes the Lambda path) |
+
+* `fields/admin` is allowed only when `channel !== 'external'`. `domain` is still filled (and `runtime.external` still reports it) but is no longer a gate. A context built outside the lemon-core entries has no `channel` and is not treated as external.
+* The relay never carries a channel; the receiver sets it.
+
+### 15.2 The relay `x-lemon-relay`
+
+| Item | Value |
+| --- | --- |
+| web | header `x-lemon-relay` |
+| SNS/SQS | the `relay` field of the protocol param; the `context` field is not sent |
+| value | `r1.<base64url(JSON)>`, at most 4096 bytes on receive (about 0.4 KB for a typical caller) |
+| JSON | `idt` (`sid`, `uid`, `gid`, `roles`, `identityId`, `lang` only), `tid`, `hop`, `src`, `via`, `pid`, `iat` |
+| signature | web: `x-protocol-signature` with the relay string in the context slot of the canonical; SNS/SQS: the message signature (unchanged) |
+
+The receiver builds its context from the relay: `identity` = `idt`, `channel` = `internal`, `depth` = `hop`, `source` = `src`, `trace` = `{ tid, hop, via, pid, src }`, and its own `requestId`/`accountId` (Lambda `awsRequestId` and the account of `invokedFunctionArn`). Nothing else of the caller crosses the hop: no `cookie`, `authorization`, `referer`, `origin`, `clientIp`, `userAgent`, `domain`, `meta`, tokens or keys. A web event with `host` ignores the relay exactly like `x-protocol-context`. A bad relay → `400 INVALID CONTEXT - relay <reason>`.
+
+* **Code that read caller request values in a downstream service** (`$ctx.cookie`, `$ctx.authorization`, `$ctx.clientIp`, `$ctx.domain`, `identity.meta` …) gets `undefined` now. Pass what you need in the body or the param.
+* **`depth`** is the hop count of the chain. Code that raised `context.depth` by hand to detect loops can read `context.trace.hop` instead.
+* **The receiver's `requestId` is its own.** The first request's id is `context.trace.tid`, the direct caller's is `context.trace.pid`.
+
+### 15.3 Hop cap
+
+`PROTOCOL_MAX_HOP` (default 8). A relay with `hop` over the cap → web `508 LOOP DETECTED - protocol hop <n>`, SNS reported (not dispatched), SQS record failure. The sender refuses to build a hop over the cap with the same error, before any AWS call.
+
+### 15.4 Trace
+
+* Every entry sets `context.trace`: `{ tid: requestId, hop: 0 }` without a relay (external, local, direct invoke, legacy context), or the relay trace.
+* One line per web entry and per SNS/SQS protocol receive: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|->` (the via service host and the src path only; no identity value, no account). Join the lines of a chain by `tid` in CloudWatch Logs Insights.
+* `doReportError()` adds `trace` to the report payload.
+
+### 15.5 `x-protocol-context` is deprecated
+
+| Env | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `PROTOCOL_LEGACY_CONTEXT` | `off`, `send` | `off` | `off`: send the relay only. `send`: the relay and the full context (`x-protocol-context` / `context`) for v4 receivers |
+| `PROTOCOL_LEGACY_ACCEPT` | `accept`, `warn`, `reject` | `warn` | a call with the legacy context and no relay. `accept`: as before. `warn`: as before + one `PROTOCOL deprecated x-protocol-context <caller service> (<web\|sns\|sqs>)` line. `reject`: web `400 INVALID CONTEXT - legacy context rejected`, SNS reported, SQS record failure |
+| `PROTOCOL_MAX_HOP` | a positive integer | `8` | hop cap (§ 15.3) |
+
+* An accepted legacy context keeps the v4 behaviour (the caller's context as is) plus `channel: 'internal'` and an entry trace.
+* Relay and legacy together → the relay is used; no deprecated line.
+* A host-less JSON `x-lemon-identity` (no relay, no legacy context) keeps its behaviour and the `PROTOCOL_VERIFY` rules; it logs one `PROTOCOL deprecated json identity (web)` line unless `PROTOCOL_LEGACY_ACCEPT=accept`.
+* `HEADER_PROTOCOL_CONTEXT` is `@deprecated`; removal in v6.
+* The values are read through the config service like `PROTOCOL_VERIFY` (env or the config file).
+
+Settings while services move from v4 to v5 (DoU):
+
+| Stage | Setting of a migrated (v5) service |
+| --- | --- |
+| some services still v4 | send `PROTOCOL_LEGACY_CONTEXT=send` (v4 receivers need the context). receive `PROTOCOL_LEGACY_ACCEPT=warn` (v4 callers send only the context) |
+| all services v5 | send `off`. receive keep `warn`, and check that no `PROTOCOL deprecated` line is logged |
+| after the `deprecated` count is 0 | receive `reject`. then `PROTOCOL_VERIFY=enforce` (§ 13.4) |
+
+Module: `src/cores/protocol/protocol-relay.ts` (deep path `lemon-core/dist/cores/protocol/protocol-relay`, not on the root): `buildRelay`, `encodeRelay`, `decodeRelay`, `asRelayContext`, `traceLine`, `readLegacySend`, `readLegacyAccept`, `readMaxHop`, `HEADER_LEMON_RELAY`.
+
 ---
 
 ## At-a-Glance Checklist
@@ -858,4 +924,7 @@ Options, output format, and limits: `docs/v5/B10-fields-types.md`.
 - [ ] `PROTOCOL_VERIFY=enforce` only after the key is set everywhere, every caller is on v5, and a `warn` window shows no `PROTOCOL unsigned` line (§ 13.4)
 - [ ] `npm run fields:types` (`lemon-fields-types`) shows no `hard` conflict; services that share one index are checked together with `--with` (§ 13.5)
 - [ ] Direct imports of `query-string` or `uuid` are in your own `package.json` (§ 14)
+- [ ] Downstream code does not read caller request values (`cookie`, `authorization`, `clientIp`, `domain`, `identity.meta` …) from an internal call's context; loops are detected by `context.trace.hop` (§ 15.2)
+- [ ] `fields/admin` and other gates read `context.channel`, not `domain` (§ 15.1)
+- [ ] While v4 services remain: send `PROTOCOL_LEGACY_CONTEXT=send`, receive `PROTOCOL_LEGACY_ACCEPT=warn`; then `off`, then `reject` when no `PROTOCOL deprecated` line is logged (§ 15.5)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
