@@ -9,6 +9,7 @@
  * @date        2023-01-20 optimized `doSearch()` w/ `SearchParam()`
  * @date        2026-10-27 v5 B2-b: lazy `$OS2` test (listener and client counts).
  * @date        2026-10-28 v5 B4: `MyTestModel` is a class with `@field()`; a manager built from the class; L2 `CORE_FIELDS`.
+ * @date        2026-10-30 v5 B13: default data-access policy cases (SPEC § 14, T-01..T-27, T-34..T-36).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -25,6 +26,7 @@ import { NextContext, NextIdentity, SearchBody, SimpleSet, CoreModel, CORE_FIELD
 //* v5 B4: field annotations come from lemon-model (not on the lemon-core root).
 import { field, fieldsOf } from 'lemon-model';
 import { CanDoActionType, MyCoreManager, MyCoreProxy, MyCoreService, MyManagerProxy } from './abstract-services';
+import { AccessPolicy, DEFAULT_ACCESS_POLICY } from './abstract-services'; //* v5 B13: default data-access policy.
 import { $OS2, $ES6Routed, _OS2, OS2Instance, OS2Service } from './abstract-services';
 import { lazyInstance } from '../../lib/lazy';
 import $cores from '../../cores/';
@@ -1404,5 +1406,388 @@ describe('abstract-services', () => {
         } finally {
             created.mockRestore();
         }
+    });
+});
+
+//* v5 B13: `canDo()` and `packSearchParam()` with the session on, per SPEC § 14.2 (default policy) and § 14.6.
+describe('abstract-services B13 access policy', () => {
+    //* restore the toggled env and spies.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+        restoreEnvB5('SID_LEGACY_ACCESS');
+        vi.restoreAllMocks();
+    });
+    loadProfile(process); // override process.env (same profile as above).
+
+    const ACTS: CanDoActionType[] = ['list', 'read', 'create', 'update', 'delete'];
+    const ALL = { list: true, read: true, create: true, update: true, delete: true };
+    const NONE = { list: false, read: false, create: false, update: false, delete: false };
+    //* the stored row of OWN (site 1000000, user 1000001).
+    const ROW: Model = { type: 'test', id: '1000001', sid: '1000000', uid: '1000001' };
+
+    //* the fixture: session sample (sid 1000000, uid 1000001, roles user) + the caller states of § 14.2.
+    const _setup = () => {
+        const { service, context } = instance('session');
+        const proxy = service.createProxy(context);
+        //* a context with the identity overridden.
+        const _ctx = (N: any): NextContext => ({ ...context, identity: { ...context?.identity, ...N } });
+        const $ = {
+            own: _ctx({}),
+            site: _ctx({ uid: '2002' }),
+            other: _ctx({ sid: '999', uid: '2002' }),
+            admin: _ctx({ roles: ['admin'], sid: '999', uid: '9009' }),
+            guest: _ctx({ roles: [] }),
+            nouid: _ctx({ uid: '' }),
+            hashUid: _ctx({ uid: '#x' }),
+            nosid: _ctx({ sid: '#' }),
+            nosess: { identity: { lang: 'ko' } } as NextContext, // direct invoke, no headers
+            signed: loadSample('signed').context as NextContext, // IAM SigV4 caller
+            claim: { identity: { roles: ['admin'] } } as NextContext, // `roles: ['admin']` claim, no `userAgent`
+        };
+        //* one action with the session on (`throwable: false` unless given).
+        const _can = (ctx: NextContext, action: any, M?: Model, opts?: any) =>
+            proxy.tests.canDo(action, M, { context: ctx, useSession: true, throwable: false, ...opts });
+        //* the 5 actions as `{ action: allowed }`.
+        const _all = (ctx: NextContext, M?: Model, opts?: any) =>
+            ACTS.reduce((N, A) => ({ ...N, [A]: _can(ctx, A, M, opts) }), {} as Record<string, boolean>);
+        //* `packSearchParam()` on a proxy of `ctx`, session on → `$param`.
+        const _pack = (ctx: NextContext, param: any, opts?: any) =>
+            service.createProxy(ctx).tests.packSearchParam(param, undefined, { useSession: true, ...opts }).$param;
+        //* the error message (or the value), cut before the context dump.
+        const _msg = (fn: () => any) => {
+            try {
+                return fn();
+            } catch (e) {
+                return `${e?.message ?? e}`.split(' - context:')[0];
+            }
+        };
+        //* the row as created by the caller of `ctx` (session stamp).
+        const _mine = (ctx: NextContext): Model => ({
+            ...ROW,
+            sid: (ctx.identity as any)?.sid,
+            uid: (ctx.identity as any)?.uid,
+        });
+        return { service, proxy, $, _can, _all, _pack, _msg, _mine };
+    };
+
+    it('B13 § 14.1 DEFAULT_ACCESS_POLICY and effectivePolicy()', async () => {
+        const { proxy } = _setup();
+        expect2(() => DEFAULT_ACCESS_POLICY).toEqual({
+            list: 'site',
+            read: 'owner',
+            create: 'owner',
+            update: 'owner',
+            delete: 'owner',
+        });
+        expect2(() => Object.isFrozen(DEFAULT_ACCESS_POLICY)).toEqual(true);
+        expect2(() => proxy.tests.accessPolicy()).toEqual(DEFAULT_ACCESS_POLICY);
+        expect2(() => proxy.tests.effectivePolicy({ read: 'site', list: undefined })).toEqual({
+            ...DEFAULT_ACCESS_POLICY,
+            read: 'site',
+        });
+    });
+
+    it('B13 T-01 ADM list: all sites, `?sid=` optional, else own site', async () => {
+        const { $, _can, _pack } = _setup();
+        expect2(() => _can($.admin, 'list')).toEqual(true);
+        expect2(() => _pack($.admin, {})).toEqual({ sid: '999' });
+        expect2(() => _pack($.admin, { sid: '1000000' })).toEqual({ sid: '1000000' });
+        expect2(() => _pack($.admin, { sid: '0', uid: '0' })).toEqual({ sid: '999', uid: '9009' });
+    });
+
+    it('B13 T-02 ADM read of another site row', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.admin, 'read', ROW, { throwable: true })).toEqual(true);
+    });
+
+    it('B13 T-03 ADM create', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.admin, 'create', ROW, { throwable: true })).toEqual(true);
+    });
+
+    it('B13 T-04 ADM update of another site row', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.admin, 'update', ROW, { throwable: true })).toEqual(true);
+    });
+
+    it('B13 T-05 ADM delete of another site row', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.admin, 'delete', ROW, { throwable: true })).toEqual(true);
+    });
+
+    it('B13 T-06 IAM SigV4 caller (no session) and `roles: [admin]` claim pass as admin', async () => {
+        const { $, _all, _pack } = _setup();
+        //* admin is decided before the session fetch (was: `403 IDENTITY-TOKEN`).
+        expect2(() => _all($.signed, ROW, { throwable: true })).toEqual(ALL);
+        expect2(() => _all($.signed, undefined, { throwable: true }), 'list').toEqual({ list: true });
+        expect2(() => _all($.claim, ROW, { throwable: true })).toEqual(ALL);
+        //* no session → no site filter (`null`), `?sid=` as given.
+        expect2(() => _pack($.signed, {})).toEqual({ sid: null });
+        expect2(() => _pack($.signed, { sid: '1000000' })).toEqual({ sid: '1000000' });
+    });
+
+    it('B13 T-07 OWN list pinned to own site', async () => {
+        const { $, _can, _pack } = _setup();
+        expect2(() => _can($.own, 'list')).toEqual(true);
+        expect2(() => _can($.own, 'list', ROW)).toEqual(true);
+        expect2(() => _pack($.own, {})).toEqual({ sid: '1000000' });
+    });
+
+    it('B13 T-08 OWN read', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.own, 'read', ROW, { throwable: true })).toEqual(true);
+    });
+
+    it('B13 T-09 create of the session-stamped row (OWN, SITE, OTHER) and the `gid` stamp', async () => {
+        const { service, $, _can, _mine } = _setup();
+        expect2(() => _can($.own, 'create', _mine($.own), { throwable: true })).toEqual(true);
+        expect2(() => _can($.site, 'create', _mine($.site), { throwable: true })).toEqual(true);
+        expect2(() => _can($.other, 'create', _mine($.other), { throwable: true })).toEqual(true);
+        //* `makeModelBase()` stamps the session `gid` (new), only when non-empty and the model has none.
+        const _base = (N: any, model: any, parent?: any) =>
+            service
+                .createProxy({ ...$.own, identity: { ...$.own.identity, ...N } })
+                .makeModelBase(model, { useSession: true, parent });
+        expect2(await _base({ gid: 'g1' }, { type: 'test' })).toEqual({
+            type: 'test',
+            sid: '1000000',
+            uid: '1000001',
+            gid: 'g1',
+        });
+        expect2(await _base({ gid: 'g1' }, { type: 'test', gid: 'g0' }), 'gid').toEqual({ gid: 'g0' });
+        expect2(await _base({ gid: null }, { type: 'test' }).then(N => 'gid' in N)).toEqual(false);
+        expect2(await _base({ gid: null }, { type: 'test' }, { gid: 'p1' }), 'gid').toEqual({ gid: 'p1' });
+    });
+
+    it('B13 T-10 OWN update', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.own, 'update', ROW, { throwable: true })).toEqual(true);
+    });
+
+    it('B13 T-11 OWN delete', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.own, 'delete', ROW, { throwable: true })).toEqual(true);
+    });
+
+    it('B13 T-12 SITE list pinned to own site, `?uid=` narrows', async () => {
+        const { $, _can, _pack } = _setup();
+        expect2(() => _can($.site, 'list')).toEqual(true);
+        expect2(() => _can($.site, 'list', ROW)).toEqual(true);
+        expect2(() => _pack($.site, {})).toEqual({ sid: '1000000' });
+        expect2(() => _pack($.site, { uid: '1000001' })).toEqual({ sid: '1000000', uid: '1000001' });
+        expect2(() => _pack($.site, { uid: '0' })).toEqual({ sid: '1000000', uid: '2002' });
+    });
+
+    it('B13 T-13 SITE read → 403', async () => {
+        const { $, _can, _msg } = _setup();
+        expect2(() => _can($.site, 'read', ROW)).toEqual(false);
+        expect2(() => _msg(() => _can($.site, 'read', ROW, { throwable: true }))).toEqual(
+            '403 NOT ALLOWED - action[read] is invalid @canDo(read:test/1000001)',
+        );
+    });
+
+    it('B13 T-14 SITE update → 403', async () => {
+        const { $, _can, _msg } = _setup();
+        expect2(() => _can($.site, 'update', ROW)).toEqual(false);
+        expect2(() => _msg(() => _can($.site, 'update', ROW, { throwable: true }))).toEqual(
+            '403 NOT ALLOWED - action[update] is invalid @canDo(update:test/1000001)',
+        );
+    });
+
+    it('B13 T-15 SITE delete → 403', async () => {
+        const { $, _can, _msg } = _setup();
+        expect2(() => _can($.site, 'delete', ROW)).toEqual(false);
+        expect2(() => _msg(() => _can($.site, 'delete', ROW, { throwable: true, errScope: 'x' }))).toEqual(
+            '403 NOT ALLOWED - action[delete] is invalid @x',
+        );
+    });
+
+    it('B13 T-16 OTHER list: own site only, `?sid=` ignored', async () => {
+        const { $, _can, _pack } = _setup();
+        expect2(() => _can($.other, 'list')).toEqual(true);
+        expect2(() => _can($.other, 'list', ROW)).toEqual(false); // a row of another site is not in its list.
+        expect2(() => _pack($.other, { sid: '1000000' })).toEqual({ sid: '999' });
+    });
+
+    it('B13 T-17 OTHER read → 403', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.other, 'read', ROW)).toEqual(false);
+    });
+
+    it('B13 T-18 OTHER update → 403', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.other, 'update', ROW)).toEqual(false);
+    });
+
+    it('B13 T-19 OTHER delete → 403', async () => {
+        const { $, _can } = _setup();
+        expect2(() => _can($.other, 'delete', ROW)).toEqual(false);
+    });
+
+    it('B13 T-20 NOUID (empty or `#` uid) → 403 for every action', async () => {
+        const { $, _all, _can, _msg } = _setup();
+        expect2(() => _all($.nouid, ROW)).toEqual(NONE);
+        expect2(() => _all($.hashUid, ROW)).toEqual(NONE);
+        expect2(() => _all($.hashUid, { ...ROW, uid: '' })).toEqual(NONE); // empty never matches empty.
+        expect2(() => _can($.hashUid, 'list')).toEqual(false);
+        expect2(() => _msg(() => _can($.nouid, 'read', ROW, { throwable: true }))).toEqual(
+            '403 IDENTITY-TOKEN - .uid (user-id) is required!',
+        );
+        expect2(() => _msg(() => _can($.hashUid, 'list', undefined, { throwable: true }))).toEqual(
+            '403 NOT ALLOWED - action[list] is invalid @canDo(list:test/-)',
+        );
+    });
+
+    it('B13 T-21 NOSID (offsite `#` or empty sid) → 403 for every action, list too', async () => {
+        const { $, _all, _can, _pack, _msg } = _setup();
+        expect2(() => _all($.nosid, ROW)).toEqual(NONE);
+        expect2(() => _all($.nosid, { ...ROW, sid: '' })).toEqual(NONE);
+        expect2(() => _can($.nosid, 'list')).toEqual(false);
+        //* was: an unfiltered list.
+        expect2(() => _msg(() => _pack($.nosid, {}))).toEqual(
+            '403 NOT ALLOWED - list[site] needs session .sid @packSearchParam(test)',
+        );
+        expect2(() => _msg(() => _can($.nosid, 'read', ROW, { throwable: true }))).toEqual(
+            '403 NOT ALLOWED - action[read] is invalid @canDo(read:test/1000001)',
+        );
+    });
+
+    it('B13 T-22 GUEST (empty roles) → 403 for every action', async () => {
+        const { $, _all, _can, _msg } = _setup();
+        expect2(() => _all($.guest, ROW)).toEqual(NONE);
+        expect2(() => _can($.guest, 'list')).toEqual(false);
+        expect2(() => _msg(() => _can($.guest, 'read', ROW, { throwable: true }))).toEqual(
+            '403 NOT ALLOWED - action[read] is invalid @canDo(read:test/1000001)',
+        );
+    });
+
+    it('B13 T-23 NOSESS (no session in Lambda) → 403 IDENTITY-TOKEN', async () => {
+        const { $, _all, _can, _msg } = _setup();
+        for (const A of ACTS) {
+            expect2(() => _msg(() => _can($.nosess, A, ROW, { throwable: true }))).toEqual(
+                '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+            );
+        }
+        expect2(() => _msg(() => _can($.nosess, 'list', undefined, { throwable: true }))).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+        expect2(() => _all($.nosess, ROW)).toEqual(NONE);
+    });
+
+    it('B13 T-24 a row with an empty uid → read/update/delete admin only', async () => {
+        const { $, _can } = _setup();
+        const row: Model = { ...ROW, uid: '' };
+        for (const A of ['read', 'update', 'delete'] as CanDoActionType[]) {
+            expect2(() => _can($.own, A, row)).toEqual(false);
+            expect2(() => _can($.admin, A, row)).toEqual(true);
+        }
+    });
+
+    it('B13 T-25 a `sid`-less row, SID_LEGACY_ACCESS=admin (default) → admin only, read too', async () => {
+        const { $, _all } = _setup();
+        delete process.env.SID_LEGACY_ACCESS;
+        const legacy: Model = { type: 'test', id: '1000001', uid: '1000001' };
+        //* was: list/read/create open (B5 § 6.4).
+        expect2(() => _all($.own, legacy)).toEqual(NONE);
+        expect2(() => _all($.admin, legacy)).toEqual(ALL);
+        process.env.SID_LEGACY_ACCESS = 'unknown';
+        expect2(() => _all($.own, legacy)).toEqual(NONE);
+    });
+
+    it('B13 T-26 a `sid`-less row, SID_LEGACY_ACCESS=open → every role holder (v4)', async () => {
+        const { $, _all } = _setup();
+        process.env.SID_LEGACY_ACCESS = 'open';
+        const legacy: Model = { type: 'test', id: '1000001', uid: '1000001' };
+        expect2(() => _all($.own, legacy)).toEqual(ALL);
+        expect2(() => _all($.other, legacy)).toEqual(ALL);
+        expect2(() => _all($.guest, legacy)).toEqual(NONE);
+    });
+
+    it('B13 T-27 a `sid`-less row, SID_LEGACY_ACCESS=deny → write 403 before admin, read as `admin`', async () => {
+        const { $, _all, _can, _msg } = _setup();
+        process.env.SID_LEGACY_ACCESS = 'deny';
+        const legacy: Model = { type: 'test', id: '1000001', uid: '1000001' };
+        expect2(() => _all($.admin, legacy)).toEqual({ ...ALL, update: false, delete: false });
+        expect2(() => _all($.signed, legacy)).toEqual({ ...ALL, update: false, delete: false });
+        expect2(() => _all($.own, legacy)).toEqual(NONE);
+        expect2(() => _msg(() => _can($.admin, 'delete', legacy, { throwable: true }))).toEqual(
+            '403 NOT ALLOWED - action[delete] is invalid @canDo(delete:test/1000001)',
+        );
+    });
+
+    it('B13 § 14.1 scopes `group`, `any`, `owner` for canDo and packSearchParam', async () => {
+        const { $, _can, _pack, _msg } = _setup();
+        const $g1 = { ...$.site, identity: { ...$.site.identity, gid: 'g1' } } as NextContext;
+        const group = { policy: { read: 'group' } };
+        expect2(() => _can($g1, 'read', { ...ROW, gid: 'g1' }, group)).toEqual(true);
+        expect2(() => _can($g1, 'read', { ...ROW, gid: 'g2' }, group)).toEqual(false);
+        expect2(() => _can($.site, 'read', { ...ROW, gid: '' }, group)).toEqual(false); // empty never matches.
+        expect2(() => _can($.other, 'read', ROW, { policy: { read: 'any' } })).toEqual(true);
+        expect2(() => _can($.site, 'read', ROW, { policy: { read: 'site' } })).toEqual(true);
+        expect2(() => _can($.site, 'read', ROW, { policy: { read: 'bogus' } })).toEqual(false);
+        //* pins per scope.
+        expect2(() => _pack($.site, { uid: '1' }, { scope: 'owner' })).toEqual({ sid: '1000000', uid: '2002' });
+        expect2(() => _pack($g1, { uid: '1' }, { scope: 'group' })).toEqual({ sid: '1000000', uid: '1', gid: 'g1' });
+        expect2(() => _msg(() => _pack($.site, {}, { scope: 'group' }))).toEqual(
+            '403 NOT ALLOWED - list[group] needs session .gid @packSearchParam(test)',
+        );
+        expect2(() => _pack($.other, { sid: '1000000', uid: '0' }, { scope: 'any' })).toEqual({
+            sid: '1000000',
+            uid: '2002',
+        });
+        expect2(() => _pack($.other, {}, { scope: 'any' })).toEqual({});
+    });
+
+    it('B13 T-34 `accessPolicy()` override per model type, `policy` option over it', async () => {
+        const { service, $ } = _setup();
+        //* a type whose default reads and lists by site / owner.
+        class SiteReadTests extends MyManagerProxy<MyTestModel, TestModelManager, BackendService, ModelType> {
+            public accessPolicy(): AccessPolicy {
+                return { ...super.accessPolicy(), read: 'site', list: 'owner' };
+            }
+        }
+        //* a proxy that registers only this manager proxy.
+        const _proxy = (ctx: NextContext) => {
+            const P = new (class extends MyCoreProxy<ModelType, BackendService> {})(ctx, service);
+            return { P, tests: new SiteReadTests(P, service.$test) };
+        };
+        const { P, tests } = _proxy($.site);
+        const _opt = (N?: any) => ({ context: $.site, useSession: true, throwable: false, ...N });
+        expect2(() => P.canDo('read', ROW, _opt())).toEqual(true);
+        expect2(() => P.canDo('update', ROW, _opt())).toEqual(false);
+        expect2(() => P.canDo('read', ROW, _opt({ policy: { read: 'owner' } }))).toEqual(false);
+        expect2(() => tests.effectivePolicy(), 'list,read').toEqual({ list: 'owner', read: 'site' });
+        expect2(() => tests.packSearchParam({}, undefined, { useSession: true }).$param).toEqual({
+            sid: '1000000',
+            uid: '2002',
+        });
+    });
+
+    it('B13 T-35 useSession=false → v5 § 6.4 rules unchanged, policy ignored', async () => {
+        const { service, proxy, $ } = _setup();
+        const _off = (ctx: NextContext, A: CanDoActionType, M?: Model, N?: any) =>
+            proxy.tests.canDo(A, M, { context: ctx, useSession: false, throwable: false, ...N });
+        //* same site → list/read/create (any uid); update/delete need the uid; other site → none.
+        expect2(() => ACTS.map(A => _off($.site, A, ROW))).toEqual([true, true, true, false, false]);
+        expect2(() => ACTS.map(A => _off($.other, A, ROW))).toEqual([false, false, false, false, false]);
+        expect2(() => ACTS.map(A => _off($.own, A, { ...ROW, sid: '' }))).toEqual([true, true, true, false, false]);
+        expect2(() => ACTS.map(A => _off($.guest, A, ROW))).toEqual([false, false, false, false, false]);
+        expect2(() => _off($.other, 'read', ROW, { policy: { read: 'any' } })).toEqual(false);
+        //* the env default (`USE_SESSION` off in this profile) takes the same path.
+        expect2(() => service.isUseSession()).toEqual(false);
+        expect2(() => proxy.tests.canDo('read', ROW, { context: $.site, throwable: false })).toEqual(true);
+        //* no pin: `?sid=` as given.
+        expect2(() => _setup()._pack($.other, { sid: 'x' }, { useSession: false })).toEqual({ sid: 'x' });
+    });
+
+    it('B13 T-36 local mode → admin for all, no pin (unchanged)', async () => {
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        const { $, _all, _pack } = _setup();
+        expect2(() => _all($.other, ROW)).toEqual(ALL);
+        expect2(() => _all($.guest, ROW)).toEqual(ALL);
+        expect2(() => _pack($.other, { sid: 'a' })).toEqual({ sid: 'a' });
+        expect2(() => _pack($.nosid, {})).toEqual({});
     });
 });

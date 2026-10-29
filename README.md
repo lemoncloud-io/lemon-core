@@ -38,7 +38,7 @@ v5 status: npm `latest` is `5.0.4`. The `v5` branch holds all 5.x work, unreleas
 | `scripts/` | Build and API gates, lazy-load probes | Developer |
 | `etc/api-names.v4.txt`, `etc/api-names.allow.txt` | v4 public-name baseline; allowed `+Name`/`-Name` | The baseline stays; add lines to the allow list only |
 | `env/` | Configuration profiles | **Agents do not open it** |
-| `docs/v5/`, `docs/specs/` | v5 design record (B0–B11); `$T`/`$U` specs | Updated with the change they describe |
+| `docs/v5/`, `docs/specs/` | v5 design record (B0–B13); `$T`/`$U` specs | Updated with the change they describe |
 | `dist/`, `coverage/` | Build and test output, ignored by git | **Never edited by hand** |
 | `.github/workflows/` | `docgen.yaml`: typedoc on push to `develop`. No test job | A person |
 
@@ -198,10 +198,11 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B10-report-circular.md](docs/v5/B10-report-circular.md) | B10: circular structures in error reports (Korean) |
 | [B10-verify-enforce.md](docs/v5/B10-verify-enforce.md) | B10: runbook for switching to `PROTOCOL_VERIFY=enforce` (Korean) |
 | [B11-deps-audit.md](docs/v5/B11-deps-audit.md) | B11: `npm audit --omit=dev` 0, `query-string` → `qs`, `uuid` removed (Korean) |
+| [B13-access-policy.md](docs/v5/B13-access-policy.md) | B13: default data-access policy of `AbstractCRUDController` (`AccessPolicy`, `canDo` scopes) |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |
-| [CHANGELOG.md](CHANGELOG.md) | Stops at 1.2.0 (2019); see VERSION INFO |
+| [CHANGELOG.md](CHANGELOG.md) | Unreleased 5.x entry (B13), then stops at 1.2.0 (2019); see VERSION INFO |
 
 ## Contribution
 
