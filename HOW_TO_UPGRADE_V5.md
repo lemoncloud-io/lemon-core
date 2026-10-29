@@ -765,6 +765,15 @@ The error report path (`doReportError()` → `AWSSNSService.reportError()` → `
 ### 13.3 Secret header values are masked in logs (B10)
 
 `LambdaHandler.findService()` logs the headers of every event, and the SNS HTTP subscription handler logs the headers of every notification. These lines now print a masked copy: the value of `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-amz-security-token`, `x-protocol-context`, `x-protocol-signature` and `x-lemon-identity` (key match is case-insensitive; the last three follow `HEADER_PROTOCOL_CONTEXT`/`HEADER_LEMON_IDENTITY` if you set them) becomes `[masked:<length>]`, with no character of the value. Other headers are printed as before. `signToken()` logs `[masked:<length>]` instead of the signature, a failed identity header parse logs `[masked:<length>]` instead of the header value, and the Cognito `identity(req)`/`identity(new)` lines of `prepareContext()` print `apiKey` and `accessKey` as `[masked:<length>]` (the `NextIdentity` object itself is unchanged). Only the log text changes: the handler still reads the original headers, so the service type and the request path are the same. If you debugged with header values in CloudWatch, read them from the request itself (for example a local run) instead. Details: `docs/v5/B10-header-log-mask.md`.
+### 13.4 Before `PROTOCOL_VERIFY=enforce` (B10)
+
+`enforce` rejects a host-less call (direct invoke, SNS, SQS) whose `x-protocol-context` or JSON `x-lemon-identity` is unsigned or mismatched; external requests (`host` present) are not affected in any mode. Switch a function only when all three hold, and set the value through your deploy env, not by editing the function directly:
+
+* **The key is in place.** Every service of the install has the same `PROTOCOL_SIGN_KEY` as a config `*` (KMS) value, and the function log has no `PROTOCOL sign key not set` line. Without a key the mode is `off`, so a zero `PROTOCOL unsigned` count means nothing; with `enforce` and no key every internal call is rejected (`no-key`). The config init line `> config[KEY] :=` now prints `[masked:<length>]` for every decrypted `*` value (it printed the first 12 characters), so installing the key does not leak it to CloudWatch.
+* **Every caller is on v5.** Each service that calls this one depends on lemon-core `^5` with no `src/cores/` copy. lemon-core 4.x callers, including 4.3.0, never sign.
+* **A clean `warn` window.** In `warn`, the function logged no `PROTOCOL unsigned <source> (<reason>)` line for at least 7 days or the longest batch period, whichever is longer (bounded by the log retention), and every caller → callee pair was seen at least once in that window. Queues and DLQs hold no unsigned v4-era messages.
+
+Then check one host-less unsigned call returns `403 NOT ALLOWED - unsigned protocol context` and one real internal call still succeeds. Roll back by setting `warn` (or removing the value). Measurement commands and the order: `docs/v5/B10-verify-enforce.md`.
 
 ## 14. Dependency audit: `query-string` and `uuid` removed, AWS SDK `^3.1159.0` (B11)
 
@@ -820,5 +829,6 @@ The error report path (`doReportError()` → `AWSSNSService.reportError()` → `
 - [ ] Local runs that expected `doReportError()` to publish to SNS: it returns `'!ignore'` in local mode; the SNS account comes from `invokedFunctionArn` first (§ 13.1)
 - [ ] Consumers that parse error report payloads accept `'[Circular]'` strings and `Error` objects as `{ name, message, stack }` (§ 13.2)
 - [ ] Debugging that read header values (token, cookie, `x-protocol-context`, signature) from CloudWatch now sees only `[masked:<len>]` (§ 13.3)
+- [ ] `PROTOCOL_VERIFY=enforce` only after the key is set everywhere, every caller is on v5, and a `warn` window shows no `PROTOCOL unsigned` line (§ 13.4)
 - [ ] Direct imports of `query-string` or `uuid` are in your own `package.json` (§ 14)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
