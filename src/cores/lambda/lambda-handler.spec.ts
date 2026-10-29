@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { expect2, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from './lambda-handler';
+import { $engine } from '../../engine/';
 import { Handler } from 'aws-lambda';
 
 /**
@@ -61,6 +62,35 @@ describe('LambdaHandler', () => {
         expect2(() => _find('cron')).toEqual('cron');
         expect2(() => _find('cognito')).toEqual('cognito');
         expect2(() => _find('dynamo-stream')).toEqual('dds');
+    });
+
+    //* v5 B10-3: the header log is masked, the service type is not changed.
+    it('should mask secret headers in the log of findService() (v5)', async () => {
+        const { service } = instance();
+        const TOKEN = 'Bearer fake-token-b10-3-0123456789';
+        const CONTEXT = '{"requestId":"fake-req-b10-3"}';
+        const event = loadJsonSync('data/samples/events/sample.event.web.json');
+        event.headers = {
+            ...event.headers,
+            Authorization: TOKEN,
+            'x-protocol-context': CONTEXT,
+            Cookie: 'sid=fake-b10-3',
+        };
+        const spy = vi.spyOn($engine.$console, 'log');
+        try {
+            //* same type as before (the checks read the original headers).
+            expect2(() => service.findService(event)).toEqual('web');
+            const text = spy.mock.calls.map(args => args.join(' ')).join('\n');
+            expect(text).toContain('> headers =');
+            expect(text).toContain(`"Authorization":"[masked:${TOKEN.length}]"`);
+            expect(text).toContain(`"x-protocol-context":"[masked:${CONTEXT.length}]"`);
+            for (const secret of [TOKEN, 'fake-token-b10-3', CONTEXT, 'fake-req-b10-3', 'sid=fake-b10-3'])
+                expect(text).not.toContain(secret);
+            //* the event itself is not changed.
+            expect2(() => event.headers.Authorization).toEqual(TOKEN);
+        } finally {
+            spy.mockRestore();
+        }
     });
 
     //* test callback

@@ -26,6 +26,8 @@ import { NextContext } from 'lemon-model';
 import { ProtocolParam, CoreConfigService } from './../core-services';
 import { GETERR } from '../../common/test-helper';
 import * as $lambda from 'aws-lambda';
+import { maskHeaders } from '../../lib/log-mask';
+import { PROTOCOL_LOG_MASKED_HEADERS } from '../protocol/protocol-sign';
 const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
@@ -192,7 +194,8 @@ export class LambdaHandler {
     //* Find Service By Event
     public findService(event: any): HandlerType {
         const headers = (event && event.headers) || {};
-        _log(NS, `> headers =`, $U.json(headers));
+        //* v5 B10-3: log a masked copy only; the checks below read the original `headers`.
+        _log(NS, `> headers =`, $U.json(maskHeaders(headers, PROTOCOL_LOG_MASKED_HEADERS)));
         //* check if AWS SNS Notification Subscription -> notification controller.
         if (
             event.requestContext &&
