@@ -2,10 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## Unreleased (5.x)
+## 5.0.7 (2026-10-30)
+
+* Re-publish of 5.0.6 (same source).
+
+## 5.0.6 (2026-10-30)
 
 ### Behaviour changes
 
+* **B14 call channel, relay and trace** (`docs/v5/B14-relay-context.md`, `docs/v5/B14-relay-context-impl.md`, `HOW_TO_UPGRADE_V5.md` § 15).
+  1. Every entry sets `context.channel` (`external` / `internal` / `local`); `fields/admin` is gated by `channel !== 'external'` instead of `domain`.
+  2. Internal hops carry the signed relay `x-lemon-relay` (identity summary + trace) instead of the caller's full context: downstream `$ctx.cookie`, `$ctx.authorization`, `$ctx.clientIp`, `$ctx.domain`, `identity.meta` are `undefined`.
+  3. `context.trace` (`tid`, `hop`, `via`, `pid`, `src`) and one `TRACE` log line per entry; `doReportError()` adds `trace`.
+  4. Hop cap `PROTOCOL_MAX_HOP` (default 8) → `508 LOOP DETECTED`.
+  5. `x-protocol-context` is deprecated: `PROTOCOL_LEGACY_CONTEXT` (`off` default, `send`), `PROTOCOL_LEGACY_ACCEPT` (`warn` default, `accept`, `reject`); `HEADER_PROTOCOL_CONTEXT` `@deprecated`.
+  6. lemon-model `^5.0.1` (`NextContext.channel`, `trace`).
 * **B13 default data-access policy** of `AbstractCRUDController` (session on only; `docs/v5/B13-access-policy.md`, `HOW_TO_UPGRADE_V5.md` § 11.7). Restore the v5 read rule with `policy: { read: 'site' }`.
   1. A same-site user's `read` of another user's row → 403 (default `read: 'owner'`).
   2. An empty `uid` in the session or the row → 403 for every action (admin excepted).
@@ -19,6 +30,11 @@ All notable changes to this project will be documented in this file. See [standa
 
 * Root names `AccessScope`, `AccessPolicy`, `DEFAULT_ACCESS_POLICY`; `CanDoOptions.policy`, controller option `policy`, `MyManagerProxy.accessPolicy()` / `effectivePolicy()`, `packSearchParam` option `scope`.
 
+
+## 5.0.5 (2026-10-30)
+
+* B10: `getHelloArn()` takes a 12-digit account only, own Lambda account first; circular-safe stringify on the error report path; secret header values masked in logs; `PROTOCOL_VERIFY=enforce` runbook and masked decrypted config values in the init log; CLI `lemon-fields-types` (`HOW_TO_UPGRADE_V5.md` § 13.1–§ 13.5).
+* `LOCAL_TRANSPORT=mock` opt-in local transport for protocol calls (§ 11.3.1).
 
 ## [1.2.0](https://github.com/lemoncloud-io/lemon-core/compare/v1.1.2...v1.2.0) (2019-08-16)
 
