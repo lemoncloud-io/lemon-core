@@ -253,5 +253,8 @@
   "bugs": {
     "url": "https://github.com/lemoncloud-io/lemon-core/issues"
   },
-  "homepage": "https://github.com/lemoncloud-io/lemon-core#readme"
+  "homepage": "https://github.com/lemoncloud-io/lemon-core#readme",
+  "allowScripts": {
+    "fsevents@2.3.3": true
+  }
 }
