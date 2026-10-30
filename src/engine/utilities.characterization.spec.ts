@@ -332,7 +332,7 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             ['a', 'e40c292c'],
             ['hello', '4f9f2cab'],
             ['123', '7238631b'],
-        ])("hash.md Behavior table row: hash(%j) -> %j", (input, expected) => {
+        ])('hash.md Behavior table row: hash(%j) -> %j', (input, expected) => {
             const { $U } = instance();
             expect($U.hash(input)).toEqual(expected);
         });
@@ -374,7 +374,7 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             expect($U.hash([1, 2, 3])).toEqual('488c418a');
         });
 
-        it('hash.md Determinism: hash(\'hello\') called twice in the same process returns the identical value', () => {
+        it("hash.md Determinism: hash('hello') called twice in the same process returns the identical value", () => {
             const { $U } = instance();
             const first = $U.hash('hello');
             const second = $U.hash('hello');
@@ -400,19 +400,19 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
     //* ---------------------------------------------------------------------
     describe('qs_parse() — numeric-conversion boundary cases', () => {
         it.each([
-            ["a=01", { a: '01' }],
-            ["a=1e3", { a: '1e3' }],
-            ["a=0x10", { a: '0x10' }],
-            ["a=", { a: '' }],
-            ["a=-0", { a: '-0' }],
-            ["a=-1", { a: '-1' }],
-            ["a=0", { a: '0' }],
-            ["a=00", { a: '00' }],
-            ["a=1.5", { a: '1.5' }],
-            ["a", { a: '' }],
-            ["a=null", { a: 'null' }],
-            ["?a=1&b=x", { a: 1, b: 'x' }],
-            ["a=%20", { a: ' ' }],
+            ['a=01', { a: '01' }],
+            ['a=1e3', { a: '1e3' }],
+            ['a=0x10', { a: '0x10' }],
+            ['a=', { a: '' }],
+            ['a=-0', { a: '-0' }],
+            ['a=-1', { a: '-1' }],
+            ['a=0', { a: '0' }],
+            ['a=00', { a: '00' }],
+            ['a=1.5', { a: '1.5' }],
+            ['a', { a: '' }],
+            ['a=null', { a: 'null' }],
+            ['?a=1&b=x', { a: 1, b: 'x' }],
+            ['a=%20', { a: ' ' }],
         ])(
             'qs.md Behavior table row: qs_parse(%j) -> %j (Known defect #2, preserved — numeric conversion inconsistent across representations)',
             (input, expected) => {
@@ -445,9 +445,7 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
     describe('qs_stringify()', () => {
         it("qs.md Behavior table row: qs_stringify({a:1,b:'x y',c:'z?=y',d:'p&q'}) -> 'a=1&b=x%20y&c=z%3F%3Dy&d=p%26q' (utilities.spec.ts:47-54 parity)", () => {
             const { $U } = instance();
-            expect($U.qs_stringify({ a: 1, b: 'x y', c: 'z?=y', d: 'p&q' })).toEqual(
-                'a=1&b=x%20y&c=z%3F%3Dy&d=p%26q',
-            );
+            expect($U.qs_stringify({ a: 1, b: 'x y', c: 'z?=y', d: 'p&q' })).toEqual('a=1&b=x%20y&c=z%3F%3Dy&d=p%26q');
         });
 
         it("qs.md Behavior table row: qs_stringify({a: undefined}) -> '' — key with undefined value is dropped entirely", () => {

@@ -38,6 +38,7 @@ import $cores, {
     ProxyStorageService,
     SearchBody,
     StorageMakeable,
+    StorageService,
     TypedStorageService,
 } from '../cores/';
 import { $U, _log } from '../engine/';
@@ -151,10 +152,18 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
      * create storage-service w/ fields list.
      */
     public makeStorageService<T extends Model>(type: ModelType, fields: string[], filter: CoreModelFilterable<T>) {
-        //* use proxy-storage-service for both dynamo-table and dummy-data.
-        const storage = new ProxyStorageService<T, ModelType>(this, this.tableName, fields, filter, this.idName);
+        //* use proxy-storage-service for both dynamo-table and dummy-data (dummy: one inner storage per service).
+        const inner = this.tableName.endsWith('.yml') ? this.dummyStorage<T>(fields) : this.tableName;
+        const storage = new ProxyStorageService<T, ModelType>(this, inner, fields, filter, this.idName);
         storage.setTimer(() => (this.current ? this.current : new Date().getTime()));
         return storage.makeTypedStorageService(type);
+    }
+
+    //* the shared inner dummy storage of this service (lazy, `.yml` table only).
+    private $dummy: StorageService<any> = null;
+    private dummyStorage<T extends Model>(fields: string[]): StorageService<T> {
+        this.$dummy = this.$dummy ?? ProxyStorageService.makeStorageService<T>(this.tableName, fields, this.idName);
+        return this.$dummy as StorageService<T>;
     }
 }
 
@@ -614,15 +623,34 @@ export class ManagerProxy<
         }, {} as any as Model);
         const keys: string[] = Object.keys($inc);
         if (!keys.length) throw new Error(`@model (object) is empty to inc() - proxy/${this.$mgr.type}/id:${id}!`);
-        //* try to increment, and update the latest to both org and new.
-        const $res = await this.$mgr.storage.update(id, {} as Model, $inc);
-        const $new = await this.get(id);
-        const $org = this.org(id, true);
-        return keys.reduce<Model>((N, k) => {
-            const key = k as keyof Model;
-            N[key] = $org[key] = $res[key];
-            return N;
-        }, $new);
+        //* try to increment, and update the latest to both org and new (serialized per id, so the last write is the latest).
+        return this.withIncLock(id, async () => {
+            const $res = await this.$mgr.storage.update(id, {} as Model, $inc);
+            const $new = await this.get(id);
+            const $org = this.org(id, true);
+            return keys.reduce<Model>((N, k) => {
+                const key = k as keyof Model;
+                N[key] = $org[key] = $res[key];
+                return N;
+            }, $new);
+        });
+    }
+
+    //* serialize inc() by id (same pattern as `DummyStorageService.withLock`).
+    private readonly $incQueues: { [id: string]: Promise<unknown> } = {};
+    private withIncLock<R>(id: string, fn: () => Promise<R>): Promise<R> {
+        const prev = this.$incQueues[id] ?? Promise.resolve();
+        const run: Promise<R> = prev.catch((): undefined => undefined).then((): Promise<R> => fn());
+        const tail: Promise<void> = run
+            .then(
+                (): undefined => undefined,
+                (): undefined => undefined,
+            )
+            .then((): void => {
+                if (this.$incQueues[id] === tail) delete this.$incQueues[id];
+            });
+        this.$incQueues[id] = tail;
+        return run;
     }
 
     /**

@@ -204,6 +204,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B15-security.md](docs/v5/B15-security.md) | B15: cross-cloud `cid`, list `view`, internal admin, policy keys `internal`/`cross` |
 | [B16-model-subpath.md](docs/v5/B16-model-subpath.md) | B16: sub-path `lemon-core/model` (all of lemon-model), exact lemon-model pin, consumer rule |
 | [B17-repo-hygiene.md](docs/v5/B17-repo-hygiene.md) | B17: the old CI config and the typedoc workflow removed (token rotation by the owner), `CONTRIBUTING.md` `v5` flow |
+| [B18-audit-coverage.md](docs/v5/B18-audit-coverage.md) | B18: devDependencies audit (vitest `4.1.12`; lemon-devkit `request` chain pending 0.2.3), coverage 70 % → 96 % lines (offline specs), six pinned behaviours to fix separately |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |

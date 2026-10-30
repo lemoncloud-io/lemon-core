@@ -948,6 +948,13 @@ Resolution: since 5.0.10, `lemon-core/model` and `lemon-core/testing` also resol
 
 ---
 
+## 17. `ManagerProxy.inc()` per id and shared `.yml` dummy storage
+
+* Same-id `inc()` calls in one `ManagerProxy` now run one after another (different ids stay parallel). After N concurrent `inc()` the proxy cache holds the final storage value, so `saveAllUpdates({ useBatch: true })` no longer writes a stale count back. A rejected `inc()` still rejects and does not block the next one.
+* With a `.yml` table (dummy storage), every manager of one service instance shares one inner storage, like managers on one DynamoDB table. Another service instance keeps its own. DynamoDB tables are unchanged.
+
+Details: `docs/v5/ddb-inc-sharing.md`.
+
 ## 18. Dual sign keys, signature nonce and log screening
 
 Nothing changes until you set the new env names: one key, same signatures, same verify results.
@@ -1037,6 +1044,7 @@ Details: `docs/v5/security-key-rotation.md`.
 - [ ] While v4 services remain: send `PROTOCOL_LEGACY_CONTEXT=send`, receive `PROTOCOL_LEGACY_ACCEPT=warn`; then `off`, then `reject` when no `PROTOCOL deprecated` line is logged (§ 15.5)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
 - [ ] Since 5.0.9: no `lemon-model` in your `package.json`; root names from `lemon-core`, `field`/`fieldsOf`/`specsOf` from `lemon-core/model`; `npm ls lemon-model` shows one copy (§ 16)
+- [ ] Specs that relied on separate dummy buffers per manager of one service (same `_id`, `nextSeq()` restarting) expect one shared buffer (§ 17)
 - [ ] Key replacement only after every receiver runs this version; `_PREV` always with `_PREV_UNTIL`; an encrypted `JWT_SIGN_KEY` set before is kept as `JWT_SIGN_KEY_PREV` for the token lifetime (§ 18)
 - [ ] `PROTOCOL_SIGN_VERSION=v2` on senders only after every receiver runs this version (§ 18.2)
 - [ ] Session tokens from `encodeIdentityJWT()` expire after 30 min unless `JWT_TOKEN_TTL_SEC` (30 min ~ 24 h) or `exp` says otherwise; clients refresh (§ 18)

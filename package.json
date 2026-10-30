@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "5.0.11",
+  "version": "5.0.12",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -137,19 +137,19 @@
     "@types/supertest": "^2.0.10",
     "@typescript-eslint/eslint-plugin": "^5.15.0",
     "@typescript-eslint/parser": "^5.15.0",
-    "@vitest/coverage-v8": "^4.1.4",
+    "@vitest/coverage-v8": "^4.1.12",
     "concurrently": "^5.3.0",
     "eslint": "^8.23.1",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.0.0",
     "faker": "^4.1.0",
-    "lemon-devkit": "^0.2.1",
+    "lemon-devkit": "^0.2.3",
     "lint-staged": "^13.1.0",
     "prettier": "^2.7.1",
     "supertest": "^7.3.1",
     "ts-node": "^8.10.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.12"
   },
   "peerDependencies": {
     "@aws-sdk/client-iam": "^3.1159.0",

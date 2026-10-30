@@ -354,6 +354,81 @@ describe('abstract-service', () => {
         expect2([...node2.A].sort().join('')).toEqual('ab');
     });
 
+    //* inc() cache race — storage responses arrive out of order; the proxy cache must end at the final storage value.
+    it('should keep the proxy cache at the final value when inc() responses arrive out of order', async () => {
+        const { service } = instance();
+        const ID = 'inc-race-order';
+        const N = 5;
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+        //* delay the response of earlier calls longer (call #0 resolves last without serialization).
+        const $storage = service.$test.storage;
+        const update = $storage.update;
+        const calls: number[] = [];
+        $storage.update = async (id: string, model: TestModel, $inc?: TestModel) => {
+            const i = calls.push(calls.length) - 1;
+            const res = await update(id, model, $inc);
+            await new Promise(r => setTimeout(r, (N - i) * 10));
+            return res;
+        };
+        const proxy = service.buildProxy({});
+        await proxy.tests.get(ID);
+        await Promise.all(Array.from({ length: N }, () => proxy.tests.inc(ID, { test: 1 } as TestModel)));
+        $storage.update = update;
+        expect2((await service.$test.find(ID))?.test).toEqual(N);
+        expect2((await proxy.tests.get(ID)).test).toEqual(N);
+        //* full-model batch flush must not write a stale value back.
+        await proxy.saveAllUpdates({ useBatch: true });
+        expect2((await service.$test.find(ID))?.test).toEqual(N);
+    });
+
+    //* inc() lock — a rejected inc() must not block the next inc() on the same id.
+    it('should run the next inc() on the same id after a rejected inc()', async () => {
+        const { service } = instance();
+        const ID = 'inc-race-error';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+        const $storage = service.$test.storage;
+        const update = $storage.update;
+        const calls: number[] = [];
+        //* fail only the first call.
+        $storage.update = async (id: string, model: TestModel, $inc?: TestModel) => {
+            calls.push(calls.length);
+            if (calls.length === 1) throw new Error('500 FAIL - inc');
+            return update(id, model, $inc);
+        };
+        const proxy = service.buildProxy({});
+        const [r1, r2] = await Promise.all([
+            proxy.tests.inc(ID, { test: 1 } as TestModel).catch(GETERR),
+            proxy.tests.inc(ID, { test: 2 } as TestModel).then(M => M.test),
+        ]);
+        $storage.update = update;
+        expect2(r1).toEqual('500 FAIL - inc');
+        expect2(r2).toEqual(2);
+        expect2((await service.$test.find(ID))?.test).toEqual(2);
+    });
+
+    //* dummy storage — managers of one service share the inner `.yml` storage; different services do not.
+    it('should share the inner dummy storage between managers of one service', async () => {
+        const { service } = instance();
+        const $a = service.$test;
+        const $b = new TestModelManager(service);
+        expect2($a.storage.storage.storage === $b.storage.storage.storage).toEqual(true);
+        //* raw `_id` saved through one manager is readable through the other.
+        const _id = 'TT:test:shared-1';
+        await $a.storage.storage.storage.save(_id, { name: 'shared' } as any);
+        expect2((await $b.storage.storage.storage.read(_id)).name).toEqual('shared');
+        //* nextSeq() continues across managers.
+        const s1 = await $a.storage.storage.nextSeq('test');
+        const s2 = await $b.storage.storage.nextSeq('test');
+        expect2(s2).toEqual(s1 + 1);
+        //* another service instance has its own storage.
+        const { service: other } = instance();
+        expect2(other.$test.storage.storage.storage === $a.storage.storage.storage).toEqual(false);
+    });
+
     //* atomic inc() against real DynamoDB — proves Dynamo `ADD` / `list_append` semantics through ManagerProxy.
     it('should atomically inc() numbers and arrays against real DynamoDB', async () => {
         //* ignore if not in 'lemon'
