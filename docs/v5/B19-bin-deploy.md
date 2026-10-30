@@ -13,7 +13,7 @@ same, reviewed code through an npm `bin` instead of a copy. The invoke / observe
 | `lemon-lambda-local`      | `bin/lambda-local.mjs` | run a pack artifact (or a compiled handler dir) in local Node child processes          |
 | `lemon-lambda-deploy`     | `bin/deploy.mjs`       | offline deployment plan by default; `--apply` deploys through the deploy-service tools |
 | `lemon-lambda-deploy-dev` | `bin/deploy-dev.mjs`   | the guarded dev release of the migrated dev target (code only)                         |
-| `lemon-lambda-migrate`    | `bin/migrate.mjs`      | one guarded phase of the supported stack migration; offline plan by default            |
+| `lemon-lambda-migrate`    | `bin/migrate.mjs`      | one guarded phase of a reviewed stack migration; offline plan by default               |
 
 All five run from the **service root**: relative paths (`--config`, `--artifact`, `--output`, `pack.config.json`)
 resolve against `process.cwd()`. Only the tools' own files (the forked `deploy-credentials.mjs`,
@@ -138,7 +138,8 @@ lemon-lambda-deploy-dev --config <dev-code-config> --artifact <pack-directory>
                         [--migration-receipt <verified-receipt>] [--apply] [--receipt-dir <dir>]
 ```
 
-The `lemon-lambda-deploy` flow with extra guards: only the supported migration target's `dev` stage in `code` mode;
+The `lemon-lambda-deploy` flow with extra guards: only the `dev` stage of a reviewed migration target (B24 registry,
+`docs/v5/B24-migration-targets.md`) in `code` mode;
 the config is copied to a private temp file first (later edits of the original cannot change the run);
 `--migration-receipt` must be a completed, integrity-checked migration receipt whose snapshots still match;
 `--apply` rejects placeholder accounts and `example`/`placeholder`/`changeme` values. Default is the offline plan.
@@ -151,8 +152,8 @@ lemon-lambda-migrate <plan|retain|remove|tag|apply|verify> --config <file>
 ```
 
 Runs one phase of the canonical migration script of a pinned external checkout (`migrationRepo` in the config).
-Config keys: `schemaVersion: 1`, `project`, `stage`, `stack` (must equal the supported target), `migrationRepo`,
-`migrationRevision` (must equal the pinned revision), `region`, `account`, `profile`, `endpoint`,
+Config keys: `schemaVersion: 1`, `project`, `stage`, `stack` (must equal one reviewed target; B24), `migrationRepo`,
+`migrationRevision` (must equal that target's pinned revision), `region`, `account`, `profile`, `endpoint`,
 `artifactBucket`, optional `kmsDecryptKeyArn`, `kmsEncryptKeyArn`, `runtime` (`nodejs24.x`), `timeoutMs`.
 
 Safety model:
@@ -172,29 +173,33 @@ Safety model:
 
 lemon-core is a public package. Per-installation values (account, region, endpoint, profile, bucket, project, stage)
 come only from the consumer's config file; no hostname, account number, ARN or token is in the tools. The
-organisation's deploy-service contract and the one supported migration are pinned in one block,
+organisation's deploy-service contract and the reviewed migration targets are pinned in one block,
 `ORG_DEFAULTS` in `bin/lib/org-defaults.mjs`:
 
-| key                                                              | value                                                                                      | used by                                  |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
-| `deploy.serviceName`                                             | `eureka-deploy`                                                                            | `deploy` help text                       |
-| `deploy.reservedProjectPrefix`                                   | `eureka-deploy`                                                                            | a `project` may not start with it        |
-| `deploy.toolNamespace`                                           | `lemon.deploy`                                                                             | tool names `lemon.deploy.<tool>@1`       |
-| `deploy.policyProfile`                                           | `lemon-standard`                                                                           | `resolve-policy` profile; bootstrap plan |
-| `deploy.abortReasonPrefix`                                       | `templates-cli`                                                                            | abort reason `<prefix>:<code>`           |
-| `deploy.docRef`                                                  | this document                                                                              | error / help references                  |
-| `migration.target`                                               | project `lemon-templates-api`, stage `dev`, stack `lemon-templates-api-dev`                | migrate, deploy-dev                      |
-| `migration.revision`                                             | pinned 40-hex commit                                                                       | `migrationRevision`, checkout HEAD       |
-| `migration.origin`                                               | `lemoncloud-io/eureka-deploy-api`                                                          | checkout `origin`                        |
-| `migration.entry` / `imports` / `runsDir`                        | `scripts/migrate/migrate.mjs` / `scripts/agt/common.mjs` / `scripts/migrate/runs`          | checkout layout                          |
-| `migration.receiptFile` / `ownerFile` / `lockFile` / `ownerTool` | `templates-receipt.json` / `templates-owner.json` / `templates.lock` / `templates-migrate` | private run state                        |
-| `migration.devConfigPrefix`                                      | `templates-dev-config-`                                                                    | temp copy of the dev config              |
+| key                                                                        | value                                                                                     | used by                                  |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `deploy.serviceName`                                                       | `eureka-deploy`                                                                           | `deploy` help text                       |
+| `deploy.reservedProjectPrefix`                                             | `eureka-deploy`                                                                           | a `project` may not start with it        |
+| `deploy.toolNamespace`                                                     | `lemon.deploy`                                                                            | tool names `lemon.deploy.<tool>@1`       |
+| `deploy.policyProfile`                                                     | `lemon-standard`                                                                          | `resolve-policy` profile; bootstrap plan |
+| `deploy.abortReasonPrefix`                                                 | `lemon-lambda-deploy` (B24; was `templates-cli`)                                          | abort reason `<prefix>:<code>`           |
+| `deploy.abortReasonPrefixes`                                               | `{ "lemon-templates-api": "templates-cli" }` (B24)                                        | per-project abort prefix, wins           |
+| `deploy.docRef`                                                            | this document                                                                             | error / help references                  |
+| `migration.targets`                                                        | reviewed registry (B24): `lemon-templates-api` dev, `lemon-hello-api` dev                 | migrate, deploy-dev                      |
+| `migration.targets[].revision`                                             | pinned 40-hex commit                                                                      | `migrationRevision`, checkout HEAD       |
+| `migration.targets[].receiptFile` / `ownerFile` / `lockFile` / `ownerTool` | templates: the B19 `templates-*` names; others: `migrate-*`, owner `lemon-lambda-migrate` | private run state                        |
+| `migration.targets[].devConfigPrefix`                                      | templates: `templates-dev-config-`; others: `lemon-dev-config-`                           | temp copy of the dev config              |
+| `migration.origin`                                                         | `lemoncloud-io/eureka-deploy-api`                                                         | checkout `origin`                        |
+| `migration.entry` / `imports` / `runsDir`                                  | `scripts/migrate/migrate.mjs` / `scripts/agt/common.mjs` / `scripts/migrate/runs`         | checkout layout                          |
+
+B24 replaced the single `migration.target` / `migration.revision` / state-name keys with `migration.targets`
+(`docs/v5/B24-migration-targets.md`). The templates values are unchanged.
 
 How to override: the per-installation values are the config file. The pins above are part of the reviewed safety
-contract and are intentionally not overridable from a config file or a flag (a config that differs from
-`migration.target` or `migration.revision` is rejected). `validateRepository(config, { revision, origin })` takes
-both as parameters for programmatic use. Another target, revision or deploy-service namespace is a lemon-core change
-(edit `ORG_DEFAULTS` and release).
+contract and are intentionally not overridable from a config file or a flag (a config that matches no entry of
+`migration.targets`, or names another revision, is rejected). `validateRepository(config, { revision, origin })`
+takes both as parameters for programmatic use (default: the matched entry's revision). Another target, revision or
+deploy-service namespace is a lemon-core change (add a reviewed entry to `ORG_DEFAULTS` and release; see B24).
 
 ## Differences from the templates-api source
 

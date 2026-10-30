@@ -18,7 +18,6 @@ import {
     readReceipt,
     verifyMigrationReceipt,
     PHASES,
-    TARGET,
     validateRepository,
 } from './migrate-core.mjs';
 import { runPrivateChild } from './migrate-process.mjs';
@@ -131,7 +130,7 @@ test('snapshot tampering and target/config drift block removal', async t => {
         else data.extra = 'tampered';
         await writeFile(path.join(f.run, file), JSON.stringify(data));
         const count = f.calls.length;
-        await assert.rejects(executeMigration(f.config, 'remove', { confirmStack: TARGET.stack }, f.deps), {
+        await assert.rejects(executeMigration(f.config, 'remove', { confirmStack: f.config.stack }, f.deps), {
             code: 'SNAPSHOT_CHANGED',
         });
         assert.equal(f.calls.length, count);

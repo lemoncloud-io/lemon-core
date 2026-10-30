@@ -8,6 +8,7 @@ import {
     FUNCTION_SHAPES,
     LOG_RETENTION_DAYS,
     SCHEDULE,
+    plannedFunctionNames,
 } from './deploy-plan.mjs';
 import { createReceipt } from './deploy-receipt.mjs';
 import { sha256 } from './pack-zip.mjs';
@@ -15,6 +16,9 @@ import { ORG_DEFAULTS } from './org-defaults.mjs';
 
 //* v5 B19: the deploy-service pins (tool namespace, policy profile, abort reason) come from `org-defaults.mjs`.
 const DEPLOY = ORG_DEFAULTS.deploy;
+//* v5 B24: abort reason prefix of a project — its legacy entry in `abortReasonPrefixes`, else the default.
+export const abortReasonPrefix = project =>
+    Object.hasOwn(DEPLOY.abortReasonPrefixes, project) ? DEPLOY.abortReasonPrefixes[project] : DEPLOY.abortReasonPrefix;
 
 const fail = (code, message, unknown = false) => {
     throw new DeployError(code, message, { unknown });
@@ -355,6 +359,10 @@ export async function runDeployment(
         );
         if (fn.functionName === backend.functionName)
             fail('TARGET_MISMATCH', 'Backend and API must resolve to different functions.');
+        //* v5 B24: the resolved names must be the planned targets of this config, not any other function.
+        const planned = plannedFunctionNames(c);
+        if (fn.functionName !== planned.lambda || backend.functionName !== planned.backend)
+            fail('TARGET_MISMATCH', 'Resolved function names differ from the planned targets.');
         const policy = await call('policy', `${DEPLOY.toolNamespace}.resolve-policy@1`, {
             ...base,
             profile: DEPLOY.policyProfile,
@@ -601,7 +609,7 @@ export async function runDeployment(
                 const ended = await call('abort', `${DEPLOY.toolNamespace}.end@1`, {
                     deployId,
                     status: 'aborted',
-                    reason: `${DEPLOY.abortReasonPrefix}:${error.code}`,
+                    reason: `${abortReasonPrefix(c.project)}:${error.code}`,
                 });
                 if (ended.deployId !== deployId || ended.status !== 'aborted')
                     fail('ABORT_UNKNOWN', 'Abort was not confirmed.', true);

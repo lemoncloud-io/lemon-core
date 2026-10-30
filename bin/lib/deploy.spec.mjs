@@ -28,7 +28,8 @@ const codeConfig = () => {
     const { environmentFile, policy, routes, deletionProtection, ...c } = structuredClone(example);
     return { ...c, mode: 'code' };
 };
-async function fixture(t, mode = 'code') {
+//* v5 B24: `patch` overrides config keys (e.g. another project) before the deployment is loaded.
+async function fixture(t, mode = 'code', patch = {}) {
     const root = await mkdtemp(path.join(os.tmpdir(), 'templates-deploy-test-'));
     onTestFinished(() => rm(root, { recursive: true, force: true }));
     const source = path.join(root, 'handler.cjs');
@@ -52,7 +53,10 @@ async function fixture(t, mode = 'code') {
         source: { gitSha: 'a'.repeat(40), dirty: false },
     };
     await writeFile(path.join(root, 'manifest.json'), JSON.stringify(manifest));
-    const config = mode === 'bootstrap' ? { ...structuredClone(example), environmentFile: 'env.json' } : codeConfig();
+    const config = {
+        ...(mode === 'bootstrap' ? { ...structuredClone(example), environmentFile: 'env.json' } : codeConfig()),
+        ...patch,
+    };
     await writeFile(path.join(root, 'env.json'), JSON.stringify({ NAME: 'templates', SECRET: 'secret-env-sentinel' }));
     const configFile = path.join(root, 'config.json');
     await writeFile(configFile, JSON.stringify(config));
@@ -502,6 +506,50 @@ test('HTTP 200 tool failure aborts known round and preserves partial function su
     assert.ok(receipt.steps.find(s => s.name === 'lambda-code').output.functionArn);
     assert.ok(!JSON.stringify(receipt).includes('secret-env-sentinel'));
     assert.equal(client.calls.at(-1).input.status, 'aborted');
+    // v5 B24 compat: the templates abort reason is byte-identical (captured on v5 @ 06727a94).
+    assert.equal(client.calls.at(-1).input.reason, 'templates-cli:TOOL_FAILED');
+});
+//* v5 B24: the abort reason prefix follows the project (data in org-defaults); only templates keeps `templates-cli`.
+test('abort reason of a non-templates project uses the lemon-lambda-deploy prefix', async t => {
+    const f = await fixture(t, 'code', { project: 'lemon-hello-api', keyPrefix: 'lemon-hello-api/dev' }),
+        client = fakeClient(f.deployment, {
+            hook: r =>
+                r.tool === 'aws.s3.presign-put@1'
+                    ? {
+                          http: 200,
+                          result: { tool: r.tool.split('@')[0], version: '1', status: 'failed', verified: false },
+                      }
+                    : undefined,
+        });
+    const { receipt } = await failedRun(f, client, 'TOOL_FAILED');
+    assert.equal(receipt.roundStatus, 'aborted');
+    assert.deepEqual(client.calls.at(-1).input, {
+        deployId: 'dpl_test',
+        status: 'aborted',
+        reason: 'lemon-lambda-deploy:TOOL_FAILED',
+    });
+});
+//* v5 B24: resolved function names must be the planned `<project>-<stage>-lambda|backend`, checked before begin.
+test('resolved function names that differ from the planned targets stop before begin', async t => {
+    for (const [component, name] of [
+        ['lambda', 'lemon-other-api-dev-lambda'],
+        ['backend', 'lemon-other-api-dev-backend'],
+        ['backend', 'lemon-templates-api-dev-worker'],
+    ]) {
+        const f = await fixture(t),
+            client = fakeClient(f.deployment, {
+                hook: (r, { names }) =>
+                    r.tool === 'lemon.deploy.resolve-names@1' &&
+                    r.input.convention === 'sls' &&
+                    (r.input.component ?? 'lambda') === component
+                        ? good(r.tool, { ...names, functionName: name, logGroupName: `/aws/lambda/${name}` })
+                        : undefined,
+            });
+        const { error } = await failedRun(f, client, 'TARGET_MISMATCH');
+        assert.equal(error.message, 'Resolved function names differ from the planned targets.');
+        assert.ok(!client.calls.some(x => x.tool === 'lemon.deploy.begin@1'));
+        assert.equal(client.reads.length, 0);
+    }
 });
 test('network or malformed mutation response stays unknown and never retries/end/unlocks', async t => {
     for (const kind of ['network', 'malformed', 'verifyfalse']) {

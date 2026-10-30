@@ -8,8 +8,9 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, realpath } from 'node:fs/promi
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import { REVISION, TARGET, validateMigrationConfig, executeMigration, PHASES } from './migrate-core.mjs';
-export async function fixture(t) {
+import { TARGETS, validateMigrationConfig, executeMigration, PHASES } from './migrate-core.mjs';
+//* v5 B24: `target` picks a registry entry (default: the B19 templates target, so every B19 case is unchanged).
+export async function fixture(t, { target = TARGETS[0] } = {}) {
     const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'templates-migrate-test-')));
     onTestFinished(() => rm(root, { recursive: true, force: true }));
     const repo = path.join(root, 'canonical');
@@ -17,9 +18,11 @@ export async function fixture(t) {
     const configFile = path.join(root, 'migration.json');
     const raw = {
         schemaVersion: 1,
-        ...TARGET,
+        project: target.project,
+        stage: target.stage,
+        stack: target.stack,
         migrationRepo: repo,
-        migrationRevision: REVISION,
+        migrationRevision: target.revision,
         region: 'ap-northeast-2',
         account: '234567890123',
         profile: 'local-fixture',
@@ -29,7 +32,7 @@ export async function fixture(t) {
     };
     await writeFile(configFile, JSON.stringify(raw));
     const config = validateMigrationConfig(raw, configFile),
-        run = path.join(repo, 'scripts/migrate/runs', TARGET.stack),
+        run = path.join(repo, 'scripts/migrate/runs', target.stack),
         calls = [];
     const deps = {
         validateRepository: async () => repo,
@@ -45,7 +48,7 @@ export async function fixture(t) {
             return { code: 0, reason: 'exited' };
         },
     };
-    return { root, repo, configFile, raw, config, run, calls, deps };
+    return { root, repo, configFile, raw, config, run, calls, deps, target };
 }
 export async function writeSnapshot(run, c, { warnings = [] } = {}) {
     const bytes = Buffer.from('old deployed ZIP fixture'),
@@ -112,7 +115,7 @@ export async function allPhases(f) {
         result = await executeMigration(
             f.config,
             phase,
-            { allowSensitiveBackup: true, confirmStack: TARGET.stack },
+            { allowSensitiveBackup: true, confirmStack: f.config.stack },
             f.deps,
         );
     return result;
