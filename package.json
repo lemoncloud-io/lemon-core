@@ -5,7 +5,17 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "lemon-fields-types": "bin/lemon-fields-types.mjs"
+    "lemon-fields-types": "bin/lemon-fields-types.mjs",
+    "lemon-lambda-invoke": "bin/lemon-lambda-invoke.mjs",
+    "lemon-lambda-logs": "bin/lemon-lambda-logs.mjs",
+    "lemon-lambda-perf": "bin/lemon-lambda-perf.mjs",
+    "lemon-fields-admin": "bin/lemon-fields-admin.mjs",
+    "lemon-loop-check": "bin/lemon-loop-check.mjs",
+    "lemon-lambda-pack": "bin/lemon-lambda-pack.mjs",
+    "lemon-lambda-local": "bin/lemon-lambda-local.mjs",
+    "lemon-lambda-deploy": "bin/lemon-lambda-deploy.mjs",
+    "lemon-lambda-deploy-dev": "bin/lemon-lambda-deploy-dev.mjs",
+    "lemon-lambda-migrate": "bin/lemon-lambda-migrate.mjs"
   },
   "exports": {
     ".": {
@@ -94,6 +104,41 @@
     "dist/**/*",
     "bin/lemon-fields-types.mjs",
     "bin/lib/fields-types.mjs",
+    "bin/lemon-lambda-invoke.mjs",
+    "bin/lemon-lambda-logs.mjs",
+    "bin/lemon-lambda-perf.mjs",
+    "bin/lemon-fields-admin.mjs",
+    "bin/lemon-loop-check.mjs",
+    "bin/lib/common.mjs",
+    "bin/lib/event.mjs",
+    "bin/lib/invoke.mjs",
+    "bin/lib/logs.mjs",
+    "bin/lib/perf.mjs",
+    "bin/lib/fields-admin.mjs",
+    "bin/lib/loop-check.mjs",
+    "bin/lemon-lambda-pack.mjs",
+    "bin/lemon-lambda-local.mjs",
+    "bin/lemon-lambda-deploy.mjs",
+    "bin/lemon-lambda-deploy-dev.mjs",
+    "bin/lemon-lambda-migrate.mjs",
+    "bin/lib/is-main.mjs",
+    "bin/lib/optional-peer.mjs",
+    "bin/lib/org-defaults.mjs",
+    "bin/lib/pack-core.mjs",
+    "bin/lib/pack-zip.mjs",
+    "bin/lib/local-artifact.mjs",
+    "bin/lib/local-network.mjs",
+    "bin/lib/local-runner.mjs",
+    "bin/lib/local-runtime.mjs",
+    "bin/lib/deploy-plan.mjs",
+    "bin/lib/deploy-runner.mjs",
+    "bin/lib/deploy-client.mjs",
+    "bin/lib/deploy-receipt.mjs",
+    "bin/lib/deploy-credentials.mjs",
+    "bin/lib/dev-release.mjs",
+    "bin/lib/migrate-core.mjs",
+    "bin/lib/migrate-diagnostic.mjs",
+    "bin/lib/migrate-process.mjs",
     "model/package.json",
     "testing/package.json"
   ],
@@ -120,6 +165,7 @@
     "source-map-support": "^0.5.21"
   },
   "devDependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1159.0",
     "@aws-sdk/client-iam": "^3.1159.0",
     "@aws-sdk/client-kms": "^3.1159.0",
     "@aws-sdk/client-lambda": "^3.1159.0",
@@ -152,6 +198,7 @@
     "vitest": "^4.1.12"
   },
   "peerDependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1159.0",
     "@aws-sdk/client-iam": "^3.1159.0",
     "@aws-sdk/client-kms": "^3.1159.0",
     "@aws-sdk/client-lambda": "^3.1159.0",
@@ -163,6 +210,9 @@
     "typescript": ">=4.7"
   },
   "peerDependenciesMeta": {
+    "@aws-sdk/client-cloudwatch-logs": {
+      "optional": true
+    },
     "@aws-sdk/client-iam": {
       "optional": true
     },
