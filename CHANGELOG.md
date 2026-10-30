@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file. See [standa
 
 * `lemon-model` pinned to the exact version `5.0.2` (was `^5.0.2`), D73: the lemon-core version fixes the lemon-model version ("the pair"), so one install holds one lemon-model and one `CoreModel` class. Each release names its lemon-model here.
 
+### Fixes
+
+* **B16-b resolution shims** (`docs/v5/B16-model-subpath.md` § Resolution shim, `HOW_TO_UPGRADE_V5.md` § 16): physical `model/package.json` and `testing/package.json` (`main`/`types` into `dist/`) so `lemon-core/model` and `lemon-core/testing` resolve for consumers on TypeScript `moduleResolution: node` and Jest 27, which ignore the `exports` map. The `exports` map is unchanged. Consumers remove the `paths` / `moduleNameMapper` lines they added for 5.0.9.
+
 ### Consumers
 
 * Do not declare `lemon-model` in a service. The 32 v4 names from `lemon-core`, every other lemon-model name from `lemon-core/model`.

@@ -5,6 +5,7 @@
  * - resolves the package by its own name (Node self-reference, needs `exports` in package.json),
  *   so it checks the published entry points, not the source.
  * - v5 B16: also checks the `lemon-core/model` sub-path against lemon-model and the root.
+ * - v5 B16-b: also checks the shim `model/package.json` (`main`) gives the same module.
  * - exit 1 on the first failed group; prints `names=<n>` on success.
  *
  * usage:
@@ -14,6 +15,7 @@
  * ```
  */
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 // CJS `require` for this ESM file, to load the same package both ways.
 const require = createRequire(import.meta.url);
@@ -94,6 +96,14 @@ for (const k of ['fieldsOf', 'field', 'specsOf', 'CoreModel']) {
     check(`model.${k} === lemon-model.${k}`, model[k] !== undefined && model[k] === lm[k]);
 }
 check('model.CoreModel === cjs.CoreModel', model.CoreModel !== undefined && model.CoreModel === cjs.CoreModel);
+//* v5 B16-b: the shim `model/package.json` `main` (moduleResolution=node / Jest 27 path) is the same module.
+const shimDir = new URL('../model/', import.meta.url);
+const shimMain = require(fileURLToPath(new URL('package.json', shimDir))).main;
+const viaShim = require(fileURLToPath(new URL(shimMain, shimDir)));
+check(
+    'shim model/package.json main fieldsOf === lemon-core/model',
+    viaShim.fieldsOf !== undefined && viaShim.fieldsOf === model.fieldsOf,
+);
 
 //* 6. report: print each failure and exit 1, else print the name count.
 if (fails.length) {
