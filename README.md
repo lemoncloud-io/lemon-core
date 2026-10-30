@@ -1,4 +1,3 @@
-[![codecov](https://codecov.io/gh/lemoncloud-io/lemon-core/branch/master/graph/badge.svg)](https://codecov.io/gh/lemoncloud-io/lemon-core)
 [![npm version](https://badge.fury.io/js/lemon-core.svg)](https://badge.fury.io/js/lemon-core)
 [![GitHub version](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core.svg)](https://badge.fury.io/gh/lemoncloud-io%2Flemon-core)
 
@@ -7,7 +6,7 @@
 Bootloader for serverless micro-services on AWS Lambda: one function, several event sources, an engine with modules, a protocol service.
 This README is the entry point for people and AI agents; every path and command below is in this repo. `§` refers to `HOW_TO_UPGRADE_V5.md`.
 v5 status: npm `latest` is `5.0.8` (2026-10-30; B15 + lemon-model 5.0.2). The `v5` branch holds all 5.x work; `develop` is the default branch.
-`CONTRIBUTING.md` describes the `develop` flow; 5.x changes are merged into `v5` until it lands on `develop`.
+`CONTRIBUTING.md` § Branching describes both flows: `develop` for 4.x, `v5` for 5.x (merged into `v5` until it lands on `develop`).
 
 ## At a glance
 
@@ -40,7 +39,7 @@ v5 status: npm `latest` is `5.0.8` (2026-10-30; B15 + lemon-model 5.0.2). The `v
 | `env/` | Configuration profiles | **Agents do not open it** |
 | `docs/v5/`, `docs/specs/` | v5 design record (B0–B14); `$T`/`$U` specs | Updated with the change they describe |
 | `dist/`, `coverage/` | Build and test output, ignored by git | **Never edited by hand** |
-| `.github/workflows/` | `docgen.yaml`: typedoc on push to `develop`. No test job | A person |
+| `.github/workflows/` | None since B17 (`docgen.yaml` and the old CI config removed). No CI job; the gates run locally | A person |
 
 ## Request flow
 
@@ -204,6 +203,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B14-relay-context-impl.md](docs/v5/B14-relay-context-impl.md) | B14 implementation record (WP1–WP3): lemon-model `channel`/`trace`, `protocol-relay.ts`, entry changes (Korean) |
 | [B15-security.md](docs/v5/B15-security.md) | B15: cross-cloud `cid`, list `view`, internal admin, policy keys `internal`/`cross` |
 | [B16-model-subpath.md](docs/v5/B16-model-subpath.md) | B16: sub-path `lemon-core/model` (all of lemon-model), exact lemon-model pin, consumer rule |
+| [B17-repo-hygiene.md](docs/v5/B17-repo-hygiene.md) | B17: the old CI config and the typedoc workflow removed (token rotation by the owner), `CONTRIBUTING.md` `v5` flow |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |

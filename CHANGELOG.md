@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file. See [standa
 
 * **B16-b resolution shims** (`docs/v5/B16-model-subpath.md` § Resolution shim, `HOW_TO_UPGRADE_V5.md` § 16): physical `model/package.json` and `testing/package.json` (`main`/`types` into `dist/`) so `lemon-core/model` and `lemon-core/testing` resolve for consumers on TypeScript `moduleResolution: node` and Jest 27, which ignore the `exports` map. The `exports` map is unchanged. Consumers remove the `paths` / `moduleNameMapper` lines they added for 5.0.9.
 
+### Repository
+
+* **B17 repository hygiene** (`docs/v5/B17-repo-hygiene.md`): `.travis.yml` removed (last changed 2022-02, nothing in the repo runs or references it; its Codecov token stays in git history and must be rotated by the owner) and the codecov badge with it; `.github/workflows/docgen.yaml` removed (typedoc, S3 copy and `gh-pages` deploy; the doc scripts went in #225). `CONTRIBUTING.md` gets the `v5` branch flow. No package change.
+
 ### Consumers
 
 * Do not declare `lemon-model` in a service. The 32 v4 names from `lemon-core`, every other lemon-model name from `lemon-core/model`.
