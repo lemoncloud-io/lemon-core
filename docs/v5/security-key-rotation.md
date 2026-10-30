@@ -1,11 +1,12 @@
-# v5 — dual sign keys and value-based log screening
+# v5 — dual sign keys, signature nonce and value-based log screening
 
 Status: implemented 2026-10-30 on `feat/v5-key-rotation` (base `v5` @ `da5de79b`, 5.0.11). A separate track from the v5 bundles (no bundle number). User-facing changes: `HOW_TO_UPGRADE_V5.md` § 18 (§ 17 is taken by #256, which merges first).
 
 ## Scope
 
 - **Dual keys.** The protocol signing key (`PROTOCOL_SIGN_KEY`) and the JWT HS256 key (`JWT_SIGN_KEY`) each accept a previous key B for a bounded window, so a key can be replaced without rejecting calls signed just before the change. Signing always uses the current key A.
-- **Signature format unchanged.** `v1.<ts>.<sig>` as in B5 § 1 — no `v2`, no key id. The receiver tries A, then B. No deploy order constraint on the wire format.
+- **Signature format.** `v1.<ts>.<sig>` as in B5 § 1 stays the default, no key id. The receiver tries A, then B.
+- **Nonce (`v2`).** `v2.<ts>.<nonce>.<sig>`: a random nonce per signature (16 bytes, base64url, 22 chars) is part of the canonical, so every signature is unique even for the same body in the same second. Receivers verify v1 and v2; senders write v2 only with `PROTOCOL_SIGN_VERSION=v2`. Chosen over a separate nonce header/attribute to stay closest to v4: no new header or message attribute, transport code unchanged — only the value of the existing signature changes.
 - **Log screening.** The engine loggers (`_log`, `_inf`, `_err`) mask any installed secret value found in a log line and print one error line. B10-3 masks by header **name**; this layer matches by **value**.
 - **Two log paths fixed by hand.** `AWSKMSService.encrypt()` printed the first 10 plaintext characters and the full KMS result (key ARN); `parseIdentityJWT()` errors embedded the full token.
 
@@ -24,13 +25,30 @@ Status: implemented 2026-10-30 on `feat/v5-key-rotation` (base `v5` @ `da5de79b`
 - B is **fail-closed**: B is ignored when it is unset, a failed decrypt (`ERROR - …`), or when `UNTIL` is missing, not a number, `<= 0`, or in the past.
 - A has no expiry. Expiring A would break every signature.
 - `JWT_SIGN_KEY` was read once at module load with `$U.env()`; it is now read per call. Unset → `lemon`, the same secret as before. A configured key that failed to decrypt (`ERROR - …`) throws `500 INVALID CONFIG - JWT_SIGN_KEY decrypt failed` — no fallback to the public default (signing fails, verification returns `valid: false`).
+- Session token lifetime: `encodeIdentityJWT()` without `exp` now issues a **30 min** token (was 1 day). A caller that passes `exp` keeps its own lifetime.
+- B must outlive every token signed with the old A: for `JWT_SIGN_KEY`, `JWT_SIGN_KEY_PREV_UNTIL` ≥ rotation time + the longest token lifetime in use (30 min by default; longer if a caller passes `exp`). The deploy tool's default `prevValidSec` is 1 day, which covers the default.
 - `JWT_MAGIC_KEY` is unchanged.
+
+## Nonce (v2)
+
+| Item | v1 | v2 |
+| --- | --- | --- |
+| Value | `v1.<ts>.<sig>` | `v2.<ts>.<nonce>.<sig>` |
+| Canonical web | `v1\n<ts>\n<context>\n<sha256(body)>` | `v2\n<ts>\n<nonce>\n<context>\n<sha256(body)>` |
+| Canonical SNS/SQS | `v1\n<ts>\n<sha256(message)>` | `v2\n<ts>\n<nonce>\n<sha256(message)>` |
+| Written when | default | `PROTOCOL_SIGN_VERSION=v2` (case-insensitive; anything else → v1) |
+
+- Nonce format on verify: `^[A-Za-z0-9_-]{16,64}$`, else `format`.
+- Removing the nonce from a v2 value does not give a valid v1 value (different canonical) — `mismatch`.
+- What it guarantees without a store: each signature is unique. It does **not** reject a replay: the same v2 value sent again verifies again (web within the 300 s window; SNS/SQS without a window). SNS/SQS deliver at least once, so a redelivery carries the same nonce and is indistinguishable from a replay without a store.
+- Next increment: nonce store + TTL (web: 300 s window), queue paths keyed by message id.
+- Rollout: (1) every receiver of the install runs this version (a receiver on an older version reports v2 as `format`: `warn` logs and passes, `enforce` rejects); (2) set `PROTOCOL_SIGN_VERSION=v2` on the senders; (3) a later release makes v2 the default.
 
 ## Verify order
 
 Protocol (`verifyContext()` web, `verifyMessage()` SNS/SQS):
 
-1. No A → `no-key`. No signature → `missing`. Not `v1.<ts>.<sig>` → `format`. Web only: `|now - ts| > 300` → `stale`. These are checked once, independent of the key.
+1. No A → `no-key`. No signature → `missing`. Neither `v1.<ts>.<sig>` nor `v2.<ts>.<nonce>.<sig>` → `format`. Web only: `|now - ts| > 300` → `stale`. These are checked once, independent of the key.
 2. HMAC with A matches → `{ ok: true, ts }`.
 3. Else, B valid at `now` and HMAC with B matches → `{ ok: true, ts, prev: true }`.
 4. Else → `mismatch` (same reason as before).
@@ -69,13 +87,13 @@ JWT HS256 (`verifyToken()`, issuer `api/<self>`): the secret of A is compared fi
 
 | File | Change |
 | --- | --- |
-| `src/cores/protocol/protocol-sign.ts` | `PROTOCOL_SIGN_KEY_PREV(_UNTIL)`, `readPrevSignKey()`, `readPrevRaw()`, `validPrevKey()`, `ProtocolVerifyOptions`, `ProtocolVerifyResult.prev`, A → B in `verifyContext`/`verifyMessage`, `sameSig` exported, keys registered for screening |
-| `src/cores/lambda/lambda-web-handler.ts` | `readJwtSignKey()`, `readJwtPrevKey()`, `buildJwtSecret(signKey?)`, A → B constant-time HS256 verify, `parseIdentityJWT` errors mask the token |
+| `src/cores/protocol/protocol-sign.ts` | `PROTOCOL_SIGN_VERSION`, `readSignVersion()`, `ProtocolSignOptions`, v2 parse/sign, optional `nonce` on `canonicalWeb`/`canonicalMessage`; `PROTOCOL_SIGN_KEY_PREV(_UNTIL)`, `readPrevSignKey()`, `readPrevRaw()`, `validPrevKey()`, `ProtocolVerifyOptions`, `ProtocolVerifyResult.prev`, A → B in `verifyContext`/`verifyMessage`, `sameSig` exported, keys registered for screening |
+| `src/cores/lambda/lambda-web-handler.ts` | `encodeIdentityJWT()` default lifetime 30 min, `readJwtSignKey()`, `readJwtPrevKey()`, `buildJwtSecret(signKey?)`, A → B constant-time HS256 verify, `parseIdentityJWT` errors mask the token |
 | `src/lib/log-mask.ts` | `registerSecret()`, `clearSecrets()`, `screenLogArgs()`, `SECRET_MIN_LENGTH` |
 | `src/engine/builder.ts` | loggers screen args and print the `!SECRET` line (shared `print_line`/`build_line`); skipped under `LS=1` |
 | `src/cores/config/config-service.ts` | `init()` registers decrypted values |
 | `src/cores/aws/aws-kms-service.ts` | `encrypt()` logs the plaintext length and the ciphertext length only |
-| specs | `protocol-sign.spec.ts` (+4), `lambda-web-handler.spec.ts` (+1, 3 messages updated), `log-mask.spec.ts` (+3), `builder.spec.ts` (+1) |
+| specs | `protocol-sign.spec.ts` (+6), `lambda-web-handler.spec.ts` (+1, 3 messages updated, 30 min default), `log-mask.spec.ts` (+3), `builder.spec.ts` (+1) |
 | `HOW_TO_UPGRADE_V5.md` | § 18 and checklist |
 
 No root export added (`src/index.ts` unchanged); the new names live on deep modules only.
@@ -84,7 +102,7 @@ No root export added (`src/index.ts` unchanged); the new names live on deep modu
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | 64 files, 898 passed (baseline 880/880, measured on `88502a04`; `da5de79b` adds no spec. The web spec also runs inside the SNS/SQS specs and the builder spec inside 3 utilities specs, so one new test can count more than once) |
+| `npm test` | 64 files, 900 passed (baseline 880/880, measured on `88502a04`; `da5de79b` adds no spec. The web spec also runs inside the SNS/SQS specs and the builder spec inside 3 utilities specs, so one new test can count more than once) |
 | `npm run api:check` | `base=304 current=306 added=24 removed=22 allow=46 not-allowed=0` (unchanged) |
 | `npm run api:names` | 306 names (unchanged) |
 | `npm run esm:smoke` | `esm-smoke: ok names=141 subpaths=5` (unchanged) |

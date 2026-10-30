@@ -156,9 +156,14 @@ describe('LambdaWEBHandler', () => {
             const expectedHead =
                 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiIg44WO7Z6BIiwidWlkIjoiVSIsImdpZCI6ImciLCJyb2xlcyI6WyImQCAkKy0iXSwiaXNzIjpudWxsLCJpYXQiOjE2NTIxNDkzNTMsImV4cCI6MTY1MjIzNTc1M30';
             expect2(() => current).toEqual(1652149353000);
-            expect2(await $t.encodeIdentityJWT(identity, { current }), 'token').toEqual({
+            //* the fixture keeps a 1-day token through an explicit `exp` (the default is 30 min since key rotation).
+            const exp = Math.floor(current / 1000) + 24 * 60 * 60;
+            expect2(await $t.encodeIdentityJWT(identity, { current, exp }), 'token').toEqual({
                 token: `${expectedHead}.`,
             });
+            //* without `exp` → 30 min.
+            const $short = await $t.encodeIdentityJWT(identity, { current });
+            expect2(() => $U.jwt().decode($short.token).exp - Math.floor(current / 1000)).toEqual(30 * 60);
             expect2(() => $U.jwt().decode(`${expectedHead}.`)).toEqual({
                 iss: null,
                 exp: 1652235753,
@@ -187,7 +192,11 @@ describe('LambdaWEBHandler', () => {
             expect2(() => _alias(`kms/abc`)).toEqual('abc');
             expect2(() => _alias(`kms/abc,ef`)).toEqual('abc');
 
-            const $enc = await $t.encodeIdentityJWT(identity, { current, alias });
+            const $enc = await $t.encodeIdentityJWT(identity, {
+                current,
+                alias,
+                exp: Math.floor(current / 1000) + 24 * 60 * 60,
+            });
             expect2(() => $enc, 'token').toEqual({ token: `${expectedHead}.${$enc.signature}` });
 
             expect2(() => $U.jwt().decode($enc.token)).toEqual({
@@ -735,7 +744,7 @@ describe('LambdaWEBHandler', () => {
         expect2(() => decodedHs256, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
         expect2(() => decodedHs256?.iss?.startsWith('api/')).toEqual(true);
         expect2(() => decodedHs256?.iat).toEqual(Math.floor(current / 1000));
-        expect2(() => decodedHs256?.exp).toEqual(Math.floor(current / 1000) + 24 * 60 * 60);
+        expect2(() => decodedHs256?.exp).toEqual(Math.floor(current / 1000) + 30 * 60); //* default 30 min.
 
         //* test of encodeIdentityJWT without useHs256 (V1 동작 - signature empty, iss null)
         const $encV1 = await $t.encodeIdentityJWT(identity, { current });
@@ -775,9 +784,15 @@ describe('LambdaWEBHandler', () => {
         );
 
         //* test of parseIdentityJWT - expiration
-        const expiredCurrent = current + 24 * 60 * 60 * 1000 + 1;
+        expect2(
+            await $t.parseIdentityJWT($encHs256.token, { current: current + 30 * 60 * 1000 }).catch(GETERR),
+            'sid',
+        ).toEqual({
+            sid: 'S',
+        });
+        const expiredCurrent = current + 30 * 60 * 1000 + 1;
         expect2(await $t.parseIdentityJWT($encHs256.token, { current: expiredCurrent }).catch(GETERR)).toEqual(
-            '.exp[2026-02-13 20:00:00] is invalid (expired) - verifyJWT(http)',
+            '.exp[2026-02-12 20:30:00] is invalid (expired) - verifyJWT(http)',
         );
 
         //* test of parseIdentityJWT - null iss should fail

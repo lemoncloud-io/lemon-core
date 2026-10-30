@@ -4,12 +4,16 @@
  * - web: header `x-protocol-signature` over the context header string and the body.
  * - SNS/SQS: message attribute `signature` over the message string.
  * - value `v1.<ts>.<sig>`: `ts` = epoch seconds, `sig` = base64url(HMAC-SHA256(key, canonical)).
+ * - value `v2.<ts>.<nonce>.<sig>`: + a random nonce per signature, mixed into the canonical (no nonce store yet:
+ *   it makes every signature unique; replay rejection needs a store — next increment). Receivers take v1 and v2;
+ *   senders write v2 only with `PROTOCOL_SIGN_VERSION=v2` (default v1 until every receiver runs this version).
  * - NOTE: deep module only (`./dist/cores/protocol/protocol-sign`). not re-exported by the root.
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-28 initial version (v5 B5)
  * @date        2026-10-30 v5 B14: `HEADER_LEMON_RELAY` (masked in logs), `readConfig()` exported, `HEADER_PROTOCOL_CONTEXT` deprecated.
  * @date        2026-10-30 key rotation: dual keys A/B (`PROTOCOL_SIGN_KEY_PREV` + `_PREV_UNTIL`), keys registered for log screening.
+ * @date        2026-10-30 key rotation: `v2` signature with a nonce (`PROTOCOL_SIGN_VERSION`), v1 still verified.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -25,6 +29,8 @@ export const PROTOCOL_SIGN_KEY = 'PROTOCOL_SIGN_KEY';
 export const PROTOCOL_SIGN_KEY_PREV = `${PROTOCOL_SIGN_KEY}_PREV`;
 /** key rotation: env name of the expiry of B (epoch seconds). B without it is never used (fail-closed) */
 export const PROTOCOL_SIGN_KEY_PREV_UNTIL = `${PROTOCOL_SIGN_KEY}_PREV_UNTIL`;
+/** env name of the signature version senders write (`v1` default | `v2` with a nonce) */
+export const PROTOCOL_SIGN_VERSION = 'PROTOCOL_SIGN_VERSION';
 /** env name of the verify mode (`off` | `warn` | `enforce`) */
 export const PROTOCOL_VERIFY = 'PROTOCOL_VERIFY';
 /** header name of the web signature */
@@ -58,6 +64,18 @@ export const PROTOCOL_LOG_MASKED_HEADERS: readonly string[] = [
 export const ATTR_PROTOCOL_SIGNATURE = 'signature';
 /** web freshness window (seconds). SNS/SQS have none (queue delay, retry and DLQ redrive exceed any window) */
 export const WEB_FRESHNESS_SEC = 300;
+
+/** signature version */
+export type ProtocolSignVersion = 'v1' | 'v2';
+/** options of a signing (`key`, `now`, `version` and `nonce` override the defaults — tests and tools) */
+export interface ProtocolSignOptions {
+    key?: string;
+    now?: number;
+    /** default: `readSignVersion()` */
+    version?: ProtocolSignVersion;
+    /** v2 only. default: 16 random bytes, base64url */
+    nonce?: string;
+}
 
 /** verify mode */
 export type ProtocolVerifyMode = 'off' | 'warn' | 'enforce';
@@ -146,6 +164,10 @@ export const resetProtocolSign = (): void => {
     Object.assign($prev, { key: null, until: 0 });
 };
 
+/** the signature version senders write: `v2` only when `PROTOCOL_SIGN_VERSION=v2`, else `v1` */
+export const readSignVersion = (): ProtocolSignVersion =>
+    `${readConfig(PROTOCOL_SIGN_VERSION) ?? ''}`.trim().toLowerCase() === 'v2' ? 'v2' : 'v1';
+
 /** read the verify mode. default: `warn` if the key is set, else `off` */
 export const readVerifyMode = (): ProtocolVerifyMode => {
     const mode = `${readConfig(PROTOCOL_VERIFY) ?? ''}`.trim().toLowerCase();
@@ -171,22 +193,48 @@ export const sha256hex = (text?: string | null): string =>
 const hmac = (key: string, canonical: string): string =>
     crypto.createHmac('sha256', key).update(canonical, 'utf8').digest('base64url');
 
-/** canonical string of a web call: `v1\n<ts>\n<contextJson>\n<sha256hex(body ?? '')>` */
-export const canonicalWeb = (ts: number, contextJson: string, body?: string | null): string =>
-    `v1\n${ts}\n${contextJson ?? ''}\n${sha256hex(body ?? '')}`;
+/** the canonical head: `v1\n<ts>`, or `v2\n<ts>\n<nonce>` when a nonce is given */
+const headOf = (ts: number, nonce?: string): string => (nonce ? `v2\n${ts}\n${nonce}` : `v1\n${ts}`);
 
-/** canonical string of a SNS/SQS message: `v1\n<ts>\n<sha256hex(message)>` */
-export const canonicalMessage = (ts: number, message: string): string => `v1\n${ts}\n${sha256hex(message ?? '')}`;
+/** canonical string of a web call: `<head>\n<contextJson>\n<sha256hex(body ?? '')>` */
+export const canonicalWeb = (ts: number, contextJson: string, body?: string | null, nonce?: string): string =>
+    `${headOf(ts, nonce)}\n${contextJson ?? ''}\n${sha256hex(body ?? '')}`;
+
+/** canonical string of a SNS/SQS message: `<head>\n<sha256hex(message)>` */
+export const canonicalMessage = (ts: number, message: string, nonce?: string): string =>
+    `${headOf(ts, nonce)}\n${sha256hex(message ?? '')}`;
+
+/** a nonce: base64url, 16-64 chars (16 random bytes → 22 chars) */
+const NONCE_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 /** current epoch seconds */
 const nowSec = (): number => Math.floor(Date.now() / 1000);
 
-/** parse `v1.<ts>.<sig>` (null if malformed) */
-const parseSignature = (signature: string): { ts: number; sig: string } => {
+/** a parsed signature (`nonce` only for v2) */
+interface ParsedSig {
+    version: ProtocolSignVersion;
+    ts: number;
+    nonce?: string;
+    sig: string;
+}
+
+/** parse `v1.<ts>.<sig>` or `v2.<ts>.<nonce>.<sig>` (null if malformed) */
+const parseSignature = (signature: string): ParsedSig => {
     const parts = typeof signature === 'string' ? signature.split('.') : [];
-    if (parts.length !== 3 || parts[0] !== 'v1') return null;
-    if (!/^[0-9]{1,12}$/.test(parts[1]) || !parts[2]) return null;
-    return { ts: Number(parts[1]), sig: parts[2] };
+    const v1 = parts.length === 3 && parts[0] === 'v1';
+    const v2 = parts.length === 4 && parts[0] === 'v2' && NONCE_RE.test(parts[2]);
+    if (!(v1 || v2) || !/^[0-9]{1,12}$/.test(parts[1]) || !parts[parts.length - 1]) return null;
+    return v2
+        ? { version: 'v2', ts: Number(parts[1]), nonce: parts[2], sig: parts[3] }
+        : { version: 'v1', ts: Number(parts[1]), sig: parts[2] };
+};
+
+/** the signature string of `ts` (+ a nonce for v2) over `canonicalOf(nonce)` */
+const signWith = (key: string, options: ProtocolSignOptions, canonicalOf: (ts: number, nonce?: string) => string) => {
+    const ts = options?.now ?? nowSec();
+    if ((options?.version ?? readSignVersion()) !== 'v2') return `v1.${ts}.${hmac(key, canonicalOf(ts))}`;
+    const nonce = options?.nonce ?? crypto.randomBytes(16).toString('base64url');
+    return `v2.${ts}.${nonce}.${hmac(key, canonicalOf(ts, nonce))}`;
 };
 
 /** constant-time compare of two base64url strings (key rotation: exported for the JWT HS256 check, non-string → false) */
@@ -204,27 +252,21 @@ const prevKeyOf = (options: ProtocolVerifyOptions, now: number): string => {
 };
 
 /** key rotation: compare with A first, then B (if valid). 1 HMAC for an A signature, 2 only for a B one */
-const matchKeys = (
-    $sig: { ts: number; sig: string },
-    canonical: string,
-    key: string,
-    prevKey: string,
-): ProtocolVerifyResult => {
+const matchKeys = ($sig: ParsedSig, canonical: string, key: string, prevKey: string): ProtocolVerifyResult => {
     if (sameSig($sig.sig, hmac(key, canonical))) return { ok: true, ts: $sig.ts };
     if (prevKey && sameSig($sig.sig, hmac(prevKey, canonical))) return { ok: true, ts: $sig.ts, prev: true };
     return { ok: false, reason: 'mismatch', ts: $sig.ts };
 };
 
 /**
- * sign a web call. returns `v1.<ts>.<sig>`, or '' if no key.
+ * sign a web call. returns `v1.<ts>.<sig>` (or `v2.<ts>.<nonce>.<sig>`), or '' if no key.
  * @param contextJson   the exact header string (`x-protocol-context`)
  * @param body          the exact event body string (or null)
  */
-export const signContext = (contextJson: string, body?: string | null, options?: { key?: string; now?: number }) => {
+export const signContext = (contextJson: string, body?: string | null, options?: ProtocolSignOptions) => {
     const key = options?.key ?? readSignKey();
     if (!key) return '';
-    const ts = options?.now ?? nowSec();
-    return `v1.${ts}.${hmac(key, canonicalWeb(ts, contextJson, body))}`;
+    return signWith(key, options, (ts, nonce) => canonicalWeb(ts, contextJson, body, nonce));
 };
 
 /**
@@ -244,17 +286,16 @@ export const verifyContext = (
     //* freshness: |now - ts| <= 300 s.
     const now = options?.now ?? nowSec();
     if (Math.abs(now - $sig.ts) > WEB_FRESHNESS_SEC) return { ok: false, reason: 'stale', ts: $sig.ts };
-    return matchKeys($sig, canonicalWeb($sig.ts, contextJson, body), key, prevKeyOf(options, now));
+    return matchKeys($sig, canonicalWeb($sig.ts, contextJson, body, $sig.nonce), key, prevKeyOf(options, now));
 };
 
 /**
- * sign a SNS/SQS message (the exact string the receiver gets). returns `v1.<ts>.<sig>`, or '' if no key.
+ * sign a SNS/SQS message (the exact string the receiver gets). returns `v1.<ts>.<sig>` (or v2), or '' if no key.
  */
-export const signMessage = (message: string, options?: { key?: string; now?: number }) => {
+export const signMessage = (message: string, options?: ProtocolSignOptions) => {
     const key = options?.key ?? readSignKey();
     if (!key) return '';
-    const ts = options?.now ?? nowSec();
-    return `v1.${ts}.${hmac(key, canonicalMessage(ts, message))}`;
+    return signWith(key, options, (ts, nonce) => canonicalMessage(ts, message, nonce));
 };
 
 /**
@@ -272,7 +313,7 @@ export const verifyMessage = (
     if (!$sig) return { ok: false, reason: 'format' };
     //* key rotation: `now` only decides whether B is still valid (no freshness window here).
     const now = options?.now ?? nowSec();
-    return matchKeys($sig, canonicalMessage($sig.ts, message), key, prevKeyOf(options, now));
+    return matchKeys($sig, canonicalMessage($sig.ts, message, $sig.nonce), key, prevKeyOf(options, now));
 };
 
 /**

@@ -92,6 +92,8 @@ const HEADER_COOKIE = $U.env('HEADER_COOKIE', 'cookie');
 const JWT_MAGIC_KEY = $U.env('JWT_MAGIC_KEY', '~jwt@MGC&key~'); // hard to modify.
 //* key rotation: env name of the JWT HS256 sign key A (read per call by `readJwtSignKey()`, default `lemon`).
 const JWT_SIGN_KEY = 'JWT_SIGN_KEY';
+//* default lifetime of a session token from `encodeIdentityJWT()` (30 min; was 1 day). Pass `exp` for longer.
+const JWT_DEFAULT_TTL_SEC = 30 * 60;
 
 /** key rotation: JWT HS256 sign key A (config service, `*` decrypted). unset → `lemon` (as before), failed decrypt → throw */
 export const readJwtSignKey = (): string => {
@@ -934,7 +936,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             alias?: string;
             /** current ms */
             current?: number;
-            /** expiration time in seconds */
+            /** expiration time in seconds (epoch). default: `iat + JWT_DEFAULT_TTL_SEC` (30 min) */
             exp?: number;
             /** if true, use HS256 */
             useHs256?: boolean;
@@ -965,7 +967,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             ...identity,
             iss, //* issuer name.
             iat: Math.floor(current / 1000), //* issued at
-            exp: params?.exp ?? Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
+            exp: params?.exp ?? Math.floor(current / 1000) + JWT_DEFAULT_TTL_SEC, //* default 30 min.
         };
         const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
         const data = {

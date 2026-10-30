@@ -7,6 +7,7 @@
  * @date        2026-10-28 initial version (v5 B5)
  * @date        2026-10-30 v5 B14: the outgoing web event carries the relay (signed in the context slot).
  * @date        2026-10-30 key rotation: dual keys A/B (web, SNS, SQS).
+ * @date        2026-10-30 key rotation: v2 signature with a nonce (`PROTOCOL_SIGN_VERSION`), v1 still verified.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -28,6 +29,7 @@ import {
     resetProtocolSign,
     assertSigned,
     readPrevSignKey,
+    readSignVersion,
     HEADER_PROTOCOL_SIGNATURE,
 } from './protocol-sign';
 
@@ -42,6 +44,7 @@ const $envKeep: { [key: string]: string } = {
     PROTOCOL_VERIFY: process.env.PROTOCOL_VERIFY,
     PROTOCOL_SIGN_KEY_PREV: process.env.PROTOCOL_SIGN_KEY_PREV,
     PROTOCOL_SIGN_KEY_PREV_UNTIL: process.env.PROTOCOL_SIGN_KEY_PREV_UNTIL,
+    PROTOCOL_SIGN_VERSION: process.env.PROTOCOL_SIGN_VERSION,
 };
 //* set or delete an env name.
 const setEnv = (name: string, val?: string) => {
@@ -423,5 +426,78 @@ describe('protocol-sign', () => {
             $log2.restore();
         }
         expect2(() => $log2.lines.filter(s => s.includes('PROTOCOL unsigned sns (mismatch)')).length).toEqual(1);
+    });
+
+    //* nonce: `v2.<ts>.<nonce>.<sig>` — a fresh nonce per signature, in the canonical; v1 still verified.
+    it('should sign and verify v2 (nonce) next to v1', () => {
+        const now = 1000;
+        const v2 = (nonce?: string) => signContext('{"a":1}', 'body', { key: KEY, now, version: 'v2', nonce });
+        const [s1, s2] = [v2(), v2()];
+        const parts = s1.split('.');
+        expect2(() => [parts.length, parts[0], parts[1], parts[2].length]).toEqual([4, 'v2', `${now}`, 22]);
+        //* same input, same second → different signatures (the nonce).
+        expect2(() => [s1 !== s2, s1.split('.')[2] !== s2.split('.')[2]]).toEqual([true, true]);
+        expect2(() => verifyContext(s1, '{"a":1}', 'body', { key: KEY, now })).toEqual({ ok: true, ts: now });
+        //* the nonce is signed: another nonce with the same sig is a mismatch.
+        const forged = ['v2', now, 'Z'.repeat(22), parts[3]].join('.');
+        expect2(() => verifyContext(forged, '{"a":1}', 'body', { key: KEY, now }).reason).toEqual('mismatch');
+        //* a v2 sig is not a v1 sig: dropping the nonce does not verify.
+        expect2(() => verifyContext(`v1.${now}.${parts[3]}`, '{"a":1}', 'body', { key: KEY, now }).reason).toEqual(
+            'mismatch',
+        );
+        //* malformed nonce → format.
+        expect2(() => verifyContext(v2('short'), '{"a":1}', 'body', { key: KEY, now }).reason).toEqual('format');
+        expect2(() => verifyContext(v2('bad.nonce-0123456789'), '{"a":1}', 'body', { key: KEY, now }).reason).toEqual(
+            'format',
+        );
+        //* v1 keeps verifying, and B works for v2.
+        const v1 = signContext('{"a":1}', 'body', { key: KEY, now, version: 'v1' });
+        expect2(() => v1.split('.').length).toEqual(3);
+        expect2(() => verifyContext(v1, '{"a":1}', 'body', { key: KEY, now })).toEqual({ ok: true, ts: now });
+        const b2 = signContext('{"a":1}', 'body', { key: PREV, now, version: 'v2' });
+        expect2(() => verifyContext(b2, '{"a":1}', 'body', { key: KEY, prevKey: PREV, prevUntil: now, now })).toEqual({
+            ok: true,
+            ts: now,
+            prev: true,
+        });
+        //* messages: same rules.
+        const m2 = signMessage('hello', { key: KEY, now, version: 'v2' });
+        expect2(() => m2.startsWith(`v2.${now}.`)).toEqual(true);
+        expect2(() => verifyMessage(m2, 'hello', { key: KEY, now })).toEqual({ ok: true, ts: now });
+        expect2(() => verifyMessage(m2, 'hello!', { key: KEY, now }).reason).toEqual('mismatch');
+    });
+
+    it('should write v2 only with PROTOCOL_SIGN_VERSION=v2, and the handlers take it', async () => {
+        const { lambda } = instance();
+        setEnv('PROTOCOL_SIGN_KEY', KEY);
+        setEnv('PROTOCOL_VERIFY', 'enforce');
+        resetProtocolSign();
+        //* default v1 — the wire is unchanged until the switch.
+        setEnv('PROTOCOL_SIGN_VERSION');
+        expect2(() => [readSignVersion(), signMessage('x').split('.')[0]]).toEqual(['v1', 'v1']);
+        setEnv('PROTOCOL_SIGN_VERSION', 'other');
+        expect2(() => readSignVersion()).toEqual('v1');
+        setEnv('PROTOCOL_SIGN_VERSION', 'V2');
+        expect2(() => readSignVersion()).toEqual('v2');
+        //* web: the outgoing event carries v2, the enforce receiver takes it.
+        const web = webEvent({ a: 1 });
+        expect2(() => web.headers[HEADER_PROTOCOL_SIGNATURE].split('.')[0]).toEqual('v2');
+        expect2(await lambda.handle(web, null), 'statusCode').toEqual({ statusCode: 200 });
+        //* SQS: a v2 record passes enforce.
+        const $msg = new SQSProtocolTransformer(null).transformToEvent('api://self/hello/!', {
+            service: 'self',
+            type: 'hello',
+            mode: 'GET',
+            id: 'x',
+            cmd: '',
+            context,
+        } as any);
+        const messageAttributes = Object.entries($msg.MessageAttributes).reduce((M: any, [k, v]) => {
+            M[k] = { dataType: v.DataType, stringValue: v.StringValue };
+            return M;
+        }, {});
+        expect2(() => messageAttributes['signature'].stringValue.split('.')[0]).toEqual('v2');
+        const sqsRecord = { eventSource: 'aws:sqs', messageId: 'm-2', body: $msg.MessageBody, messageAttributes };
+        expect2(await lambda.handle({ Records: [sqsRecord] }, null)).toEqual({ batchItemFailures: [] });
     });
 });
