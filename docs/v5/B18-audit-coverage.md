@@ -10,11 +10,12 @@ Status: implemented 2026-10-30 on `chore/v5-b18-audit-coverage` (base `v5` @ `da
 |---|---|---|
 | Before (5.0.11) | 9 | 7 moderate, 2 critical |
 | After (B18-d) | 6 | 4 moderate, 2 critical |
+| 5.0.12 (lemon-devkit 0.2.3) | **0** | — |
 
 The rows have two roots.
 
 1. **vitest chain — fixed.** `vitest` and `@vitest/coverage-v8` (direct devDependencies, `^4.1.4`) pulled `@vitest/mocker < 4.1.12` (GHSA-82fw-gwwq-j7x9, GHSA-qxg6-89mg-rqv8). Both move to `^4.1.12` together (latest 4.x; they must stay on the same version). The lock change is the vitest 4.1.12 tree only (`@vitest/*`, `chai`, `rolldown` 1.2.16 and small helpers). Major 5 is out of scope. Test counts are unchanged: 64 files, 880 tests.
-2. **lemon-devkit chain — pending.** `lemon-devkit ^0.2.1` (installed 0.2.2) depends on the deprecated `request@2.88.2`, which brings `form-data <= 2.5.5` (critical), `qs`, `tough-cookie` and `uuid` (moderate). The 6 remaining rows are this chain (`lemon-devkit`, `request`, `form-data`, `qs`, `tough-cookie`, `uuid`); `npm audit` offers no fix. lemon-core keeps the devDependency: the AWS specs call `loadProfile()` from lemon-devkit through `src/environ.ts`. The fix belongs in lemon-devkit (drop `request`, release 0.2.3). After that release, this repo moves to `lemon-devkit ^0.2.3` and the audit is expected to reach 0. No `overrides` entry or stub for `request` is added here.
+2. **lemon-devkit chain — fixed in 5.0.12.** `lemon-devkit ^0.2.1` (installed 0.2.2) depended on the deprecated `request@2.88.2`, which brought `form-data <= 2.5.5` (critical), `qs`, `tough-cookie` and `uuid` (moderate) — the 6 rows left after B18-d. lemon-core keeps the devDependency (the AWS specs call `loadProfile()` through `src/environ.ts`), so the fix went into lemon-devkit: 0.2.3 replaces `request` with Node `http`/`https` in `exec-cli`. 5.0.12 moves to `lemon-devkit ^0.2.3`; `npm audit` is **0** (all and `--omit=dev`).
 
 ## Codecov
 
