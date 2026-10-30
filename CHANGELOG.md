@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### Changes
 
+* **B21 no `express`** (D81, `docs/v5/B20-local-gateway.md` § B21, `HOW_TO_UPGRADE_V5.md` § 20): the local server is a light local harness. `buildExpress()` keeps its API, but `app` is a small built-in request listener (`http.createServer(app)` and `supertest(app)` work) with local extension routes — `app.get/post/put/patch/delete/all`, `app.use`, `:name` params, `req.query/params/body/rawBody`, `res.status/set/header/json/send/sendStatus` — checked in order before the local API Gateway. A failing extension route → `500` (never hangs). The result's `express` is always `undefined` and `loadModule` is ignored (both deprecated). The front body reader and the Express router-stack code are removed.
 * **B20 env loading in lemon-core**: `loadEnviron()` / `loadProfile()` are ported from lemon-devkit (same file, stage and merge rules, `FILE NOT FOUND:<path>`, `LS=1`); no `require('lemon-devkit')` remains (D80, reverses D33).
 * **B20 response base64 flag**: `buildResponse()` sets `isBase64Encoded` only for a non-textual content type (`application/json`, `application/xml`, `*+json`, `*+xml`, `text/*` … are not flagged).
 * **B20 local errors as API Gateway**: an unknown path or a method not on the resource → `403 Missing Authentication Token` (was 404 on the devkit server); a rejected handler → `502` at once (was a hanging request); a body over 10 MB → `413`. `GET /` shows the banner only without a `GET /` route.
@@ -22,6 +23,7 @@ All notable changes to this project will be documented in this file. See [standa
 * `@aws-sdk/client-cloudwatch-logs` `^3.1159.0` added as an optional peer and devDependency (used by the logs tools).
 * `lemon-devkit` removed from devDependencies (B20): lemon-core no longer loads it.
 * `express` added as an optional peer (`^4.21.2 || ^5.0.0`) and a devDependency (`^4.22.3`), for `buildExpress()` (B20).
+* `express` removed again (B21): no optional peer, no `peerDependenciesMeta` entry, no devDependency; the lock drops 53 packages. Services remove `express` from their `devDependencies`.
 
 ## 5.0.12 (2026-10-30)
 

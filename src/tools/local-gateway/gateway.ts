@@ -10,7 +10,6 @@
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
 import fs from 'fs';
-import qs from 'qs';
 import { IncomingMessage, ServerResponse } from 'http';
 import { LemonEngine } from '../../engine/types';
 import { LambdaWEBHandler } from '../../cores/lambda/lambda-web-handler';
@@ -37,7 +36,7 @@ export interface LocalGatewayOptions {
     genRequestId?: () => string;
 }
 
-//* v5 B20: a request that may carry the bytes read by the front reader (`rawBody`) or a body parser (`body`).
+//* v5 B20: a request that may carry the bytes read by the app (`rawBody`, v5 B21) or a body parser (`body`).
 type GatewayRequest = IncomingMessage & { rawBody?: Buffer; body?: any; _body?: boolean; originalUrl?: string };
 
 //* v5 B20: the `GET /` banner text (same lines as the devkit server).
@@ -65,7 +64,7 @@ export const bannerText = (ts?: (msec: number) => string): string => {
     ].join('\n');
 };
 
-//* v5 B20: the request body bytes — from the front reader, else the stream, else what a body parser left.
+//* v5 B20: the request body bytes — from the app (`rawBody`), else the stream, else what a body parser left.
 export const requestBodyOf = async (req: GatewayRequest): Promise<Buffer | null> => {
     if (Buffer.isBuffer(req.rawBody)) return req.rawBody;
     if (!req.readableEnded && !req._body) return readRawBody(req);
@@ -96,25 +95,6 @@ const cookiesOf = (cookie: string): { [k: string]: string } | undefined => {
         }
     }
     return obj;
-};
-
-//* v5 B20: front body reader for JSON/form requests: keeps `rawBody` and sets `req.body` for express routes.
-export const readFrontBody = async (req: GatewayRequest): Promise<void> => {
-    const type = `${req.headers['content-type'] || ''}`.toLowerCase();
-    const isJson = /^application\/([\w.+-]+\+)?json/.test(type);
-    const isForm = type.startsWith('application/x-www-form-urlencoded');
-    if (!isJson && !isForm) return;
-    if (req.readableEnded || req._body || Buffer.isBuffer(req.rawBody)) return;
-    const raw = await readRawBody(req);
-    req.rawBody = raw;
-    const text = raw.toString('utf8');
-    //* like the devkit server (body-parser json + urlencoded); a bad JSON leaves `req.body` empty.
-    try {
-        req.body = !text ? {} : isJson ? JSON.parse(text) : qs.parse(text);
-    } catch (e) {
-        req.body = {};
-    }
-    req._body = true;
 };
 
 /**
