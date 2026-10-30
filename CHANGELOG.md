@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## Unreleased (5.x)
+
+### Behaviour changes
+
+* **B15 security follow-up** (session on only; `docs/v5/B15-security.md`, `HOW_TO_UPGRADE_V5.md` § 11.7 and § 15.2). Session off and local mode are unchanged.
+  1. `doList` reads `?view=`: no view = `mine` (`sid` + `uid`) for a non-admin (was the `site` list; ask `?view=site`), `admin` for an admin-like caller (the B13 admin list). `mine` · `group` · `site` · `admin`; other values → `400 INVALID - view[…] is invalid` unless `resolveListView()` is overridden.
+  2. `policy.list` is the widest scope a non-admin may ask for (`owner` < `group` < `site` < `any`; wider → 403); a non-admin `view=admin` → `403 NOT ALLOWED - view[admin] needs admin`.
+  3. `?view=` is reserved and never reaches `packSearchParam` as a filter.
+  4. A protocol caller (`context.channel === 'internal'`) is admin for the CRUD defaults (`policy.internal: 'admin'`, default); `internal: 'identity'` evaluates it by the relayed identity. An entry without `channel` is not internal. `hasAdminRole()` is unchanged.
+  5. `getCurrentSession()` returns the identity as the session under `channel: 'internal'` without `userAgent` (relayed users are no longer `403 IDENTITY-TOKEN`).
+  6. The relay whitelist gets `cid` and `aid`.
+  7. Cross-cloud (`identity.cid` ≠ own `context.accountId`): `policy.cross` `'accept'` (default), `'identity'`, `'deny'` (403); the `TRACE` line gets ` cross=1`.
+  8. `AccessPolicy` / `DEFAULT_ACCESS_POLICY` have 7 keys (`internal: 'admin'`, `cross: 'accept'`); an unknown `internal`/`cross` value → 403.
+
+### Features
+
+* Root types `AccessInternal`, `AccessCross`; `MyCoreProxy.isCrossCloud()` / `isInternalAdmin()`, `MyManagerProxy.isAdminLike()`, `packSearchParam` options `policy`/`asAdmin`, `AbstractCRUDController.resolveListView()` (protected).
+
 ## 5.0.7 (2026-10-30)
 
 * Re-publish of 5.0.6 (same source).

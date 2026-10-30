@@ -10,6 +10,7 @@
  * @date        2026-10-27 v5 B2-b: lazy `$OS2` test (listener and client counts).
  * @date        2026-10-28 v5 B4: `MyTestModel` is a class with `@field()`; a manager built from the class; L2 `CORE_FIELDS`.
  * @date        2026-10-30 v5 B13: default data-access policy cases (SPEC § 14, T-01..T-27, T-34..T-36).
+ * @date        2026-10-30 v5 B15: cross-cloud `cid`, policy keys, internal admin, internal session (B15 T-01..T-07, T-11..T-18).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -33,6 +34,7 @@ import $cores from '../../cores/';
 import { vi, afterEach } from 'vitest';
 import { PaginateParam } from './types';
 import { loadSample } from './contexts.spec';
+import { isCrossCloud, buildRelay, asRelayContext } from '../../cores/protocol/protocol-relay'; //* v5 B15
 
 export type ModelType = 'test';
 export type Model = CoreModel<ModelType>;
@@ -1473,12 +1475,15 @@ describe('abstract-services B13 access policy', () => {
 
     it('B13 § 14.1 DEFAULT_ACCESS_POLICY and effectivePolicy()', async () => {
         const { proxy } = _setup();
+        // B15 § 15.5: `AccessPolicy` has 7 keys (`internal: 'admin'`, `cross: 'accept'` added).
         expect2(() => DEFAULT_ACCESS_POLICY).toEqual({
             list: 'site',
             read: 'owner',
             create: 'owner',
             update: 'owner',
             delete: 'owner',
+            internal: 'admin',
+            cross: 'accept',
         });
         expect2(() => Object.isFrozen(DEFAULT_ACCESS_POLICY)).toEqual(true);
         expect2(() => proxy.tests.accessPolicy()).toEqual(DEFAULT_ACCESS_POLICY);
@@ -1789,5 +1794,298 @@ describe('abstract-services B13 access policy', () => {
         expect2(() => _all($.guest, ROW)).toEqual(ALL);
         expect2(() => _pack($.other, { sid: 'a' })).toEqual({ sid: 'a' });
         expect2(() => _pack($.nosid, {})).toEqual({});
+    });
+});
+
+//* v5 B15: cross-cloud `cid`, the policy keys `internal`/`cross`, the internal admin and the internal session (SPEC § 15).
+describe('abstract-services B15 security', () => {
+    //* restore the toggled env and spies.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+        restoreEnvB5('SID_LEGACY_ACCESS');
+        vi.restoreAllMocks();
+    });
+    loadProfile(process); // override process.env (same profile as above).
+
+    const ACTS: CanDoActionType[] = ['list', 'read', 'create', 'update', 'delete'];
+    const ALL = { list: true, read: true, create: true, update: true, delete: true };
+    const NONE = { list: false, read: false, create: false, update: false, delete: false };
+    //* dummy account numbers: the receiver's own, and another cloud.
+    const OWN_ACC = '123456789012';
+    const OTHER_ACC = '210987654321';
+    //* a row of the relayed user (site 1000000, user 1000001), and a row of another site.
+    const ROW: Model = { type: 'test', id: '1000001', sid: '1000000', uid: '1000001' };
+    const OTHER: Model = { type: 'test', id: '1000009', sid: '999', uid: '9009' };
+    //* a relayed (whitelisted) identity of a role holder.
+    const USER = { sid: '1000000', uid: '1000001', roles: ['user'] };
+
+    //* the fixture: a session proxy, relayed receiver contexts (real B14 functions) and helpers.
+    const _setup = () => {
+        const { service, context } = instance('session');
+        const proxy = service.createProxy(context);
+        //* the receiver context of a relay of `idt` (`channel: 'internal'`, own account `accountId`).
+        const _relay = (idt?: any, accountId: string = OWN_ACC): NextContext =>
+            asRelayContext(buildRelay({ identity: idt, requestId: 'req-b15' }), { requestId: 'req-recv', accountId });
+        //* a session-sample (external) context with the identity overridden, own account `OWN_ACC`.
+        const _ext = (N: any): NextContext => ({
+            ...context,
+            accountId: OWN_ACC,
+            channel: 'external',
+            identity: { ...context?.identity, ...N },
+        });
+        //* one action with the session on (`throwable: false` unless given).
+        const _can = (ctx: NextContext, action: any, M?: Model, opts?: any) =>
+            proxy.tests.canDo(action, M, { context: ctx, useSession: true, throwable: false, ...opts });
+        //* the 5 actions as `{ action: allowed }`.
+        const _all = (ctx: NextContext, M?: Model, opts?: any) =>
+            ACTS.reduce((N, A) => ({ ...N, [A]: _can(ctx, A, M, opts) }), {} as Record<string, boolean>);
+        //* `packSearchParam()` on a proxy of `ctx`, session on → `$param`.
+        const _pack = (ctx: NextContext, param: any, opts?: any) =>
+            service.createProxy(ctx).tests.packSearchParam(param, undefined, { useSession: true, ...opts }).$param;
+        //* the error message (or the value), cut before the context dump.
+        const _msg = (fn: () => any) => {
+            try {
+                return fn();
+            } catch (e) {
+                return `${e?.message ?? e}`.split(' - context:')[0];
+            }
+        };
+        return { service, proxy, _relay, _ext, _can, _all, _pack, _msg };
+    };
+
+    it('B15 T-01 same `cid` as the own account → same cloud (internal admin kept)', async () => {
+        const { proxy, _relay, _all } = _setup();
+        const ctx = _relay({ ...USER, cid: OWN_ACC });
+        expect2(() => [proxy.isCrossCloud(ctx), isCrossCloud(ctx)]).toEqual([false, false]);
+        expect2(() => proxy.isInternalAdmin(DEFAULT_ACCESS_POLICY, ctx)).toEqual(true);
+        expect2(() => _all(ctx, OTHER, { policy: { cross: 'identity' } })).toEqual(ALL);
+    });
+
+    it('B15 T-02 a different `cid` → cross-cloud (any channel)', async () => {
+        const { proxy, _relay, _ext } = _setup();
+        expect2(() => proxy.isCrossCloud(_relay({ ...USER, cid: OTHER_ACC }))).toEqual(true);
+        expect2(() => proxy.isCrossCloud(_ext({ cid: OTHER_ACC }))).toEqual(true);
+        //* the proxy context is the default.
+        expect2(() =>
+            _setup()
+                .service.createProxy(_relay({ cid: OTHER_ACC }))
+                .isCrossCloud(),
+        ).toEqual(true);
+    });
+
+    it('B15 T-03 an empty `cid` (or `#`, or no own account) → same cloud', async () => {
+        const { proxy, _relay } = _setup();
+        expect2(() => proxy.isCrossCloud(_relay(USER))).toEqual(false);
+        expect2(() => proxy.isCrossCloud(_relay({ ...USER, cid: '' }))).toEqual(false);
+        expect2(() => proxy.isCrossCloud(_relay({ ...USER, cid: '#' }))).toEqual(false);
+        expect2(() => proxy.isCrossCloud(_relay({ ...USER, cid: OTHER_ACC }, '')), 'no own account').toEqual(false);
+        expect2(() => proxy.isCrossCloud({ identity: { cid: 1 } as any, accountId: OWN_ACC })).toEqual(false);
+        //* a non-numeric own account (local express) is compared as is.
+        expect2(() => proxy.isCrossCloud({ identity: { cid: OTHER_ACC } as any, accountId: 'local-user' })).toEqual(
+            true,
+        );
+    });
+
+    it('B15 T-04 `cross: accept` (default): a cross-cloud caller follows the same rules', async () => {
+        const { _relay, _ext, _all, _pack } = _setup();
+        //* internal → admin (all actions on another site's row, no pin).
+        const internal = _relay({ ...USER, cid: OTHER_ACC });
+        expect2(() => _all(internal, OTHER)).toEqual(ALL);
+        expect2(() => _pack(internal, { sid: '999' })).toEqual({ sid: '999' });
+        //* external → by its identity (own row ✔, another site ✘).
+        const external = _ext({ cid: OTHER_ACC });
+        expect2(() => _all(external, ROW)).toEqual(ALL);
+        expect2(() => _all(external, OTHER)).toEqual(NONE);
+    });
+
+    it('B15 T-05 `cross: identity`: a cross-cloud internal caller is evaluated by its identity', async () => {
+        const { _relay, _all, _msg, _can } = _setup();
+        const policy = { cross: 'identity' };
+        const cross = _relay({ ...USER, cid: OTHER_ACC });
+        expect2(() => _all(cross, ROW, { policy })).toEqual(ALL);
+        expect2(() => _all(cross, OTHER, { policy })).toEqual(NONE);
+        expect2(() => _msg(() => _can(cross, 'read', OTHER, { policy, throwable: true }))).toEqual(
+            '403 NOT ALLOWED - action[read] is invalid @canDo(read:test/1000009)',
+        );
+        //* the same caller from the own cloud stays admin.
+        expect2(() => _all(_relay({ ...USER, cid: OWN_ACC }), OTHER, { policy })).toEqual(ALL);
+    });
+
+    it('B15 T-06 `cross: deny`: a cross-cloud caller → 403 (after the admin role)', async () => {
+        const { _relay, _ext, _all, _can, _msg } = _setup();
+        const policy = { cross: 'deny' };
+        expect2(() => _all(_relay({ ...USER, cid: OTHER_ACC }), ROW, { policy })).toEqual(NONE);
+        expect2(() => _all(_ext({ cid: OTHER_ACC }), ROW, { policy })).toEqual(NONE);
+        expect2(() =>
+            _msg(() => _can(_ext({ cid: OTHER_ACC }), 'list', undefined, { policy, throwable: true })),
+        ).toEqual('403 NOT ALLOWED - action[list] is invalid @canDo(list:test/-)');
+        //* same cloud → unchanged.
+        expect2(() => _all(_relay({ ...USER, cid: OWN_ACC }), OTHER, { policy })).toEqual(ALL);
+        expect2(() => _all(_ext({}), ROW, { policy })).toEqual(ALL);
+        //* SPEC § 15.3 order: `hasAdminRole` runs first, so an admin role passes.
+        expect2(() => _all(_ext({ cid: OTHER_ACC, roles: ['admin'] }), OTHER, { policy })).toEqual(ALL);
+    });
+
+    it('B15 T-07 policy keys: 7 keys, partial overrides, unknown `internal`/`cross` → 403', async () => {
+        const { proxy, _relay, _ext, _all, _can, _msg } = _setup();
+        expect2(() => proxy.tests.effectivePolicy({ internal: 'identity' })).toEqual({
+            ...DEFAULT_ACCESS_POLICY,
+            internal: 'identity',
+        });
+        expect2(() => proxy.tests.effectivePolicy({ cross: 'deny', list: undefined }), 'list,internal,cross').toEqual({
+            list: 'site',
+            internal: 'admin',
+            cross: 'deny',
+        });
+        //* an unknown value never allows, admin role included.
+        for (const policy of [{ internal: 'root' }, { cross: 'maybe' }, { internal: null as any, cross: 'x' }]) {
+            expect2(() => _all(_ext({}), ROW, { policy })).toEqual(NONE);
+            expect2(() => _all(_ext({ roles: ['admin'] }), ROW, { policy })).toEqual(NONE);
+            expect2(() => _all(_relay(USER), ROW, { policy })).toEqual(NONE);
+        }
+        expect2(() =>
+            _msg(() => _can(_ext({}), 'read', ROW, { policy: { internal: 'root' }, throwable: true })),
+        ).toEqual('403 NOT ALLOWED - action[read] is invalid @canDo(read:test/1000001)');
+        //* not an internal admin with an unknown value.
+        expect2(() => proxy.isInternalAdmin({ internal: 'root' as any }, _relay(USER))).toEqual(false);
+        expect2(() => proxy.isInternalAdmin({ cross: 'x' as any }, _relay(USER))).toEqual(false);
+    });
+
+    it('B15 T-11 internal admin: all 5 actions on any row (with or without an identity)', async () => {
+        const { _relay, _all, _can } = _setup();
+        expect2(() => _all(_relay(USER), OTHER, { throwable: true })).toEqual(ALL);
+        expect2(() => _all(_relay(), OTHER, { throwable: true })).toEqual(ALL);
+        expect2(() => _can(_relay(), 'list', undefined, { throwable: true })).toEqual(true);
+        //* a guest identity is admin too (the trust is the IAM invoke, SPEC § 15.4).
+        expect2(() => _all(_relay({ roles: [] }), OTHER)).toEqual(ALL);
+    });
+
+    it('B15 T-12 internal admin: `packSearchParam` takes the admin branch (no pin)', async () => {
+        const { _relay, _pack } = _setup();
+        expect2(() => _pack(_relay(USER), {})).toEqual({ sid: '1000000' });
+        expect2(() => _pack(_relay(USER), { sid: '999', uid: '9009' })).toEqual({ sid: '999', uid: '9009' });
+        expect2(() => _pack(_relay(USER), { scope: 'owner' } as any, { scope: 'owner' })).toEqual({ sid: '1000000' });
+        //* no identity → no site filter (as a session-less admin).
+        expect2(() => _pack(_relay(), {})).toEqual({ sid: null });
+        //* `asAdmin: false` pins by the scope, and never makes a non-admin admin.
+        expect2(() => _pack(_relay(USER), { uid: '9' }, { scope: 'owner', asAdmin: false })).toEqual({
+            sid: '1000000',
+            uid: '1000001',
+        });
+        expect2(() => _pack(_relay(USER), { sid: '999' }, { policy: { internal: 'identity' }, asAdmin: true })).toEqual(
+            {
+                sid: '1000000',
+            },
+        );
+    });
+
+    it('B15 T-13 `internal: identity` → evaluated by the relayed identity', async () => {
+        const { _relay, _all, _can, _pack, _msg } = _setup();
+        const policy = { internal: 'identity' };
+        expect2(() => _all(_relay(USER), ROW, { policy })).toEqual(ALL);
+        expect2(() => _all(_relay(USER), OTHER, { policy })).toEqual(NONE);
+        expect2(() => _pack(_relay(USER), { sid: '999' }, { policy })).toEqual({ sid: '1000000' });
+        expect2(() => _pack(_relay(USER), { uid: '9' }, { policy, scope: 'owner' })).toEqual({
+            sid: '1000000',
+            uid: '1000001',
+        });
+        //* no identity → the `403 IDENTITY-TOKEN` message.
+        expect2(() => _msg(() => _can(_relay(), 'read', ROW, { policy, throwable: true }))).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+        expect2(() => _all(_relay({ roles: [] }), ROW, { policy })).toEqual(NONE);
+    });
+
+    it('B15 T-14 no `channel` (or external, local) → not internal; `hasAdminRole()` unchanged', async () => {
+        const { proxy, _relay, _all, _can, _msg } = _setup();
+        const { channel, ...nochan } = _relay(USER);
+        expect2(() => channel).toEqual('internal');
+        expect2(() => _all(nochan, OTHER)).toEqual(NONE);
+        expect2(() => _msg(() => _can(nochan, 'read', ROW, { throwable: true }))).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+        expect2(() => _all({ ...nochan, channel: 'external' }, OTHER)).toEqual(NONE);
+        expect2(() => _all({ ...nochan, channel: 'local' }, OTHER)).toEqual(NONE);
+        expect2(() => proxy.isInternalAdmin(DEFAULT_ACCESS_POLICY, nochan)).toEqual(false);
+        //* `hasAdminRole()` does not read the channel.
+        expect2(() => proxy.hasAdminRole(null, { context: _relay(USER) })).toEqual(false);
+        expect2(() => proxy.tests.isAdminLike({ context: _relay(USER) })).toEqual(true);
+        expect2(() => proxy.tests.isAdminLike({ context: nochan })).toEqual(false);
+    });
+
+    it('B15 T-15 `cross: identity` and a cross-cloud caller → not admin-like (list pinned)', async () => {
+        const { proxy, _relay, _pack } = _setup();
+        const policy = { cross: 'identity' as const };
+        const cross = _relay({ ...USER, cid: OTHER_ACC });
+        expect2(() => proxy.isInternalAdmin(policy, cross)).toEqual(false);
+        expect2(() => proxy.tests.isAdminLike({ policy, context: cross })).toEqual(false);
+        expect2(() => _pack(cross, { sid: '999' }, { policy })).toEqual({ sid: '1000000' });
+        //* default `accept` → admin-like, no pin.
+        expect2(() => proxy.tests.isAdminLike({ context: cross })).toEqual(true);
+        expect2(() => _pack(cross, { sid: '999' })).toEqual({ sid: '999' });
+        //* `deny` → not admin-like either.
+        expect2(() => proxy.isInternalAdmin({ cross: 'deny' }, cross)).toEqual(false);
+    });
+
+    it('B15 T-16 `getCurrentSession`: a relay identity (no `userAgent`) is the session under `internal`', async () => {
+        const { proxy, _relay } = _setup();
+        const ctx = _relay({ ...USER, gid: 'g1', cid: OWN_ACC, aid: 'A-dummy' });
+        expect2(() => proxy.getCurrentSession({ context: ctx })).toEqual({
+            sid: '1000000',
+            uid: '1000001',
+            gid: 'g1',
+            roles: ['user'],
+            cid: OWN_ACC,
+            aid: 'A-dummy',
+        });
+        //* normalization as today (`#…` → null).
+        expect2(() => proxy.getCurrentSession({ throwable: false, context: _relay({ sid: '#', uid: '#u' }) })).toEqual({
+            sid: null,
+            uid: null,
+        });
+        //* the same identity without `internal` → no session (unchanged).
+        const { channel, ...nochan } = ctx;
+        expect2(() => channel).toEqual('internal');
+        expect2(() => proxy.getCurrentSession({ throwable: false, context: nochan })).toEqual(null);
+        expect2(() =>
+            proxy.getCurrentSession({ throwable: false, context: { ...nochan, channel: 'external' } }),
+        ).toEqual(null);
+        //* an empty relay identity → no session (the `.identity … is required` message as before).
+        expect2(() => proxy.getCurrentSession({ throwable: false, context: _relay() })).toEqual(null);
+        //* a session-sample (Cognito) identity is unchanged.
+        expect2(() => proxy.getCurrentSession(), 'sid,uid').toEqual({ sid: '1000000', uid: '1000001' });
+        //* `makeModelBase` stamps the relayed `sid`/`uid`/`gid` (was empty).
+        const base = await _setup()
+            .service.createProxy(ctx)
+            .makeModelBase({ type: 'test' } as Model, { useSession: true });
+        expect2(() => base).toEqual({ type: 'test', sid: '1000000', uid: '1000001', gid: 'g1' });
+    });
+
+    it('B15 T-17 local mode → unchanged (admin for all, no internal session, no pin)', async () => {
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        const { proxy, _relay, _all, _pack } = _setup();
+        const policy = { internal: 'identity', cross: 'identity' };
+        expect2(() => _all(_relay({ roles: [] }), OTHER, { policy })).toEqual(ALL);
+        expect2(() => _all(_relay({ ...USER, cid: OTHER_ACC }), OTHER, { policy })).toEqual(ALL);
+        expect2(() => _pack(_relay(USER), { sid: 'a' })).toEqual({ sid: 'a' });
+        //* the internal branch of `getCurrentSession` is off in local mode.
+        expect2(() => proxy.getCurrentSession({ throwable: false, useSession: false, context: _relay(USER) })).toEqual(
+            null,
+        );
+    });
+
+    it('B15 T-18 session off → unchanged (§ 6.4 rules, no internal admin, no internal session)', async () => {
+        const { _relay, _pack, _msg } = _setup();
+        const { service } = _setup();
+        const _off = (ctx: NextContext, A: CanDoActionType, M?: Model, N?: any) =>
+            service.createProxy(ctx).tests.canDo(A, M, { context: ctx, useSession: false, throwable: false, ...N });
+        //* a relay identity is not a session with the session off (as before) → 403 IDENTITY-TOKEN.
+        expect2(() => _msg(() => _off(_relay(USER), 'read', ROW, { throwable: true }))).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+        expect2(() => ACTS.map(A => _off(_relay(USER), A, OTHER))).toEqual([false, false, false, false, false]);
+        expect2(() => _pack(_relay(USER), { sid: 'x', view: 'admin' }, { useSession: false })).toEqual({ sid: 'x' });
     });
 });

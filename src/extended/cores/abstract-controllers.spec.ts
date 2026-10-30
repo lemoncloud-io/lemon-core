@@ -14,6 +14,7 @@
  * @date        2026-10-30 v5 B14: the `fields/admin` gate reads `context.channel` (not `domain`).
  * @date        2026-10-28 v5 B4: `checkFieldsAdmin()` on each report, and the in-process express route.
  * @date        2026-10-30 v5 B13: default data-access policy through the 7 handlers (SPEC § 14, T-01..T-36).
+ * @date        2026-10-30 v5 B15: list `view`, internal admin and `internal`/`cross` through the handlers (B15 T-19..T-30).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -28,6 +29,7 @@ import { GETERR, GETERR$ } from '../../common/test-helper';
 import { NextContext } from 'lemon-model';
 import { $ES6Routed as $ES6 } from './abstract-services'; // v5 B2-b: the L2 `$ES6` name is removed
 import { AccessPolicy, CanDoActionType, CanDoOptions, MyCoreProxy, MyManagerProxy } from './abstract-services'; //* v5 B13
+import { AccessScope } from './abstract-services'; //* v5 B15
 import { loadSample } from './contexts.spec';
 import { AbstractCRUDController, AbstractTransformer } from './abstract-controllers';
 import { View, Body } from './types';
@@ -1206,7 +1208,9 @@ describe('AbstractCRUDController B13 access policy', () => {
 
     it('B13 T-07 OWN doList pinned to own site', async () => {
         const { $, _list } = await _setup();
-        expect2(await _list($.own), 'sid,uid').toEqual({ sid: '1000000' });
+        // B15 § 15.5: the default view is `mine` (`sid` + `uid`); was `{ sid }` (list scope `site`).
+        expect2(await _list($.own), 'sid,uid').toEqual({ sid: '1000000', uid: '1000001' });
+        expect2(await _list($.own, { view: 'site' }), 'sid,uid').toEqual({ sid: '1000000' });
     });
 
     it('B13 T-08 OWN doGet', async () => {
@@ -1239,8 +1243,11 @@ describe('AbstractCRUDController B13 access policy', () => {
 
     it('B13 T-12 SITE doList pinned to own site, `?uid=` narrows', async () => {
         const { $, _list } = await _setup();
-        expect2(await _list($.site), 'sid,uid').toEqual({ sid: '1000000' });
-        expect2(await _list($.site, { uid: '1000001' }), 'sid,uid').toEqual({ sid: '1000000', uid: '1000001' });
+        // B15 § 15.5: the default view is `mine` (own `uid`, `?uid=` ignored); the B13 site list is `view=site`.
+        expect2(await _list($.site), 'sid,uid').toEqual({ sid: '1000000', uid: '2002' });
+        expect2(await _list($.site, { view: 'site' }), 'sid,uid').toEqual({ sid: '1000000' });
+        const narrowed = { view: 'site', uid: '1000001' };
+        expect2(await _list($.site, narrowed), 'sid,uid').toEqual({ sid: '1000000', uid: '1000001' });
     });
 
     it('B13 T-13 SITE doGet of another user row → 403', async () => {
@@ -1267,7 +1274,9 @@ describe('AbstractCRUDController B13 access policy', () => {
 
     it('B13 T-16 OTHER doList: own site only, `?sid=` ignored', async () => {
         const { $, _list } = await _setup();
-        expect2(await _list($.other, { sid: '1000000' }), 'sid,uid').toEqual({ sid: '999' });
+        // B15 § 15.5: the default view is `mine` (`sid` + `uid`); was `{ sid: '999' }`.
+        expect2(await _list($.other, { sid: '1000000' }), 'sid,uid').toEqual({ sid: '999', uid: '2002' });
+        expect2(await _list($.other, { sid: '1000000', view: 'site' }), 'sid,uid').toEqual({ sid: '999' });
     });
 
     it('B13 T-17 OTHER doGet → 403', async () => {
@@ -1463,7 +1472,9 @@ describe('AbstractCRUDController B13 access policy', () => {
         expect2(await api.doPut(A.id, null, { name: 'x' }, $.site).catch(GETERR)).toEqual(
             `403 NOT ALLOWED - action[update] is invalid @doPut(tests/${A.id})`,
         );
-        expect2(await _list($.site), 'sid,uid').toEqual({ sid: '1000000' });
+        // B15 § 15.5: the default view is `mine`; the site list is `view=site` (was the default).
+        expect2(await _list($.site), 'sid,uid').toEqual({ sid: '1000000', uid: '2002' });
+        expect2(await _list($.site, { view: 'site' }), 'sid,uid').toEqual({ sid: '1000000' });
         //* `{ list: 'owner' }` → own rows only (`?uid=` overridden).
         const { $: $2, _list: _list2 } = await _setup({ policy: { list: 'owner' } });
         expect2(await _list2($2.site, { uid: '1000001' }), 'sid,uid').toEqual({ sid: '1000000', uid: '2002' });
@@ -1523,4 +1534,323 @@ describe('AbstractCRUDController B13 access policy', () => {
             await _h(api.doDelete(A.id, null, null, $.guest)),
         ];
     };
+});
+
+//* v5 B15: a controller whose `resolveListView()` adds two views (DoU-style hook).
+const _b15Ctrl = (service: any, trans: MyTransformer, options: { useSession?: boolean; policy?: any }) =>
+    new (class extends AbstractCRUDController<
+        ModelType,
+        MyTestModel,
+        MyView,
+        MyBody,
+        any,
+        TestModelManager,
+        MyTransformer
+    > {
+        public constructor() {
+            super('tests', service, service.$test, trans, options);
+        }
+        //* `public` → the site list, `all` → the admin list; the rest as the core default.
+        protected resolveListView(view: string, $ctx: NextContext): AccessScope | 'admin' {
+            if (view === 'public') return 'site';
+            if (view === 'all') return 'admin';
+            return super.resolveListView(view, $ctx);
+        }
+    })();
+
+describe('AbstractCRUDController B15 list view and internal admin', () => {
+    //* restore the toggled env and spies.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+        vi.restoreAllMocks();
+    });
+    loadProfile(process); // override process.env (same profile as above).
+    //* dummy account numbers: the receiver's own, and another cloud.
+    const OWN_ACC = '123456789012';
+    const OTHER_ACC = '210987654321';
+    //* the relayed identity of a role holder of site 1000000 (user 3003).
+    const RELAYED = { sid: '1000000', uid: '3003', roles: ['user'] };
+
+    //* the fixture: a session controller, callers (session sample, admin, protocol), rows A (OWN) and C (OTHER).
+    const _setup = async (options?: { session?: boolean; policy?: Partial<AccessPolicy>; hook?: boolean }) => {
+        const session = options?.session ?? true;
+        const { api: api0, service, context, trans } = instance({ auth: 'session', session, policy: options?.policy });
+        const api = options?.hook ? _b15Ctrl(service, trans, { useSession: session, policy: options?.policy }) : api0;
+        //* a session-sample context with the identity overridden.
+        const _ctx = (N: any): NextContext => ({ ...context, identity: { ...context?.identity, ...N } });
+        //* a protocol caller (B14 receiver shape): whitelisted identity, `channel: 'internal'`, own account.
+        const _int = (N?: any, accountId: string = OWN_ACC): NextContext => ({
+            identity: { ...N },
+            channel: 'internal',
+            accountId,
+            trace: { tid: 'tid-b15', hop: 1 },
+        });
+        const $ = {
+            own: _ctx({}),
+            site: _ctx({ uid: '2002' }),
+            g1: _ctx({ uid: '2002', gid: 'g1' }),
+            guest: _ctx({ roles: [] }),
+            admin: _ctx({ roles: ['admin'], sid: '999', uid: '9009' }),
+            adminG: _ctx({ roles: ['admin'], sid: '999', uid: '9009', gid: 'g9' }),
+            signed: loadSample('signed').context as NextContext, // IAM SigV4 caller (no session)
+            internal: _int(RELAYED),
+            internalG: _int({ ...RELAYED, gid: 'g3' }),
+            bare: _int(), // a protocol call without identity (SNS/SQS without context)
+            nochan: { identity: { ...RELAYED }, accountId: OWN_ACC } as NextContext, // no `channel` (cron, stream …)
+            cross: _int({ ...RELAYED, cid: OTHER_ACC }),
+        };
+        //* rows created with the session on (a second controller when this one has it off).
+        const $on = session ? api : _b13Ctrl(service, trans, { useSession: true });
+        const A = await $on.doPost('', null, { name: 'own' }, $.own);
+        const C = await $on.doPost('', null, { name: 'other' }, _ctx({ sid: '999', uid: '2002' }));
+        //* capture `$param` of `manager.list()` (no search engine in this profile).
+        const seen: any[] = [];
+        vi.spyOn(service.$test, 'list').mockImplementation(async ($page: any, $param: any) => {
+            seen.push({ ...$param });
+            return { list: [], total: 0 } as any;
+        });
+        //* `doList()` → the `$param` it searched with (or the error, cut before the context dump).
+        const _list = async (ctx: NextContext, param: any = {}) => {
+            seen.length = 0;
+            const err = await api
+                .doList('', param, null, ctx)
+                .then(() => null, GETERR)
+                .then(R => (typeof R === 'string' ? R.split(' - context:')[0] : R));
+            return err ?? seen[0];
+        };
+        //* the error message (or the value), cut before the context dump.
+        const _e = (P: Promise<any>) =>
+            P.catch(GETERR).then(R => (typeof R === 'string' ? R.split(' - context:')[0] : R));
+        //* the 5 handlers for one caller on row `id` → the first 3 chars of each error, or `ok`.
+        const _five = async (ctx: NextContext, id: string) => {
+            const _h = (P: Promise<any>) => _e(P).then(R => (typeof R === 'string' ? R.substring(0, 3) : 'ok'));
+            return [
+                await _h(api.doList('', {}, null, ctx)),
+                await _h(api.doGet(id, null, null, ctx)),
+                await _h(api.doPost('', null, { name: 'new' }, ctx)),
+                await _h(api.doPut(id, null, { name: 'put' }, ctx)),
+                await _h(api.doDelete(id, null, null, ctx)),
+            ];
+        };
+        return { api, service, trans, $, A, C, seen, _list, _e, _five };
+    };
+    const OK5 = ['ok', 'ok', 'ok', 'ok', 'ok'];
+    const K = 'sid,uid,gid';
+
+    it('B15 T-19 no view: non-admin = `mine`, admin and internal = `admin`', async () => {
+        const { $, _list } = await _setup();
+        expect2(await _list($.own), K).toEqual({ sid: '1000000', uid: '1000001' });
+        expect2(await _list($.site, { uid: '1000001' }), K).toEqual({ sid: '1000000', uid: '2002' });
+        //* admin: own site, `?sid=` picks any site (B13 admin list, unchanged).
+        expect2(await _list($.admin), K).toEqual({ sid: '999' });
+        expect2(await _list($.admin, { sid: '1000000' }), K).toEqual({ sid: '1000000' });
+        expect2(await _list($.signed), K).toEqual({ sid: null });
+        //* internal: the admin branch on the relayed session.
+        expect2(await _list($.internal), K).toEqual({ sid: '1000000' });
+        expect2(await _list($.internal, { sid: '999', uid: '9009' }), K).toEqual({ sid: '999', uid: '9009' });
+        expect2(await _list($.bare), K).toEqual({ sid: null });
+    });
+
+    it('B15 T-20 view=mine: `sid` + `uid` of the session for every caller, `?uid=` ignored', async () => {
+        const { $, _list } = await _setup();
+        const mine = { view: 'mine', uid: '1', sid: '1' };
+        expect2(await _list($.own, mine), K).toEqual({ sid: '1000000', uid: '1000001' });
+        expect2(await _list($.admin, mine), K).toEqual({ sid: '999', uid: '9009' });
+        expect2(await _list($.internal, mine), K).toEqual({ sid: '1000000', uid: '3003' });
+        //* a caller without a session has no own rows.
+        expect2(await _list($.bare, mine)).toEqual('403 NOT ALLOWED - list[owner] needs session .sid @doList(tests/)');
+        expect2(await _list($.signed, mine)).toEqual(
+            '403 NOT ALLOWED - list[owner] needs session .sid @doList(tests/)',
+        );
+    });
+
+    it('B15 T-21 view=group: `sid` + `gid` (non-admin within `policy.list`), admin and internal ✔', async () => {
+        const { $, _list } = await _setup();
+        const group = { view: 'group', uid: '7' };
+        expect2(await _list($.g1, group), K).toEqual({ sid: '1000000', uid: '7', gid: 'g1' });
+        expect2(await _list($.site, group)).toEqual('403 NOT ALLOWED - list[group] needs session .gid @doList(tests/)');
+        expect2(await _list($.adminG, group), K).toEqual({ sid: '999', uid: '7', gid: 'g9' });
+        expect2(await _list($.internalG, group), K).toEqual({ sid: '1000000', uid: '7', gid: 'g3' });
+        //* `policy.list: 'owner'` → a non-admin may not list the group.
+        const { $: $2, _list: _list2 } = await _setup({ policy: { list: 'owner' } });
+        expect2(await _list2($2.g1, group)).toEqual(
+            '403 NOT ALLOWED - view[group] is over list[owner] @doList(tests/)',
+        );
+        expect2(await _list2($2.adminG, group), K).toEqual({ sid: '999', uid: '7', gid: 'g9' });
+    });
+
+    it('B15 T-22 view=site: `sid` pin, `?uid=` narrows; admin and internal pinned too', async () => {
+        const { $, _list } = await _setup();
+        expect2(await _list($.site, { view: 'site' }), K).toEqual({ sid: '1000000' });
+        expect2(await _list($.site, { view: 'site', uid: '0' }), K).toEqual({ sid: '1000000', uid: '2002' });
+        expect2(await _list($.site, { view: 'site', sid: '999' }), K).toEqual({ sid: '1000000' });
+        expect2(await _list($.admin, { view: 'site', sid: '1000000' }), K).toEqual({ sid: '999' });
+        expect2(await _list($.internal, { view: 'site', uid: '1000001' }), K).toEqual({
+            sid: '1000000',
+            uid: '1000001',
+        });
+        //* `policy.list: 'owner'` → 403 for a non-admin only.
+        const { $: $2, _list: _list2 } = await _setup({ policy: { list: 'owner' } });
+        expect2(await _list2($2.site, { view: 'site' })).toEqual(
+            '403 NOT ALLOWED - view[site] is over list[owner] @doList(tests/)',
+        );
+        expect2(await _list2($2.internal, { view: 'site' }), K).toEqual({ sid: '1000000' });
+    });
+
+    it('B15 T-23 view=admin: 403 for a non-admin; admin and internal list without a pin', async () => {
+        const { $, _list } = await _setup();
+        const MSG = '403 NOT ALLOWED - view[admin] needs admin @doList(tests/)';
+        expect2(await _list($.own, { view: 'admin' })).toEqual(MSG);
+        expect2(await _list($.site, { view: 'admin', sid: '999' })).toEqual(MSG);
+        expect2(await _list($.admin, { view: 'admin' }), K).toEqual({ sid: '999' });
+        expect2(await _list($.admin, { view: 'admin', sid: '1000000', uid: '0' }), K).toEqual({
+            sid: '1000000',
+            uid: '9009',
+        });
+        expect2(await _list($.signed, { view: 'admin' }), K).toEqual({ sid: null });
+        expect2(await _list($.internal, { view: 'admin', sid: '999' }), K).toEqual({ sid: '999' });
+        expect2(await _list($.bare, { view: 'admin' }), K).toEqual({ sid: null });
+        //* the caller check (`canDo('list')`) runs first: no session, no channel → `403 IDENTITY-TOKEN`.
+        expect2(await _list($.nochan, { view: 'admin' })).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+    });
+
+    it('B15 T-24 an unknown view → 400 (after the caller check)', async () => {
+        const { $, _list } = await _setup();
+        const MSG = '400 INVALID - view[bogus] is invalid @resolveListView(tests)';
+        expect2(await _list($.own, { view: 'bogus' })).toEqual(MSG);
+        expect2(await _list($.admin, { view: 'bogus' })).toEqual(MSG);
+        expect2(await _list($.internal, { view: 'bogus' })).toEqual(MSG);
+        expect2(await _list($.own, { view: 'Mine' })).toEqual(
+            '400 INVALID - view[Mine] is invalid @resolveListView(tests)',
+        );
+        //* a guest is refused first; an empty `?view=` is no view.
+        expect2(await _list($.guest, { view: 'bogus' })).toEqual(
+            '403 NOT ALLOWED - action[list] is invalid @doList(tests/)',
+        );
+        expect2(await _list($.own, { view: ' ' }), K).toEqual({ sid: '1000000', uid: '1000001' });
+    });
+
+    it('B15 T-25 `policy.list` is the non-admin ceiling (owner < group < site < any)', async () => {
+        const _over = (v: string, max: string) => `403 NOT ALLOWED - view[${v}] is over list[${max}] @doList(tests/)`;
+        const { $: $o, _list: _o } = await _setup({ policy: { list: 'owner' } });
+        expect2(await _o($o.own, { view: 'site' })).toEqual(_over('site', 'owner'));
+        expect2(await _o($o.g1, { view: 'group' })).toEqual(_over('group', 'owner'));
+        expect2(await _o($o.own, { view: 'mine' }), K).toEqual({ sid: '1000000', uid: '1000001' });
+        expect2(await _o($o.admin, { view: 'site' }), K).toEqual({ sid: '999' });
+        const { $: $g, _list: _g } = await _setup({ policy: { list: 'group' } });
+        expect2(await _g($g.site, { view: 'site' })).toEqual(_over('site', 'group'));
+        expect2(await _g($g.g1, { view: 'group' }), K).toEqual({ sid: '1000000', gid: 'g1' });
+        const { $: $a, _list: _a } = await _setup({ policy: { list: 'any' } });
+        expect2(await _a($a.site, { view: 'site' }), K).toEqual({ sid: '1000000' });
+        expect2(await _a($a.site), K).toEqual({ sid: '1000000', uid: '2002' }); // the default is still `mine`.
+    });
+
+    it('B15 T-26 a `resolveListView()` override adds views; gates still apply', async () => {
+        const { $, _list } = await _setup({ hook: true });
+        expect2(await _list($.site, { view: 'public' }), K).toEqual({ sid: '1000000' });
+        expect2(await _list($.site, { view: 'all' })).toEqual(
+            '403 NOT ALLOWED - view[all] needs admin @doList(tests/)',
+        );
+        expect2(await _list($.admin, { view: 'all', sid: '1000000' }), K).toEqual({ sid: '1000000' });
+        expect2(await _list($.site, { view: 'mine' }), K).toEqual({ sid: '1000000', uid: '2002' });
+        expect2(await _list($.site, { view: 'x' })).toEqual('400 INVALID - view[x] is invalid @resolveListView(tests)');
+        const { $: $2, _list: _list2 } = await _setup({ hook: true, policy: { list: 'owner' } });
+        expect2(await _list2($2.site, { view: 'public' })).toEqual(
+            '403 NOT ALLOWED - view[public] is over list[owner] @doList(tests/)',
+        );
+    });
+
+    it('B15 T-27 `?view=` never reaches the filters (session on, off, local)', async () => {
+        const pack = vi.spyOn(MyManagerProxy.prototype, 'packSearchParam');
+        const _args = () => pack.mock.calls.map(C => [Object.keys(C[0] ?? {}), Object.keys(C[1] ?? {})]);
+        const _hasView = () => _args().some(([P, M]) => P.includes('view') || M.includes('view'));
+        const on = await _setup();
+        expect2(await on._list(on.$.own, { view: 'mine', name: 'x' }), K).toEqual({ sid: '1000000', uid: '1000001' });
+        expect2(() => [pack.mock.calls.length > 0, _hasView()]).toEqual([true, false]);
+        expect2(() => pack.mock.calls[pack.mock.calls.length - 1][0]).toEqual({ name: 'x' });
+        //* session off: ignored, not a filter.
+        const off = await _setup({ session: false });
+        expect2(await off._list(off.$.own, { view: 'admin', sid: 'x' }), 'sid,view').toEqual({ sid: 'x' });
+        expect2(() => _hasView()).toEqual(false);
+        //* local mode: the same.
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        expect2(await on._list(on.$.guest, { view: 'bogus', sid: 'a' }), 'sid,view').toEqual({ sid: 'a' });
+        expect2(() => _hasView()).toEqual(false);
+    });
+
+    it('B15 T-28 internal admin through the 5 handlers (other site rows, with or without identity)', async () => {
+        const { api, $, C, _five, _e } = await _setup();
+        expect2(await _five($.internal, C.id)).toEqual(OK5);
+        const { C: C2, _five: _five2 } = await _setup();
+        expect2(await _five2($.bare, C2.id)).toEqual(OK5);
+        //* create stamps the relayed session (`getCurrentSession` under `internal`, was empty).
+        expect2(await api.doPost('', null, { name: 'int' }, $.internal).then(R => R.$)).toEqual({
+            sid: '1000000',
+            uid: '3003',
+        });
+        //* bulk update of another site's row.
+        const { api: api3, $: $3, C: C3 } = await _setup();
+        const res = await api3.doPutBulk('', null, [{ id: C3.id, name: 'bulk' }], $3.bare).catch(GETERR);
+        expect2(() => res?.list?.map((N: any) => N.name)).toEqual(['bulk']);
+        //* `hasAdminRole()` gates are unchanged (`GET /<type>/<id>/admin` is not for the internal admin).
+        expect2(await _e(api.doGetAdmin(C.id, {}, null, $.internal))).toEqual(
+            `403 NOT ALLOWED - only for admin @doGetAdmin(tests/${C.id})`,
+        );
+    });
+
+    it('B15 T-29 `internal: identity`, `cross` and no `channel` through the handlers', async () => {
+        //* `internal: 'identity'` → the relayed identity (own rows only, list `mine`).
+        const { api, $, A, _list, _e } = await _setup({ policy: { internal: 'identity' } });
+        expect2(await _e(api.doGet(A.id, null, null, $.internal))).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${A.id})`,
+        );
+        expect2(await _list($.internal), K).toEqual({ sid: '1000000', uid: '3003' });
+        expect2(await _list($.internal, { view: 'admin' })).toEqual(
+            '403 NOT ALLOWED - view[admin] needs admin @doList(tests/)',
+        );
+        const mine = await api.doPost('', null, { name: 'relay' }, $.internal);
+        expect2(() => mine.$).toEqual({ sid: '1000000', uid: '3003' });
+        expect2(await _e(api.doPut(mine.id, null, { name: 'r2' }, $.internal)), 'name').toEqual({ name: 'r2' });
+        expect2(await _e(api.doGet(A.id, null, null, $.bare))).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+        //* no `channel` → not internal, no session → `403 IDENTITY-TOKEN` (default policy).
+        const d = await _setup();
+        expect2(await d._e(d.api.doGet(d.A.id, null, null, d.$.nochan))).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+        //* cross-cloud: `accept` (default) admin, `identity` by identity, `deny` 403.
+        expect2(await d._e(d.api.doGet(d.A.id, null, null, d.$.cross)), 'id').toEqual({ id: d.A.id });
+        const ci = await _setup({ policy: { cross: 'identity' } });
+        expect2(await ci._e(ci.api.doGet(ci.A.id, null, null, ci.$.cross))).toEqual(
+            `403 NOT ALLOWED - action[read] is invalid @doGet(tests/${ci.A.id})`,
+        );
+        expect2(await ci._list(ci.$.cross), K).toEqual({ sid: '1000000', uid: '3003' });
+        expect2(await ci._e(ci.api.doGet(ci.A.id, null, null, ci.$.internal)), 'id').toEqual({ id: ci.A.id });
+        const cd = await _setup({ policy: { cross: 'deny' } });
+        expect2(await cd._list(cd.$.cross)).toEqual('403 NOT ALLOWED - action[list] is invalid @doList(tests/)');
+        expect2(await cd._five(cd.$.cross, cd.A.id)).toEqual(['403', '403', '403', '403', '403']);
+    });
+
+    it('B15 T-30 session off and local mode → unchanged (view ignored, no internal admin)', async () => {
+        const { api, $, A, C, _list, _e } = await _setup({ session: false });
+        expect2(await _list($.guest, { view: 'admin', sid: 'x' }), K).toEqual({ sid: 'x' });
+        expect2(await _list($.internal, { view: 'bogus' }), K).toEqual({});
+        //* § 6.4: a relay identity is no session with the session off (as before).
+        expect2(await _e(api.doGet(C.id, null, null, $.internal))).toEqual(
+            '403 IDENTITY-TOKEN - .identity (IdentityToken) is required',
+        );
+        expect2(await _e(api.doGet(A.id, null, null, $.site)), 'id').toEqual({ id: A.id });
+        //* local mode: admin for all, no pin, view ignored.
+        const L = await _setup();
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+        expect2(await L._list(L.$.guest, { view: 'admin', sid: 'a' }), K).toEqual({ sid: 'a' });
+        expect2(await L._list(L.$.own, { view: 'bogus' }), K).toEqual({});
+        expect2(await L._five(L.$.guest, L.C.id)).toEqual(OK5);
+    });
 });

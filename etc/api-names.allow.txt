@@ -50,3 +50,6 @@
 +AccessScope
 +AccessPolicy
 +DEFAULT_ACCESS_POLICY
+# B15: policy keys of the caller state (`internal`, `cross`; docs/v5/B15-security.md)
++AccessInternal
++AccessCross

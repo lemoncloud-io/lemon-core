@@ -201,6 +201,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B13-access-policy.md](docs/v5/B13-access-policy.md) | B13: default data-access policy of `AbstractCRUDController` (`AccessPolicy`, `canDo` scopes) |
 | [B14-relay-context.md](docs/v5/B14-relay-context.md) | B14 plan: `context.channel`, the signed relay `x-lemon-relay`, trace, `x-protocol-context` deprecation (Korean) |
 | [B14-relay-context-impl.md](docs/v5/B14-relay-context-impl.md) | B14 implementation record (WP1–WP3): lemon-model `channel`/`trace`, `protocol-relay.ts`, entry changes (Korean) |
+| [B15-security.md](docs/v5/B15-security.md) | B15: cross-cloud `cid`, list `view`, internal admin, policy keys `internal`/`cross` |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |

@@ -31,6 +31,7 @@
  * @date        2026-10-30 v5 B14: the `fields/admin` gate reads `context.channel` (not `domain`).
  * @date        2026-10-28 v5 B4: `fields/admin` self-check uses the shared `checkFieldsAdmin()`.
  * @date        2026-10-30 v5 B13: handlers pass `{ useSession, policy }` to `canDo`, `doList` checks `list`, bulk in 2 phases.
+ * @date        2026-10-30 v5 B15: `doList` reads `?view=` (`resolveListView()`, ceiling `policy.list`), internal admin.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -47,9 +48,13 @@ import { GeneralWEBController } from '../../controllers/';
 import { CoreModel, AbstractTransformer, View, Body, NextContext, NextHandler, SimpleSet } from 'lemon-model';
 import { fieldsOf } from 'lemon-model'; //* v5 B4: L2 core fields, re-derived (the services' `CORE_FIELDS` is module-local).
 import { BulkBody, ListResult, PaginatedListResult, PaginateParam } from './types';
-import { MyCoreManager, MyCoreService, MyCoreProxy, AccessPolicy, CanDoOptions } from './abstract-services';
+import { MyCoreManager, MyCoreService, MyCoreProxy, MyManagerProxy } from './abstract-services';
+import { AccessPolicy, AccessScope, CanDoOptions } from './abstract-services';
 import { checkFieldsAdmin, FieldsAdminReport } from './fields-admin';
 export { CoreModel, AbstractTransformer, GeneralWEBController };
+
+//* v5 B15: the list scopes from the narrowest to the widest (`view` ceiling = `policy.list`).
+const LIST_SCOPES: readonly AccessScope[] = ['owner', 'group', 'site', 'any'];
 
 /**
  * convert as id string.
@@ -94,6 +99,7 @@ interface CRUDCreationOptions {
     /**
      * (optional) v5 B13: access scopes for the 7 CRUD handlers of this controller (session on only).
      * - merged over the manager-proxy `accessPolicy()`; ex: `{ read: 'site' }` restores the v5 § 6.4 read rule.
+     * - v5 B15: also `internal` (`'admin'` | `'identity'`) and `cross` (`'accept'` | `'identity'` | `'deny'`).
      *
      * @see MyManagerProxy.canDo()
      */
@@ -199,6 +205,39 @@ export abstract class AbstractCRUDController<
     }
 
     /**
+     * v5 B15: true if the caller is admin for the CRUD defaults (`hasAdminRole` or the internal admin of this policy).
+     * - the same rule as `MyManagerProxy.isAdminLike()` (used by `canDo` and `packSearchParam`).
+     */
+    protected isAdminLike(proxy: MyCoreProxy<ModelType, any>): boolean {
+        const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
+        return $prxy ? $prxy.isAdminLike({ policy: this.confPolicy }) : proxy.hasAdminRole();
+    }
+
+    /**
+     * v5 B15: the list view of `GET /<type>?view=<view>` (session on only) → a list scope, or `'admin'` (no pin).
+     * - default: `mine` → `owner`, `group`, `site`, `admin`; anything else → `400 INVALID - view[…] is invalid`.
+     * - override to add views (ex: DoU `public`); the caller check (`canDo('list')`), the `admin` gate and the
+     *   `policy.list` ceiling still apply to the returned value.
+     *
+     * @param view the non-empty `?view=` value
+     * @param $ctx the request context
+     * @returns a list scope, or `'admin'`
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    protected resolveListView(view: string, $ctx: NextContext): AccessScope | 'admin' {
+        switch (view) {
+            case 'mine':
+                return 'owner';
+            case 'group':
+            case 'site':
+            case 'admin':
+                return view;
+            default:
+                throw new Error(`400 INVALID - view[${view}] is invalid @resolveListView(${this.type()})`);
+        }
+    }
+
+    /**
      * model transformer from model to view
      */
     public modelAsView(model: MyModel, options?: { useOnlyDefined?: boolean; hasCores?: boolean }): MyView {
@@ -236,7 +275,8 @@ export abstract class AbstractCRUDController<
         const parent = options?.parent ?? null;
         const useSession = options?.useSession ?? this.confUseSession;
         //* v5 B13: an admin without a session (IAM SigV4, `roles: ['admin']` claim) creates without `403 IDENTITY-TOKEN`.
-        const throwable = options?.throwable ?? (this.confThrowable && !(useSession && proxy.hasAdminRole()));
+        //* v5 B15: the internal admin too (a protocol call may carry no identity).
+        const throwable = options?.throwable ?? (this.confThrowable && !(useSession && this.isAdminLike(proxy)));
         const $model = onlyDefined<CoreModel<ModelType>>({
             type: this.manager.type,
         });
@@ -325,9 +365,14 @@ export abstract class AbstractCRUDController<
 
         // request search
         return this.service.guardProxy($ctx, async proxy => {
+            //* v5 B15: `?view=` is reserved (never a filter, session on or off) - split it off the query.
+            const { view: view0, ...query } = (param ?? {}) as SimpleSet;
+            const view =
+                typeof view0 === 'string' ? view0.trim() : view0 === undefined || view0 === null ? '' : `${view0}`;
+            const $query = param ? (query as PaginateParam & SimpleSet) : param;
             //WARN - has no internal properties like `sid`, `uid`
             //TODO - `stereo` 같은 경우가 모델 생성시 필수값일때, 쿼리와 겹침. (not-exists) 개선필요함 @230926
-            const model = param ? this.bodyToModel(param as any, true) : null; // could have all
+            const model = $query ? this.bodyToModel($query as any, true) : null; // could have all
             const useSession = this.confUseSession;
 
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
@@ -335,8 +380,18 @@ export abstract class AbstractCRUDController<
             if (useSession && !$prxy.canDo('list', undefined, this.canDoOptions(errScope)))
                 throw new Error(`403 NOT ALLOWED - action[list] is invalid @${errScope}`);
             //* v5 B13: pin the rows per the effective `list` scope (the same merge as `canDo`).
-            const scope = useSession ? $prxy.effectivePolicy(this.confPolicy).list : undefined;
-            const { $page, $param } = $prxy.packSearchParam(param, model, { useSession, scope, errScope });
+            //* v5 B15: the scope comes from the view (default `mine`, `admin` for admin-like); `policy.list` is the ceiling.
+            const { scope, asAdmin } = useSession
+                ? this.listScopeOf($prxy, view, $ctx, errScope)
+                : { scope: undefined, asAdmin: undefined };
+            const policy = this.confPolicy;
+            const { $page, $param } = $prxy.packSearchParam($query, model, {
+                useSession,
+                scope,
+                errScope,
+                policy,
+                asAdmin,
+            });
             _log(this.logNS, `>> $param =`, $U.json($param));
 
             //* search from manager.
@@ -350,6 +405,35 @@ export abstract class AbstractCRUDController<
             return { total, limit: $page.limit, page: $page.page, list };
         });
     };
+
+    /**
+     * v5 B15: the list scope of `doList` from `?view=` (SPEC § 15.2, session on only).
+     * - no view → `admin` for an admin-like caller, else `owner` (= `mine`). else `resolveListView()`.
+     * - `admin` by a non-admin → 403. a scope wider than `policy.list` (owner < group < site < any) by a non-admin → 403.
+     *
+     * @returns `{ scope, asAdmin }` for `packSearchParam()`
+     */
+    protected listScopeOf(
+        $prxy: MyManagerProxy<MyModel, any, any>,
+        view: string,
+        $ctx: NextContext,
+        errScope: string,
+    ): { scope: AccessScope; asAdmin: boolean } {
+        const policy = $prxy.effectivePolicy(this.confPolicy);
+        const adminLike = $prxy.isAdminLike({ policy: this.confPolicy });
+        const resolved = view ? this.resolveListView(view, $ctx) : adminLike ? 'admin' : 'owner';
+        //* `admin`: no pin, admin-like callers only.
+        if (resolved === 'admin') {
+            if (!adminLike) throw new Error(`403 NOT ALLOWED - view[${view || resolved}] needs admin @${errScope}`);
+            return { scope: policy.list, asAdmin: true };
+        }
+        //* a scope: a non-admin may not go wider than `policy.list` (an unknown scope never passes).
+        const rank = (S: string) =>
+            LIST_SCOPES.includes(S as AccessScope) ? LIST_SCOPES.indexOf(S as AccessScope) : NaN;
+        if (!adminLike && !(rank(resolved) <= rank(policy.list)))
+            throw new Error(`403 NOT ALLOWED - view[${view || resolved}] is over list[${policy.list}] @${errScope}`);
+        return { scope: resolved, asAdmin: false };
+    }
 
     /**
      * list types by id
@@ -657,7 +741,8 @@ export abstract class AbstractCRUDController<
             if (!$prxy) throw new Error(`.model-type[${this.modelType}] is required - ${errScope}`);
 
             //* v5 B13: a session-less non-admin caller keeps the `403 IDENTITY-TOKEN` message (as the single handlers).
-            if (this.confUseSession && !proxy.hasAdminRole())
+            //* v5 B15: the internal admin is admin here too.
+            if (this.confUseSession && !this.isAdminLike(proxy))
                 proxy.getCurrentSession({ throwable: this.confThrowable });
 
             //* v5 B13 phase 1: load every stored row (404 first, current messages) and check it, no write.
