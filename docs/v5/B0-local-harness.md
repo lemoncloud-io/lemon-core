@@ -43,6 +43,8 @@ npm run express.lemon       # ENV=lemon STAGE=local npm run start
 
 `loadEnviron`, `loadProfile`, `buildExpress` and their two internal helpers stay in `lemon-devkit`: they are local-development-only, so moving them into lemon-core is not part of v5. lemon-core keeps its dynamic `require('lemon-devkit')` delegation and the circular devDependency. B0 is complete with B0-a.
 
+2026-10-31: reversed by B20 (D80) — `loadEnviron`, `loadProfile` and `buildExpress` now live in lemon-core, and `lemon-devkit` is no longer a devDependency (`docs/v5/B20-local-gateway.md`).
+
 ## Gate for later bundles
 
 | Bundle | Gate through this harness |

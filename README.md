@@ -207,6 +207,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B18-audit-coverage.md](docs/v5/B18-audit-coverage.md) | B18: devDependencies audit 9 → 0 (vitest `4.1.12`, lemon-devkit `0.2.3`), coverage 70 % → 96 % lines (offline specs), six pinned behaviours to fix separately |
 | [B19-bin-tools.md](docs/v5/B19-bin-tools.md) | B19: `lemon-lambda-invoke` / `-logs` / `-perf`, `lemon-fields-admin`, `lemon-loop-check` (from templates-api `bin/`) |
 | [B19-bin-deploy.md](docs/v5/B19-bin-deploy.md) | B19: `lemon-lambda-pack` / `-local` / `-deploy` / `-deploy-dev` / `-migrate` (from templates-api `bin/`) |
+| [B20-local-gateway.md](docs/v5/B20-local-gateway.md) | B20: `lemon-devkit` removed — `loadEnviron`/`loadProfile` in lemon-core, `buildExpress` as a local API Gateway (`serverless.yml` routes, `{proxy+}`, binary bodies) |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |

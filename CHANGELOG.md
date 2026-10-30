@@ -7,10 +7,21 @@ All notable changes to this project will be documented in this file. See [standa
 ### Features
 
 * **B19 Lambda tools** (`docs/v5/B19-bin-tools.md`, `docs/v5/B19-bin-deploy.md`, `HOW_TO_UPGRADE_V5.md` § 19): the tools services copied from lemon-templates-api `bin/` ship as npm `bin` commands — `lemon-lambda-invoke`, `lemon-lambda-logs`, `lemon-lambda-perf`, `lemon-fields-admin`, `lemon-loop-check`, `lemon-lambda-pack`, `lemon-lambda-local`, `lemon-lambda-deploy`, `lemon-lambda-deploy-dev`, `lemon-lambda-migrate`. Same flags and output; the service root is the working directory; missing optional AWS SDK peers stop with an `npm i -D` hint; the `.bin` symlink start is detected (`realpath`). The node:test suites are ported to vitest (`bin/lib/*.spec.mjs`). No new `dependencies`.
+* **B20 local API Gateway** (`docs/v5/B20-local-gateway.md`, `HOW_TO_UPGRADE_V5.md` § 20): `buildExpress()` emulates API Gateway (REST v1) from `serverless.yml` — routes of `functions.*.events[].http` (CloudFormation tags and `${self:…}` tolerated), literal > `{param}` > `{proxy+}`, exact method > `ANY`, REST v1 events, CORS preflight from route `cors`, `binaryMediaTypes` for request and response bodies (download as bytes when `Accept` matches). Same public API; `prefix` is ignored; no `serverless.yml` → the legacy `/{type}/{id}/{cmd}` routes with a warning.
+* **B20 `{proxy+}`**: the web handler maps `{proxy+}` to `id` (first segment) and `cmd` (the rest, may hold `/`); `{cmd+}` is kept as is. The same mapping feeds `context.source`.
+* **B20 binary bodies**: a base64 request body is decoded by content type — textual → string, `multipart/form-data` → `{ ...fields, file, files }` (each with `buffer`), other → `Buffer`. A `Buffer` result body is sent as base64.
+
+### Changes
+
+* **B20 env loading in lemon-core**: `loadEnviron()` / `loadProfile()` are ported from lemon-devkit (same file, stage and merge rules, `FILE NOT FOUND:<path>`, `LS=1`); no `require('lemon-devkit')` remains (D80, reverses D33).
+* **B20 response base64 flag**: `buildResponse()` sets `isBase64Encoded` only for a non-textual content type (`application/json`, `application/xml`, `*+json`, `*+xml`, `text/*` … are not flagged).
+* **B20 local errors as API Gateway**: an unknown path or a method not on the resource → `403 Missing Authentication Token` (was 404 on the devkit server); a rejected handler → `502` at once (was a hanging request); a body over 10 MB → `413`. `GET /` shows the banner only without a `GET /` route.
 
 ### Dependencies
 
 * `@aws-sdk/client-cloudwatch-logs` `^3.1159.0` added as an optional peer and devDependency (used by the logs tools).
+* `lemon-devkit` removed from devDependencies (B20): lemon-core no longer loads it.
+* `express` added as an optional peer (`^4.21.2 || ^5.0.0`) and a devDependency (`^4.22.3`), for `buildExpress()` (B20).
 
 ## 5.0.12 (2026-10-30)
 
