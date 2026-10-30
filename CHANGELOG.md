@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file. See [standa
 
 * **B17 repository hygiene** (`docs/v5/B17-repo-hygiene.md`): `.travis.yml` removed (last changed 2022-02, nothing in the repo runs or references it; its Codecov token stays in git history and must be rotated by the owner) and the codecov badge with it; `.github/workflows/docgen.yaml` removed (typedoc, S3 copy and `gh-pages` deploy; the doc scripts went in #225). `CONTRIBUTING.md` gets the `v5` branch flow. No package change.
 
+### Dependencies
+
+* `lemon-model` `5.0.2` → `5.0.3`, exact pin (B17-f): strict consumers of `lemon-core/model` no longer need `skipLibCheck` (lemon-model B17-a fixes TS2411 on `GeneralItem` / `SimpleSearchParam`). No runtime change.
+
 ## 5.0.10 (2026-10-30)
 
 ### Fixes

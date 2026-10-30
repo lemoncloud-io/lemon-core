@@ -940,7 +940,7 @@ import { CoreModel, NextContext } from 'lemon-core';
 import { field, fieldsOf } from 'lemon-core/model';
 ```
 
-The pair: lemon-core pins `lemon-model` to one exact version (5.0.9 pins `5.0.2`). Each lemon-core release names its lemon-model in `CHANGELOG.md`. A new lemon-model reaches your service with a lemon-core release, not by itself. After the move, `npm ls lemon-model` shows one copy, so one `CoreModel` class (`instanceof` works across files).
+The pair: lemon-core pins `lemon-model` to one exact version (5.0.9 pins `5.0.2`; the release after 5.0.10 pins `5.0.3`, so strict consumers of `lemon-core/model` need no `skipLibCheck`). Each lemon-core release names its lemon-model in `CHANGELOG.md`. A new lemon-model reaches your service with a lemon-core release, not by itself. After the move, `npm ls lemon-model` shows one copy, so one `CoreModel` class (`instanceof` works across files).
 
 Guard: `no-restricted-imports` for `lemon-model` and `lemon-model/*` in your eslint config (snippet in the B16 doc).
 
