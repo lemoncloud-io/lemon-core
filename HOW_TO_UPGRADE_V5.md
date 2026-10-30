@@ -720,11 +720,18 @@ With the session on (`useSession` of the controller, env `USE_SESSION` for a dir
 
 **Session off and local mode are unchanged.** A controller with `useSession: false` (and every call in local mode) keeps the v5 rules above: same-site read for any role holder, update/delete for the same `sid` and `uid`, no list check or pin.
 
-**Override** (highest first): a `MyManagerProxy.canDo()` override (runs first, falls back to `super.canDo()`); the controller option `policy` (`CRUDCreationOptions.policy?: Partial<AccessPolicy>`); `MyManagerProxy.accessPolicy()` per model type; the core `DEFAULT_ACCESS_POLICY` (`list: 'site'`, the other four `'owner'`). Scopes: `owner`, `group`, `site`, `any`. New root names: `AccessScope`, `AccessPolicy`, `DEFAULT_ACCESS_POLICY`.
+**Override** (highest first): a `MyManagerProxy.canDo()` override (runs first, falls back to `super.canDo()`); the controller option `policy` (`CRUDCreationOptions.policy?: Partial<AccessPolicy>`); `MyManagerProxy.accessPolicy()` per model type; the core `DEFAULT_ACCESS_POLICY` (`list: 'site'`, the other four `'owner'`, and since B15 `internal: 'admin'`, `cross: 'accept'`). Scopes: `owner`, `group`, `site`, `any`. New root names: `AccessScope`, `AccessPolicy`, `DEFAULT_ACCESS_POLICY` (B15: `AccessInternal`, `AccessCross`).
 
 * **Restore the v5 read rule in one line:** `{ useSession: true, policy: { read: 'site' } }` in the controller options.
 * Services that share rows by another field (`model.id`, `userId`, member lists) keep or add a `canDo` override; it runs before the default.
 * The env table of § 11.8 has no new name: `SID_LEGACY_ACCESS` keeps its values and default (its row now says that read follows it too).
+
+**B15 (list `view`, internal admin, cross-cloud).** Session on only; session off and local mode are unchanged. Rules and spec ids: `docs/v5/B15-security.md`.
+
+* **`?view=` of `doList`.** No view = `mine` (`sid` + `uid` of the session, `?uid=` ignored) for a non-admin, `admin` for an admin-like caller. `mine` · `group` (`sid` + `gid`) · `site` (`sid`, `?uid=` narrows) · `admin` (the B13 admin list: own site unless `?sid=`). `policy.list` is now the **widest** scope a non-admin may ask for (`owner` < `group` < `site` < `any`; wider → `403 NOT ALLOWED - view[…] is over list[…]`). A non-admin `view=admin` → `403 NOT ALLOWED - view[admin] needs admin`. Another value → `400 INVALID - view[…] is invalid`, unless the controller overrides `resolveListView(view, $ctx)`. `view` is reserved: it never reaches `packSearchParam` as a filter. **The B13 default list (`site`) is now asked with `?view=site`.**
+* **Internal admin.** A protocol caller (`context.channel === 'internal'`, § 15.1) is admin for the CRUD defaults (`canDo`, the list pin) when `policy.internal` is `'admin'` (default). `policy: { internal: 'identity' }` evaluates it by the relayed identity instead. An entry without `channel` (cron, streams, notifications, non-protocol SNS/SQS) is not internal. `hasAdminRole()` is unchanged, so `GET /<type>/<id>/admin` and `hasAdminRole('owner')` gates still need a role. Without `PROTOCOL_VERIFY=enforce` an internal call is accepted unsigned (§ 13.4): install the C1 key and enforce, or set `internal: 'identity'`.
+* **Cross-cloud.** An identity with `cid` (cloud-id = the caller's account number) different from the receiver's own `context.accountId` is cross-cloud; an empty `cid` is the same cloud. `policy.cross`: `'accept'` (default, same rules), `'identity'` (never internal admin), `'deny'` (403 after the admin role). The `TRACE` line gets ` cross=1` (never the account number).
+* **`getCurrentSession()` under `internal`.** A relayed identity (no `userAgent`) is now the session when `channel === 'internal'` (not in local mode, not with `useSession: false`), so a relayed user is no longer `403 IDENTITY-TOKEN` and `create` stamps its `sid`/`uid`.
 
 ### 11.8 `$U.ts()` / `$U.dt()` use timeZone 9 by default
 
@@ -852,7 +859,7 @@ Internal calls no longer carry the caller's full context. Each entry sets `conte
 | web | header `x-lemon-relay` |
 | SNS/SQS | the `relay` field of the protocol param; the `context` field is not sent |
 | value | `r1.<base64url(JSON)>`, at most 4096 bytes on receive (about 0.4 KB for a typical caller) |
-| JSON | `idt` (`sid`, `uid`, `gid`, `roles`, `identityId`, `lang` only), `tid`, `hop`, `src`, `via`, `pid`, `iat` |
+| JSON | `idt` (`sid`, `uid`, `gid`, `roles`, `identityId`, `lang`, and since B15 `cid`, `aid` only), `tid`, `hop`, `src`, `via`, `pid`, `iat` |
 | signature | web: `x-protocol-signature` with the relay string in the context slot of the canonical; SNS/SQS: the message signature (unchanged) |
 
 The receiver builds its context from the relay: `identity` = `idt`, `channel` = `internal`, `depth` = `hop`, `source` = `src`, `trace` = `{ tid, hop, via, pid, src }`, and its own `requestId`/`accountId` (Lambda `awsRequestId` and the account of `invokedFunctionArn`). Nothing else of the caller crosses the hop: no `cookie`, `authorization`, `referer`, `origin`, `clientIp`, `userAgent`, `domain`, `meta`, tokens or keys. A web event with `host` ignores the relay exactly like `x-protocol-context`. A bad relay → `400 INVALID CONTEXT - relay <reason>`.

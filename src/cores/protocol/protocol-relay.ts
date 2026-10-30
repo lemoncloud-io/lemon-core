@@ -12,6 +12,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B14)
  * @date        2026-10-30 a safe trace id (`SAFE_TRACE_ID`), and `nextHopContext()` for an in-process (same-service) callback.
+ * @date        2026-10-30 v5 B15: `cid` (cloud-id) and `aid` (auth-id) cross a hop; `isCrossCloud()`; `TRACE … cross=1`.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -31,7 +32,8 @@ export const RELAY_PREFIX = 'r1.';
 /** max bytes of a relay value (the receiver rejects a larger one) */
 export const RELAY_MAX_BYTES = 4096;
 /** identity fields that cross a hop (whitelist). nothing else of `NextIdentity` is relayed */
-export const RELAY_IDENTITY_FIELDS = ['sid', 'uid', 'gid', 'roles', 'identityId', 'lang'] as const;
+//* v5 B15: + `cid` (cloud-id = the caller's account, for the cross-cloud check) and `aid` (auth-id, DoU `$sess.aid`).
+export const RELAY_IDENTITY_FIELDS = ['sid', 'uid', 'gid', 'roles', 'identityId', 'lang', 'cid', 'aid'] as const;
 /** env name of the send mode of the legacy context (`off` | `send`) */
 export const PROTOCOL_LEGACY_CONTEXT = 'PROTOCOL_LEGACY_CONTEXT';
 /** env name of the receive mode of the legacy context (`accept` | `warn` | `reject`) */
@@ -60,6 +62,10 @@ export interface RelayIdentity {
     roles?: string[];
     identityId?: string;
     lang?: string;
+    /** (optional) v5 B15: cloud-id (= the caller's account number); empty = the same cloud */
+    cid?: string;
+    /** (optional) v5 B15: auth-id (= id in `AuthModel`), as `IdentityToken.aid` */
+    aid?: string;
 }
 
 /** the relay JSON (`r1.` payload) */
@@ -318,19 +324,34 @@ const pathOf = (uri?: string): string => {
 };
 
 /**
- * the `TRACE` line of an entry: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|->`.
+ * v5 B15: true if the identity of the context comes from another cloud (SPEC § 15.1).
+ * - `identity.cid` (the caller's cloud-id) and `context.accountId` (the receiver's own account, B14) are both
+ *   non-empty and differ. a `cid` that starts with `#` is empty (`IdentityToken.cid`). compared, never logged.
+ */
+export const isCrossCloud = (context?: NextContext): boolean => {
+    const cid0 = (context?.identity as any)?.cid;
+    const cid = typeof cid0 === 'string' && !cid0.startsWith('#') ? cid0.trim() : '';
+    const own = `${context?.accountId ?? ''}`.trim();
+    return !!cid && !!own && cid !== own;
+};
+
+/**
+ * the `TRACE` line of an entry: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|->[ cross=1]`.
  * - no identity value, no account (the via host and the src path only).
+ * - v5 B15: ` cross=1` when the identity is cross-cloud (the flag only, never the account numbers).
  */
 export const traceLine = (context: NextContext): string => {
     const trace = context?.trace;
     const src = trace?.src ?? context?.source;
-    return [
+    const line = [
         `TRACE tid=${token(trace?.tid)}`,
         `hop=${token(trace?.hop)}`,
         `ch=${token(context?.channel)}`,
         `via=${hostOf(trace?.via)}`,
         `src=${pathOf(src)}`,
-    ].join(' ');
+    ];
+    if (isCrossCloud(context)) line.push('cross=1'); //* v5 B15
+    return line.join(' ');
 };
 
 /** print the `TRACE` line of an entry (one per web entry and per protocol receive) */

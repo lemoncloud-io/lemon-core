@@ -7,6 +7,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B14)
  * @date        2026-10-30 v5 B14: a safe trace id (local express requestId), the same-service callback hop.
+ * @date        2026-10-30 v5 B15: `cid`/`aid` cross a hop, `TRACE … cross=1` (B15 T-08..T-10).
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -38,6 +39,7 @@ import {
     readMaxHop,
     traceLine,
     entryTrace,
+    isCrossCloud,
 } from './protocol-relay';
 
 //* a test-only key (not a secret).
@@ -732,5 +734,79 @@ describe('protocol-relay', () => {
         );
         expect2(() => [relayBytes <= 1024, relayBytes < legacyBytes]).toEqual([true, true]);
         expect2(() => [relay2 <= 1024, relay2 < legacy2]).toEqual([true, true]);
+    });
+    //* v5 B15: a caller from another cloud (dummy accounts: the caller `cid` differs from the receiver's own).
+    const OTHER_ACC = '210987654321';
+    const crossCaller: NextContext = {
+        ...caller,
+        identity: { ...caller.identity, cid: OTHER_ACC, aid: 'AUTH-ID-1' } as any,
+    };
+
+    it('B15 T-08 the relay keeps `cid` and `aid` (build, decode, receiver context)', () => {
+        const relay = buildRelay(crossCaller, { via: viaOf(crossCaller), now: 1800000000000 });
+        expect2(() => relay.idt).toEqual({
+            sid: 'S1',
+            uid: 'U1',
+            gid: 'G1',
+            roles: ['user', 'admin'],
+            identityId: 'ap-northeast-2:identity-dummy',
+            lang: 'ko',
+            cid: OTHER_ACC,
+            aid: 'AUTH-ID-1',
+        });
+        expect2(() => decodeRelay(encodeRelay(relay))).toEqual(relay);
+        const own: NextContext = { requestId: 'req-recv-1', accountId: '123456789012' };
+        expect2(() => asRelayContext(relay, own).identity, 'cid,aid').toEqual({ cid: OTHER_ACC, aid: 'AUTH-ID-1' });
+        //* typed like the other string fields; still nothing outside the whitelist.
+        const enc = (o: any) => `r1.${Buffer.from(JSON.stringify(o), 'utf8').toString('base64url')}`;
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, idt: { cid: 1 } }))).toEqual(
+            '400 INVALID CONTEXT - relay idt.cid',
+        );
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, idt: { aid: 'a', did: 'd' } })).idt).toEqual({ aid: 'a' });
+        const json = Buffer.from(encodeRelay(relay).substring(3), 'base64url').toString('utf8');
+        expect2(() => SECRETS.filter(S => json.includes(S))).toEqual([]);
+    });
+
+    it('B15 T-09 the TRACE line flags a cross-cloud identity (`cross=1`), never the account', () => {
+        const own: NextContext = { requestId: 'r2', accountId: '123456789012' };
+        const ctx = asRelayContext(buildRelay(crossCaller, { via: viaOf(crossCaller) }), own);
+        const line = traceLine(ctx);
+        expect2(() => isCrossCloud(ctx)).toEqual(true);
+        expect2(() => line).toEqual(
+            'TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run cross=1',
+        );
+        expect2(() => [line.includes(OTHER_ACC), line.includes('123456789012')]).toEqual([false, false]);
+        //* same cloud, `#` or no `cid`, or no own account → no flag.
+        const _line = (cid: string, accountId = '123456789012') =>
+            traceLine({ identity: { cid } as any, accountId, channel: 'external', trace: { tid: 'x', hop: 0 } });
+        expect2(() => _line('123456789012')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
+        expect2(() => _line('#')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
+        expect2(() => _line('')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
+        expect2(() => _line(OTHER_ACC, '')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
+        expect2(() => _line(OTHER_ACC)).toEqual('TRACE tid=x hop=0 ch=external via=- src=- cross=1');
+    });
+
+    it('B15 T-10 web and SNS/SQS round trips keep `cid`/`aid` and log `cross=1`', async () => {
+        const { lambda, got } = instance();
+        //* web relay → the receiver identity has `cid`/`aid`; one TRACE line with the flag only.
+        const r1 = await withLog(() => lambda.handle(webEvent(crossCaller), lambdaCtx()));
+        expect2(() => r1.res, 'statusCode').toEqual({ statusCode: 200 });
+        expect2(() => got[0].identity, 'cid,aid').toEqual({ cid: OTHER_ACC, aid: 'AUTH-ID-1' });
+        expect2(() => got[0], 'channel,accountId').toEqual({ channel: 'internal', accountId: '123456789012' });
+        const trace1 = linesOf(r1.lines, 'TRACE ');
+        expect2(() => trace1.length).toEqual(1);
+        expect2(() => [trace1[0].endsWith(' cross=1'), trace1[0].includes(OTHER_ACC)]).toEqual([true, false]);
+        expect2(() => trace1[0].includes('123456789012')).toEqual(false);
+        //* SQS relay too.
+        const r2 = await withLog(() => lambda.handle({ Records: [sqsRecord(crossCaller)] }, lambdaCtx()));
+        expect2(() => r2.res).toEqual({ batchItemFailures: [] });
+        expect2(() => got[1].identity, 'cid,aid').toEqual({ cid: OTHER_ACC, aid: 'AUTH-ID-1' });
+        expect2(() => linesOf(r2.lines, 'TRACE ')[0].endsWith(' cross=1')).toEqual(true);
+        //* the same-cloud caller → no flag.
+        const same = { ...caller, identity: { ...caller.identity, cid: '123456789012' } as any };
+        const r3 = await withLog(() => lambda.handle({ Records: [snsRecord(same)] }, lambdaCtx()));
+        expect2(() => r3.res).toEqual(undefined);
+        expect2(() => got[2].identity, 'cid').toEqual({ cid: '123456789012' });
+        expect2(() => linesOf(r3.lines, 'TRACE ')[0].includes('cross=')).toEqual(false);
     });
 });

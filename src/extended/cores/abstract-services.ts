@@ -40,6 +40,7 @@
  * @date        2026-10-27 v5 B2-b: OpenSearch client, lazy `$OS2` (= `$ES6Routed`), one service set per instance.
  * @date        2026-10-28 v5 B4: `CORE_FIELDS = fieldsOf(CoreModel)`; manager `fields` may be a model class.
  * @date        2026-10-30 v5 B13: default data-access policy (`AccessPolicy`, `canDo` scopes, `list` pin by scope).
+ * @date        2026-10-30 v5 B15: policy keys `internal`/`cross`, cross-cloud `cid`, internal admin, internal session.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -85,6 +86,8 @@ import { $T, onlyDefined, parsePaginateParam } from './commons';
 import { CrendentialForAWS } from '../../environ';
 //* v5 B4: manager `fields` may be a model class.
 import { ModelClass } from '../../cores/storage/model-fields';
+//* v5 B15: the cross-cloud rule (one place, shared with the `TRACE` line).
+import { isCrossCloud } from '../../cores/protocol/protocol-relay';
 
 const NAME = $U.env('NAME', 'lemon');
 const NS = $U.NS('HDBS', 'green');
@@ -126,14 +129,35 @@ export type CanDoActionType = keyof typeof $LUT.CanDoAction;
 export type AccessScope = 'owner' | 'group' | 'site' | 'any';
 
 /**
+ * type: `AccessInternal`
+ * - v5 B15: how a protocol caller (`context.channel === 'internal'`) is evaluated (SPEC § 15.4).
+ * - `admin` (default): every action, no list pin. `identity`: by the relayed identity, as any other caller.
+ */
+export type AccessInternal = 'admin' | 'identity';
+
+/**
+ * type: `AccessCross`
+ * - v5 B15: how a cross-cloud caller (identity `cid` ≠ own `context.accountId`) is treated (SPEC § 15.1).
+ * - `accept` (default): the same rules as a same-cloud caller. `identity`: never internal admin. `deny`: 403.
+ */
+export type AccessCross = 'accept' | 'identity' | 'deny';
+
+/**
  * type: `AccessPolicy`
  * - v5 B13: the scope of each CRUD action.
+ * - v5 B15: + `internal` and `cross`, one per policy (caller state, not per action).
  */
-export type AccessPolicy = Record<CanDoActionType, AccessScope>;
+export type AccessPolicy = Record<CanDoActionType, AccessScope> & {
+    /** v5 B15: protocol (`internal`) callers - `admin` (default) or `identity` */
+    internal: AccessInternal;
+    /** v5 B15: cross-cloud callers - `accept` (default), `identity` or `deny` */
+    cross: AccessCross;
+};
 
 /**
  * v5 B13: the core default policy - list in the caller's site, the other four on own rows only.
  * - override per type with `MyManagerProxy.accessPolicy()`, per controller with `options.policy`.
+ * - v5 B15: protocol callers are admin, cross-cloud callers are accepted.
  */
 export const DEFAULT_ACCESS_POLICY: Readonly<AccessPolicy> = Object.freeze({
     list: 'site',
@@ -141,7 +165,17 @@ export const DEFAULT_ACCESS_POLICY: Readonly<AccessPolicy> = Object.freeze({
     create: 'owner',
     update: 'owner',
     delete: 'owner',
+    internal: 'admin', //* v5 B15
+    cross: 'accept', //* v5 B15
 });
+
+//* v5 B15: the known values of the two caller-state keys (an unknown value is refused).
+const ACCESS_INTERNAL: readonly string[] = ['admin', 'identity'];
+const ACCESS_CROSS: readonly string[] = ['accept', 'identity', 'deny'];
+
+//* v5 B15: true if `internal` and `cross` of a (merged) policy are known values.
+const isKnownCallerPolicy = (P: Partial<AccessPolicy>): boolean =>
+    ACCESS_INTERNAL.includes(P?.internal) && ACCESS_CROSS.includes(P?.cross);
 
 /**
  * Optional parameters for `canDo()`
@@ -155,7 +189,7 @@ export interface CanDoOptions {
     useSession?: boolean;
     /** current context to override */
     context?: NextContext;
-    /** (optional) v5 B13: scopes to override the manager-proxy policy (used only with the session on) */
+    /** (optional) v5 B13: scopes to override the manager-proxy policy (used only with the session on); v5 B15: + `internal`, `cross` */
     policy?: Partial<AccessPolicy>;
 }
 
@@ -1070,6 +1104,13 @@ export class MyCoreProxy<
                     return context?.identity;
                 }
             }
+            //* v5 B15: a protocol caller (`channel: 'internal'`, set by the entry) has no `userAgent` (a relay
+            //*   identity is a whitelist) → its non-empty identity is the session. not in local mode, and not with
+            //*   `useSession: false` (the session-off `canDo` rules stay unchanged).
+            const isInternal = !isLocal && useSession !== false && context?.channel === 'internal';
+            if (isInternal && $idt && typeof $idt === 'object' && Object.keys($idt).length > 0) {
+                return context?.identity;
+            }
 
             //TODO - 아래 코드는 개선의 여지가 있음(문제점???) @241210
             //* v5: `LOCAL_ACCOUNT` is honoured only in local mode (B5 § 6.3).
@@ -1212,6 +1253,40 @@ export class MyCoreProxy<
         //TODO 아래는 임시로 role에서 바로 체크하도록함! @251212/steve (샘픔의 session-dev.json를 이용할경우 admin 체크가 잘 안됨)
         if (context?.identity?.roles?.includes(role)) return true;
         return false;
+    }
+
+    /**
+     * v5 B15: true if the caller identity comes from another cloud (SPEC § 15.1).
+     * - `identity.cid` (cloud-id = the caller's account) and `context.accountId` (this receiver's account) are
+     *   both non-empty and differ. a `#…` cid is empty. the values are compared, never logged.
+     *
+     * @param context (optional) the context to check (default the proxy context)
+     */
+    public isCrossCloud(context?: NextContext): boolean {
+        return isCrossCloud(context ?? this.context);
+    }
+
+    /**
+     * v5 B15: true if the caller is a protocol caller treated as admin (SPEC § 15.4).
+     * - `context.channel === 'internal'` (an entry without `channel` is not internal), `policy.internal === 'admin'`,
+     *   and not a cross-cloud caller under `cross: 'identity'` (or `'deny'`). `hasAdminRole()` is not changed.
+     * - an unknown `internal`/`cross` value is never admin.
+     *
+     * @param policy (optional) the effective policy (missing keys = `DEFAULT_ACCESS_POLICY`)
+     * @param context (optional) the context to check (default the proxy context)
+     */
+    public isInternalAdmin(policy?: Partial<AccessPolicy>, context?: NextContext): boolean {
+        const ctx = context ?? this.context;
+        if (ctx?.channel !== 'internal') return false;
+        //* the two caller-state keys, with the core defaults.
+        const P = {
+            internal: policy?.internal ?? DEFAULT_ACCESS_POLICY.internal,
+            cross: policy?.cross ?? DEFAULT_ACCESS_POLICY.cross,
+        };
+        if (!isKnownCallerPolicy(P) || P.internal !== 'admin') return false;
+        //* `cross: 'identity'` (and `'deny'`) never gives a cross-cloud caller the internal admin.
+        if (P.cross !== 'accept' && this.isCrossCloud(ctx)) return false;
+        return true;
     }
 
     /**
@@ -1364,6 +1439,10 @@ export class MyManagerProxy<
             errScope?: string;
             /** (optional) v5 B13: list scope to pin (default: the effective policy `list`, session on only) */
             scope?: AccessScope;
+            /** (optional) v5 B15: the caller's policy (`internal`/`cross` decide the internal admin, `list` the default scope) */
+            policy?: Partial<AccessPolicy>;
+            /** (optional) v5 B15: `false` pins an admin-like caller by `scope` too (ex: `view=mine`); never widens a non-admin */
+            asAdmin?: boolean;
         },
     ) {
         const type = this.$mgr.type;
@@ -1372,8 +1451,11 @@ export class MyManagerProxy<
         const errScope = options?.errScope ?? `packSearchParam(${type})`;
         const isLocal = $U.isLocalMode(); //* v5: drop the `sid` pin only in local mode (B5 § 6.3).
         //* v5 B13: admin is decided before the session, so a session-less admin (IAM SigV4) lists without 403.
-        const isAdmin = useSession && !isLocal ? this.proxy.hasAdminRole('admin') : false;
-        const session = useSession ? this.proxy.getCurrentSession({ throwable: throwable && !isAdmin }) : null;
+        //* v5 B15: admin-like = `hasAdminRole` or the internal admin (same rule as `canDo`, `isAdminLike()`).
+        const adminLike = useSession && !isLocal ? this.isAdminLike({ policy: options?.policy }) : false;
+        //* v5 B15: `asAdmin: false` keeps the scope pin for an admin-like caller (it never makes a non-admin admin).
+        const isAdmin = adminLike && options?.asAdmin !== false;
+        const session = useSession ? this.proxy.getCurrentSession({ throwable: throwable && !adminLike }) : null;
 
         const _has = (name: string): boolean =>
             param && (typeof param[name] === 'string' || typeof param[name] === 'number');
@@ -1406,7 +1488,7 @@ export class MyManagerProxy<
             if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
         } else if (useSession && !isLocal) {
             //* v5 B13: pin per the list scope (SPEC § 14.3 list).
-            const scope: AccessScope = options?.scope ?? this.effectivePolicy().list;
+            const scope: AccessScope = options?.scope ?? this.effectivePolicy(options?.policy).list;
             const S = { sid: $T.S2(session?.sid), uid: $T.S2(session?.uid), gid: $T.S2(session?.gid) };
             const _deny = (name: string) =>
                 new Error(`403 NOT ALLOWED - list[${scope}] needs session .${name} @${errScope}`);
@@ -1526,6 +1608,7 @@ export class MyManagerProxy<
 
     /**
      * v5 B13: the effective policy - core default, then `accessPolicy()`, then `policy` (undefined values skipped).
+     * - v5 B15: the 7 keys (5 scopes + `internal`, `cross`); a partial `policy` overrides only its keys.
      *
      * @param policy (optional) scopes from the caller (ex: controller `options.policy`)
      * @returns the merged policy
@@ -1538,6 +1621,19 @@ export class MyManagerProxy<
                 return M;
             }, {});
         return { ...DEFAULT_ACCESS_POLICY, ..._defined(this.accessPolicy()), ..._defined(policy) };
+    }
+
+    /**
+     * v5 B15: true if the caller is admin for the CRUD defaults - `hasAdminRole()` or the internal admin
+     *   (`MyCoreProxy.isInternalAdmin()` with the effective policy). `canDo`, `packSearchParam` and `doList` agree on it.
+     *
+     * @param options (optional) `policy` from the caller (merged as `effectivePolicy`), `context` to override
+     * @returns boolean
+     */
+    public isAdminLike(options?: { policy?: Partial<AccessPolicy>; context?: NextContext }): boolean {
+        const context = options?.context;
+        if (this.proxy.hasAdminRole(null, { context })) return true;
+        return this.proxy.isInternalAdmin(this.effectivePolicy(options?.policy), context);
     }
 
     /**
@@ -1572,12 +1668,20 @@ export class MyManagerProxy<
         const hasModel = model !== undefined && model !== null;
         const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid), gid: $T.S2(model?.gid) };
         const legacy = $U.sidLegacyAccess();
+        //* v5 B15: the merged policy (7 keys); an unknown `internal`/`cross` value never allows (SPEC § 15.3).
+        const policy = this.effectivePolicy(options?.policy);
+        if (!isKnownCallerPolicy(policy)) return _deny();
 
         //* v5 B13 (1): `deny` refuses update/delete of a `sid`-less record before the admin pass (B5 § 6.4, kept).
         if (hasModel && !M.sid && (_act === 'update' || _act === 'delete') && legacy === 'deny') return _deny();
 
         //* v5 B13 (2): admin before the session fetch - IAM SigV4 and `roles: ['admin']` claims pass (SPEC § 14.3).
         if (this.proxy.hasAdminRole(null, { errScope, context })) return true;
+
+        //* v5 B15: `cross: 'deny'` refuses a cross-cloud caller (after the admin pass, SPEC § 15.3 order).
+        if (policy.cross === 'deny' && this.proxy.isCrossCloud(context)) return _deny();
+        //* v5 B15: a protocol caller is admin (`internal: 'admin'`), unless `cross: 'identity'` and cross-cloud.
+        if (this.proxy.isInternalAdmin(policy, context)) return true;
 
         //* v5 B13 (3): the session is required (throwable → the current `403 IDENTITY-TOKEN` messages).
         const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
@@ -1592,7 +1696,7 @@ export class MyManagerProxy<
         if (_act === 'list' && !hasModel) return true;
 
         //* v5 B13 (5): the scope of this action against the row.
-        const scope = this.effectivePolicy(options?.policy)[_act];
+        const scope = policy[_act];
         if (scope === 'any') return true;
         //* a `sid`-less row → `SID_LEGACY_ACCESS` (`open` = v4, else admin only) (T-25, T-26, T-27).
         if (!M.sid) return legacy === 'open' ? true : _deny();
