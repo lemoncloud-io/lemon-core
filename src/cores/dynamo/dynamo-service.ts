@@ -1127,7 +1127,8 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
                 if (org !== undefined && !Array.isArray(org)) throw new Error(`.${key} (${value}) should be array!`);
                 memo[key] = [...(org || []), ...normalize(value)];
             } else {
-                if (org !== undefined && typeof org !== 'number') throw new Error(`.${key} (${value}) should be number!`);
+                if (org !== undefined && typeof org !== 'number')
+                    throw new Error(`.${key} (${value}) should be number!`);
                 memo[key] = $U.N(org, 0) + (value as number);
             }
             updated[key] = memo[key];
