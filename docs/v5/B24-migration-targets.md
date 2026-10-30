@@ -95,6 +95,44 @@ Use `lemon-lambda-migrate` (then `lemon-lambda-deploy-dev`, `code` mode) for lem
 empty table next to hello's existing table (named outside the rule). The function environment would then point to
 the new table and the data would be split between two tables.
 
+## B24-b — `lemon-lambda-pack` accepts a dev-only in-repo link
+
+Both services (lemon-hello-api, lemon-templates-api v5 heads) carry a dev-only stand-in for `deepmerge`
+(`scripts/deepmerge-safe`, wired through `overrides` for `jest-config`, added for `npm audit`). Their lock has
+`node_modules/deepmerge = { resolved: "scripts/deepmerge-safe", link: true }` and
+`scripts/deepmerge-safe = { dev: true, … }`. B19 `validateLock()` rejected every link, so the pack failed with
+`Local dependency is unsupported: node_modules/deepmerge`.
+
+`validateLock()` now accepts a local link only when all of these hold; any other local entry keeps the B19 error:
+
+1. The entry is `link: true` at a `node_modules/<pkg>` key, and `resolved` is a plain relative path inside the
+   project: no scheme (`file:`, `link:`, …), not absolute, no `.` / `..` segment, no backslash, no forbidden
+   segment (`node_modules`, `.git`, `env`, …).
+2. `lock.packages[resolved]` exists, has `dev: true` (not `devOptional`), is not itself local, and every lock entry
+   under that path is `dev: true` and not local.
+3. If the target exists in the checkout, it is a real directory inside the root (not a symlink, no realpath escape).
+
+It returns the accepted links. After staging, the pack refuses the run when any runtime file is the link or its
+target (`Dev-only local dependency reached the runtime files`). The ZIP, the manifest and its checks are unchanged.
+
+Production install, measured (synthetic project with the same lock shape, image `public.ecr.aws/lambda/nodejs:24`,
+its npm 11.19.1, `--network=none`):
+
+| Install                                 | Link target folder absent                           | Present               |
+| --------------------------------------- | --------------------------------------------------- | --------------------- |
+| `npm ci --omit=dev` (pack transform)    | exit 0, no `node_modules` created                   | exit 0, same          |
+| `npm ci --include=dev` (build snapshot) | exit 0, `node_modules/deepmerge` is a dangling link | exit 0, link resolves |
+
+So the production install needs nothing, and the build snapshot gets nothing extra: the link target is not added to
+the snapshot, `runtimePaths` or the ZIP. The dangling dev link stays in the build folder, which is never staged
+(only `runtimePaths` are copied from it); the services' build script (`tsc`) does not load `deepmerge`. The root
+`overrides` entry `$deepmerge` does not break the production install after the pack removes `devDependencies`.
+
+Real runs (Docker, offline from AWS): `lemon-lambda-pack` of this branch completes for lemon-hello-api and
+lemon-templates-api; the B19 `validateLock()` still throws on both locks, the B24-b one returns
+`[{ name: "node_modules/deepmerge", target: "scripts/deepmerge-safe" }]`. Neither ZIP has a `deepmerge` or
+`scripts/` path.
+
 ## Tests
 
 -   `bin/lib/migrate-targets.spec.mjs` (new, 15): the compat lock above (4) and the registry cases — two frozen entries
@@ -108,3 +146,9 @@ the new table and the data would be split between two tables.
 -   `deploy.spec.mjs` (+2): a non-templates project aborts with `lemon-lambda-deploy:TOOL_FAILED`; resolved names that
     differ from the planned targets stop with `TARGET_MISMATCH` before any read or `deploy.begin`.
 -   `bin-entries.spec.mjs`: the frozen check covers `targets`, each entry and `abortReasonPrefixes`.
+-   `pack.spec.mjs` (+2, B24-b): a dev-only in-repo link is accepted; non-dev (`dev` missing or `devOptional`),
+    `../` escape, absolute, `file:` / `link:` scheme, target missing from the lock, target under `node_modules`,
+    link without `resolved`, prod package nested under the target, local entry under the target, chained link,
+    and a non-`node_modules` link key are rejected. A full fake pack with the link has no `deepmerge` / `scripts/`
+    file in the ZIP or the source inventory; a production tree that still holds the link is refused before the ZIP;
+    a link target that is a symlink out of the project is refused before any container runs.

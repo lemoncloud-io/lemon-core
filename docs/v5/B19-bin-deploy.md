@@ -65,6 +65,9 @@ lemon-lambda-pack [--runtime nodejs24.x] [--architecture x86_64|arm64] [--output
     host `node_modules` or `dist`), runs `npm ci` + the build script + `npm ci --omit=dev` in the selected Linux
     image, writes `lambda.zip` and `manifest.json` (file hashes, lockfile hash, Git SHA, dirty flag, image digest).
 -   Publishes the result only after ZIP extraction and an offline handler-export smoke in the same image.
+-   Local lock entries (`link`, `file:` / `link:` / relative / absolute `resolved`) are rejected, except a dev-only
+    in-repo link such as a `file:` devDependency stand-in (B24-b, `docs/v5/B24-migration-targets.md` § B24-b). Such a
+    link and its target never reach the ZIP.
 -   Exit `1` with `[pack] failed: <message>` on any failure.
 
 ## `lemon-lambda-local`

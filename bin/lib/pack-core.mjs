@@ -163,8 +163,50 @@ export function validateLock(pkg, lock) {
             throw new Error(`package-lock.json root mismatch: ${key}; refresh the lockfile intentionally`);
     }
     // Local/workspace packages could escape the snapshot or reuse a host checkout.
+    //* v5 B24-b: the one exception is a dev-only in-repo link (`devLinkTarget`); it is returned for the ZIP guard.
+    const devLinks = [];
     for (const [name, entry] of Object.entries(lock.packages)) {
-        if (entry.link || (entry.resolved && /^(?:file:|link:|\.\.?\/|\/)/.test(entry.resolved)))
+        if (!localEntry(entry)) continue;
+        const target = devLinkTarget(lock, name, entry);
+        if (!target) throw new Error(`Local dependency is unsupported: ${name}`);
+        devLinks.push({ name, target });
+    }
+    return devLinks;
+}
+// a lock entry that points at a local path (link, or a `file:` / `link:` / relative / absolute `resolved`).
+const localEntry = entry =>
+    Boolean(entry.link || (entry.resolved && /^(?:file:|link:|\.\.?\/|\/)/.test(entry.resolved)));
+//* v5 B24-b: the target of a dev-only link inside the project (npm `file:` devDependency), else null.
+function devLinkTarget(lock, name, entry) {
+    const target = entry.resolved;
+    // a `node_modules/<pkg>` link whose target is a plain relative path (no scheme, no `..`, not absolute).
+    if (
+        entry.link !== true ||
+        !/^(?:.+\/)?node_modules\/(?:@[^/]+\/)?[^/]+$/.test(name) ||
+        typeof target !== 'string' ||
+        /^[A-Za-z][A-Za-z0-9+.-]*:/.test(target)
+    )
+        return null;
+    try {
+        safeRelative(target);
+    } catch {
+        return null;
+    }
+    if (target.split('/').some(part => FORBIDDEN.test(part))) return null;
+    // the target's own entry is dev-only and not itself local; so is every entry below it.
+    const own = lock.packages[target];
+    if (!own || own.dev !== true || localEntry(own) || own.resolved !== undefined) return null;
+    for (const [nested, value] of Object.entries(lock.packages))
+        if (nested.startsWith(`${target}/`) && (value.dev !== true || localEntry(value))) return null;
+    return target;
+}
+//* v5 B24-b: a dev-link target present in the checkout must be a real directory inside the root (no symlink escape).
+async function checkDevLinks(root, devLinks) {
+    for (const { name, target } of devLinks) {
+        const source = path.join(root, target);
+        if (!(await exists(source))) continue;
+        const stat = await lstat(source);
+        if (stat.isSymbolicLink() || !stat.isDirectory() || !within(root, await realpath(source)))
             throw new Error(`Local dependency is unsupported: ${name}`);
     }
 }
@@ -379,7 +421,8 @@ export async function pack({ cwd = process.cwd(), options = {}, run = runCommand
         });
         const pkg = await json(path.join(build, 'package.json'));
         const lock = await json(path.join(build, 'package-lock.json'));
-        validateLock(pkg, lock);
+        const devLinks = validateLock(pkg, lock);
+        await checkDevLinks(root, devLinks);
         if (!pkg.scripts?.[config.buildScript]) throw new Error(`Missing npm build script: ${config.buildScript}`);
         const lockSha256 = sha256(await readFile(path.join(build, 'package-lock.json')));
         const sourceFiles = await collectFiles(build);
@@ -454,6 +497,10 @@ export async function pack({ cwd = process.cwd(), options = {}, run = runCommand
         const dependencies = await collectFiles(path.join(production, 'node_modules'), { prefix: 'node_modules/' });
         // npm's private install ledger is unnecessary at runtime; dependency package contents stay intact.
         entries.push(...dependencies.filter(file => file.path !== 'node_modules/.package-lock.json'));
+        //* v5 B24-b: neither a dev-only link nor its target may reach the ZIP.
+        for (const { name, target } of devLinks)
+            if (entries.some(file => [name, target].some(p => file.path === p || file.path.startsWith(`${p}/`))))
+                throw new Error(`Dev-only local dependency reached the runtime files: ${name}`);
         if (!entries.some(file => file.path === config.handler.file))
             throw new Error('Root handler missing from runtime files');
         await mkdir(path.dirname(output), { recursive: true });
