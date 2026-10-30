@@ -1,0 +1,100 @@
+# bin/fixtures/deploy/serverless.routes.yml (lemon-core, test-only)
+# - the API routes of a sample Serverless service (no account, no hostname): the bootstrap example must match them.
+# - v5 B19: trimmed from the lemon-templates-api serverless.yml (only custom.cors and the lambda http events).
+custom:
+    cors:
+        origin: '*'
+        headers:
+            - Authorization
+            - Content-Type
+            - X-Amz-Date
+            - X-Amz-Security-Token
+            - X-Amz-User-Agent
+            - X-Api-Key
+            - X-Lemon-Language
+            - X-Lemon-Identity
+        allowCredentials: true
+functions:
+    lambda:
+        events:
+            - http:
+                  path: /
+                  method: get
+                  cors: true
+            - http:
+                  path: /hello
+                  method: get
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /hello/{id}
+                  method: get
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /hello/{id}
+                  method: post
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /hello/{id}/{cmd}
+                  method: get
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /mocks
+                  method: get
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /mocks/{id}
+                  method: get
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /mocks/{id}
+                  method: post
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /mocks/{id}/{cmd}
+                  method: post
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /{type}
+                  method: get
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}
+                  method: get
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}/{cmd}
+                  method: get
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}
+                  method: put
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}/{cmd}
+                  method: put
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}
+                  method: post
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}/{cmd}
+                  method: post
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}
+                  method: delete
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
+            - http:
+                  path: /{type}/{id}/{cmd}
+                  method: delete
+                  cors: ${self:custom.cors, true}
+                  authorizer: aws_iam
