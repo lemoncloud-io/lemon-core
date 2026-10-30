@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-27 initial version.
+ * @date        2026-10-30 v5 B14: the web event carries `x-lemon-relay` (the context only with `PROTOCOL_LEGACY_CONTEXT=send`).
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -19,6 +20,7 @@ import {
     SNSProtocolTransformer,
     SQSProtocolTransformer,
 } from './protocol-service';
+import { decodeRelay } from './protocol-relay';
 import { MyConfigService, ConfigService } from './../config/config-service';
 import { ProtocolParam, STAGE, CallbackParam } from './../core-services';
 import { APIGatewayProxyEvent } from 'aws-lambda';
@@ -191,7 +193,10 @@ describe('ProtocolService', () => {
         const param = asParam('', 'test', { id: 'abc' });
         const uri = service.asProtocolURI('web', param, config);
         expect2(uri).toEqual('web://lemon-hello-api-dev-lambda/test/abc');
-        expect2(service.transformEvent(uri, param), 'headers').toEqual({ headers: { 'x-protocol-context': '{}' } });
+        //* v5 B14: the relay header only (no `x-protocol-context` by default); an empty context → hop 1, no ids.
+        const headers0 = (service.transformEvent(uri, param) as APIGatewayProxyEvent).headers;
+        expect2(() => Object.keys(headers0)).toEqual(['x-lemon-relay']);
+        expect2(() => decodeRelay(headers0['x-lemon-relay']), 'idt,hop,pid').toEqual({ hop: 1 });
         expect2(service.transformEvent(uri, param), 'httpMethod,path').toEqual({
             httpMethod: 'GET',
             path: '/test/abc',
@@ -234,9 +239,23 @@ describe('ProtocolService', () => {
         const uri = service.asProtocolURI('web', param, config);
         const path = '/metrics/0';
         expect2(uri).toEqual('web://0908@lemon-metrics-api-dev-lambda/metrics/0');
-        expect2(service.transformEvent(uri, param), 'headers').toEqual({
-            headers: { 'x-protocol-context': JSON.stringify($ctx) },
+        //* v5 B14: the relay of the context (tid/pid = requestId); the full context only with `send`.
+        const headers1 = (service.transformEvent(uri, param) as APIGatewayProxyEvent).headers;
+        expect2(() => Object.keys(headers1)).toEqual(['x-lemon-relay']);
+        expect2(() => decodeRelay(headers1['x-lemon-relay']), 'tid,hop,pid').toEqual({
+            tid: 'xxxx',
+            hop: 1,
+            pid: 'xxxx',
         });
+        const $keep = process.env.PROTOCOL_LEGACY_CONTEXT;
+        process.env.PROTOCOL_LEGACY_CONTEXT = 'send';
+        try {
+            const headers2 = (service.transformEvent(uri, param) as APIGatewayProxyEvent).headers;
+            expect2(() => headers2['x-protocol-context']).toEqual(JSON.stringify($ctx));
+        } finally {
+            if ($keep === undefined) delete process.env.PROTOCOL_LEGACY_CONTEXT;
+            else process.env.PROTOCOL_LEGACY_CONTEXT = $keep;
+        }
         expect2(service.transformEvent(uri, param), 'httpMethod,path').toEqual({ httpMethod: 'GET', path });
         expect2(service.transformEvent(uri, param), 'pathParameters').toEqual({
             pathParameters: { id, cmd: '', type: 'metrics' },

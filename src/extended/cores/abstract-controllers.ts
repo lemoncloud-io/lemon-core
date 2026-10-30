@@ -28,6 +28,7 @@
  * @date        2026-02-03 optimized `modelAsView()` to show cores in local.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` reports the field lists (local or direct invoke only).
+ * @date        2026-10-30 v5 B14: the `fields/admin` gate reads `context.channel` (not `domain`).
  * @date        2026-10-28 v5 B4: `fields/admin` self-check uses the shared `checkFieldsAdmin()`.
  * @date        2026-10-30 v5 B13: handlers pass `{ useSession, policy }` to `canDo`, `doList` checks `list`, bulk in 2 phases.
  *
@@ -422,15 +423,15 @@ export abstract class AbstractCRUDController<
 
     /**
      * v5 B4: report the manager's field list (`GET /<type>/fields/admin`) to verify it in Lambda too.
-     * - allowed only by channel: local express (`$U.isLocalMode()`) or an internal request (empty `$ctx.domain`).
-     * - internal = no `host` header (direct `lambda:Invoke`, see `isExternal()`); `packContext()` then leaves
-     *   `domain` empty, so the empty `domain` is the signal here (`NextContext` has no external flag).
+     * - v5 B14: allowed only when `$ctx.channel !== 'external'` (set once by the entry: `local` for the local
+     *   express, `internal` for a host-less invoke or a protocol call). `domain` is information only, never the gate.
      * - no admin role is required: a direct invoke is already gated by IAM `lambda:InvokeFunction`.
      */
     protected async doGetAdminFields($ctx: NextContext, errScope: string) {
         const local = $U.isLocalMode();
+        //* `runtime.external` keeps reporting the request domain (information, unchanged).
         const external = !!`${$ctx?.domain ?? ''}`.trim();
-        if (!local && external)
+        if ($ctx?.channel === 'external')
             throw new Error(`403 NOT ALLOWED - fields/admin is local or direct-invoke only @${errScope}`);
 
         //* the lists: L2 core (16), the manager's full list, and the model-specific rest.

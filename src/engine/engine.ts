@@ -22,6 +22,7 @@
  * @date        2022-02-21 remove `$_` the lodash libs.
  * @date        2026-05-08 optimized to ignore of reporting.
  * @date        2026-10-30 `getHelloArn()`: placeholder account `000000000000` only with the local transport (`LOCAL_TRANSPORT=mock`).
+ * @date        2026-10-30 v5 B14: `doReportError()` payload has the `trace` of the context.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -121,12 +122,13 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const identity = context?.identity || {};
         const service = `api://${$pack.name || 'lemon-core'}/${name}-${stage}#${$pack.version || '0.0.0'}`;
 
-        //* prepare payload to publish.
+        //* prepare payload to publish (v5 B14: + the call-chain `trace` of the context).
         const payload = {
             service,
             message,
             context: { ...context, stage, apiId, resourcePath, identity, domainPrefix, event },
             data,
+            trace: context?.trace,
         };
 
         //* find target arn.
@@ -282,7 +284,13 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
         const target = 'lemon-metrics-sns';
         const arn0 = getHelloArn(context, NS);
         // eslint-disable-next-line prettier/prettier
-        const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v,i)=>i==5?target:v).join(':') : arn0;
+        const arn =
+            arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6
+                ? arn0
+                      .split(':')
+                      .map((v, i) => (i == 5 ? target : v))
+                      .join(':')
+                : arn0;
         _log(NS, `> report-metric.arn =`, arn);
         return $sns(arn)
             .publish(arn || target, 'metric', payload)

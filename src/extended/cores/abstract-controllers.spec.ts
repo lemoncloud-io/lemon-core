@@ -11,6 +11,7 @@
  * @date        2023-02-15 optimized with `lemon-core@3.2.5`
  * @date        2023-10-12 optimized `doList()` w/o ES6.
  * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` (gate by channel, shape, `source`).
+ * @date        2026-10-30 v5 B14: the `fields/admin` gate reads `context.channel` (not `domain`).
  * @date        2026-10-28 v5 B4: `checkFieldsAdmin()` on each report, and the in-process express route.
  * @date        2026-10-30 v5 B13: default data-access policy through the 7 handlers (SPEC § 14, T-01..T-36).
  *
@@ -891,14 +892,38 @@ describe('AbstractCRUDController fields/admin (B4)', () => {
         expect2(() => checkFieldsAdmin(res, expect)).toEqual({ ok: true, issues: [] });
     });
 
-    //* not local + a domain (API-GW, ALB, URL) → 403, before the admin-role check.
+    //* v5 B14: channel `external` (API-GW, ALB, URL) → 403, before the admin-role check.
     it('should pass fields/admin 403 if external', async () => {
         delete process.env.LOCAL_MODE;
         delete process.env.AWS_LAMBDA_FUNCTION_NAME;
         const { api, context } = instance({ auth: 'authed', roles: ['admin'] });
-        expect2(await api.doGetAdmin('fields', {}, null, context).catch(GETERR)).toEqual(
+        expect2(await api.doGetAdmin('fields', {}, null, { ...context, channel: 'external' }).catch(GETERR)).toEqual(
             '403 NOT ALLOWED - fields/admin is local or direct-invoke only @doGetAdmin(tests/fields)',
         );
+        //* v5 B14: also in local mode (the gate reads the channel only).
+        process.env.LOCAL_MODE = '1';
+        expect2(await api.doGetAdmin('fields', {}, null, { channel: 'external' }).catch(GETERR)).toEqual(
+            '403 NOT ALLOWED - fields/admin is local or direct-invoke only @doGetAdmin(tests/fields)',
+        );
+    });
+
+    //* v5 B14: the gate reads `channel` only — `internal` and `local` pass even with a `domain` (a relayed context).
+    it('should pass fields/admin by channel (not domain)', async () => {
+        delete process.env.LOCAL_MODE;
+        process.env.AWS_LAMBDA_FUNCTION_NAME = 'lemon-core-spec';
+        const { api, context } = instance({ auth: 'authed' });
+        expect2(() => context.domain).toEqual('oauth.lemoncloud.io');
+        //* a legacy context from a v4 caller keeps the first request's domain; it is internal now.
+        const internal: NextContext = { ...context, channel: 'internal' };
+        const res: any = await api.doGetAdmin('fields', {}, null, internal);
+        expect2(() => res, 'id,ok').toEqual({ id: 'fields', ok: true });
+        //* `runtime.external` still reports the domain (information only).
+        expect2(() => res.runtime, 'local,external').toEqual({ local: false, external: true });
+        expect2(await api.doGetAdmin('fields', {}, null, { ...context, channel: 'local' }).then(R => R.ok)).toEqual(
+            true,
+        );
+        //* no channel (a context built outside the lemon-core entries) is not external.
+        expect2(await api.doGetAdmin('fields', {}, null, { ...context }).then(R => R.ok)).toEqual(true);
     });
 
     //* in Lambda (`LOCAL_MODE` is ignored there) + empty domain (direct invoke, no `host`) → allowed w/o identity.

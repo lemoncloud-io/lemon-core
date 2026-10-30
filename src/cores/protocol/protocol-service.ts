@@ -6,6 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-27 initial version.
  * @date        2026-10-30 `execute/notify/enqueue/broadcast`: the local transport (`LOCAL_TRANSPORT=mock`) delivers in-process.
+ * @date        2026-10-30 v5 B14: the transformers send the relay (`x-lemon-relay` / `relay`) instead of the full context.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -42,6 +43,19 @@ import {
     HEADER_PROTOCOL_SIGNATURE,
     ATTR_PROTOCOL_SIGNATURE,
 } from './protocol-sign';
+import {
+    HEADER_LEMON_RELAY,
+    RELAY_PARAM,
+    buildRelay,
+    encodeRelay,
+    decodeRelay,
+    asRelayContext,
+    assertHop,
+    acceptLegacy,
+    entryTrace,
+    logTrace,
+    readLegacySend,
+} from './protocol-relay';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -80,8 +94,85 @@ interface MyMessageAttributeValue {
  * header name to exchange `next-context`
  * ONLY for internal communication.
  * - v5 B10-3: defined in `protocol-sign.ts`, re-exported here (same name, same value).
+ * - v5 B14: deprecated (see the definition) — the relay `x-lemon-relay` replaces it; removal in v6.
  */
 export { HEADER_PROTOCOL_CONTEXT };
+
+/**
+ * v5 B14: the caller's service uri for the relay `via` (`myProtocolURI()` of the service), or undefined if unknown.
+ */
+const viaOf = (service: MyProtocolService, context: NextContext): string => {
+    const config = service?.config ?? $conf.config;
+    if (!config?.getService?.()) return undefined;
+    return MyProtocolService.buildProtocolURI(config, context, 'api', 'self', '', '');
+};
+
+/**
+ * v5 B14: the param to send over SNS/SQS — the `relay` field, and the full `context` only with `PROTOCOL_LEGACY_CONTEXT=send`.
+ * - throws `508 LOOP DETECTED` when the next hop is over the cap (before any send).
+ */
+const asRelayParam = (service: MyProtocolService, param: ProtocolParam): any => {
+    const context = param.context || {};
+    const relay = encodeRelay(buildRelay(context, { via: viaOf(service, context) }));
+    //* `send`: the legacy context too (for v4 receivers); else no `context` key.
+    if (readLegacySend() === 'send') return { ...param, [RELAY_PARAM]: relay };
+    const { context: _, ...rest } = param; // eslint-disable-line @typescript-eslint/no-unused-vars
+    return { ...rest, [RELAY_PARAM]: relay };
+};
+
+/**
+ * v5 B14: the receiver context of a SNS/SQS protocol param.
+ * - `relay` wins: decode, hop cap (508), caller requestId = the `requestId` attribute, then the D2 context w/ `own` ids.
+ * - else the legacy `context` by `PROTOCOL_LEGACY_ACCEPT` (reject → 400), checked against the attributes as before,
+ *   kept as is + `channel: 'internal'` + an entry trace.
+ * - else (no context at all) an internal context of the receiver's own ids.
+ * - prints one `TRACE` line.
+ *
+ * @param transport `sns` | `sqs`
+ * @param param     the received param (JSON of the message)
+ * @param attrs     `accountId`, `requestId` attributes of the message
+ * @param own       the receiver's own `requestId`/`accountId`
+ * @param strict    (SNS) check the attributes also when there is no context
+ */
+const receiveContext = (
+    transport: 'sns' | 'sqs',
+    param: any,
+    attrs: { accountId: string; requestId: string },
+    own: NextContext,
+    strict: boolean,
+): NextContext => {
+    //* check the message attributes against a (legacy) context, as before.
+    const check = (context: NextContext) => {
+        if (attrs.accountId != `${context.accountId || ''}`)
+            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
+        if (attrs.requestId != `${context.requestId || ''}`)
+            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+    };
+    const result = ((): NextContext => {
+        const relayText = param?.[RELAY_PARAM];
+        if (relayText !== undefined && relayText !== null) {
+            const relay = decodeRelay(relayText);
+            assertHop(relay.hop);
+            if (attrs.requestId && relay.pid !== undefined && attrs.requestId !== relay.pid)
+                throw new Error(`400 INVALID CONTEXT - requestId:${relay.pid}`);
+            return asRelayContext(relay, own);
+        }
+        const legacy: NextContext = param?.context;
+        if (legacy && typeof legacy === 'object') {
+            acceptLegacy(transport, legacy);
+            check(legacy);
+            return { ...legacy, channel: 'internal', trace: entryTrace(legacy) };
+        }
+        if (strict) check({});
+        //* no context: the receiver's own ids only.
+        const ctx: NextContext = { channel: 'internal', trace: entryTrace(own) };
+        if (own?.requestId) ctx.requestId = own.requestId;
+        if (own?.accountId) ctx.accountId = own.accountId;
+        return ctx;
+    })();
+    logTrace(result);
+    return result;
+};
 
 /**
  * type: MyProtocolType
@@ -198,7 +289,16 @@ export class MyProtocolService implements ProtocolService {
         const stage: STAGE = param.stage || (config && config.getStage()) || 'local';
 
         // eslint-disable-next-line prettier/prettier
-        const uri = MyProtocolService.buildProtocolURI(config, context, protocol, service, stage, param.type, param.id, param.cmd);
+        const uri = MyProtocolService.buildProtocolURI(
+            config,
+            context,
+            protocol,
+            service,
+            stage,
+            param.type,
+            param.id,
+            param.cmd,
+        );
         _log(NS, `! url[${protocol}/${service}] = ${param.mode || ''}`, uri);
         return uri.split('#')[0];
     }
@@ -557,9 +657,9 @@ export class MyProtocolService implements ProtocolService {
  * - transformer for `WEB` Handler
  */
 export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayProxyEvent, APIGatewayProxyEvent> {
-    // private service: MyProtocolService;
+    private service: MyProtocolService;
     public constructor(service?: MyProtocolService) {
-        // this.service = service;
+        this.service = service; //* v5 B14: for the relay `via` (optional).
     }
     /**
      * transform param to event
@@ -582,14 +682,17 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         //* build http parameter
         const base: APIGatewayProxyEvent = {} as APIGatewayProxyEvent;
         const $ctx: APIGatewayEventRequestContext = {} as APIGatewayEventRequestContext;
-        //* v5 B5: sign the exact header and body strings (no signature if no key).
-        const contextJson = $U.json(context);
+        //* v5 B14: the relay of the next hop (throws `508` over the hop cap); the legacy context only with `send`.
+        const relay = encodeRelay(buildRelay(context, { via: viaOf(this.service, context) }));
+        const contextJson = readLegacySend() === 'send' ? $U.json(context) : undefined;
+        //* v5 B5: sign the exact header and body strings (no signature if no key). v5 B14: the relay in the context slot.
         const bodyText = param.body ? $U.json(param.body) : null;
-        const signature = signContext(contextJson, bodyText);
+        const signature = signContext(relay, bodyText);
         const event: APIGatewayProxyEvent = {
             ...base,
             headers: {
-                [HEADER_PROTOCOL_CONTEXT]: contextJson,
+                [HEADER_LEMON_RELAY]: relay,
+                ...(contextJson !== undefined ? { [HEADER_PROTOCOL_CONTEXT]: contextJson } : {}),
                 ...(signature ? { [HEADER_PROTOCOL_SIGNATURE]: signature } : {}),
             },
             path,
@@ -638,6 +741,8 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             }
             return null; // not valid context.
         };
+        //* v5 B14: a given context with a `channel` is built by the receiving entry (own ids) → no id check below.
+        const byEntry = !!context?.channel;
         context = _context(context);
         if (!context) throw new Error(`@context (NextContext) is required - ${errScope}`); // avoid null exception.
 
@@ -675,10 +780,10 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const mode: NextMode =
             httpMethod == 'GET' && !$path.id && !$path.cmd ? 'LIST' : (`${httpMethod}`.toUpperCase() as NextMode);
 
-        //* validate values.
-        if (context?.accountId && requestContext.accountId != context.accountId)
+        //* validate values (a caller-supplied context only).
+        if (!byEntry && context?.accountId && requestContext.accountId != context.accountId)
             throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId ?? ''} @${errScope}`);
-        if (context?.requestId && requestContext.requestId != context.requestId)
+        if (!byEntry && context?.requestId && requestContext.requestId != context.requestId)
             throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId ?? ''} @${errScope}`);
 
         //* pack as protocol-param.
@@ -703,6 +808,8 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
     public transformToEvent(uri: string, param: ProtocolParam, callback?: string): MySNSEventParam {
         // const uri = this.service.asProtocolURI('sns', param);
         const context = param.context || {};
+        //* v5 B14: the relay param first (throws `508` over the hop cap, before anything else).
+        const $param = asRelayParam(this.service, param);
         const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:123456789012:lemon-metrics-sns-dev"
         //* build TopicArn via url.
         const url = URL.parse(uri);
@@ -714,7 +821,7 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
         const requestId = `${context.requestId || ''}`;
         _log(NS, `> TopicArn =`, TopicArn);
         //* v5 B5: the receiver gets the `default` string as `Sns.Message` → sign that string.
-        const message = $U.json(param);
+        const message = $U.json($param);
         const signature = signMessage(message);
         const res: MySNSEventParam = {
             TopicArn,
@@ -739,14 +846,15 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
 
     /**
      * transform event data to param
+     * - v5 B14: the context comes from the `relay` (wins) or the legacy `context` (see `receiveContext()`).
      * @param event     the lambda compartible event data.
+     * @param own       (optional) the receiver's own `requestId`/`accountId` (for a relay)
      */
-    public transformToParam(event: SNSMessage): MyProtocolParam {
+    public transformToParam(event: SNSMessage, own?: NextContext): MyProtocolParam {
         const { Subject, Message, MessageAttributes } = event;
 
         //* extract message.
-        const param: ProtocolParam = JSON.parse(Message);
-        const context = (param && param.context) || {};
+        const param: any = JSON.parse(Message);
 
         //* validate message
         if (Subject != 'x-protocol-service') throw new Error(`.Subject[${Subject}] is not valid protocol.`);
@@ -756,14 +864,12 @@ export class SNSProtocolTransformer implements ProtocolTransformer<MySNSEventPar
         const requestId: string = _str('requestId');
         const callback: string = _str('callback');
 
-        //* validate values.
-        if (accountId != `${context.accountId || ''}`)
-            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
-        if (requestId != `${context.requestId || ''}`)
-            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+        //* v5 B14: the receiver context (validates the values as before for a legacy context).
+        const context = receiveContext('sns', param, { accountId, requestId }, own, true);
 
-        //* returns.
-        const res: MyProtocolParam = param;
+        //* returns (without the relay field).
+        const { [RELAY_PARAM]: _, ...rest } = param || {}; // eslint-disable-line @typescript-eslint/no-unused-vars
+        const res: MyProtocolParam = { ...rest, context };
         if (callback) res.callback = callback;
         return res;
     }
@@ -794,6 +900,8 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
     public transformToEvent(uri: string, param: ProtocolParam, callback?: string): SQSEventParam {
         // const uri = this.service.asProtocolURI('sns', param);
         const context = param.context || {};
+        //* v5 B14: the relay param first (throws `508` over the hop cap, before anything else).
+        const $param = asRelayParam(this.service, param);
         const arn = getHelloArn(param.context); // "arn:aws:sns:ap-northeast-2:123456789012:lemon-metrics-sns-dev"
         //* build TopicArn via url.
         const url = URL.parse(uri);
@@ -802,7 +910,7 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
         const accountId = `${context.accountId || ''}`;
         const requestId = `${context.requestId || ''}`;
         //* v5 B5: sign the exact `MessageBody` string (the receiver's `record.body`).
-        const messageBody = $U.json(param);
+        const messageBody = $U.json($param);
         const signature = signMessage(messageBody);
         const res: SQSEventParam = {
             // DelaySeconds: 10, //NOTE - use SQS's configuration.
@@ -826,16 +934,17 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
 
     /**
      * transform event data to param
+     * - v5 B14: the context comes from the `relay` (wins) or the legacy `context` (see `receiveContext()`).
      * @param event     the lambda compartible event data.
+     * @param own       (optional) the receiver's own `requestId`/`accountId` (for a relay)
      */
-    public transformToParam(event: SQSRecord): MyProtocolParam {
+    public transformToParam(event: SQSRecord, own?: NextContext): MyProtocolParam {
         const { body, messageAttributes } = event;
         const $body = JSON.parse(body);
 
         //* extract message.
         const subject = messageAttributes['Subject'] && messageAttributes['Subject'].stringValue;
-        const param: ProtocolParam = $body;
-        const context = param && param.context;
+        const param: any = $body;
 
         //* validate message
         if (subject != 'x-protocol-service') throw new Error(`.subject[${subject}] is not valid protocol.`);
@@ -845,14 +954,12 @@ export class SQSProtocolTransformer implements ProtocolTransformer<SQSEventParam
         const requestId = _str('requestId');
         const callback = _str('callback');
 
-        //* validate values.
-        if (context && accountId != `${context.accountId || ''}`)
-            throw new Error(`400 INVALID CONTEXT - accountId:${context.accountId}`);
-        if (context && requestId != `${context.requestId || ''}`)
-            throw new Error(`400 INVALID CONTEXT - requestId:${context.requestId}`);
+        //* v5 B14: the receiver context (validates the values as before for a legacy context).
+        const context = receiveContext('sqs', param, { accountId, requestId }, own, false);
 
-        //* returns.
-        const res: MyProtocolParam = param;
+        //* returns (without the relay field).
+        const { [RELAY_PARAM]: _, ...rest } = param || {}; // eslint-disable-line @typescript-eslint/no-unused-vars
+        const res: MyProtocolParam = { ...rest, context };
         if (callback) res.callback = callback;
         return res;
     }
