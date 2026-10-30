@@ -22,18 +22,17 @@
  * @date        2020-01-23 improve context information via headers.
  * @date        2025-05-20 cleanup `express` out of this module.
  * @date        2026-10-31 v5 B20: a local API Gateway (REST v1) emulator in lemon-core (no `lemon-devkit`).
+ * @date        2026-10-31 v5 B21: no `express` — a built-in mini app (local extension routes) before the gateway.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import http from 'http';
-import { GETERR } from '../common/test-helper';
 import { LemonEngine } from '../engine/types';
 import { LambdaWEBHandler } from '../cores/lambda/lambda-web-handler';
 import { loadJsonSync } from './tools';
 import { loadRouteTable } from './local-gateway/routes';
-import { createLocalGateway, readFrontBody } from './local-gateway/gateway';
-import { errorReply, sendReply } from './local-gateway/response';
-import { PayloadTooLargeError } from './local-gateway/event';
+import { createLocalGateway } from './local-gateway/gateway';
+import { createLocalApp, LocalApp } from './local-gateway/app';
 
 /**
  * type: `ExpressFactory`
@@ -52,10 +51,10 @@ export interface ExpressFactory {
  * - result of factory.
  */
 export interface ExpressFactoryResult {
-    /** function of `express()` from `npm/express` */
-    express: () => any;
-    /** instance of `express()` */
-    app: any;
+    /** @deprecated v5 B21: always `undefined` (no `express` module; kept for compatibility) */
+    express?: () => any;
+    /** v5 B21: the local app — a node request listener with extension routes (`app.get/post/…`, `app.use`) */
+    app: LocalApp | any;
     /** create server listener */
     createServer: (...args: any[]) => any;
 }
@@ -71,7 +70,7 @@ export interface BuildExpressOptions {
     prefix?: string;
     /** request-id generator (default uuid) */
     genRequestId?: () => string;
-    /** (optional) loader of module (used for `express`) */
+    /** @deprecated v5 B21: ignored (no `express` module is loaded) */
     loadModule?: <T = any>(mod: string) => T;
     /** (optional) v5 B20: path of `serverless.yml` from `process.cwd()` (default `serverless.yml`) */
     serverlessFile?: string;
@@ -93,7 +92,8 @@ const runParam = (name: string, defval: number, argv: string[]): number => {
  * create Server Instance.
  * - v5 B20: a local API Gateway (REST v1) emulator: routes of `serverless.yml` (`{param}`, `{proxy+}`, `ANY`),
  *   REST v1 events, binary bodies by `binaryMediaTypes`, CORS preflight, API Gateway errors (403/413/502).
- * - `express` is an optional peer (`npm i -D express`); routes added to `app` later still win over the gateway.
+ * - v5 B21: no `express` — `app` is a small built-in request listener; routes added to it (`app.post('/echo', …)`)
+ *   are checked before the gateway, even when added after `buildExpress()` or after the first request.
  *
  * @param $engine - LemonEngine by `buildEngine()`
  * @param $web - LambdaWEBHandler in `$cores`
@@ -108,23 +108,7 @@ export const buildExpress = (
     if (!$engine) throw new Error(`$engine(LemonEngine) is required - ${errScope}`);
     if (!$web) throw new Error(`$web(LambdaWEBHandler) is required - ${errScope}`);
 
-    // STEP.1 load the `express` module (optional peer).
-    const _load = (mod: string) => {
-        if (options?.loadModule) return options.loadModule(mod);
-        try {
-            return require(mod);
-        } catch (e) {
-            const error = `${e?.message ?? GETERR(e)}`.toLowerCase();
-            if (error.includes('cannot find module')) return null;
-            throw e;
-        }
-    };
-    const $mod = _load('express');
-    //* v5 B20: `express` (CJS function, or an ESM namespace with `default`).
-    const express: () => any = typeof $mod === 'function' ? $mod : $mod?.default;
-    if (typeof express !== 'function') throw new Error(`express(module) is required (npm i -D express) - ${errScope}`);
-
-    // STEP.2 the route table and the gateway.
+    // STEP.1 the route table and the gateway.
     const $U = $engine.U;
     const NS = $U.NS('EXPR', 'cyan');
     const table = loadRouteTable({
@@ -140,47 +124,11 @@ export const buildExpress = (
     const stage = `${options?.stage || $engine.environ('STAGE', '') || 'local'}`;
     const gateway = createLocalGateway($engine, $web, { table, stage, genRequestId: options?.genRequestId });
 
-    // STEP.3 the app: a front body reader first, the gateway kept as the last layer.
-    const app: any = express();
-    //* v5 B20: no `X-Powered-By` (API Gateway does not send it).
-    app.disable?.('x-powered-by');
-    //* v5 B20: the gateway as express middleware (catch-all, no path pattern → works with Express 4 and 5).
-    const gatewayLayer = (req: any, res: any) => {
-        gateway(req, res);
-    };
-    //* v5 B20: the router stack of Express 4 (`_router`) or 5 (`router`).
-    const stackOf = (): any[] => {
-        if (app._router?.stack) return app._router.stack;
-        try {
-            return app.router?.stack;
-        } catch (e) {
-            return undefined;
-        }
-    };
-    //* v5 B20: keep the gateway as the last layer, so routes added after `buildExpress()` (e.g. `/echo`) win.
-    let mounted = false;
-    const ensureLast = () => {
-        if (!mounted) {
-            mounted = true;
-            app.use(gatewayLayer);
-            return;
-        }
-        //* move it to the end only when the stack is known (the layer is always after this front reader).
-        const stack = stackOf();
-        const idx = stack ? stack.findIndex((l: any) => l?.handle === gatewayLayer) : -1;
-        if (idx >= 0 && idx !== stack.length - 1) stack.push(stack.splice(idx, 1)[0]);
-    };
-    app.use((req: any, res: any, next: any) => {
-        ensureLast();
-        readFrontBody(req)
-            .then(() => next())
-            .catch((e: any) => {
-                if (e instanceof PayloadTooLargeError) return sendReply(res, errorReply(413, 'Request Too Long'));
-                next(e);
-            });
-    });
+    // STEP.2 the app: extension routes first, the gateway as the fallback.
+    //* v5 B21: a failed extension route is logged and answered with 500.
+    const app = createLocalApp(gateway, { onError: (e: any) => $engine.err(NS, `! app.err =`, e) });
 
-    // STEP.4 the server.
+    // STEP.3 the server.
     const $pack: any = loadJsonSync('package.json');
     const argv = options?.argv || process?.argv || [];
     const PORT = runParam('port', $U.N($pack.port, 8081), argv);
@@ -203,5 +151,6 @@ export const buildExpress = (
         return server;
     };
 
-    return { express, app, createServer };
+    //* v5 B21: `express` stays as a key (always `undefined`) for compatibility.
+    return { express: undefined, app, createServer };
 };

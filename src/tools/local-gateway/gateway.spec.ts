@@ -32,7 +32,7 @@ const stubWeb = (answer: (event: any) => any = () => ({ statusCode: 200, headers
     return { $web, events };
 };
 
-//* v5 B20: an express app over the fixture (or other options).
+//* v5 B20: the local app over the fixture (or other options).
 const appOf = ($web: any, opts?: BuildExpressOptions) =>
     buildExpress(buildEngine({}), $web, { serverlessFile: FIXTURE, ...opts }).app;
 
@@ -258,8 +258,9 @@ describe('local-gateway over http (B20)', () => {
         expect(events.length).toBe(1);
     });
 
-    //* v5 B20: express routes added after `buildExpress()` win over the gateway (and get a parsed JSON body).
-    it('should keep express routes added after build (B20)', async () => {
+    //* v5 B20: extension routes added after `buildExpress()` win over the gateway (and get a parsed JSON body).
+    //* v5 B21: the routes run in the built-in app (no `express`).
+    it('should keep extension routes added after build (B20)', async () => {
         const { $web, events } = stubWeb();
         const { app } = buildExpress(buildEngine({}), $web, { serverlessFile: FIXTURE });
         app.post('/echo', (req: any, res: any) => res.status(200).json({ body: req.body, q: req.query }));
