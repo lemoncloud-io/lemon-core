@@ -47,12 +47,13 @@ Left uncovered on purpose: dead code (`tools/query.ts` `formatAttributeValue`, `
 ### Findings pinned as current behaviour (not fixed here)
 
 The specs document these as they are today, each in a test labelled `B18`; fixing any of them changes behaviour and belongs in its own change.
+B22 (`docs/v5/B22-pinned-behaviours.md`) fixed items 1–5 (the assertions that encoded the bugs are now `B22` tests) and documented item 6.
 
-1. `cores/dynamo/tools/utils.ts` `paginatedRequest()`: `async@3`'s `doWhilst` calls the test as `test(...args, cb)`, but the test function returns a boolean and never calls `cb`, so `Query.exec()` / `Scan.exec()` never call back after a success or a retryable error. Nothing in `src/` calls `.exec()` today.
-2. `cores/elastic/os2-service.ts` `generateSearchResult()`: a 429 retry only works after the first page; a 429 on page 1 ends the loop with `[]`.
-3. `cores/elastic/os2-query-service.ts` `buildQueryBody()`: `$source: '*'` (or an array) together with a `#field` projection throws `TypeError: $source.includes.push is not a function`.
-4. `helpers.ts` legacy `$protocol(service, param, body)`: sets `stage` only; `param` is read after `service` is reassigned.
-5. `OS2Instance.search()` ignores `params.indexName` (the base `AbstractOS2Instance.search()` supports it).
-6. `loadFromFile()` derives a type by dropping the last letter of the object key (`Owner` → `owne`).
+1. **Fixed in B22** (`docs/v5/B22-pinned-behaviours.md` § 1). `cores/dynamo/tools/utils.ts` `paginatedRequest()`: `async@3`'s `doWhilst` calls the test as `test(...args, cb)`, but the test function returns a boolean and never calls `cb`, so `Query.exec()` / `Scan.exec()` never call back after a success or a retryable error. Nothing in `src/` calls `.exec()` today.
+2. **Fixed in B22** (§ 2). `cores/elastic/os2-service.ts` `generateSearchResult()`: a 429 retry only works after the first page; a 429 on page 1 ends the loop with `[]`.
+3. **Fixed in B22** (§ 3). `cores/elastic/os2-query-service.ts` `buildQueryBody()`: `$source: '*'` (or an array) together with a `#field` projection throws `TypeError: $source.includes.push is not a function`.
+4. **Fixed in B22** (§ 5; no caller is affected). `helpers.ts` legacy `$protocol(service, param, body)`: sets `stage` only; `param` is read after `service` is reassigned.
+5. **Fixed in B22** (§ 4). `OS2Instance.search()` ignored `params.indexName` (the base `AbstractOS2Instance.search()` supports it).
+6. **Documented in B22** (§ 6; JSDoc only, no behaviour change). `loadFromFile()` derives a type by dropping the last letter of the object key (`Owner` → `owne`).
 
 Known timing-sensitive test outside B18: `helpers.spec.ts › should pass my_sequence()` assumes `waited(100)` never ends early; it failed once on a loaded machine and passed on rerun.

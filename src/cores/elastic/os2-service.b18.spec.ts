@@ -417,7 +417,7 @@ describe('OS2CoreService (B18 offline)', () => {
         const full = { body: { hits: { total: 2, hits: [{ _id: 'a', _source: {}, sort: ['a'] }] } } };
         const empty = { body: { hits: { total: 2, hits: [] as any[] } } };
         const e429 = Object.assign(new Error('Throttled'), { meta: { statusCode: 429, body: {} } });
-        //* v5 B18: a retry needs `search_after` (a `continue` re-checks the loop condition), so 429 comes on page 2.
+        //* v5 B22: 429 on page 2 (page 1 is covered by the B22 case below).
         //* v5 B18: retry wait is 1 ms so the case stays fast and deterministic.
         client.search.mockResolvedValueOnce(full).mockRejectedValueOnce(e429).mockResolvedValueOnce(empty);
         const list = await svc.searchAll<any>(
@@ -444,6 +444,39 @@ describe('OS2CoreService (B18 offline)', () => {
         expect(await svc.searchAll({ size: 1 }, { retryOptions: { do: true, t: 1 } }).catch(GETERR)).toBe(
             '400 PARSING - q',
         );
+    });
+
+    //* v5 B22: a 429 on the first page (no `search_after` yet) retries that page instead of ending with `[]`.
+    it('B22 generateSearchResult() retries a 429 on page 1', async () => {
+        const { svc, client } = serviceOf();
+        const page = (ids: string[]) => ({
+            body: { hits: { total: 3, hits: ids.map(id => ({ _id: id, _score: 1, _source: {}, sort: [id] })) } },
+        });
+        const e429 = Object.assign(new Error('Throttled'), { meta: { statusCode: 429, body: {} } });
+        client.search
+            .mockRejectedValueOnce(e429)
+            .mockResolvedValueOnce(page(['a', 'b']))
+            .mockResolvedValueOnce(page(['c']));
+        const list = await svc.searchAll<any>({ size: 2 }, { retryOptions: { do: true, t: 1, maxRetries: 1 } });
+        expect(list.map(_ => _._id)).toEqual(['a', 'b', 'c']);
+        expect(client.search).toHaveBeenCalledTimes(3);
+
+        //* a retry does not count against `limit`: limit 1 still returns the first page.
+        client.search.mockReset();
+        client.search.mockRejectedValueOnce(e429).mockResolvedValueOnce(page(['a', 'b']));
+        const list2 = await svc.searchAll<any>(
+            { size: 2 },
+            { limit: 1, retryOptions: { do: true, t: 1, maxRetries: 1 } },
+        );
+        expect(list2.map(_ => _._id)).toEqual(['a', 'b']);
+        expect(client.search).toHaveBeenCalledTimes(2);
+
+        //* retries exhausted on page 1.
+        client.search.mockReset();
+        client.search.mockRejectedValueOnce(e429).mockRejectedValueOnce(e429);
+        expect(
+            await svc.searchAll({ size: 2 }, { retryOptions: { do: true, t: 1, maxRetries: 1 } }).catch(GETERR),
+        ).toBe('429 UNKNOWN - Throttled');
     });
 
     it('B18 popullateAutocompleteFields() adds jamo and qwerty forms', async () => {

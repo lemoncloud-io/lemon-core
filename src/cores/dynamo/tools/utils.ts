@@ -106,8 +106,11 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
         });
     };
 
-    const testFunc = function () {
-        return (self.options.loadAll && lastEvaluatedKey) || retry;
+    //* v5 B22: `async@3` calls the test as `test(...args, cb)` and waits for `cb` (a returned boolean is ignored).
+    const testFunc = function (...args: any[]) {
+        const check = args[args.length - 1];
+        const again = !!((self.options.loadAll && lastEvaluatedKey) || retry);
+        return check(null, again);
     };
 
     const resulsFunc = function (err: any) {

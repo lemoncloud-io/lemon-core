@@ -18,6 +18,15 @@ All notable changes to this project will be documented in this file. See [standa
 * **B20 response base64 flag**: `buildResponse()` sets `isBase64Encoded` only for a non-textual content type (`application/json`, `application/xml`, `*+json`, `*+xml`, `text/*` … are not flagged).
 * **B20 local errors as API Gateway**: an unknown path or a method not on the resource → `403 Missing Authentication Token` (was 404 on the devkit server); a rejected handler → `502` at once (was a hanging request); a body over 10 MB → `413`. `GET /` shows the banner only without a `GET /` route.
 
+### Fixes
+
+* **B22 dynamo `paginatedRequest()`** (`docs/v5/B22-pinned-behaviours.md` § 1): the `async@3` `doWhilst` test now calls its callback, so `Query.exec()` / `Scan.exec()` call back after a success (merged result, `loadAll` pages via `LastEvaluatedKey`) and after a retryable error (one retry). Before, they never called back.
+* **B22 OS2 429 retry on page 1** (§ 2): `generateSearchResult()` / `searchAll()` with `retryOptions.do` retries a 429 on any page, page 1 included (before: a 429 on page 1 ended with `[]`). Same `maxRetries` and wait; a retry no longer counts against `limit`.
+* **B22 `$source` with a projection** (§ 3): `buildQueryBody()` with `$source: '*'` or an array and a `#field` projection gives `_source: { includes: [...] }` (before: `TypeError: $source.includes.push is not a function`). The object form is unchanged.
+* **B22 `OS2Instance.search()` `indexName`** (§ 4): `params.indexName` searches that index (same options and FGAC manager), as `AbstractOS2Instance.search()` does. Before, it was ignored.
+* **B22 legacy `$protocol(service, param, body)`** (§ 5): the 2nd argument is the default `param` and the 3rd the default `body` (before: both were the service URL); the 3rd argument no longer sets `isProd`. No caller in the org repos uses the 3-argument legacy form.
+* **B22 `loadFromFile()`** (§ 6): documented only — a capitalised object key is read as a plural (`Users` → `user`), so a singular key loses its last letter (`Owner` → `owne`). No behaviour change.
+
 ### Dependencies
 
 * `@aws-sdk/client-cloudwatch-logs` `^3.1159.0` added as an optional peer and devDependency (used by the logs tools).

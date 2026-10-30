@@ -115,7 +115,11 @@ describe('helpers B18', () => {
         expect(enqueue.mock.calls[1][1]).toEqual(undefined);
         expect(await $p.notify(null, null, 'POST', '?x=1')).toEqual('nid');
         expect(notify.mock.calls[0][1]).toEqual(undefined);
+    });
 
+    //* v5 B22: the legacy form used to map `stage` only (its `param` was read after `service` was reassigned).
+    it('B22 legacy $protocol(service, param, body) maps param and body', async () => {
+        const execute = vi.spyOn($cores.protocol.service, 'execute').mockResolvedValue('ok' as any);
         //* legacy form: `$protocol(service, param, body)`; `NS=SS` means prod.
         process.env.NS = 'SS';
         const $p2 = ($protocol as any)('//self/items', { p: 1 }, { b: 1 });
@@ -123,8 +127,20 @@ describe('helpers B18', () => {
         expect($p2.asTargetUrl().startsWith('api://')).toEqual(true);
         expect($p2.asTargetUrl().endsWith('/items')).toEqual(true);
         await $p2.execute();
-        //* (observed) the legacy form maps `stage` only; its `param` is not the 2nd argument (B18 finding, unchanged).
-        expect(execute.mock.calls[1][0]).toMatchObject({ stage: 'prod' });
+        //* v5 B22: the legacy form maps the 2nd argument to `param` and the 3rd to `body`.
+        expect(execute.mock.calls[0][0]).toMatchObject({ stage: 'prod', param: { p: 1 }, body: { b: 1 } });
+        //* v5 B22: arguments of `execute()` still win over the legacy defaults.
+        await $p2.execute({ q: 2 }, { c: 2 }, 'PUT');
+        expect(execute.mock.calls[1][0]).toMatchObject({ mode: 'PUT', param: { q: 2 }, body: { c: 2 } });
+        //* v5 B22: in the legacy form the 3rd argument is the body only (no `isProd` from it).
+        process.env.NS = 'B22';
+        await ($protocol as any)('//b22-api/items', { p: 1 }, { isProd: true }).execute();
+        expect(execute.mock.calls[2][0].stage).not.toEqual('prod');
+        expect(execute.mock.calls[2][0]).toMatchObject({ param: { p: 1 }, body: { isProd: true } });
+        //* v5 B22: the 1-argument form (`$protocol(service)`) has no default param or body.
+        await ($protocol as any)('//b22-api/items').execute();
+        expect(execute.mock.calls[3][0].param).toEqual(undefined);
+        expect(execute.mock.calls[3][0].body).toEqual(undefined);
     });
 
     it('B18 $info(), $slack() in local mode, $event()', async () => {

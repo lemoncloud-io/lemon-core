@@ -80,11 +80,10 @@ describe('dynamo/tools/utils (B18)', () => {
         expect(self.startKey).not.toHaveBeenCalled();
     });
 
-    //* v5 B18: documents the current behaviour. `async@3` calls the sync test as `test(cb)` and waits for `cb`,
-    //* which the sync test never calls, so after a success (or a retryable error) the callback is never called.
-    it('B18 paginatedRequest() never calls back after a success (sync test with async@3)', async () => {
+    //* v5 B22: the `doWhilst` test now calls back, so a success ends with the merged results.
+    it('B22 paginatedRequest() calls back with the merged results after a success', async () => {
         const self = {
-            options: { loadAll: true },
+            options: {},
             buildRequest: () => ({ TableName: 'T' }),
             startKey: vi.fn(),
             table: { tableName: () => 'T' },
@@ -97,14 +96,55 @@ describe('dynamo/tools/utils (B18)', () => {
         await tick();
         await tick();
         expect(run).toHaveBeenCalledTimes(1);
-        expect(done).not.toHaveBeenCalled();
+        expect(self.startKey).not.toHaveBeenCalled();
+        expect(done).toHaveBeenCalledWith(null, { Items: [{ id: 1 }], Count: 1, LastEvaluatedKey: { id: 1 } });
+    });
 
-        const retry = vi.fn((_req: any, cb: any) => cb({ retryable: true }));
-        const done2 = vi.fn();
-        paginatedRequest(self, retry, done2);
-        await tick();
-        await tick();
-        expect(retry).toHaveBeenCalledTimes(1);
-        expect(done2).not.toHaveBeenCalled();
+    //* v5 B22: `loadAll` follows `LastEvaluatedKey` to the next page and merges both pages.
+    it('B22 paginatedRequest() loads all pages with loadAll', async () => {
+        const self = {
+            options: { loadAll: true },
+            buildRequest: () => ({ TableName: 'T' }),
+            startKey: vi.fn(),
+            table: { tableName: () => 'T' },
+        };
+        const pages = [
+            { Count: 1, ScannedCount: 1, Items: [{ id: 1 }], LastEvaluatedKey: { id: 1 } },
+            { Count: 1, ScannedCount: 2, Items: [{ id: 2 }] },
+        ];
+        const run = vi.fn((_req: any, cb: any) => cb(null, pages[run.mock.calls.length - 1]));
+        const done = vi.fn();
+        paginatedRequest(self, run, done);
+        for (let i = 0; i < 6; i++) await tick();
+        expect(run).toHaveBeenCalledTimes(2);
+        expect(self.startKey).toHaveBeenCalledTimes(1);
+        expect(self.startKey).toHaveBeenCalledWith({ id: 1 });
+        expect(done).toHaveBeenCalledTimes(1);
+        expect(done).toHaveBeenCalledWith(null, {
+            Items: [{ id: 1 }, { id: 2 }],
+            Count: 2,
+            ScannedCount: 3,
+            LastEvaluatedKey: { id: 1 },
+        });
+    });
+
+    //* v5 B22: a retryable error runs the request once more, then calls back with the results.
+    it('B22 paginatedRequest() retries a retryable error once, then calls back', async () => {
+        const self = {
+            options: {},
+            buildRequest: () => ({ TableName: 'T' }),
+            startKey: vi.fn(),
+            table: { tableName: () => 'T' },
+        };
+        const run = vi.fn((_req: any, cb: any) =>
+            run.mock.calls.length === 1 ? cb({ retryable: true }) : cb(null, { Count: 1, Items: [{ id: 9 }] }),
+        );
+        const done = vi.fn();
+        paginatedRequest(self, run, done);
+        for (let i = 0; i < 6; i++) await tick();
+        expect(run).toHaveBeenCalledTimes(2);
+        expect(self.startKey).not.toHaveBeenCalled();
+        expect(done).toHaveBeenCalledTimes(1);
+        expect(done).toHaveBeenCalledWith(null, { Items: [{ id: 9 }], Count: 1 });
     });
 });

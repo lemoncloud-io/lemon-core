@@ -77,6 +77,14 @@ describe('OS2QueryService (B18 offline)', () => {
         ['source raw', { $source: ['a'] }, { _source: ['a'] }],
         ['projection', { '#name': 1, '#age': 1 }, { _source: { includes: ['name', 'age'], excludes: [] } }],
         ['projection + source', { $source: { includes: ['a'] }, '#b': 1 }, { _source: { includes: ['a', 'b'] } }],
+        //* v5 B22: `'*'` or an array with a projection used to throw `TypeError: $source.includes.push is not a function`.
+        ['B22 projection + source all', { $source: '*', '#b': 1 }, { _source: { includes: ['*', 'b'] } }],
+        ['B22 projection + source raw', { $source: ['a'], '#b': 1 }, { _source: { includes: ['a', 'b'] } }],
+        [
+            'B22 projection + source list (object form unchanged)',
+            { $source: 'a,!c', '#b': 1 },
+            { _source: { includes: ['a', 'b'], excludes: ['c'] } },
+        ],
     ];
     it.each(cases)('B18 buildQueryBody(): %s', (_name, param, expected) => {
         const $q = new OS2QueryService(fakeService());

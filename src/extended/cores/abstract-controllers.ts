@@ -293,6 +293,12 @@ export abstract class AbstractCRUDController<
 
     /**
      * load mock-model from `.yml` file.
+     *
+     * - an object key starting with a capital letter (`Users`) holds nested models; their `type` is the key with
+     *   the first letter lower-cased and the **last letter dropped**, i.e. the key is read as a plural
+     *   (`Users` → `user`, `Items` → `item`).
+     * - a singular key loses a real letter (`Owner` → `owne`); an array item may set its own `type` to override it.
+     * - v5 B22: documented only, not changed — the derived `type` (and its id sequence) is part of existing mock data.
      */
     public async loadFromFile(file: string) {
         if (!file) throw new Error(`@file (string) is required!`);

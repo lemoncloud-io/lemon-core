@@ -866,10 +866,13 @@ export class OS2CoreService<T extends OS2Item = any> extends OS2ClientService {
         const maxRetries = params?.retryOptions?.maxRetries ?? 3;
         let limit = params?.limit ?? -1;
         let retryCount = 0;
+        //* v5 B22: a 429 retry repeats the same page (page 1 too), without counting it against `limit`.
+        let retrying = false;
 
         if (!body.sort) body.sort = '_doc';
 
         do {
+            retrying = false;
             try {
                 const { list, last } = await this.search(body, params?.searchType);
 
@@ -886,12 +889,13 @@ export class OS2CoreService<T extends OS2Item = any> extends OS2ClientService {
                 if (doRetry && msg.startsWith('429 UNKNOWN') && retryCount < maxRetries) {
                     retryCount++;
                     await waited(t);
+                    retrying = true; //* v5 B22: retry this page, even when there is no `search_after` yet.
                     continue;
                 } else {
                     throw e;
                 }
             }
-        } while (body.search_after && (limit === -1 || --limit > 0));
+        } while (retrying || (body.search_after && (limit === -1 || --limit > 0)));
     }
     /**
      * prepare default setting
