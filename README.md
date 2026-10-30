@@ -5,7 +5,7 @@
 
 Bootloader for serverless micro-services on AWS Lambda: one function, several event sources, an engine with modules, a protocol service.
 This README is the entry point for people and AI agents; every path and command below is in this repo. `§` refers to `HOW_TO_UPGRADE_V5.md`.
-v5 status: npm `latest` is `5.0.8` (2026-10-30; B15 + lemon-model 5.0.2). The `v5` branch holds all 5.x work; `develop` is the default branch.
+v5 status: npm `latest` is `5.0.10` (2026-10-30; B16-b shims + lemon-model `5.0.2` exact pin). The `v5` branch holds all 5.x work; `develop` is the default branch.
 `CONTRIBUTING.md` § Branching describes both flows: `develop` for 4.x, `v5` for 5.x (merged into `v5` until it lands on `develop`).
 
 ## At a glance
@@ -207,7 +207,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |
-| [CHANGELOG.md](CHANGELOG.md) | 5.0.5–5.0.8 entries (B10, B13, B14, B15), then stops at 1.2.0 (2019); see VERSION INFO |
+| [CHANGELOG.md](CHANGELOG.md) | 5.0.5–5.0.10 entries (B10, B13, B14, B15, B16), then stops at 1.2.0 (2019); see VERSION INFO |
 
 ## Contribution
 
@@ -225,6 +225,8 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 5.0.10    | B16-b resolution shims `model/`·`testing/` for `moduleResolution: node` and Jest 27 (§ 16).
+| 5.0.9     | B16 sub-path `lemon-core/model` (`export * from 'lemon-model'`), lemon-model pinned exact `5.0.2` (D73).
 | 5.0.8     | B15 security follow-up (§ 11.7, § 15.2); lemon-model `^5.0.2`.
 | 5.0.7     | Re-publish of 5.0.6 (same source).
 | 5.0.6     | B13 default data-access policy of `AbstractCRUDController` (§ 11.7); B14 `context.channel`, signed relay `x-lemon-relay`, `TRACE` line, `x-protocol-context` deprecated (§ 15); README rewritten as the v5 entry point; lemon-model `^5.0.1`.
