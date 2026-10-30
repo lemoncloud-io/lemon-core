@@ -948,6 +948,15 @@ Resolution: since 5.0.10, `lemon-core/model` and `lemon-core/testing` also resol
 
 ---
 
+## 17. `ManagerProxy.inc()` per id and shared `.yml` dummy storage
+
+* Same-id `inc()` calls in one `ManagerProxy` now run one after another (different ids stay parallel). After N concurrent `inc()` the proxy cache holds the final storage value, so `saveAllUpdates({ useBatch: true })` no longer writes a stale count back. A rejected `inc()` still rejects and does not block the next one.
+* With a `.yml` table (dummy storage), every manager of one service instance shares one inner storage, like managers on one DynamoDB table. Another service instance keeps its own. DynamoDB tables are unchanged.
+
+Details: `docs/v5/ddb-inc-sharing.md`.
+
+---
+
 ## At-a-Glance Checklist
 
 - [ ] Node.js 24 (`.nvmrc`, local runtime)
@@ -998,3 +1007,4 @@ Resolution: since 5.0.10, `lemon-core/model` and `lemon-core/testing` also resol
 - [ ] While v4 services remain: send `PROTOCOL_LEGACY_CONTEXT=send`, receive `PROTOCOL_LEGACY_ACCEPT=warn`; then `off`, then `reject` when no `PROTOCOL deprecated` line is logged (§ 15.5)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
 - [ ] Since 5.0.9: no `lemon-model` in your `package.json`; root names from `lemon-core`, `field`/`fieldsOf`/`specsOf` from `lemon-core/model`; `npm ls lemon-model` shows one copy (§ 16)
+- [ ] Specs that relied on separate dummy buffers per manager of one service (same `_id`, `nextSeq()` restarting) expect one shared buffer (§ 17)
