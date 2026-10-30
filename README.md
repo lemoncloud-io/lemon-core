@@ -16,7 +16,7 @@ v5 status: npm `latest` is `5.0.8` (2026-10-30; B15 + lemon-model 5.0.2). The `v
 | Runtime | Node `>=24.0.0` (`engines.node`), `.nvmrc` `24.15.0` |
 | Build | TypeScript `^5.9.3`. `npm run build` = `build-ts` (`tsc`) + `scripts/gen-esm-wrapper.cjs` |
 | Tests | vitest `^4.1.4`: `src/**/*.spec.ts`, `bin/**/*.spec.mjs` (`vitest.config.ts`) |
-| Formats | CJS `dist/` + ESM `dist/esm/*.mjs`. `exports`: `.`, `./testing`, `./model` (unreleased, B16), `./dist/environ`, `./dist/cores/lambda/lambda-web-handler`, `./dist/extended/cores`, `./dist/*` (until v6), `./package.json` |
+| Formats | CJS `dist/` + ESM `dist/esm/*.mjs`. `exports`: `.`, `./testing`, `./model` (5.0.9; shim folders for moduleResolution=node/Jest 27 unreleased), `./dist/environ`, `./dist/cores/lambda/lambda-web-handler`, `./dist/extended/cores`, `./dist/*` (until v6), `./package.json` |
 | Dependencies | `@aws-sdk/client-dynamodb, @aws-sdk/lib-dynamodb, @opensearch-project/opensearch, @smithy/signature-v4, @types/aws-lambda, @types/jsonwebtoken, async, crypto-js, js-yaml, jsonwebtoken, lemon-model, mime-types, node-cache, qs, source-map-support` |
 | Optional peers | 8 AWS SDK packages `^3.1159.0`, loaded on first use. `typescript` `>=4.7` (CLI) |
 | Published | `files`: `dist/**/*`, `bin/lemon-fields-types.mjs`, `bin/lib/fields-types.mjs`. CLI `lemon-fields-types` (since 5.0.5; see § 13.5) |
@@ -33,7 +33,7 @@ v5 status: npm `latest` is `5.0.8` (2026-10-30; B15 + lemon-model 5.0.2). The `v
 | `src/extended/` | `CoreService`, `ManagerProxy`; `cores/`: template layer (`MyCoreService`, `checkFieldsAdmin()`) | Developer |
 | `src/controllers/`, `tools/`, `helpers/` | Controllers, `express`, `$T`, `$protocol()` | Developer |
 | `src/lib/` | Internal: `safe-json`, `log-mask`, `qs-compat`, `http-fetch`, `lazy`, `perf`. `lib` barrel: `dynamodb-value` only | Developer. Internal; never re-exported from a barrel |
-| `src/common/test-helper.ts`, `src/environ.ts`, `src/model.ts` | Sub-paths `lemon-core/testing`, `lemon-core/dist/environ`, `lemon-core/model` (B16) | Rarely; all are published sub-paths |
+| `src/common/test-helper.ts`, `src/environ.ts`, `src/model.ts`, `model/`, `testing/` shim folders | Sub-paths `lemon-core/testing`, `lemon-core/dist/environ`, `lemon-core/model` (B16) | Rarely; all are published sub-paths |
 | `bin/` | `lemon-fields-types` CLI, `lib/` logic, spec, fixtures | Developer |
 | `scripts/` | Build and API gates, lazy-load probes | Developer |
 | `etc/api-names.v4.txt`, `etc/api-names.allow.txt` | v4 public-name baseline; allowed `+Name`/`-Name` | The baseline stays; add lines to the allow list only |

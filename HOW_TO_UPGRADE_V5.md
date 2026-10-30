@@ -944,6 +944,8 @@ The pair: lemon-core pins `lemon-model` to one exact version (5.0.9 pins `5.0.2`
 
 Guard: `no-restricted-imports` for `lemon-model` and `lemon-model/*` in your eslint config (snippet in the B16 doc).
 
+Resolution: since 5.0.10, `lemon-core/model` and `lemon-core/testing` also resolve under TypeScript `moduleResolution: node` and Jest 27, without `paths` or `moduleNameMapper`. The package has physical `model/` and `testing/` folders with a `package.json` each (`main`/`types` into `dist/`) for resolvers that ignore the `exports` map; Node itself uses the `exports` map. With 5.0.9 these tools need two consumer lines (`compilerOptions.paths` for `lemon-core/model` in `tsconfig.json`, and a `moduleNameMapper` entry in the Jest config); remove them when you bump to 5.0.10.
+
 ---
 
 ## At-a-Glance Checklist

@@ -93,7 +93,9 @@
   "files": [
     "dist/**/*",
     "bin/lemon-fields-types.mjs",
-    "bin/lib/fields-types.mjs"
+    "bin/lib/fields-types.mjs",
+    "model/package.json",
+    "testing/package.json"
   ],
   "engines": {
     "node": ">=24.0.0"
