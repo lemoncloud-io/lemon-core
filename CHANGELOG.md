@@ -4,12 +4,18 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## Unreleased (5.x)
 
+_nothing yet_
+
+## 5.0.12 (2026-10-30)
+
 ### Dependencies
 
-* `vitest` and `@vitest/coverage-v8` `^4.1.4` → `^4.1.12` (B18-d, `docs/v5/B18-audit-coverage.md`): fixes `@vitest/mocker` (GHSA-82fw-gwwq-j7x9, GHSA-qxg6-89mg-rqv8). Full `npm audit` 9 → 6 rows; `--omit=dev` stays 0. The 6 rows left are the `lemon-devkit` → `request` chain (`form-data`, `qs`, `tough-cookie`, `uuid`), pending lemon-devkit 0.2.3. devDependencies only; no runtime change.
+* `lemon-devkit` `^0.2.1` → `^0.2.3` (B18-f): lemon-devkit 0.2.3 drops the deprecated `request` (Node `http`/`https` in `exec-cli`), so the `request` → `form-data` / `qs` / `tough-cookie` / `uuid` chain leaves the tree. Full `npm audit` 6 → **0**; `--omit=dev` stays 0. devDependencies only.
+* `vitest` and `@vitest/coverage-v8` `^4.1.4` → `^4.1.12` (B18-d, `docs/v5/B18-audit-coverage.md`): fixes `@vitest/mocker` (GHSA-82fw-gwwq-j7x9, GHSA-qxg6-89mg-rqv8). Full `npm audit` 9 → 6 rows; the 6 left (the `lemon-devkit` → `request` chain) go with the lemon-devkit bump above. devDependencies only; no runtime change.
 
 ### Tests
 
+* `src/tools/express.spec.ts`: the pinned `lemon-devkit` range follows the bump (`^0.2.3`).
 * **B18 coverage** (`docs/v5/B18-audit-coverage.md` § Coverage): 23 offline `*.b18.spec.ts` files (+256 tests) for dynamo, AWS services, OpenSearch, storage, extended cores, API service, engine and helpers — `npm test` 64 / 880 → 87 / 1136, lines 70.28 % → 96.39 %, branches 63.72 % → 85.87 %. Six current behaviours are pinned and listed for separate fixes. No `src/` change besides one prettier line wrap.
 
 ### Repository

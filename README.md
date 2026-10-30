@@ -5,7 +5,7 @@
 
 Bootloader for serverless micro-services on AWS Lambda: one function, several event sources, an engine with modules, a protocol service.
 This README is the entry point for people and AI agents; every path and command below is in this repo. `§` refers to `HOW_TO_UPGRADE_V5.md`.
-v5 status: npm `latest` is `5.0.11` (2026-10-30; B17 repo hygiene + lemon-model `5.0.4` exact pin). The `v5` branch holds all 5.x work; `develop` is the default branch.
+v5 status: npm `latest` is `5.0.12` (2026-10-30; B18 coverage 96 % lines + `npm audit` 0, lemon-model `5.0.4` exact pin). The `v5` branch holds all 5.x work; `develop` is the default branch.
 `CONTRIBUTING.md` § Branching describes both flows: `develop` for 4.x, `v5` for 5.x (merged into `v5` until it lands on `develop`).
 
 ## At a glance
@@ -204,11 +204,11 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B15-security.md](docs/v5/B15-security.md) | B15: cross-cloud `cid`, list `view`, internal admin, policy keys `internal`/`cross` |
 | [B16-model-subpath.md](docs/v5/B16-model-subpath.md) | B16: sub-path `lemon-core/model` (all of lemon-model), exact lemon-model pin, consumer rule |
 | [B17-repo-hygiene.md](docs/v5/B17-repo-hygiene.md) | B17: the old CI config and the typedoc workflow removed (token rotation by the owner), `CONTRIBUTING.md` `v5` flow |
-| [B18-audit-coverage.md](docs/v5/B18-audit-coverage.md) | B18: devDependencies audit (vitest `4.1.12`; lemon-devkit `request` chain pending 0.2.3), coverage 70 % → 96 % lines (offline specs), six pinned behaviours to fix separately |
+| [B18-audit-coverage.md](docs/v5/B18-audit-coverage.md) | B18: devDependencies audit 9 → 0 (vitest `4.1.12`, lemon-devkit `0.2.3`), coverage 70 % → 96 % lines (offline specs), six pinned behaviours to fix separately |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |
-| [CHANGELOG.md](CHANGELOG.md) | 5.0.5–5.0.11 entries (B10, B13, B14, B15, B16, B17), then stops at 1.2.0 (2019); see VERSION INFO |
+| [CHANGELOG.md](CHANGELOG.md) | 5.0.5–5.0.12 entries (B10, B13, B14, B15, B16, B17, B18), then stops at 1.2.0 (2019); see VERSION INFO |
 
 ## Contribution
 
@@ -226,6 +226,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 5.0.12    | B18: tests 87 files / 1136 (lines 70 % → 96 %), vitest `4.1.12`, lemon-devkit `^0.2.3` (no `request`) — `npm audit` 0 (devDependencies only).
 | 5.0.11    | B17: lemon-model `5.0.4` exact pin (TS2411 fix for strict consumers of `lemon-core/model`), repo hygiene (`.travis.yml`·typedoc workflow removed, CONTRIBUTING `v5` flow).
 | 5.0.10    | B16-b resolution shims `model/`·`testing/` for `moduleResolution: node` and Jest 27 (§ 16).
 | 5.0.9     | B16 sub-path `lemon-core/model` (`export * from 'lemon-model'`), lemon-model pinned exact `5.0.2` (D73).
