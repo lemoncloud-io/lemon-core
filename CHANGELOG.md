@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## Unreleased (5.x)
 
+### Features
+
+* **B16 sub-path `lemon-core/model`** (`docs/v5/B16-model-subpath.md`, `HOW_TO_UPGRADE_V5.md` § 16): `export * from 'lemon-model'` — every lemon-model name (`field`, `fieldsOf`, `specsOf`, `FIELDS_KEY`, …) through lemon-core, with an ESM wrapper `dist/esm/model.mjs`. The objects are the lemon-model objects; `CoreModel` is the same class as on the root.
+
+### Dependencies
+
+* `lemon-model` pinned to the exact version `5.0.2` (was `^5.0.2`), D73: the lemon-core version fixes the lemon-model version ("the pair"), so one install holds one lemon-model and one `CoreModel` class. Each release names its lemon-model here.
+
+### Consumers
+
+* Do not declare `lemon-model` in a service. The 32 v4 names from `lemon-core`, every other lemon-model name from `lemon-core/model`.
+* No root change: the root keeps the 32 v4 lemon-model names (S-06); `api:check` unchanged.
+
+## 5.0.8 (2026-10-30)
+
+* lemon-model `^5.0.2`.
+
 ### Behaviour changes
 
 * **B15 security follow-up** (session on only; `docs/v5/B15-security.md`, `HOW_TO_UPGRADE_V5.md` § 11.7 and § 15.2). Session off and local mode are unchanged.

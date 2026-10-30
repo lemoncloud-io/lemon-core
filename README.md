@@ -6,7 +6,7 @@
 
 Bootloader for serverless micro-services on AWS Lambda: one function, several event sources, an engine with modules, a protocol service.
 This README is the entry point for people and AI agents; every path and command below is in this repo. `§` refers to `HOW_TO_UPGRADE_V5.md`.
-v5 status: npm `latest` is `5.0.7` (2026-10-30; same source as 5.0.6). The `v5` branch holds all 5.x work; `develop` is the default branch.
+v5 status: npm `latest` is `5.0.8` (2026-10-30; B15 + lemon-model 5.0.2). The `v5` branch holds all 5.x work; `develop` is the default branch.
 `CONTRIBUTING.md` describes the `develop` flow; 5.x changes are merged into `v5` until it lands on `develop`.
 
 ## At a glance
@@ -16,7 +16,7 @@ v5 status: npm `latest` is `5.0.7` (2026-10-30; same source as 5.0.6). The `v5` 
 | Runtime | Node `>=24.0.0` (`engines.node`), `.nvmrc` `24.15.0` |
 | Build | TypeScript `^5.9.3`. `npm run build` = `build-ts` (`tsc`) + `scripts/gen-esm-wrapper.cjs` |
 | Tests | vitest `^4.1.4`: `src/**/*.spec.ts`, `bin/**/*.spec.mjs` (`vitest.config.ts`) |
-| Formats | CJS `dist/` + ESM `dist/esm/*.mjs`. `exports`: `.`, `./testing`, `./dist/environ`, `./dist/cores/lambda/lambda-web-handler`, `./dist/extended/cores`, `./dist/*` (until v6), `./package.json` |
+| Formats | CJS `dist/` + ESM `dist/esm/*.mjs`. `exports`: `.`, `./testing`, `./model` (unreleased, B16), `./dist/environ`, `./dist/cores/lambda/lambda-web-handler`, `./dist/extended/cores`, `./dist/*` (until v6), `./package.json` |
 | Dependencies | `@aws-sdk/client-dynamodb, @aws-sdk/lib-dynamodb, @opensearch-project/opensearch, @smithy/signature-v4, @types/aws-lambda, @types/jsonwebtoken, async, crypto-js, js-yaml, jsonwebtoken, lemon-model, mime-types, node-cache, qs, source-map-support` |
 | Optional peers | 8 AWS SDK packages `^3.1159.0`, loaded on first use. `typescript` `>=4.7` (CLI) |
 | Published | `files`: `dist/**/*`, `bin/lemon-fields-types.mjs`, `bin/lib/fields-types.mjs`. CLI `lemon-fields-types` (since 5.0.5; see § 13.5) |
@@ -33,7 +33,7 @@ v5 status: npm `latest` is `5.0.7` (2026-10-30; same source as 5.0.6). The `v5` 
 | `src/extended/` | `CoreService`, `ManagerProxy`; `cores/`: template layer (`MyCoreService`, `checkFieldsAdmin()`) | Developer |
 | `src/controllers/`, `tools/`, `helpers/` | Controllers, `express`, `$T`, `$protocol()` | Developer |
 | `src/lib/` | Internal: `safe-json`, `log-mask`, `qs-compat`, `http-fetch`, `lazy`, `perf`. `lib` barrel: `dynamodb-value` only | Developer. Internal; never re-exported from a barrel |
-| `src/common/test-helper.ts`, `src/environ.ts` | Sub-paths `lemon-core/testing`, `lemon-core/dist/environ` | Rarely; both are published sub-paths |
+| `src/common/test-helper.ts`, `src/environ.ts`, `src/model.ts` | Sub-paths `lemon-core/testing`, `lemon-core/dist/environ`, `lemon-core/model` (B16) | Rarely; all are published sub-paths |
 | `bin/` | `lemon-fields-types` CLI, `lib/` logic, spec, fixtures | Developer |
 | `scripts/` | Build and API gates, lazy-load probes | Developer |
 | `etc/api-names.v4.txt`, `etc/api-names.allow.txt` | v4 public-name baseline; allowed `+Name`/`-Name` | The baseline stays; add lines to the allow list only |
@@ -85,6 +85,7 @@ await $lemon.engine.initialize(); // resolves once every module's initModule() s
 ```
 
 ESM `import` gives the same instances (§ 2). Specs use `lemon-core/testing` (§ 4).
+Since 5.0.9, lemon-model names that are not on the root come from `import { field, fieldsOf } from 'lemon-core/model';` — do not declare `lemon-model` yourself (§ 16).
 
 ### 3. Engine module registration — the "3-piece set"
 
@@ -171,7 +172,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 
 | Document | Content |
 |---|---|
-| [HOW_TO_UPGRADE_V5.md](HOW_TO_UPGRADE_V5.md) | § 1 Node 24 · § 2 ESM · § 3 `exports` · § 4 testing · § 5 modules · § 6 deps · § 7 OpenSearch · § 8 AWS SDK · § 9 L1/L2 · § 10 `@field()` · § 11 trust · § 12 `src/cores/` · § 13 B10 · § 14 audit · § 15 channel/relay (B14) |
+| [HOW_TO_UPGRADE_V5.md](HOW_TO_UPGRADE_V5.md) | § 1 Node 24 · § 2 ESM · § 3 `exports` · § 4 testing · § 5 modules · § 6 deps · § 7 OpenSearch · § 8 AWS SDK · § 9 L1/L2 · § 10 `@field()` · § 11 trust · § 12 `src/cores/` · § 13 B10 · § 14 audit · § 15 channel/relay (B14) · § 16 `lemon-core/model` (B16) |
 | [HOW_TO_UPGRADE_V4.md](HOW_TO_UPGRADE_V4.md) | v3 → v4 (historical) |
 | [baseline.md](docs/v5/baseline.md) | B0-a baseline: link state, boot, run modes, test counts, public names |
 | [B0-local-harness.md](docs/v5/B0-local-harness.md) | B0 local harness: the local run path as the verification gate |
@@ -202,10 +203,11 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B14-relay-context.md](docs/v5/B14-relay-context.md) | B14 plan: `context.channel`, the signed relay `x-lemon-relay`, trace, `x-protocol-context` deprecation (Korean) |
 | [B14-relay-context-impl.md](docs/v5/B14-relay-context-impl.md) | B14 implementation record (WP1–WP3): lemon-model `channel`/`trace`, `protocol-relay.ts`, entry changes (Korean) |
 | [B15-security.md](docs/v5/B15-security.md) | B15: cross-cloud `cid`, list `view`, internal admin, policy keys `internal`/`cross` |
+| [B16-model-subpath.md](docs/v5/B16-model-subpath.md) | B16: sub-path `lemon-core/model` (all of lemon-model), exact lemon-model pin, consumer rule |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |
-| [CHANGELOG.md](CHANGELOG.md) | 5.0.5–5.0.7 entries (B10, B13, B14), then stops at 1.2.0 (2019); see VERSION INFO |
+| [CHANGELOG.md](CHANGELOG.md) | 5.0.5–5.0.8 entries (B10, B13, B14, B15), then stops at 1.2.0 (2019); see VERSION INFO |
 
 ## Contribution
 
@@ -223,6 +225,7 @@ See [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
 
 | Version   | Description
 |--         |--
+| 5.0.8     | B15 security follow-up (§ 11.7, § 15.2); lemon-model `^5.0.2`.
 | 5.0.7     | Re-publish of 5.0.6 (same source).
 | 5.0.6     | B13 default data-access policy of `AbstractCRUDController` (§ 11.7); B14 `context.channel`, signed relay `x-lemon-relay`, `TRACE` line, `x-protocol-context` deprecated (§ 15); README rewritten as the v5 entry point; lemon-model `^5.0.1`.
 | 5.0.5     | B10: `getHelloArn()` account (§ 13.1), circular-safe reports (§ 13.2), masked header logs (§ 13.3), enforce runbook + masked config log (§ 13.4), `lemon-fields-types` (§ 13.5); `LOCAL_TRANSPORT=mock` opt-in (§ 11.3.1).

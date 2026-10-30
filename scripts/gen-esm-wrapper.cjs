@@ -12,6 +12,7 @@
  * | ----------------------- | ------------------------------- | ----------------------------- |
  * | `dist/esm/index.mjs`    | `dist/index.d.ts`               | `../index.js`                 |
  * | `dist/esm/testing.mjs`  | `dist/common/test-helper.d.ts`  | `../common/test-helper.js`    |
+ * | `dist/esm/model.mjs`    | `dist/model.d.ts`               | `../model.js`                 |
  *
  * usage:
  * ```sh
@@ -31,6 +32,8 @@ const root = path.resolve(__dirname, '..');
 const TARGETS = [
     { out: 'dist/esm/index.mjs', dts: 'dist/index.d.ts', cjs: '../index.js' },
     { out: 'dist/esm/testing.mjs', dts: 'dist/common/test-helper.d.ts', cjs: '../common/test-helper.js' },
+    //* v5 B16: `lemon-core/model` = every value of lemon-model (sub-path, the root stays at the 32 v4 names).
+    { out: 'dist/esm/model.mjs', dts: 'dist/model.d.ts', cjs: '../model.js' },
 ];
 
 // sort by code unit, so the order does not depend on the locale.

@@ -4,6 +4,7 @@
  * - v5 B1 smoke: the ESM entry and the CJS entry of `lemon-core` are the same instance.
  * - resolves the package by its own name (Node self-reference, needs `exports` in package.json),
  *   so it checks the published entry points, not the source.
+ * - v5 B16: also checks the `lemon-core/model` sub-path against lemon-model and the root.
  * - exit 1 on the first failed group; prints `names=<n>` on success.
  *
  * usage:
@@ -52,6 +53,7 @@ for (const name of ['aws', 'config', 'protocol', 'lambda']) {
 // sub-path entries declared in the `exports` map.
 const SUBPATHS = [
     'lemon-core/testing',
+    'lemon-core/model', //* v5 B16: the whole lemon-model surface through lemon-core
     'lemon-core/dist/environ',
     'lemon-core/dist/extended/cores',
     'lemon-core/dist/cores/lambda/lambda-web-handler',
@@ -85,7 +87,15 @@ for (const p of SUBPATHS) {
 const testing = await import('lemon-core/testing');
 check('testing.expect2 === cjs.expect2', typeof testing.expect2 === 'function' && testing.expect2 === cjs.expect2);
 
-//* 5. report: print each failure and exit 1, else print the name count.
+//* 5. v5 B16 ./model: the sub-path gives the same lemon-model objects, and the same `CoreModel` as the root.
+const model = await import('lemon-core/model');
+const lm = require('lemon-model');
+for (const k of ['fieldsOf', 'field', 'specsOf', 'CoreModel']) {
+    check(`model.${k} === lemon-model.${k}`, model[k] !== undefined && model[k] === lm[k]);
+}
+check('model.CoreModel === cjs.CoreModel', model.CoreModel !== undefined && model.CoreModel === cjs.CoreModel);
+
+//* 6. report: print each failure and exit 1, else print the name count.
 if (fails.length) {
     fails.forEach(f => console.error(`! esm-smoke FAIL: ${f}`));
     process.exit(1);
