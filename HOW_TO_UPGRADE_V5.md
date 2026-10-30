@@ -50,7 +50,7 @@ process.env = loadEnviron(process); // same loader as `require('lemon-core/dist/
 const { $engine } = await import('lemon-core');
 ```
 
-* Any env loader works (for example `lemon-devkit`); what matters is that it runs before the first `import('lemon-core')`.
+* Any env loader works (since B20 `loadEnviron()` is in lemon-core itself; `lemon-devkit` is not needed); what matters is that it runs before the first `import('lemon-core')`.
 
 ---
 
@@ -534,7 +534,7 @@ lemon-core v4 built its field lists with a generator (`lemon-fields gen` → `sr
 | lemon-core generated registry | `src/generated/field-registry.ts`, `lemon-core/dist/generated/field-registry` | **removed** (the deep path is gone; it had no consumer) |
 | lemon-core scripts | `fields:migrate`, `fields:gen`, `fields:check`, `fields:guard-common`; `build` ran `fields:gen` first | removed; `build` is `build-ts` + the ESM wrapper |
 | Manager constructors (`AbstractManager`, `CoreManager`, `MyCoreManager`) | `fields: string[]` | `fields: string[] \| ModelClass` — a model class is read with `fieldsOf(cls)`. Existing calls are unchanged. `ModelClass`/`resolveFields` are not on the root (deep path `lemon-core/dist/cores/storage/model-fields`) |
-| `lemon-devkit` | devDependency | still a devDependency (`loadProfile`/`loadEnviron`/`buildExpress` need it; only the `fields:*` use is gone) |
+| `lemon-devkit` | devDependency | still a devDependency at B4 (`loadProfile`/`loadEnviron`/`buildExpress` needed it; only the `fields:*` use was gone). Since B20 not needed: the three functions are in lemon-core (§ 20) |
 
 ### 10.2 Root: lemon-model names
 
@@ -646,7 +646,7 @@ Use the same `PROTOCOL_SIGN_KEY` in every service of one install. Keep `warn` wh
 
 ### 11.2 `x-protocol-context` from outside is ignored
 
-A web event with a `host` header (any case — API Gateway, ALB, Function URL and the devkit express server always set it) is external. Its `x-protocol-context` and `x-protocol-signature` headers are ignored in every mode, and the context is built from the request as for any other client. A host-less web event (a direct Lambda invoke) must carry a valid `x-protocol-signature` in `enforce`; the same rule covers a JSON `x-lemon-identity` on a host-less event. `MyHttpHeaderTool.isExternal()` now means "a `host` key is present" (an empty value counts).
+A web event with a `host` header (any case — API Gateway, ALB, Function URL and the local server (`buildExpress`, since B20) always set it) is external. Its `x-protocol-context` and `x-protocol-signature` headers are ignored in every mode, and the context is built from the request as for any other client. A host-less web event (a direct Lambda invoke) must carry a valid `x-protocol-signature` in `enforce`; the same rule covers a JSON `x-lemon-identity` on a host-less event. `MyHttpHeaderTool.isExternal()` now means "a `host` key is present" (an empty value counts).
 
 ### 11.3 Local mode is a runtime setting
 
@@ -844,7 +844,7 @@ Internal calls no longer carry the caller's full context. Each entry sets `conte
 
 | Entry | `channel` |
 | --- | --- |
-| web with a `host` header (API Gateway, ALB, Function URL, the devkit express server) | `external` |
+| web with a `host` header (API Gateway, ALB, Function URL, the local server (`buildExpress`, since B20)) | `external` |
 | web without `host` and without a protocol header (direct invoke) | `internal` |
 | local mode (`$U.isLocalMode()`), web or ALB without a protocol header | `local` (wins over the `host` rule) |
 | protocol receive: web relay or legacy context, SNS/SQS `x-protocol-service` | `internal` (also in local mode, so the local transport takes the Lambda path) |
@@ -1020,6 +1020,31 @@ Details: `docs/v5/B19-bin-tools.md` (invoke / observe) and `docs/v5/B19-bin-depl
 
 ---
 
+## 20. Local server without lemon-devkit (B20)
+
+lemon-core no longer needs `lemon-devkit`. `loadEnviron()` / `loadProfile()` live in lemon-core (same file, stage and merge rules), and `buildExpress()` is a local API Gateway (REST v1) built from your `serverless.yml`. The function names and `src/express.ts` stay the same.
+
+1. Remove `lemon-devkit` from your `devDependencies` (unless your own code imports it).
+2. Add `express`: `npm i -D express` (optional peer `^4.21.2 || ^5.0.0`). Without it, `buildExpress()` stops with `express(module) is required (npm i -D express)`.
+3. Keep `src/express.ts` as it is (`buildExpress($engine, $web, …)` → `createServer()`). The `prefix` option is accepted and ignored.
+4. `serverless.yml` now drives local routing: every `functions.*.events[].http` route, `{param}`, `{proxy+}`, `ANY`, route `cors`. Without a usable `serverless.yml` the old `/{type}/{id}/{cmd}` routes are used, with one warning line. Routes you add to `app` after `buildExpress()` still win.
+5. Binary bodies follow `provider.apiGateway.binaryMediaTypes`. Add it (for example `application/octet-stream`, `image/*`, `multipart/form-data`) when you need binary uploads or downloads. **This also changes the deployed API Gateway** (bodies of those types arrive base64): decide per service. A download is sent as bytes only when the request `Accept` matches the list.
+6. The web handler maps `{proxy+}` to `id` (first segment) and `cmd` (the rest), decodes base64 bodies (textual → string, multipart → `{ ...fields, file, files }` with `buffer`, other → `Buffer`), sends a `Buffer` result as base64, and sets `isBase64Encoded` only for non-textual content types. This applies to deployed Lambdas too.
+
+Behaviour you may notice locally:
+
+| Case | devkit server | Since B20 |
+| --- | --- | --- |
+| Unknown path, or a method not on the resource | 404 | `403 {"message":"Missing Authentication Token"}` (as API Gateway) |
+| Handler rejects | request hangs | `502 {"message":"Internal server error"}` |
+| Body over 10 MB | body-parser limits | `413 {"message":"Request Too Long"}` (API Gateway payload limit) |
+| `GET /` | banner | banner only when `serverless.yml` has no `GET /` route |
+| `context.clientIp` on loopback | `::ffff:127.0.0.1` | `127.0.0.1` |
+
+Details: `docs/v5/B20-local-gateway.md`.
+
+---
+
 ## At-a-Glance Checklist
 
 - [ ] Node.js 24 (`.nvmrc`, local runtime)
@@ -1075,3 +1100,4 @@ Details: `docs/v5/B19-bin-tools.md` (invoke / observe) and `docs/v5/B19-bin-depl
 - [ ] `PROTOCOL_SIGN_VERSION=v2` on senders only after every receiver runs this version (§ 18.2)
 - [ ] Session tokens from `encodeIdentityJWT()` expire after 30 min unless `JWT_TOKEN_TTL_SEC` (30 min ~ 24 h) or `exp` says otherwise; clients refresh (§ 18)
 - [ ] Copied `bin/` Lambda tools replaced by the `lemon-*` commands in your `package.json` scripts; optional AWS SDK peers installed for the tools you use (§ 19)
+- [ ] `lemon-devkit` removed from `devDependencies`, `express` added (`npm i -D express`); `serverless.yml` routes and `binaryMediaTypes` checked for local runs; scripts that expected 404 for unknown paths expect 403 (§ 20)

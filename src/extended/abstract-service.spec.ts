@@ -189,7 +189,8 @@ describe('abstract-service', () => {
         } else {
             //NOTE - improve..
             //@see https://www.npmjs.com/package/ts-transformer-keys
-            console.warn('check lemon-devkit!');
+            //* v5 B20: the env profile is loaded by lemon-core `loadProfile()` (no `lemon-devkit`).
+            console.warn('check the env profile (not loaded by loadProfile)!');
         }
 
         //* test CoreService()
