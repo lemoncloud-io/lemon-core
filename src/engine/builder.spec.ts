@@ -217,4 +217,20 @@ describe(`core/builder.ts`, () => {
             clearSecrets();
         }
     });
+
+    //* key rotation: `LS=1` (silent console) → nothing printed, args are not even stringified for screening.
+    test('check no log screening when LS=1', async () => {
+        const SECRET = 'fake-installed-secret-0003';
+        const { $engine } = instance({}, { env: { LS: '1' } });
+        registerSecret(SECRET);
+        try {
+            const toJSON = vi.fn(() => SECRET);
+            $engine.log('NS', { toJSON });
+            $engine.inf('NS', { toJSON });
+            $engine.err('NS', { toJSON });
+            expect2(toJSON.mock.calls.length).toEqual(0);
+        } finally {
+            clearSecrets();
+        }
+    });
 });

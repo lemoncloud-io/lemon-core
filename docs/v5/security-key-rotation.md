@@ -1,6 +1,6 @@
 # v5 — dual sign keys and value-based log screening
 
-Status: implemented 2026-10-30 on `feat/v5-key-rotation` (base `v5` @ `88502a04`, 5.0.10). A separate track from the v5 bundles (no bundle number). User-facing changes: `HOW_TO_UPGRADE_V5.md` § 17.
+Status: implemented 2026-10-30 on `feat/v5-key-rotation` (base `v5` @ `da5de79b`, 5.0.11). A separate track from the v5 bundles (no bundle number). User-facing changes: `HOW_TO_UPGRADE_V5.md` § 18 (§ 17 is taken by #256, which merges first).
 
 ## Scope
 
@@ -59,6 +59,7 @@ JWT HS256 (`verifyToken()`, issuer `api/<self>`): the secret of A is compared fi
 ## Limits
 
 - **Direct `console.log`** (or any logger that does not go through the engine loggers) is not screened.
+- **`LS=1`** (log silent): the loggers print nothing, so screening is skipped — no stringify cost per log call.
 - **SQS/SNS messages older than the B window**: a message signed by the old key and delivered after `UNTIL` (queue delay, retry, DLQ redrive) is `mismatch` — `warn` logs one line and processes it, `enforce` rejects it (SQS → record failure → DLQ). A service with SQS sets the B window at least as long as the queue retention.
 - **Receivers on 5.0.7 or older** do not read B. Replace a key only after every receiver of the install runs this version.
 - Screening finds an exact value only. A secret printed in another encoding (base64, split across args) is not found.
@@ -71,21 +72,21 @@ JWT HS256 (`verifyToken()`, issuer `api/<self>`): the secret of A is compared fi
 | `src/cores/protocol/protocol-sign.ts` | `PROTOCOL_SIGN_KEY_PREV(_UNTIL)`, `readPrevSignKey()`, `readPrevRaw()`, `validPrevKey()`, `ProtocolVerifyOptions`, `ProtocolVerifyResult.prev`, A → B in `verifyContext`/`verifyMessage`, `sameSig` exported, keys registered for screening |
 | `src/cores/lambda/lambda-web-handler.ts` | `readJwtSignKey()`, `readJwtPrevKey()`, `buildJwtSecret(signKey?)`, A → B constant-time HS256 verify, `parseIdentityJWT` errors mask the token |
 | `src/lib/log-mask.ts` | `registerSecret()`, `clearSecrets()`, `screenLogArgs()`, `SECRET_MIN_LENGTH` |
-| `src/engine/builder.ts` | loggers screen args and print the `!SECRET` line (shared `print_line`/`build_line`) |
+| `src/engine/builder.ts` | loggers screen args and print the `!SECRET` line (shared `print_line`/`build_line`); skipped under `LS=1` |
 | `src/cores/config/config-service.ts` | `init()` registers decrypted values |
 | `src/cores/aws/aws-kms-service.ts` | `encrypt()` logs the plaintext length and the ciphertext length only |
 | specs | `protocol-sign.spec.ts` (+4), `lambda-web-handler.spec.ts` (+1, 3 messages updated), `log-mask.spec.ts` (+3), `builder.spec.ts` (+1) |
-| `HOW_TO_UPGRADE_V5.md` | § 17 and checklist |
+| `HOW_TO_UPGRADE_V5.md` | § 18 and checklist |
 
 No root export added (`src/index.ts` unchanged); the new names live on deep modules only.
 
-## Gates (2026-10-30, local)
+## Gates (2026-10-30, local, on `da5de79b`)
 
 | Gate | Result |
 | --- | --- |
-| `npm test` | 63 files, 885 passed (baseline 871/871; +9 new tests, +14 runs: the web spec also runs inside the SNS/SQS specs, the builder spec inside 3 utilities specs) |
+| `npm test` | 64 files, 898 passed (baseline 880/880, measured on `88502a04`; `da5de79b` adds no spec. The web spec also runs inside the SNS/SQS specs and the builder spec inside 3 utilities specs, so one new test can count more than once) |
 | `npm run api:check` | `base=304 current=306 added=24 removed=22 allow=46 not-allowed=0` (unchanged) |
 | `npm run api:names` | 306 names (unchanged) |
-| `npm run esm:smoke` | `esm-smoke: ok names=141 subpaths=4` |
+| `npm run esm:smoke` | `esm-smoke: ok names=141 subpaths=5` (unchanged) |
 | `npx tsc --noEmit` / `eslint` / `prettier --check` on changed files | pass (3 pre-existing warnings in `lambda-web-handler.spec.ts:83`) |
 | `npm audit --omit=dev` | `found 0 vulnerabilities` |

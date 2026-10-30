@@ -56,6 +56,9 @@ export const BLUE = '\x1b[32m';
 export const YELLOW = '\x1b[33m';
 export const RESET = '\x1b[0m';
 
+//* the no-op console of `LS=1` (log silent) — `build_line` skips screening when it is in use.
+const silent = (): void => {};
+
 /* eslint-disable @typescript-eslint/indent */
 //* key rotation: print one line with the level prefix (ts, color) through `$console.log`.
 const print_line = ($console: EngineConsole, level: string, color: string, args: any[]) => {
@@ -66,8 +69,10 @@ const print_line = ($console: EngineConsole, level: string, color: string, args:
     return $console.log.apply($console.thiz, args);
 };
 //* key rotation: screen the args, print the line, then 1 error line (no value) if a secret was masked.
+//* nothing to screen when the output is off (`LS=1`).
 const build_line = ($console: EngineConsole, level: string, color: string): EngineLogger =>
     function () {
+        if ($console.log === silent) return;
         const args = Array.prototype.slice.call(arguments);
         const hit = screenLogArgs(args);
         const res = print_line($console, level, color, args);
@@ -221,7 +226,6 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     const LC = _environ('LC', STAGE === 'local' || STAGE === 'express' ? '1' : '') === '1'; // COLORIZE LOG
 
     //* common function for logging.
-    const silent = () => {};
     const $console: EngineConsole = {
         thiz: console,
         log: LS ? silent : console.log,
