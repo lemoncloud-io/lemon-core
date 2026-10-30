@@ -538,7 +538,7 @@ lemon-core v4 built its field lists with a generator (`lemon-fields gen` → `sr
 
 ### 10.2 Root: lemon-model names
 
-The lemon-core root re-exports **exactly the 32 lemon-model names it had in v4** (`CoreModel`, `CORE_FIELDS`, `AbstractTransformer`, `NextContext`, `SearchBody`, …). `CoreModel` is now a value and a type there. The new lemon-model names (1.2 to 1.6, including `field`, `fieldsOf`, `specsOf`, `FIELDS_KEY`) are **not** on the lemon-core root. Import them from lemon-model and declare it yourself:
+The lemon-core root re-exports **exactly the 32 lemon-model names it had in v4** (`CoreModel`, `CORE_FIELDS`, `AbstractTransformer`, `NextContext`, `SearchBody`, …). `CoreModel` is now a value and a type there. The new lemon-model names (1.2 to 1.6, including `field`, `fieldsOf`, `specsOf`, `FIELDS_KEY`) are **not** on the lemon-core root. Import them from lemon-model and declare it yourself (since 5.0.9: from `lemon-core/model`, without declaring lemon-model — § 16):
 
 ```jsonc
 // package.json
@@ -906,6 +906,46 @@ Module: `src/cores/protocol/protocol-relay.ts` (deep path `lemon-core/dist/cores
 
 ---
 
+## 16. lemon-model through lemon-core (B16)
+
+Since 5.0.9, lemon-core publishes the whole lemon-model surface on the sub-path `lemon-core/model` (`export * from 'lemon-model'`). Your service does not declare `lemon-model` any more (D73). Design record: `docs/v5/B16-model-subpath.md`.
+
+Rule:
+
+1. No `lemon-model` in your `dependencies` or `devDependencies`.
+2. The 32 v4 lemon-model names (`CoreModel`, `CORE_FIELDS`, `AbstractTransformer`, `NextContext`, `NextIdentity`, `View`, `Body`, `SimpleSet`, …) from `lemon-core`. The root is unchanged (§ 10.2).
+3. Every other lemon-model name (`field`, `fieldsOf`, `specsOf`, `FIELDS_KEY`, …) from `lemon-core/model`.
+
+Before:
+
+```jsonc
+// package.json
+"dependencies": { "lemon-core": "^5.0.8", "lemon-model": "^5.0.2" }
+```
+
+```ts
+import { CoreModel, NextContext } from 'lemon-model';
+import { field, fieldsOf } from 'lemon-model';
+```
+
+After:
+
+```jsonc
+// package.json
+"dependencies": { "lemon-core": "^5.0.9" }
+```
+
+```ts
+import { CoreModel, NextContext } from 'lemon-core';
+import { field, fieldsOf } from 'lemon-core/model';
+```
+
+The pair: lemon-core pins `lemon-model` to one exact version (5.0.9 pins `5.0.2`). Each lemon-core release names its lemon-model in `CHANGELOG.md`. A new lemon-model reaches your service with a lemon-core release, not by itself. After the move, `npm ls lemon-model` shows one copy, so one `CoreModel` class (`instanceof` works across files).
+
+Guard: `no-restricted-imports` for `lemon-model` and `lemon-model/*` in your eslint config (snippet in the B16 doc).
+
+---
+
 ## At-a-Glance Checklist
 
 - [ ] Node.js 24 (`.nvmrc`, local runtime)
@@ -955,3 +995,4 @@ Module: `src/cores/protocol/protocol-relay.ts` (deep path `lemon-core/dist/cores
 - [ ] `fields/admin` and other gates read `context.channel`, not `domain` (§ 15.1)
 - [ ] While v4 services remain: send `PROTOCOL_LEGACY_CONTEXT=send`, receive `PROTOCOL_LEGACY_ACCEPT=warn`; then `off`, then `reject` when no `PROTOCOL deprecated` line is logged (§ 15.5)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
+- [ ] Since 5.0.9: no `lemon-model` in your `package.json`; root names from `lemon-core`, `field`/`fieldsOf`/`specsOf` from `lemon-core/model`; `npm ls lemon-model` shows one copy (§ 16)
