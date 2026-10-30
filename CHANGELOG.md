@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## Unreleased (5.x)
 
-_nothing yet_
+### Features
+
+* **B19 Lambda tools** (`docs/v5/B19-bin-tools.md`, `docs/v5/B19-bin-deploy.md`, `HOW_TO_UPGRADE_V5.md` § 19): the tools services copied from lemon-templates-api `bin/` ship as npm `bin` commands — `lemon-lambda-invoke`, `lemon-lambda-logs`, `lemon-lambda-perf`, `lemon-fields-admin`, `lemon-loop-check`, `lemon-lambda-pack`, `lemon-lambda-local`, `lemon-lambda-deploy`, `lemon-lambda-deploy-dev`, `lemon-lambda-migrate`. Same flags and output; the service root is the working directory; missing optional AWS SDK peers stop with an `npm i -D` hint; the `.bin` symlink start is detected (`realpath`). The node:test suites are ported to vitest (`bin/lib/*.spec.mjs`). No new `dependencies`.
+
+### Dependencies
+
+* `@aws-sdk/client-cloudwatch-logs` `^3.1159.0` added as an optional peer and devDependency (used by the logs tools).
 
 ## 5.0.12 (2026-10-30)
 

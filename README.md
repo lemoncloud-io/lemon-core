@@ -18,7 +18,7 @@ v5 status: npm `latest` is `5.0.12` (2026-10-30; B18 coverage 96 % lines + `npm 
 | Formats | CJS `dist/` + ESM `dist/esm/*.mjs`. `exports`: `.`, `./testing`, `./model` (5.0.9; shim folders for moduleResolution=node/Jest 27 unreleased), `./dist/environ`, `./dist/cores/lambda/lambda-web-handler`, `./dist/extended/cores`, `./dist/*` (until v6), `./package.json` |
 | Dependencies | `@aws-sdk/client-dynamodb, @aws-sdk/lib-dynamodb, @opensearch-project/opensearch, @smithy/signature-v4, @types/aws-lambda, @types/jsonwebtoken, async, crypto-js, js-yaml, jsonwebtoken, lemon-model, mime-types, node-cache, qs, source-map-support` |
 | Optional peers | 8 AWS SDK packages `^3.1159.0`, loaded on first use. `typescript` `>=4.7` (CLI) |
-| Published | `files`: `dist/**/*`, `bin/lemon-fields-types.mjs`, `bin/lib/fields-types.mjs`. CLI `lemon-fields-types` (since 5.0.5; see § 13.5) |
+| Published | `files`: `dist/**/*`, the `bin/` CLIs and their `bin/lib/` modules (no specs or fixtures). Since B19 the Lambda tools `lemon-lambda-*`, `lemon-fields-admin`, `lemon-loop-check` ship too (`HOW_TO_UPGRADE_V5.md` § 19). CLI `lemon-fields-types` (since 5.0.5; see § 13.5) |
 | Branches | `develop` is the default branch (its `version` is 4.3.0). `v5` holds the 5.x work. `master` was last updated in 2024 (3.2.9). |
 | Version | The `version` field of `package.json`. |
 
@@ -33,7 +33,7 @@ v5 status: npm `latest` is `5.0.12` (2026-10-30; B18 coverage 96 % lines + `npm 
 | `src/controllers/`, `tools/`, `helpers/` | Controllers, `express`, `$T`, `$protocol()` | Developer |
 | `src/lib/` | Internal: `safe-json`, `log-mask`, `qs-compat`, `http-fetch`, `lazy`, `perf`. `lib` barrel: `dynamodb-value` only | Developer. Internal; never re-exported from a barrel |
 | `src/common/test-helper.ts`, `src/environ.ts`, `src/model.ts`, `model/`, `testing/` shim folders | Sub-paths `lemon-core/testing`, `lemon-core/dist/environ`, `lemon-core/model` (B16) | Rarely; all are published sub-paths |
-| `bin/` | `lemon-fields-types` CLI, `lib/` logic, spec, fixtures | Developer |
+| `bin/` | `lemon-fields-types` and the B19 Lambda tools (`lemon-lambda-*`, `lemon-fields-admin`, `lemon-loop-check`), `lib/` logic, specs, fixtures | Developer |
 | `scripts/` | Build and API gates, lazy-load probes | Developer |
 | `etc/api-names.v4.txt`, `etc/api-names.allow.txt` | v4 public-name baseline; allowed `+Name`/`-Name` | The baseline stays; add lines to the allow list only |
 | `env/` | Configuration profiles | **Agents do not open it** |
@@ -205,6 +205,8 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B16-model-subpath.md](docs/v5/B16-model-subpath.md) | B16: sub-path `lemon-core/model` (all of lemon-model), exact lemon-model pin, consumer rule |
 | [B17-repo-hygiene.md](docs/v5/B17-repo-hygiene.md) | B17: the old CI config and the typedoc workflow removed (token rotation by the owner), `CONTRIBUTING.md` `v5` flow |
 | [B18-audit-coverage.md](docs/v5/B18-audit-coverage.md) | B18: devDependencies audit 9 → 0 (vitest `4.1.12`, lemon-devkit `0.2.3`), coverage 70 % → 96 % lines (offline specs), six pinned behaviours to fix separately |
+| [B19-bin-tools.md](docs/v5/B19-bin-tools.md) | B19: `lemon-lambda-invoke` / `-logs` / `-perf`, `lemon-fields-admin`, `lemon-loop-check` (from templates-api `bin/`) |
+| [B19-bin-deploy.md](docs/v5/B19-bin-deploy.md) | B19: `lemon-lambda-pack` / `-local` / `-deploy` / `-deploy-dev` / `-migrate` (from templates-api `bin/`) |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |

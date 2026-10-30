@@ -994,6 +994,32 @@ Details: `docs/v5/security-key-rotation.md`.
 
 ---
 
+## 19. Lambda tools as `lemon-*` commands (B19)
+
+The Lambda tools that services copied from lemon-templates-api `bin/` now ship with lemon-core as npm `bin` commands. They run from your service root (`process.cwd()`; `--cwd <dir>` on the invoke/observe tools). Flags and output are the same as the templates-api versions.
+
+| Script in your `package.json` | Before (copied `bin/`) | Now |
+| --- | --- | --- |
+| `lambda:invoke` | `node bin/lambda-invoke.mjs` | `lemon-lambda-invoke` |
+| `lambda:logs` | `node bin/lambda-logs.mjs` | `lemon-lambda-logs` |
+| `perf:lambda` | `node bin/perf-lambda.mjs` | `lemon-lambda-perf` |
+| `fields:admin` | `node bin/fields-admin.mjs` | `lemon-fields-admin` |
+| `loop:check` | `node bin/loop-check.mjs` | `lemon-loop-check` |
+| `pack` | `node bin/pack.mjs` | `lemon-lambda-pack` |
+| `lambda:local` | `node bin/lambda-local.mjs` | `lemon-lambda-local` |
+| `lambda:deploy` | `node bin/deploy.mjs` | `lemon-lambda-deploy` |
+| `lambda:deploy:dev` | `node bin/deploy-dev.mjs` | `lemon-lambda-deploy-dev` |
+| `lambda:migrate` | `node bin/migrate.mjs` | `lemon-lambda-migrate` |
+
+* Remove your copied `bin/` tools and their `node --test bin/lib/*.test.mjs` scripts; the tests live in lemon-core.
+* AWS SDK packages stay optional peers. A tool that needs a missing one stops with `npm i -D <package>`: `@aws-sdk/client-lambda` and `@aws-sdk/credential-providers` (invoke, perf, fields-admin, loop-check, deploy `--apply`), `@aws-sdk/client-sts` (`--profile` identity), `@aws-sdk/client-cloudwatch-logs` (logs, perf `--logs`, loop-check). `--help`, dry runs and the local `express` targets need none.
+* `lemon-fields-admin` loads the verifier from lemon-core `dist/` (always present in the published package).
+* `lemon-lambda-migrate` and `lemon-lambda-deploy-dev` keep the guarded migration of the source: the target project, stack and reviewed revision are fixed to lemon-templates-api (`bin/lib/org-defaults.mjs`). Other services use `lemon-lambda-pack` / `lemon-lambda-deploy` with their own deploy config.
+
+Details: `docs/v5/B19-bin-tools.md` (invoke / observe) and `docs/v5/B19-bin-deploy.md` (pack / local / deploy / migrate).
+
+---
+
 ## At-a-Glance Checklist
 
 - [ ] Node.js 24 (`.nvmrc`, local runtime)
@@ -1048,3 +1074,4 @@ Details: `docs/v5/security-key-rotation.md`.
 - [ ] Key replacement only after every receiver runs this version; `_PREV` always with `_PREV_UNTIL`; an encrypted `JWT_SIGN_KEY` set before is kept as `JWT_SIGN_KEY_PREV` for the token lifetime (§ 18)
 - [ ] `PROTOCOL_SIGN_VERSION=v2` on senders only after every receiver runs this version (§ 18.2)
 - [ ] Session tokens from `encodeIdentityJWT()` expire after 30 min unless `JWT_TOKEN_TTL_SEC` (30 min ~ 24 h) or `exp` says otherwise; clients refresh (§ 18)
+- [ ] Copied `bin/` Lambda tools replaced by the `lemon-*` commands in your `package.json` scripts; optional AWS SDK peers installed for the tools you use (§ 19)
