@@ -14,6 +14,7 @@
  * @date        2025-05-09 improved to support `referer` and `origin` header.
  * @date        2026-10-28 v5 B7: one `PERF: > request` line per request.
  * @date        2026-10-30 v5 B14: `context.channel`, `context.trace`, the relay `x-lemon-relay` and the legacy modes.
+ * @date        2026-10-31 v5 B20: `{proxy+}` path, binary bodies (`Buffer` response), base64 flag only for non-textual types.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -61,6 +62,7 @@ import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEv
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
 import { measureAsync, PerfTrace } from '../../lib/perf';
+import { asWebPath, isTextualType, bodyLength } from '../../lib/web-body';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
@@ -158,6 +160,9 @@ type ProxyChain = ProxyParams | ProxyResponser;
  * build http response body
  * - if body is string type, then content-type would be text/<some>.
  * - or default type is json
+ * - v5 B20: `isBase64Encoded` only for a non-textual content type (see `isTextualType()`), so `application/json`
+ *   or `application/xml` is not flagged. a `Buffer` body is sent as base64 (`isBase64Encoded: true`,
+ *   content type as given or `application/octet-stream`).
  *
  * @param statusCode http response code like 200
  * @param body string or object
@@ -173,12 +178,15 @@ export const buildResponse = (
     const contentType = options?.contentType;
     const origin = options?.origin === undefined ? '*' : options?.origin;
     const credentials = options?.credentials === undefined ? true : options?.credentials;
-    const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
+    //* v5 B20: a `Buffer` body is always base64; else only a given non-textual content type.
+    const isBuffer = Buffer.isBuffer(body);
+    const isBase64Encoded = isBuffer || (contentType && !isTextualType(contentType)) ? true : false;
     const _isXml = (body: string) => body.startsWith('<?xml ') && body.trim().endsWith('>');
     const _isHtml = (body: string) =>
         body.startsWith('<!DOCTYPE html>') || (body.startsWith('<') && body.endsWith('>'));
     const _type = () => {
         if (contentType) return contentType;
+        if (isBuffer) return 'application/octet-stream';
         return typeof body === 'string'
             ? _isXml(body)
                 ? 'application/xml; charset=utf-8'
@@ -199,7 +207,7 @@ export const buildResponse = (
             // Required for CORS support as allowed headers.
             'Access-Control-Allow-Headers': origin === null ? undefined : headers,
         }),
-        body: typeof body === 'string' ? body : JSON.stringify(body),
+        body: isBuffer ? (body as Buffer).toString('base64') : typeof body === 'string' ? body : JSON.stringify(body),
         isBase64Encoded,
     };
 };
@@ -499,7 +507,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public async handleProtocol<TResult = any>(param: ProtocolParam, event?: APIGatewayProxyEvent): Promise<TResult> {
         if (!param) throw new Error(`@param (protocol-param) is required!`);
-        //TODO [Steve] id, cmd can (or should) be null or empty! (support for `/{cmd+}` pattern) @251212
+        //* v5 B20: `id`/`cmd` may be empty, and `cmd` may hold `/` (`{proxy+}`, `{cmd+}`; see `asWebPath()`).
         const TYPE = `${param.type || ''}`;
         const MODE: NextMode = `${param.mode || 'GET'}` as NextMode;
         const ID = `${param.id || ''}`;
@@ -513,7 +521,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         if (!$body) {
             _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID})....`);
         } else {
-            _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID}).... body.len=`, $body ? $U.json($body).length : -1);
+            //* v5 B20: a `Buffer` (or file) body is counted by bytes, not by its JSON.
+            _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID}).... body.len=`, bodyLength($body));
         }
 
         //* find target next function
@@ -648,7 +657,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         // STEP.3. prepare the final `next-context`.
         const $ctx = await $tool.prepareContext(_prepare(), reqContext);
         //* v5 B10: self service-uri + the first request path (`/{type}/{id}/{cmd}`) as source (no path if no `pathParameters`).
-        const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || null;
+        //* v5 B20: `{proxy+}` mapped to `id`/`cmd` as in `web.transformToParam()`.
+        const $path = event.pathParameters ? asWebPath(event.pathParameters) : null;
         //* v5 B10: `type` by the same rule as `web.transformToParam()` (path param, or the 1st segment of resource/path).
         const type = $path ? $path.type || `${event.resource || event.path || ''}`.split('/')[1] || '' : '';
         $ctx.source = $path

@@ -7,6 +7,7 @@
  * @date        2019-11-27 initial version.
  * @date        2026-10-30 `execute/notify/enqueue/broadcast`: the local transport (`LOCAL_TRANSPORT=mock`) delivers in-process.
  * @date        2026-10-30 v5 B14: the transformers send the relay (`x-lemon-relay` / `relay`) instead of the full context.
+ * @date        2026-10-31 v5 B20: web `{proxy+}`/`{cmd+}` path parameters, and base64 bodies (text, multipart, `Buffer`).
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -36,6 +37,7 @@ import { invokeLambda } from './aws-lambda-helper';
 import { isActive as isLocalTransport, localSns, localSqs, localWeb, selfHostOf } from './local-transport';
 import { snsTargetOf } from '../aws/aws-sns-service';
 import { measureAsync } from '../../lib/perf';
+import { asWebPath, decodeBase64Body, WebPath } from '../../lib/web-body';
 import {
     signContext,
     signMessage,
@@ -748,15 +750,22 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
 
         //* extract part
         const { resource, path, httpMethod } = event; // in case of resource: '/session/{id}/{cmd}', path: '/ses-v1/session/t001/test-es6'
-        const contType = `${headers['content-type'] || headers['Content-Type'] || ''}`.toLowerCase();
+        //* v5 B20: the raw content type keeps the case of `boundary` (multipart).
+        const rawType = `${headers['content-type'] || headers['Content-Type'] || ''}`;
+        const contType = rawType.toLowerCase();
         const isBase64Encoded = event.isBase64Encoded ?? false;
         _log(NS, `content-type =`, contType);
         _log(NS, `isBase64Encoded =`, isBase64Encoded);
-        //* the path format should be `/{type}/{id}/{cmd}`
-        const $path: { type?: string; id?: string; cmd?: string } = event.pathParameters || {};
+        //* the path format should be `/{type}/{id}/{cmd}` (v5 B20: `{proxy+}` mapped to `id`/`cmd`, `{cmd+}` as is).
+        const $path: WebPath = asWebPath(event.pathParameters);
         const param = event.queryStringParameters;
         const body = ((body: any, type: string, isBase64Encoded: boolean): any => {
-            body = isBase64Encoded && typeof body == 'string' ? Buffer.from(body, 'base64').toString() : body;
+            //* v5 B20: a base64 body → text (textual type), multipart object, or `Buffer` (other types).
+            if (isBase64Encoded && typeof body == 'string') {
+                const decoded = decodeBase64Body(body, rawType);
+                if (typeof decoded !== 'string') return decoded;
+                body = decoded;
+            }
             const isText = body && typeof body == 'string';
             const isJson = type.startsWith('application/json');
             const isForm = type.startsWith('application/x-www-form-urlencoded');
