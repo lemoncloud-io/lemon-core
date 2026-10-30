@@ -965,7 +965,7 @@ Nothing changes until you set the new env names: one key, same signatures, same 
 * B without `UNTIL` (or `UNTIL` not a positive number, or in the past) is ignored.
 * `verifyContext()` / `verifyMessage()` return `prev: true` when B matched. Deep imports that passed `{ key }` keep the single-key behaviour.
 * `JWT_SIGN_KEY` is now read per call through the config service, so a `*` (KMS) value is decrypted. Unset → `lemon` as before. If you had set an encrypted `*…` value, it was used as the raw string before; it is now decrypted, so HS256 tokens issued before the upgrade fail to verify — set the old value as `JWT_SIGN_KEY_PREV` with an `UNTIL` for the token lifetime.
-* **Session tokens now last 30 min by default** (`encodeIdentityJWT()` without `exp`; was 1 day). To keep a longer lifetime, pass `exp`. Keep `JWT_SIGN_KEY_PREV_UNTIL` at least as long as the longest token lifetime you issue.
+* **Session tokens now last 30 min by default** (`encodeIdentityJWT()` without `exp`; was 1 day). Set `JWT_TOKEN_TTL_SEC` for another default — held to 1800 ~ 86400 (30 min ~ 24 h); a value that is not a number means 30 min. An explicit `exp` is used as given. Keep `JWT_SIGN_KEY_PREV_UNTIL` at least as long as the longest token lifetime you issue.
 * `buildJwtSecret(signKey?)` takes an optional key.
 
 Replace a key in two steps across every function of the install: (1) set the new key as `_PREV` with `_PREV_UNTIL` everywhere, (2) set it as A and the old A as `_PREV` with a new `_PREV_UNTIL`. Every receiver must run this lemon-core version first; 5.0.7 or older ignores B. For SQS, keep the B window at least as long as the queue retention.
@@ -1039,4 +1039,4 @@ Details: `docs/v5/security-key-rotation.md`.
 - [ ] Since 5.0.9: no `lemon-model` in your `package.json`; root names from `lemon-core`, `field`/`fieldsOf`/`specsOf` from `lemon-core/model`; `npm ls lemon-model` shows one copy (§ 16)
 - [ ] Key replacement only after every receiver runs this version; `_PREV` always with `_PREV_UNTIL`; an encrypted `JWT_SIGN_KEY` set before is kept as `JWT_SIGN_KEY_PREV` for the token lifetime (§ 18)
 - [ ] `PROTOCOL_SIGN_VERSION=v2` on senders only after every receiver runs this version (§ 18.2)
-- [ ] Session tokens from `encodeIdentityJWT()` expire after 30 min unless you pass `exp`; clients refresh or callers pass `exp` (§ 18)
+- [ ] Session tokens from `encodeIdentityJWT()` expire after 30 min unless `JWT_TOKEN_TTL_SEC` (30 min ~ 24 h) or `exp` says otherwise; clients refresh (§ 18)

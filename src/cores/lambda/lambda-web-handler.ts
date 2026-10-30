@@ -92,8 +92,15 @@ const HEADER_COOKIE = $U.env('HEADER_COOKIE', 'cookie');
 const JWT_MAGIC_KEY = $U.env('JWT_MAGIC_KEY', '~jwt@MGC&key~'); // hard to modify.
 //* key rotation: env name of the JWT HS256 sign key A (read per call by `readJwtSignKey()`, default `lemon`).
 const JWT_SIGN_KEY = 'JWT_SIGN_KEY';
-//* default lifetime of a session token from `encodeIdentityJWT()` (30 min; was 1 day). Pass `exp` for longer.
-const JWT_DEFAULT_TTL_SEC = 30 * 60;
+//* lifetime of a session token from `encodeIdentityJWT()` without `exp`: env `JWT_TOKEN_TTL_SEC`, default 30 min
+//* (was 1 day), held to 30 min ~ 24 h. An explicit `exp` is used as given.
+const JWT_TOKEN_TTL_SEC = 'JWT_TOKEN_TTL_SEC';
+const JWT_TTL_MIN_SEC = 30 * 60;
+const JWT_TTL_MAX_SEC = 24 * 60 * 60;
+const readJwtTtlSec = (): number => {
+    const ttl = Math.floor(Number(readConfig(JWT_TOKEN_TTL_SEC)));
+    return Number.isFinite(ttl) ? Math.min(JWT_TTL_MAX_SEC, Math.max(JWT_TTL_MIN_SEC, ttl)) : JWT_TTL_MIN_SEC;
+};
 
 /** key rotation: JWT HS256 sign key A (config service, `*` decrypted). unset → `lemon` (as before), failed decrypt → throw */
 export const readJwtSignKey = (): string => {
@@ -936,7 +943,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             alias?: string;
             /** current ms */
             current?: number;
-            /** expiration time in seconds (epoch). default: `iat + JWT_DEFAULT_TTL_SEC` (30 min) */
+            /** expiration time in seconds (epoch). default: `iat + readJwtTtlSec()` (30 min, env 30 min ~ 24 h) */
             exp?: number;
             /** if true, use HS256 */
             useHs256?: boolean;
@@ -967,7 +974,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             ...identity,
             iss, //* issuer name.
             iat: Math.floor(current / 1000), //* issued at
-            exp: params?.exp ?? Math.floor(current / 1000) + JWT_DEFAULT_TTL_SEC, //* default 30 min.
+            exp: params?.exp ?? Math.floor(current / 1000) + readJwtTtlSec(), //* default 30 min (30 min ~ 24 h).
         };
         const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
         const data = {

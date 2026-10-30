@@ -25,8 +25,8 @@ Status: implemented 2026-10-30 on `feat/v5-key-rotation` (base `v5` @ `da5de79b`
 - B is **fail-closed**: B is ignored when it is unset, a failed decrypt (`ERROR - …`), or when `UNTIL` is missing, not a number, `<= 0`, or in the past.
 - A has no expiry. Expiring A would break every signature.
 - `JWT_SIGN_KEY` was read once at module load with `$U.env()`; it is now read per call. Unset → `lemon`, the same secret as before. A configured key that failed to decrypt (`ERROR - …`) throws `500 INVALID CONFIG - JWT_SIGN_KEY decrypt failed` — no fallback to the public default (signing fails, verification returns `valid: false`).
-- Session token lifetime: `encodeIdentityJWT()` without `exp` now issues a **30 min** token (was 1 day). A caller that passes `exp` keeps its own lifetime.
-- B must outlive every token signed with the old A: for `JWT_SIGN_KEY`, `JWT_SIGN_KEY_PREV_UNTIL` ≥ rotation time + the longest token lifetime in use (30 min by default; longer if a caller passes `exp`). The deploy tool's default `prevValidSec` is 1 day, which covers the default.
+- Session token lifetime: `encodeIdentityJWT()` without `exp` now issues a **30 min** token (was 1 day). `JWT_TOKEN_TTL_SEC` sets another default, held to 1800 ~ 86400 s (30 min ~ 24 h); not a number → 30 min. A caller that passes `exp` keeps its own lifetime.
+- B must outlive every token signed with the old A: for `JWT_SIGN_KEY`, `JWT_SIGN_KEY_PREV_UNTIL` ≥ rotation time + the longest token lifetime in use (30 min by default, up to 24 h by `JWT_TOKEN_TTL_SEC`; longer if a caller passes `exp`). The deploy tool's default `prevValidSec` is 1 day, which covers the default.
 - `JWT_MAGIC_KEY` is unchanged.
 
 ## Nonce (v2)

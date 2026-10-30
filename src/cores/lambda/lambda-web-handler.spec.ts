@@ -745,6 +745,25 @@ describe('LambdaWEBHandler', () => {
         expect2(() => decodedHs256?.iss?.startsWith('api/')).toEqual(true);
         expect2(() => decodedHs256?.iat).toEqual(Math.floor(current / 1000));
         expect2(() => decodedHs256?.exp).toEqual(Math.floor(current / 1000) + 30 * 60); //* default 30 min.
+        //* env `JWT_TOKEN_TTL_SEC`: held to 30 min ~ 24 h; not a number → 30 min. An explicit `exp` is kept.
+        const ttlOf = async (env?: string, exp?: number) => {
+            const keep = process.env.JWT_TOKEN_TTL_SEC;
+            if (env === undefined) delete process.env.JWT_TOKEN_TTL_SEC;
+            else process.env.JWT_TOKEN_TTL_SEC = env;
+            try {
+                const $e = await $t.encodeIdentityJWT(identity, { current, useHs256: true, exp });
+                return $U.jwt().decode($e.token).exp - Math.floor(current / 1000);
+            } finally {
+                if (keep === undefined) delete process.env.JWT_TOKEN_TTL_SEC;
+                else process.env.JWT_TOKEN_TTL_SEC = keep;
+            }
+        };
+        expect2(await ttlOf()).toEqual(1800);
+        expect2(await ttlOf('7200')).toEqual(7200);
+        expect2(await ttlOf('60')).toEqual(1800);
+        expect2(await ttlOf('999999')).toEqual(86400);
+        expect2(await ttlOf('abc')).toEqual(1800);
+        expect2(await ttlOf('7200', Math.floor(current / 1000) + 60)).toEqual(60);
 
         //* test of encodeIdentityJWT without useHs256 (V1 동작 - signature empty, iss null)
         const $encV1 = await $t.encodeIdentityJWT(identity, { current });
