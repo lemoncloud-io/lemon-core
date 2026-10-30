@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## Unreleased (5.x)
 
-_nothing yet_
+### Dependencies
+
+* `vitest` and `@vitest/coverage-v8` `^4.1.4` → `^4.1.12` (B18-d, `docs/v5/B18-audit-coverage.md`): fixes `@vitest/mocker` (GHSA-82fw-gwwq-j7x9, GHSA-qxg6-89mg-rqv8). Full `npm audit` 9 → 6 rows; `--omit=dev` stays 0. The 6 rows left are the `lemon-devkit` → `request` chain (`form-data`, `qs`, `tough-cookie`, `uuid`), pending lemon-devkit 0.2.3. devDependencies only; no runtime change.
+
+### Repository
+
+* `.npmignore`: the `codecov` (`.codecov.yml`) and `travis` (`.travis.yml`) remnants removed; both files were removed in B17.
 
 ## 5.0.11 (2026-10-30)
 
