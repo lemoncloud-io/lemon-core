@@ -904,7 +904,6 @@ Settings while services move from v4 to v5 (DoU):
 
 Module: `src/cores/protocol/protocol-relay.ts` (deep path `lemon-core/dist/cores/protocol/protocol-relay`, not on the root): `buildRelay`, `encodeRelay`, `decodeRelay`, `asRelayContext`, `traceLine`, `readLegacySend`, `readLegacyAccept`, `readMaxHop`, `HEADER_LEMON_RELAY`.
 
----
 
 ## 16. lemon-model through lemon-core (B16)
 
@@ -945,6 +944,37 @@ The pair: lemon-core pins `lemon-model` to one exact version (5.0.9 pins `5.0.2`
 Guard: `no-restricted-imports` for `lemon-model` and `lemon-model/*` in your eslint config (snippet in the B16 doc).
 
 Resolution: since 5.0.10, `lemon-core/model` and `lemon-core/testing` also resolve under TypeScript `moduleResolution: node` and Jest 27, without `paths` or `moduleNameMapper`. The package has physical `model/` and `testing/` folders with a `package.json` each (`main`/`types` into `dist/`) for resolvers that ignore the `exports` map; Node itself uses the `exports` map. With 5.0.9 these tools need two consumer lines (`compilerOptions.paths` for `lemon-core/model` in `tsconfig.json`, and a `moduleNameMapper` entry in the Jest config); remove them when you bump to 5.0.10.
+
+---
+
+## 17. Dual sign keys and log screening
+
+Nothing changes until you set the new env names: one key, same signatures, same verify results.
+
+### 17.1 Previous key B
+
+| Env | Meaning |
+| --- | --- |
+| `PROTOCOL_SIGN_KEY_PREV` | previous protocol key B — verify only |
+| `PROTOCOL_SIGN_KEY_PREV_UNTIL` | expiry of B, epoch seconds |
+| `JWT_SIGN_KEY_PREV` | previous JWT HS256 key B — local `api/<self>` verify only |
+| `JWT_SIGN_KEY_PREV_UNTIL` | expiry of B, epoch seconds |
+
+* The receiver tries A (`PROTOCOL_SIGN_KEY` / `JWT_SIGN_KEY`) first, then B while `now <= UNTIL`. Signing always uses A. The signature format stays `v1.<ts>.<sig>`.
+* B without `UNTIL` (or `UNTIL` not a positive number, or in the past) is ignored.
+* `verifyContext()` / `verifyMessage()` return `prev: true` when B matched. Deep imports that passed `{ key }` keep the single-key behaviour.
+* `JWT_SIGN_KEY` is now read per call through the config service, so a `*` (KMS) value is decrypted. Unset → `lemon` as before. If you had set an encrypted `*…` value, it was used as the raw string before; it is now decrypted, so HS256 tokens issued before the upgrade fail to verify — set the old value as `JWT_SIGN_KEY_PREV` with an `UNTIL` for the token lifetime.
+* `buildJwtSecret(signKey?)` takes an optional key.
+
+Replace a key in two steps across every function of the install: (1) set the new key as `_PREV` with `_PREV_UNTIL` everywhere, (2) set it as A and the old A as `_PREV` with a new `_PREV_UNTIL`. Every receiver must run this lemon-core version first; 5.0.7 or older ignores B. For SQS, keep the B window at least as long as the queue retention.
+
+### 17.2 Value-based log screening
+
+Every value the config service decrypts (`*…`, 8 characters or more) and every sign key read from a plain env is registered. When `_log` / `_inf` / `_err` prints one of them, the value becomes `[masked:<length>]` and one more line `!SECRET in log — masked` is printed at error level. Search for that line in CloudWatch to find the code that logs a secret. Direct `console.log` is not screened.
+
+Also: `AWSKMSService.encrypt()` logs the plaintext length (was the first 10 characters) and the ciphertext length (was the full result with the key ARN); `parseIdentityJWT()` errors print `@token[masked:<length>]` (was the full token).
+
+Details: `docs/v5/security-key-rotation.md`.
 
 ---
 
@@ -998,3 +1028,4 @@ Resolution: since 5.0.10, `lemon-core/model` and `lemon-core/testing` also resol
 - [ ] While v4 services remain: send `PROTOCOL_LEGACY_CONTEXT=send`, receive `PROTOCOL_LEGACY_ACCEPT=warn`; then `off`, then `reject` when no `PROTOCOL deprecated` line is logged (§ 15.5)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
 - [ ] Since 5.0.9: no `lemon-model` in your `package.json`; root names from `lemon-core`, `field`/`fieldsOf`/`specsOf` from `lemon-core/model`; `npm ls lemon-model` shows one copy (§ 16)
+- [ ] Key replacement only after every receiver runs this version; `_PREV` always with `_PREV_UNTIL`; an encrypted `JWT_SIGN_KEY` set before is kept as `JWT_SIGN_KEY_PREV` for the token lifetime (§ 17)

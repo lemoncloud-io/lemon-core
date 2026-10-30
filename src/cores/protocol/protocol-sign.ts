@@ -9,16 +9,22 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-28 initial version (v5 B5)
  * @date        2026-10-30 v5 B14: `HEADER_LEMON_RELAY` (masked in logs), `readConfig()` exported, `HEADER_PROTOCOL_CONTEXT` deprecated.
+ * @date        2026-10-30 key rotation: dual keys A/B (`PROTOCOL_SIGN_KEY_PREV` + `_PREV_UNTIL`), keys registered for log screening.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
 import crypto from 'crypto';
 import { $U, _inf } from '../../engine/';
 import $conf from '../config/';
+import { registerSecret } from '../../lib/log-mask';
 const NS = $U.NS('PRTS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /** env name of the install-wide signing key (`*<base64>` is KMS-decrypted by the config service) */
 export const PROTOCOL_SIGN_KEY = 'PROTOCOL_SIGN_KEY';
+/** key rotation: env name of the previous key B (verify only, never signs) */
+export const PROTOCOL_SIGN_KEY_PREV = `${PROTOCOL_SIGN_KEY}_PREV`;
+/** key rotation: env name of the expiry of B (epoch seconds). B without it is never used (fail-closed) */
+export const PROTOCOL_SIGN_KEY_PREV_UNTIL = `${PROTOCOL_SIGN_KEY}_PREV_UNTIL`;
 /** env name of the verify mode (`off` | `warn` | `enforce`) */
 export const PROTOCOL_VERIFY = 'PROTOCOL_VERIFY';
 /** header name of the web signature */
@@ -64,12 +70,43 @@ export interface ProtocolVerifyResult {
     reason?: string;
     /** signed time (epoch seconds) if parsed — for logs only */
     ts?: number;
+    /** key rotation: true if the previous key B matched (A did not) */
+    prev?: boolean;
+}
+
+/** key rotation: options of a verification (`key` alone keeps the single-key behaviour, `prevKey`/`prevUntil` override B) */
+export interface ProtocolVerifyOptions {
+    /** key A (default: `readSignKey()`). if given without `prevKey`, B is not used */
+    key?: string;
+    /** key B (default: `readPrevSignKey()`) */
+    prevKey?: string;
+    /** expiry of `prevKey` (epoch seconds) */
+    prevUntil?: number;
+    /** current epoch seconds */
+    now?: number;
 }
 
 //* module cache of the key (filled on the first non-empty read).
 let $signKey: string = null;
 //* the "key not set" line is printed once.
 let $keyLogged = false;
+//* key rotation: module cache of the raw B and its expiry (filled on the first non-empty read, the window is checked per call).
+const $prev = { key: null as string, until: 0 };
+
+/** key rotation: true if a config value is a usable key (set, not a failed KMS decrypt `ERROR - …`) */
+const isKey = (key?: string): boolean => !!key && !key.startsWith('ERROR - ');
+
+/** key rotation: B if usable — set, `until` is a positive number and `now <= until`; else '' (fail-closed) */
+export const validPrevKey = (key: string, until: number, now: number): string =>
+    isKey(key) && Number.isFinite(until) && until > 0 && now <= until ? key : '';
+
+/** key rotation: read the raw B (`<name>_PREV`) and its expiry (`<name>_PREV_UNTIL`) of a key env name. B is registered as a log secret */
+export const readPrevRaw = (name: string): { key: string; until: number } => {
+    const key = readConfig(`${name}_PREV`) ?? '';
+    const until = Number(readConfig(`${name}_PREV_UNTIL`) ?? 0);
+    if (isKey(key)) registerSecret(key);
+    return { key, until: Number.isFinite(until) ? until : 0 };
+};
 
 /** read a config value via the config service (KMS-decrypted). before `init()`, a plain (not `*`) env value is used */
 export const readConfig = (name: string): string => {
@@ -85,14 +122,28 @@ export const readSignKey = (): string => {
     if ($signKey) return $signKey;
     const key = readConfig(PROTOCOL_SIGN_KEY);
     //* a failed KMS decrypt leaves `ERROR - …` in the config — treat as not set.
-    if (key && !key.startsWith('ERROR - ')) $signKey = key;
+    if (isKey(key)) $signKey = key;
+    //* key rotation: a key installed as a plain env is screened in logs too.
+    if ($signKey) registerSecret($signKey);
     return $signKey || '';
+};
+
+/** key rotation: read the previous key B if valid at `now` (raw values cached like `readSignKey()`) */
+export const readPrevSignKey = (now: number = nowSec()): string => {
+    //* cache the raw B and its expiry once B is set.
+    if (!$prev.key) {
+        const raw = readPrevRaw(PROTOCOL_SIGN_KEY);
+        if (isKey(raw.key)) Object.assign($prev, raw);
+    }
+    return validPrevKey($prev.key, $prev.until, now);
 };
 
 /** reset the module cache (for tests that toggle the env) */
 export const resetProtocolSign = (): void => {
     $signKey = null;
     $keyLogged = false;
+    //* key rotation: B cache too.
+    Object.assign($prev, { key: null, until: 0 });
 };
 
 /** read the verify mode. default: `warn` if the key is set, else `off` */
@@ -138,11 +189,30 @@ const parseSignature = (signature: string): { ts: number; sig: string } => {
     return { ts: Number(parts[1]), sig: parts[2] };
 };
 
-/** constant-time compare of two base64url strings */
-const sameSig = (a: string, b: string): boolean => {
+/** constant-time compare of two base64url strings (key rotation: exported for the JWT HS256 check, non-string → false) */
+export const sameSig = (a: string, b: string): boolean => {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
     const x = Buffer.from(a, 'utf8');
     const y = Buffer.from(b, 'utf8');
     return x.length === y.length && crypto.timingSafeEqual(x, y);
+};
+
+/** key rotation: B of a verification — `prevKey` override, none if only `key` is given, else `readPrevSignKey()` */
+const prevKeyOf = (options: ProtocolVerifyOptions, now: number): string => {
+    if (options?.prevKey !== undefined) return validPrevKey(options.prevKey, options.prevUntil ?? 0, now);
+    return options?.key !== undefined ? '' : readPrevSignKey(now);
+};
+
+/** key rotation: compare with A first, then B (if valid). 1 HMAC for an A signature, 2 only for a B one */
+const matchKeys = (
+    $sig: { ts: number; sig: string },
+    canonical: string,
+    key: string,
+    prevKey: string,
+): ProtocolVerifyResult => {
+    if (sameSig($sig.sig, hmac(key, canonical))) return { ok: true, ts: $sig.ts };
+    if (prevKey && sameSig($sig.sig, hmac(prevKey, canonical))) return { ok: true, ts: $sig.ts, prev: true };
+    return { ok: false, reason: 'mismatch', ts: $sig.ts };
 };
 
 /**
@@ -164,7 +234,7 @@ export const verifyContext = (
     signature: string,
     contextJson: string,
     body?: string | null,
-    options?: { key?: string; now?: number },
+    options?: ProtocolVerifyOptions,
 ): ProtocolVerifyResult => {
     const key = options?.key ?? readSignKey();
     if (!key) return { ok: false, reason: 'no-key' };
@@ -174,8 +244,7 @@ export const verifyContext = (
     //* freshness: |now - ts| <= 300 s.
     const now = options?.now ?? nowSec();
     if (Math.abs(now - $sig.ts) > WEB_FRESHNESS_SEC) return { ok: false, reason: 'stale', ts: $sig.ts };
-    const ok = sameSig($sig.sig, hmac(key, canonicalWeb($sig.ts, contextJson, body)));
-    return ok ? { ok, ts: $sig.ts } : { ok, reason: 'mismatch', ts: $sig.ts };
+    return matchKeys($sig, canonicalWeb($sig.ts, contextJson, body), key, prevKeyOf(options, now));
 };
 
 /**
@@ -191,14 +260,19 @@ export const signMessage = (message: string, options?: { key?: string; now?: num
 /**
  * verify a SNS/SQS message (no freshness window).
  */
-export const verifyMessage = (signature: string, message: string, options?: { key?: string }): ProtocolVerifyResult => {
+export const verifyMessage = (
+    signature: string,
+    message: string,
+    options?: ProtocolVerifyOptions,
+): ProtocolVerifyResult => {
     const key = options?.key ?? readSignKey();
     if (!key) return { ok: false, reason: 'no-key' };
     if (!signature) return { ok: false, reason: 'missing' };
     const $sig = parseSignature(signature);
     if (!$sig) return { ok: false, reason: 'format' };
-    const ok = sameSig($sig.sig, hmac(key, canonicalMessage($sig.ts, message)));
-    return ok ? { ok, ts: $sig.ts } : { ok, reason: 'mismatch', ts: $sig.ts };
+    //* key rotation: `now` only decides whether B is still valid (no freshness window here).
+    const now = options?.now ?? nowSec();
+    return matchKeys($sig, canonicalMessage($sig.ts, message), key, prevKeyOf(options, now));
 };
 
 /**

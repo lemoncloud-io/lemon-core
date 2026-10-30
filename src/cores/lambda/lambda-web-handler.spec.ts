@@ -208,7 +208,7 @@ describe('LambdaWEBHandler', () => {
             const err2 = await parse1($enc.message + '.' + $enc.signature.replace('0', '1'));
             expect2(() => (err2 as string).startsWith('@signature[] is invalid')).toEqual(true);
             expect2(await parse1($enc.token + '.x')).toEqual(
-                `@token[${$enc.token + '.x'}] is invalid (format) - verifyJWT(http)`,
+                `@token[masked:${($enc.token + '.x').length}] is invalid (format) - verifyJWT(http)`,
             );
             expect2(await parse1($enc.token)).toEqual({
                 iss: `kms/${alias}`,
@@ -757,10 +757,10 @@ describe('LambdaWEBHandler', () => {
 
         //* match err cases - parseIdentityJWT
         expect2(await $t.parseIdentityJWT('abc.def').catch(GETERR)).toEqual(
-            '@token[abc.def] is invalid (format) - verifyJWT(http)',
+            '@token[masked:7] is invalid (format) - verifyJWT(http)',
         );
         expect2(await $t.parseIdentityJWT('a.b.c.d').catch(GETERR)).toEqual(
-            '@token[a.b.c.d] is invalid (format) - verifyJWT(http)',
+            '@token[masked:7] is invalid (format) - verifyJWT(http)',
         );
 
         //* test of parseIdentityJWT - HS256 token verification
@@ -868,6 +868,61 @@ describe('LambdaWEBHandler', () => {
         expect2(await $t.parseIdentityJWT(invalidIssToken, { current }).catch(GETERR)).toEqual(
             '@signature[] is invalid (@iss[unknown/issuer] is invalid (unsupportable issuer) - verifyToken(unknown/issuer)) - verifyJWT(http)',
         );
+    });
+
+    //* key rotation: JWT HS256 key A (`JWT_SIGN_KEY`) and previous key B (`JWT_SIGN_KEY_PREV` + `_PREV_UNTIL`).
+    it('should verify HS256 tokens with the sign key A and the previous key B', async () => {
+        const names = ['JWT_SIGN_KEY', 'JWT_SIGN_KEY_PREV', 'JWT_SIGN_KEY_PREV_UNTIL'];
+        const keep = names.map(n => process.env[n]);
+        //* set or delete an env name.
+        const setEnv = (name: string, val?: string) =>
+            val === undefined ? delete process.env[name] : (process.env[name] = val);
+        const $t = new MyHttpHeaderTool({});
+        const identity: NextIdentity = { sid: 'S', uid: 'U', roles: ['admin'] };
+        const current = $U.current_time_ms();
+        const now = Math.floor(current / 1000);
+        try {
+            //* unset → the default key, same secret as before.
+            names.forEach(n => setEnv(n));
+            expect2(await $t.buildJwtSecret()).toEqual(await $t.buildJwtSecret('lemon'));
+            const $old = await $t.encodeIdentityJWT(identity, { current, useHs256: true });
+            expect2(await $t.parseIdentityJWT($old.token, { current }), 'sid').toEqual({ sid: 'S' });
+
+            //* A set → sign and verify with A. the old (default-key) token fails without B.
+            setEnv('JWT_SIGN_KEY', 'unit-test-jwt-key-a');
+            const $a = await $t.encodeIdentityJWT(identity, { current, useHs256: true });
+            expect2(() => $a.signature === $old.signature).toEqual(false);
+            expect2(await $t.parseIdentityJWT($a.token, { current }), 'sid').toEqual({ sid: 'S' });
+            const iss = $U.jwt().decode($old.token).iss;
+            expect2(await $t.verifyToken(iss, $old.message, $old.signature)).toEqual({ valid: false });
+
+            //* B = the old key, valid → the old token verifies; A still verifies.
+            setEnv('JWT_SIGN_KEY_PREV', 'lemon-old-key-b');
+            setEnv('JWT_SIGN_KEY', 'lemon-old-key-b');
+            const $b = await $t.encodeIdentityJWT(identity, { current, useHs256: true });
+            setEnv('JWT_SIGN_KEY', 'unit-test-jwt-key-a');
+            setEnv('JWT_SIGN_KEY_PREV_UNTIL', `${now + 60}`);
+            expect2(await $t.verifyToken(iss, $b.message, $b.signature)).toEqual({ valid: true });
+            expect2(await $t.verifyToken(iss, $a.message, $a.signature)).toEqual({ valid: true });
+
+            //* B expired, or no `_PREV_UNTIL` → the old token fails.
+            setEnv('JWT_SIGN_KEY_PREV_UNTIL', `${now - 1}`);
+            expect2(await $t.verifyToken(iss, $b.message, $b.signature)).toEqual({ valid: false });
+            setEnv('JWT_SIGN_KEY_PREV_UNTIL');
+            expect2(await $t.verifyToken(iss, $b.message, $b.signature)).toEqual({ valid: false });
+            expect2(await $t.parseIdentityJWT($b.token, { current }).catch(GETERR)).toEqual(
+                `@signature[] is invalid (failed to verify by ${iss}) - verifyJWT(http)`,
+            );
+
+            //* A configured but failed to decrypt → no fallback to the default key (sign throws, verify fails).
+            setEnv('JWT_SIGN_KEY', 'ERROR - decrypt failed');
+            expect2(await $t.encodeIdentityJWT(identity, { current, useHs256: true }).catch(GETERR)).toEqual(
+                '500 INVALID CONFIG - JWT_SIGN_KEY decrypt failed',
+            );
+            expect2(await $t.verifyToken(iss, $old.message, $old.signature), 'valid').toEqual({ valid: false });
+        } finally {
+            names.forEach((n, i) => setEnv(n, keep[i]));
+        }
     });
 });
 

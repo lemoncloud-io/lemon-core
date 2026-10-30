@@ -5,6 +5,7 @@
  *
  * @author      Steve <steve@lemoncloud.io>
  * @date        2019-11-28 initial unit test.
+ * @date        2026-10-30 key rotation: log screening of the engine loggers.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -14,6 +15,7 @@ import { GETERR, expect2 } from '../common/test-helper';
 
 import { EngineModule, EngineOption, EngineScope, EngineConsole } from './types';
 import { buildEngine, BLUE, RESET, YELLOW, RED } from './builder';
+import { registerSecret, clearSecrets } from '../lib/log-mask';
 
 export const instance = (scope?: EngineScope, options?: EngineOption) => {
     const $engine = buildEngine(scope, options);
@@ -174,5 +176,45 @@ describe(`core/builder.ts`, () => {
         expect2($engine.log('NS', 'LOG')).toEqual(`${BLUE} -${RESET} NS LOG`);
         expect2($engine.inf('NS', 'INF')).toEqual(`${YELLOW} I${RESET} NS INF`);
         expect2($engine.err('NS', 'ERR')).toEqual(`${RED} E${RESET} NS ERR`);
+    });
+
+    //* key rotation: `_log`/`_inf`/`_err` mask a registered secret and add 1 error line (no value).
+    test('check log screening of a registered secret', async () => {
+        const SECRET = 'fake-installed-secret-0002';
+        const lines: string[] = [];
+        const console: EngineConsole = {
+            thiz: null,
+            auto_ts: true,
+            auto_color: false,
+            log: (...args: any[]) => lines.push(args.join(' ')),
+            error: (...args: any[]) => lines.push(args.join(' ')),
+            ts: () => 'T',
+        };
+        const { $engine } = instance({}, { console });
+        lines.length = 0; //* drop the engine ready line.
+        try {
+            //* empty registry → printed as is.
+            $engine.log('NS', `k=${SECRET}`);
+            expect2(lines).toEqual([`T - NS k=${SECRET}`]);
+            lines.length = 0;
+
+            registerSecret(SECRET);
+            const mask = `[masked:${SECRET.length}]`;
+            $engine.log('NS', `k=${SECRET}`);
+            $engine.inf('NS', { k: SECRET });
+            $engine.err('NS', new Error(`e=${SECRET}`));
+            $engine.inf('NS', 'clean');
+            expect2(lines.length).toEqual(7);
+            expect2(lines.join('\n').includes(SECRET)).toEqual(false);
+            expect2(lines[0]).toEqual(`T - NS k=${mask}`);
+            expect2(lines[1]).toEqual('T E !SECRET in log — masked');
+            expect2(lines[2]).toEqual(`T I NS {"k":"${mask}"}`);
+            expect2(lines[3]).toEqual('T E !SECRET in log — masked');
+            expect2(lines[4].startsWith(`T E NS Error: e=${mask}`)).toEqual(true);
+            expect2(lines[5]).toEqual('T E !SECRET in log — masked');
+            expect2(lines[6]).toEqual('T I NS clean');
+        } finally {
+            clearSecrets();
+        }
     });
 });
