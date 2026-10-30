@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## Unreleased (5.x)
 
+### Repository
+
+* **B17 repository hygiene** (`docs/v5/B17-repo-hygiene.md`): `.travis.yml` removed (last changed 2022-02, nothing in the repo runs or references it; its Codecov token stays in git history and must be rotated by the owner) and the codecov badge with it; `.github/workflows/docgen.yaml` removed (typedoc, S3 copy and `gh-pages` deploy; the doc scripts went in #225). `CONTRIBUTING.md` gets the `v5` branch flow. No package change.
+
+## 5.0.10 (2026-10-30)
+
+### Fixes
+
+* **B16-b resolution shims** (`docs/v5/B16-model-subpath.md` § Resolution shim, `HOW_TO_UPGRADE_V5.md` § 16): physical `model/package.json` and `testing/package.json` (`main`/`types` into `dist/`) so `lemon-core/model` and `lemon-core/testing` resolve for consumers on TypeScript `moduleResolution: node` and Jest 27, which ignore the `exports` map. The `exports` map is unchanged. Consumers remove the `paths` / `moduleNameMapper` lines they added for 5.0.9.
+
+## 5.0.9 (2026-10-30)
+
 ### Features
 
 * **B16 sub-path `lemon-core/model`** (`docs/v5/B16-model-subpath.md`, `HOW_TO_UPGRADE_V5.md` § 16): `export * from 'lemon-model'` — every lemon-model name (`field`, `fieldsOf`, `specsOf`, `FIELDS_KEY`, …) through lemon-core, with an ESM wrapper `dist/esm/model.mjs`. The objects are the lemon-model objects; `CoreModel` is the same class as on the root.
@@ -11,10 +23,6 @@ All notable changes to this project will be documented in this file. See [standa
 ### Dependencies
 
 * `lemon-model` pinned to the exact version `5.0.2` (was `^5.0.2`), D73: the lemon-core version fixes the lemon-model version ("the pair"), so one install holds one lemon-model and one `CoreModel` class. Each release names its lemon-model here.
-
-### Fixes
-
-* **B16-b resolution shims** (`docs/v5/B16-model-subpath.md` § Resolution shim, `HOW_TO_UPGRADE_V5.md` § 16): physical `model/package.json` and `testing/package.json` (`main`/`types` into `dist/`) so `lemon-core/model` and `lemon-core/testing` resolve for consumers on TypeScript `moduleResolution: node` and Jest 27, which ignore the `exports` map. The `exports` map is unchanged. Consumers remove the `paths` / `moduleNameMapper` lines they added for 5.0.9.
 
 ### Consumers
 
