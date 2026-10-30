@@ -22,7 +22,7 @@ import { field, fieldsOf } from 'lemon-core/model';
 
 ## The pair pin
 
-`dependencies.lemon-model` in lemon-core is an exact version (`5.0.2`, was `^5.0.2`). A lemon-core release names its lemon-model in `CHANGELOG.md` and in README VERSION INFO. A lemon-model change reaches services only through a lemon-core release. `npm ls lemon-model` in a service shows one copy, under lemon-core (or hoisted).
+`dependencies.lemon-model` in lemon-core is an exact version (`5.0.2` in 5.0.9, was `^5.0.2`; `5.0.4` in 5.0.11). A lemon-core release names its lemon-model in `CHANGELOG.md` and in README VERSION INFO. A lemon-model change reaches services only through a lemon-core release. `npm ls lemon-model` in a service shows one copy, under lemon-core (or hoisted).
 
 ## What did not change
 
