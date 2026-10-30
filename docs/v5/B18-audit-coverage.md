@@ -1,6 +1,6 @@
 # v5 B18 — devDependencies audit and coverage
 
-Status: B18-d implemented 2026-10-30 on `chore/v5-b18-audit-coverage` (base `v5` @ `da5de79b` = 5.0.11). The coverage slices B18-a/b/c add the **Coverage** section. No runtime change: `src/` and the published files are untouched; only `devDependencies`, `package-lock.json` and `.npmignore` change.
+Status: implemented 2026-10-30 on `chore/v5-b18-audit-coverage` (base `v5` @ `da5de79b` = 5.0.11): B18-d (audit, `.npmignore`), B18-a/b/c (offline specs), and one formatting commit. No runtime change: the only `src/` edit outside specs is a prettier line wrap in `dynamo-service.ts`; the published files are otherwise untouched.
 
 ## Audit
 
@@ -26,4 +26,32 @@ The last Codecov and Travis remnants are removed: the `.npmignore` blocks `# cod
 
 ## Coverage
 
-Filled in by the coverage slices (B18-a/b/c).
+`npm test` (`LS=1 vitest run`, v8) before and after B18:
+
+| | Files / tests | Statements | Branches | Functions | Lines |
+|---|---|---|---|---|---|
+| 5.0.11 | 64 / 880 | 68.98 % | 63.72 % | 70.09 % | 70.28 % (6185 / 8800) |
+| B18 | 87 / 1136 | 95.15 % | 85.87 % | 95.57 % | **96.39 %** |
+
+23 new `*.b18.spec.ts` files, 256 new tests, all offline: no AWS, DynamoDB, OpenSearch or network. The AWS SDK v3 clients are stubbed at `Client.prototype.send` (the tests assert the command class and its `input`), OpenSearch through a fake client or proxy, HTTP through `vi.spyOn` / partial `vi.mock` of the internal helpers, env keys are saved and restored, waits run on fake timers. Dummy values only (`123456789012`, `test-bucket`, `*.invalid`).
+
+| Slice | Scope | Uncovered lines before → after |
+|---|---|---|
+| B18-a | `src/cores/dynamo/**`, `src/lib/dynamodb-value.ts` | 709 → 5 |
+| B18-b | `src/cores/aws/*` (s3, kms, sqs, sns), `src/cores/elastic/os2-*`, `src/cores/storage/{storage,http-storage}-service.ts` | 693 → 1 |
+| B18-c | `src/extended/**`, `src/cores/api/api-service.ts`, `src/engine/{utilities,engine}.ts`, `src/helpers/helpers.ts` | 923 → 45 |
+
+Left uncovered on purpose: dead code (`tools/query.ts` `formatAttributeValue`, `synchronizeContents._parrallel`, two `new Error()` never thrown in `os2-service.ts`), `$X2.loadCredentials` (reads local AWS credentials), and branches the types or the call order rule out.
+
+### Findings pinned as current behaviour (not fixed here)
+
+The specs document these as they are today, each in a test labelled `B18`; fixing any of them changes behaviour and belongs in its own change.
+
+1. `cores/dynamo/tools/utils.ts` `paginatedRequest()`: `async@3`'s `doWhilst` calls the test as `test(...args, cb)`, but the test function returns a boolean and never calls `cb`, so `Query.exec()` / `Scan.exec()` never call back after a success or a retryable error. Nothing in `src/` calls `.exec()` today.
+2. `cores/elastic/os2-service.ts` `generateSearchResult()`: a 429 retry only works after the first page; a 429 on page 1 ends the loop with `[]`.
+3. `cores/elastic/os2-query-service.ts` `buildQueryBody()`: `$source: '*'` (or an array) together with a `#field` projection throws `TypeError: $source.includes.push is not a function`.
+4. `helpers.ts` legacy `$protocol(service, param, body)`: sets `stage` only; `param` is read after `service` is reassigned.
+5. `OS2Instance.search()` ignores `params.indexName` (the base `AbstractOS2Instance.search()` supports it).
+6. `loadFromFile()` derives a type by dropping the last letter of the object key (`Owner` → `owne`).
+
+Known timing-sensitive test outside B18: `helpers.spec.ts › should pass my_sequence()` assumes `waited(100)` never ends early; it failed once on a loaded machine and passed on rerun.
