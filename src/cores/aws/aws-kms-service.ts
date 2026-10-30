@@ -154,7 +154,8 @@ export class AWSKMSService implements CoreKmsService {
      */
     public encrypt = async (message: string): Promise<string> => {
         const keyId = this.keyId();
-        _inf(NS, `encrypt(${keyId}, ${message.substring(0, 10)}...)..`);
+        //* key rotation: the plaintext is a secret → its length only (was: first 10 chars).
+        _inf(NS, `encrypt(${keyId}, [len:${message.length}])..`);
         const KeyId = keyId;
         const params: EncryptCommandInput = {
             KeyId,
@@ -162,7 +163,8 @@ export class AWSKMSService implements CoreKmsService {
         };
         const { EncryptCommand } = loadKms(); // command class from the lazy-loaded package.
         const result = await this.instance().send(new EncryptCommand(params));
-        _log(NS, '> result =', result);
+        //* key rotation: the result carries the key ARN → the ciphertext length only.
+        _log(NS, '> result.len =', result.CiphertextBlob?.length ?? 0);
         const ciphertext = result.CiphertextBlob ? Buffer.from(result.CiphertextBlob).toString('base64') : message;
         _log(NS, '> ciphertext =', ciphertext.substring(0, 32), '...');
         return ciphertext;

@@ -955,6 +955,43 @@ Resolution: since 5.0.10, `lemon-core/model` and `lemon-core/testing` also resol
 
 Details: `docs/v5/ddb-inc-sharing.md`.
 
+## 18. Dual sign keys, signature nonce and log screening
+
+Nothing changes until you set the new env names: one key, same signatures, same verify results.
+
+### 18.1 Previous key B
+
+| Env | Meaning |
+| --- | --- |
+| `PROTOCOL_SIGN_KEY_PREV` | previous protocol key B — verify only |
+| `PROTOCOL_SIGN_KEY_PREV_UNTIL` | expiry of B, epoch seconds |
+| `JWT_SIGN_KEY_PREV` | previous JWT HS256 key B — local `api/<self>` verify only |
+| `JWT_SIGN_KEY_PREV_UNTIL` | expiry of B, epoch seconds |
+
+* The receiver tries A (`PROTOCOL_SIGN_KEY` / `JWT_SIGN_KEY`) first, then B while `now <= UNTIL`. Signing always uses A. The signature format stays `v1.<ts>.<sig>`.
+* B without `UNTIL` (or `UNTIL` not a positive number, or in the past) is ignored.
+* `verifyContext()` / `verifyMessage()` return `prev: true` when B matched. Deep imports that passed `{ key }` keep the single-key behaviour.
+* `JWT_SIGN_KEY` is now read per call through the config service, so a `*` (KMS) value is decrypted. Unset → `lemon` as before. If you had set an encrypted `*…` value, it was used as the raw string before; it is now decrypted, so HS256 tokens issued before the upgrade fail to verify — set the old value as `JWT_SIGN_KEY_PREV` with an `UNTIL` for the token lifetime.
+* **Session tokens now last 30 min by default** (`encodeIdentityJWT()` without `exp`; was 1 day). Set `JWT_TOKEN_TTL_SEC` for another default — held to 1800 ~ 86400 (30 min ~ 24 h); a value that is not a number means 30 min. An explicit `exp` is used as given. Keep `JWT_SIGN_KEY_PREV_UNTIL` at least as long as the longest token lifetime you issue.
+* `buildJwtSecret(signKey?)` takes an optional key.
+
+Replace a key in two steps across every function of the install: (1) set the new key as `_PREV` with `_PREV_UNTIL` everywhere, (2) set it as A and the old A as `_PREV` with a new `_PREV_UNTIL`. Every receiver must run this lemon-core version first; 5.0.7 or older ignores B. For SQS, keep the B window at least as long as the queue retention.
+
+### 18.2 Signature nonce (v2)
+
+Receivers now also accept `v2.<ts>.<nonce>.<sig>`: a random nonce per signature, signed with the rest, so no two signatures are equal. `v1.<ts>.<sig>` is still verified, and senders keep writing v1 unless `PROTOCOL_SIGN_VERSION=v2`. Header and message attribute names are unchanged.
+
+* Order: deploy this version to every receiver first, then set `PROTOCOL_SIGN_VERSION=v2` on the senders. An older receiver reports a v2 value as `format` (`warn` passes with a log line, `enforce` rejects).
+* Without a nonce store a replayed value still verifies (web within 300 s, SNS/SQS without a window). Replay rejection is a later increment.
+
+### 18.3 Value-based log screening
+
+Every value the config service decrypts (`*…`, 8 characters or more) and every sign key read from a plain env is registered. When `_log` / `_inf` / `_err` prints one of them, the value becomes `[masked:<length>]` and one more line `!SECRET in log — masked` is printed at error level. Search for that line in CloudWatch to find the code that logs a secret. Direct `console.log` is not screened. With `LS=1` nothing is printed, so nothing is screened either (no cost).
+
+Also: `AWSKMSService.encrypt()` logs the plaintext length (was the first 10 characters) and the ciphertext length (was the full result with the key ARN); `parseIdentityJWT()` errors print `@token[masked:<length>]` (was the full token).
+
+Details: `docs/v5/security-key-rotation.md`.
+
 ---
 
 ## At-a-Glance Checklist
@@ -1008,3 +1045,6 @@ Details: `docs/v5/ddb-inc-sharing.md`.
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
 - [ ] Since 5.0.9: no `lemon-model` in your `package.json`; root names from `lemon-core`, `field`/`fieldsOf`/`specsOf` from `lemon-core/model`; `npm ls lemon-model` shows one copy (§ 16)
 - [ ] Specs that relied on separate dummy buffers per manager of one service (same `_id`, `nextSeq()` restarting) expect one shared buffer (§ 17)
+- [ ] Key replacement only after every receiver runs this version; `_PREV` always with `_PREV_UNTIL`; an encrypted `JWT_SIGN_KEY` set before is kept as `JWT_SIGN_KEY_PREV` for the token lifetime (§ 18)
+- [ ] `PROTOCOL_SIGN_VERSION=v2` on senders only after every receiver runs this version (§ 18.2)
+- [ ] Session tokens from `encodeIdentityJWT()` expire after 30 min unless `JWT_TOKEN_TTL_SEC` (30 min ~ 24 h) or `exp` says otherwise; clients refresh (§ 18)

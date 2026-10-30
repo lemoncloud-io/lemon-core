@@ -4,11 +4,12 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B10-3: secret header values in logs)
+ * @date        2026-10-30 key rotation: value-based screening (`registerSecret()`, `screenLogArgs()`).
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
-import { describe, expect, it } from 'vitest';
-import { maskHeaders, maskValue, SENSITIVE_HEADERS } from './log-mask';
+import { afterEach, describe, expect, it } from 'vitest';
+import { maskHeaders, maskValue, SENSITIVE_HEADERS, registerSecret, clearSecrets, screenLogArgs } from './log-mask';
 
 //* sample secrets (fake values).
 const TOKEN = 'Bearer eyJhbGciOiJIUzI1NiJ9.e30.fakeSignatureValue';
@@ -111,5 +112,48 @@ describe('log-mask', () => {
         expect(headers).toEqual(before);
         expect(out).not.toBe(headers);
         expect(out.Cookie).not.toBe(headers.Cookie);
+    });
+
+    //* key rotation: value-based screening.
+    describe('screenLogArgs()', () => {
+        //* a fake installed secret.
+        const SECRET = 'fake-installed-secret-0001';
+        afterEach(() => clearSecrets());
+
+        //* empty registry → false, args untouched.
+        it('should not touch args with an empty registry', () => {
+            const args: any[] = [`x ${SECRET}`, { k: SECRET }];
+            expect(screenLogArgs(args)).toBe(false);
+            expect(args).toEqual([`x ${SECRET}`, { k: SECRET }]);
+        });
+
+        //* string, object and Error args are masked.
+        it('should mask a registered secret in string, object and Error args', () => {
+            registerSecret(SECRET);
+            const err = new Error(`bad ${SECRET}`);
+            const obj = { a: 1, k: SECRET };
+            const args: any[] = ['NS', `key=${SECRET}, again ${SECRET}`, obj, err, 42, null, undefined, { ok: 1 }];
+            expect(screenLogArgs(args)).toBe(true);
+            const mask = `[masked:${SECRET.length}]`;
+            expect(args[0]).toEqual('NS');
+            expect(args[1]).toEqual(`key=${mask}, again ${mask}`);
+            expect(args[2]).toEqual(`{"a":1,"k":"${mask}"}`);
+            expect(typeof args[3]).toEqual('string');
+            expect(args[3]).toContain(`bad ${mask}`);
+            expect(args.slice(4)).toEqual([42, null, undefined, { ok: 1 }]);
+            expect(args.join(' ')).not.toContain(SECRET);
+            //* the original object is not changed.
+            expect(obj.k).toEqual(SECRET);
+        });
+
+        //* non-strings and values shorter than 8 are ignored.
+        it('should ignore short and non-string secrets', () => {
+            registerSecret('short12');
+            registerSecret(12345678 as any);
+            registerSecret(null);
+            const args: any[] = ['short12 12345678'];
+            expect(screenLogArgs(args)).toBe(false);
+            expect(args).toEqual(['short12 12345678']);
+        });
     });
 });
