@@ -140,6 +140,7 @@
     "bin/lib/migrate-core.mjs",
     "bin/lib/migrate-diagnostic.mjs",
     "bin/lib/migrate-process.mjs",
+    "bin/lib/migrate-inspect.mjs",
     "bin/lemon-lambda-env.mjs",
     "bin/lib/lambda-env.mjs",
     "model/package.json",

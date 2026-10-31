@@ -250,8 +250,9 @@ export function migrationPlan(c, phase) {
         ],
     };
 }
-const fingerprint = c => hash(canonical(c));
-async function privateEntry(file, type) {
+//* v5 B27: exported (with `privateEntry`, `noSymlinkChain`, `validateOwned`) for the read-only follow-up commands.
+export const fingerprint = c => hash(canonical(c));
+export async function privateEntry(file, type) {
     const s = await lstat(file).catch(() => fail('PRIVATE_STATE_INVALID', 'Required private state is missing.'));
     if (
         s.isSymbolicLink() ||
@@ -264,7 +265,7 @@ async function privateEntry(file, type) {
         fail('PRIVATE_STATE_INVALID', 'Private state requires owned regular directories/files with modes 0700/0600.');
     return s;
 }
-async function noSymlinkChain(root, relative) {
+export async function noSymlinkChain(root, relative) {
     let p = root;
     for (const part of relative.split('/')) {
         p = path.join(p, part);
@@ -400,7 +401,7 @@ export async function snapshotIdentity(run, c, { after = false } = {}) {
     for (const rel of [...new Set(files)].sort()) hashes[rel] = hash(await readFile(path.join(run, rel)));
     return hashes;
 }
-async function validateOwned(run, c) {
+export async function validateOwned(run, c) {
     const target = migrationTarget(c);
     await privateTree(run);
     const owner = await json(path.join(run, target.ownerFile));
