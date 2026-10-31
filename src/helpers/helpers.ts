@@ -546,6 +546,7 @@ export const $rand = {
 
 /**
  * builder to support protocol-service.
+ * - legacy form: `$protocol(service, param?, body?)` (the 1st argument is the service url, the context is `{}`).
  * @param context   the current context (or service name).
  * @param service   service name
  * @param options   additional options.
@@ -560,14 +561,17 @@ export const $protocol = (
     },
 ) => {
     //* for backward compartibility. shift arguments if 1st context is string.
-    const ctx = typeof context === 'string' ? {} : context;
-    service = typeof context === 'string' ? context : service;
-    const param: any = typeof context === 'string' ? service : options?.param;
-    const body: any = typeof context === 'string' ? param : options?.body;
+    //* v5 B22: the legacy form `$protocol(service, param, body)` reads `param`/`body` before `service` is reassigned.
+    const legacy = typeof context === 'string';
+    const param: any = legacy ? (service as any) : options?.param;
+    const body: any = legacy ? (options as any) : options?.body;
+    const ctx = legacy ? {} : context;
+    service = legacy ? (context as string) : service;
     if (!ctx) throw new Error(`@context (NextContext) is required!`);
     if (!service) throw new Error(`@service (string) is required!`);
     const $proto: ProtocolService = $cores.protocol.service;
-    const isProd = options?.isProd !== undefined ? options?.isProd : $U.env('NS') === 'SS' ? true : false;
+    //* v5 B22: in the legacy form the 3rd argument is the body, so `isProd` comes from the env only.
+    const isProd = !legacy && options?.isProd !== undefined ? options.isProd : $U.env('NS') === 'SS' ? true : false;
     //TODO - `STAGE` is not changed from env.yml file @211215.
     // _inf(NS, 'NS =', $U.env('NS'), $engine.cores.config.config.get('NS'), process.env['NS']);
     // _inf(NS, 'stage =', $U.env('STAGE'), $engine.cores.config.config.get('STAGE'), process.env['STAGE']); //NOTE - STAGE is not changed.

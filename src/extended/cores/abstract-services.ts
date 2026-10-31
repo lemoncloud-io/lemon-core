@@ -2512,7 +2512,10 @@ export class OS2Instance extends AbstractOS2Instance {
     ): Promise<SearchResult<T>> {
         if (!this.elastic) throw new Error(`Could not read Elasticsearch endpoint or index setting.`);
         const searchType = params?.searchType;
-        const elastic = this.elastic;
+        //* v5 B22: honour `indexName` like `AbstractOS2Instance.search()` (same options and FGAC manager, other index).
+        const elastic = params?.indexName
+            ? new OS2Service<any>({ ...this.options, indexName: params.indexName }, this.fgac)
+            : this.elastic;
         return elastic.search(body, searchType);
     }
 

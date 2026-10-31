@@ -137,7 +137,7 @@ describe('abstract-controllers B18', () => {
         const res: any = await api.loadFromFile('b18/item.yml');
         expect(res.name).toEqual('b18');
         expect(res._hidden).toEqual(undefined);
-        //* (observed) `id: 0` = next of the type; `_user` = a ref id per type (10k blocks); `Owner` -> type `owne`.
+        //* (observed) `id: 0` = next of the type; `_user` = a ref id per type (10k blocks); `Owner` -> type `owne` (kept in B22, documented on `loadFromFile()`).
         expect(res.list).toEqual([
             { type: 'root', id: '5001', name: 'auto' },
             {

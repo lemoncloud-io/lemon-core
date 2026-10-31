@@ -387,6 +387,9 @@ export class OS2QueryService<T extends GeneralItem> implements Elastic6SimpleQue
                 } else if (key.startsWith('#')) {
                     // projection.
                     $source = $source || { includes: [], excludes: [] };
+                    //* v5 B22: `$source: '*'` or an array becomes `{ includes: [...] }` before the projected field is added.
+                    if (typeof $source === 'string') $source = { includes: [$source] };
+                    else if (Array.isArray($source)) $source = { includes: [...$source] };
                     if ($source && $source.includes) {
                         $source.includes.push(key.substr(1));
                     }

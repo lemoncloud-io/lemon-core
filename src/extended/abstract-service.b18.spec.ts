@@ -237,7 +237,7 @@ describe('abstract-service B18', () => {
         expect(await $os2.destroyIndex()).toEqual({ deleted: 1 });
         expect(await $os2.describeIndex()).toEqual({ described: 1 });
         //* base `search()`: another index -> a new core service with the same options.
-        //* (observed) `OS2Instance.search()` overrides it and ignores `indexName`.
+        //* v5 B22: `OS2Instance.search()` honours `indexName` too (see `abstract-services.b18.spec.ts`).
         const base = AbstractOS2Instance.prototype.search.call($os2, { size: 2 }, { indexName: 'b18-other' });
         expect(await base).toMatchObject({ total: 3 });
         expect((search.mock.contexts[0] as any).options.indexName).toEqual('b18-other');

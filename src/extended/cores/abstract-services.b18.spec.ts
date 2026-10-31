@@ -257,6 +257,28 @@ describe('abstract-services B18', () => {
         expect(new OS2Instance({} as any).options).toEqual(null);
     });
 
+    //* v5 B22: `OS2Instance.search()` used to ignore `indexName` (the base `AbstractOS2Instance.search()` honours it).
+    it('B22 OS2Instance.search() honours indexName', async () => {
+        const { $os2, fake } = os2((_method, _path1, path2) =>
+            path2 === '_search' ? { hits: { total: { value: 1 }, hits: [{ _id: 'a', _score: 1, _source: {} }] } } : {},
+        );
+        expect(await $os2.search({ size: 1 })).toMatchObject({ total: 1 });
+        expect(fake.calls[0]).toMatchObject({ method: 'POST', path1: 'b18-index', path2: '_search' });
+        //* another index through the same FGAC transport; the instance keeps its own index.
+        expect(
+            await $os2.search({ size: 1 }, { indexName: 'b22-other', searchType: 'query_then_fetch' }),
+        ).toMatchObject({
+            total: 1,
+        });
+        expect(fake.calls[1]).toMatchObject({
+            method: 'POST',
+            path1: 'b22-other',
+            path2: '_search',
+            param: { search_type: 'query_then_fetch' },
+        });
+        expect($os2.options.indexName).toEqual('b18-index');
+    });
+
     it('B18 OS2Service bulkItems and deleteIndex', async () => {
         let mode = '';
         const { $os2, fake } = os2(() => {
