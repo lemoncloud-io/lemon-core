@@ -3,11 +3,13 @@
  * `bin/lemon-lambda-migrate.mjs` (lemon-core)
  * - run one guarded phase of the supported stack migration (offline plan by default, `--execute` to run).
  * - usage: `lemon-lambda-migrate [options]` (installed bin) / `npx lemon-lambda-migrate --help`; run from the service root (`process.cwd()`).
+ * - v5 B27: `lemon-lambda-migrate <inspect|reconcile|resolve> --help` — read-only follow-up of an already migrated stack.
  */
 //* v5 B19: ported from lemon-templates-api `bin/migrate.mjs` (behaviour, flags and output unchanged).
 import path from 'node:path';
 import { isMain } from './lib/is-main.mjs';
 import { validateDiagnostic } from './lib/migrate-diagnostic.mjs';
+import { INSPECTION_COMMANDS, inspectionMain } from './lib/migrate-inspect.mjs';
 import {
     PHASES,
     TARGETS,
@@ -55,6 +57,9 @@ export function parseMigrationArgs(argv) {
     return result;
 }
 export async function main(argv = process.argv.slice(2), deps = {}) {
+    //* v5 B27: a first argument `inspect` / `reconcile` / `resolve` has its own parser and output; any other argv
+    //  takes the B19 path below unchanged (same help, plans, receipts, errors and exit codes).
+    if (INSPECTION_COMMANDS.includes(argv[0])) return inspectionMain(argv, deps);
     const { stdout = console.log, stderr = console.error, signal } = deps;
     try {
         const options = parseMigrationArgs(argv);

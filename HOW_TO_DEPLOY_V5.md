@@ -26,6 +26,22 @@ The word "migrate" in `lemon-lambda-migrate` means the deployment track: it move
 -   A failed deploy round of any project other than lemon-templates-api is aborted with the reason `lemon-lambda-deploy:<code>` (lemon-templates-api keeps `templates-cli:<code>`). `lemon-lambda-deploy` stops with `TARGET_MISMATCH` before `deploy.begin` when the deploy service resolves function names other than `<project>-<stage>-lambda` / `<project>-<stage>-backend`.
 -   AWS SDK peers for `--apply`: `@aws-sdk/client-lambda`, `@aws-sdk/credential-providers`.
 
+## After a migration: inspect, reconcile, resolve (in preparation)
+
+For a stack that the phases already moved, `lemon-lambda-migrate` has three follow-up commands (B27,
+`docs/v5/B27-migrate-inspect.md`). They change no AWS resource, and never the run receipt, the owner file or the lock.
+
+| Command                                               | What it does                                                                                                                                              |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect --config <file> [--execute] [--http-probe]`  | offline plan by default; `--execute`: STS check, then read-only Describe/Get/List calls, private inventory (`inspections/` of the run); probes are opt-in |
+| `reconcile --config <file> --inventory <file> [...]`  | offline: compares the inventory with the run baseline → `verified-no-op`, `reconcile-required` (paths only) or `blocked` (reason codes)                   |
+| `resolve --config <file> --inventory <file> --accept` | records a local attestation of an owner decision on the setting DIFF of a `verify` that ended `unknown` (for example a log retention 7 → 14)              |
+
+-   A `verified-no-op` covers the compared axes it lists (`scope`); deploy-service history, event delivery and data
+    equality are listed under `notCompared`. `ItemCount` is an approximate reference only.
+-   A resolution is not an approval: it authorizes no write, the receipt stays `unknown` and the run stays not
+    resumable; `--migration-receipt` still refuses such a run.
+
 ## Where it stands
 
 -   The dev stages of lemon-templates-api and lemon-hello-api were moved to the deploy service as early runs of this track. Their prod stages were not moved.

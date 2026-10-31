@@ -172,6 +172,9 @@ Safety model:
     (no inherited AWS keys, `GIT_*`, `NODE_OPTIONS`); private state (0700/0600, owner tag, lock file) and snapshot
     hashes are checked before and after each phase. Each phase writes an integrity-checked receipt.
 -   Exit `0` done, `1` failed, `2` invalid input / missing confirmation, `3` unknown outcome (manual review).
+-   B27: `lemon-lambda-migrate <inspect|reconcile|resolve>` is the read-only follow-up for an already migrated stack
+    (inventory, offline comparison with the run baseline, local attestation of an unknown verify DIFF); the phases
+    and their outputs above are unchanged. See `docs/v5/B27-migrate-inspect.md`.
 
 ## Org-specific defaults
 
