@@ -15,7 +15,8 @@
     "lemon-lambda-local": "bin/lemon-lambda-local.mjs",
     "lemon-lambda-deploy": "bin/lemon-lambda-deploy.mjs",
     "lemon-lambda-deploy-dev": "bin/lemon-lambda-deploy-dev.mjs",
-    "lemon-lambda-migrate": "bin/lemon-lambda-migrate.mjs"
+    "lemon-lambda-migrate": "bin/lemon-lambda-migrate.mjs",
+    "lemon-lambda-env": "bin/lemon-lambda-env.mjs"
   },
   "exports": {
     ".": {
@@ -139,6 +140,8 @@
     "bin/lib/migrate-core.mjs",
     "bin/lib/migrate-diagnostic.mjs",
     "bin/lib/migrate-process.mjs",
+    "bin/lemon-lambda-env.mjs",
+    "bin/lib/lambda-env.mjs",
     "model/package.json",
     "testing/package.json"
   ],

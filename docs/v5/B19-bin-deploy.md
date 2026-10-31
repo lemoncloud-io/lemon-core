@@ -14,8 +14,9 @@ same, reviewed code through an npm `bin` instead of a copy. The invoke / observe
 | `lemon-lambda-deploy`     | `bin/deploy.mjs`       | offline deployment plan by default; `--apply` deploys through the deploy-service tools |
 | `lemon-lambda-deploy-dev` | `bin/deploy-dev.mjs`   | the guarded dev release of the migrated dev target (code only)                         |
 | `lemon-lambda-migrate`    | `bin/migrate.mjs`      | one guarded phase of a reviewed stack migration; offline plan by default               |
+| `lemon-lambda-env`        | — (new in B26)         | env file `<stage>` → private JSON map (`build`); read-only key diff with live (`diff`) |
 
-All five run from the **service root**: relative paths (`--config`, `--artifact`, `--output`, `pack.config.json`)
+All of them run from the **service root**: relative paths (`--config`, `--artifact`, `--output`, `pack.config.json`)
 resolve against `process.cwd()`. Only the tools' own files (the forked `deploy-credentials.mjs`,
 `migrate-process.mjs` and `local-runtime.mjs` workers) are located from `import.meta.url`, so they work from
 `node_modules/lemon-core/bin/lib/`.

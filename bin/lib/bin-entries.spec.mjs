@@ -1,6 +1,6 @@
 /**
  * `bin/lib/bin-entries.spec.mjs` (lemon-core)
- * - offline tests of the 5 build/deploy entries as a consumer starts them: `--help` per entry, the npm `bin`
+ * - offline tests of the 5 build/deploy entries (+ `lemon-lambda-env`, B26) as a consumer starts them: `--help` per entry, the npm `bin`
  *   symlink "run when main" check, and the forked workers from an installed `node_modules/lemon-core/bin/lib/`.
  * - run: `npm test` (vitest `bin/**\/*.spec.mjs`). Temp dirs under `os.tmpdir()`; no AWS, no network.
  */
@@ -37,13 +37,15 @@ const binDir = path.join(repo, 'bin');
 const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'));
 const fixtures = path.join(binDir, 'fixtures', 'local');
 
-// the 5 entries of B19-b and a word of their `--help` text.
+// the 5 entries of B19-b (+ `lemon-lambda-env` of B26) and a word of their `--help` text.
 const ENTRIES = {
     'lemon-lambda-pack': /Usage: npm run pack/,
     'lemon-lambda-local': /Usage: npm run lambda:local/,
     'lemon-lambda-deploy': /Usage: npm run lambda:deploy --/,
     'lemon-lambda-deploy-dev': /Usage: npm run lambda:deploy:dev/,
     'lemon-lambda-migrate': /Usage: npm run lambda:migrate/,
+    //* v5 B26: the env build / diff tool.
+    'lemon-lambda-env': /Usage: lemon-lambda-env build/,
 };
 
 // a fresh temp dir, removed after the test.
@@ -79,7 +81,7 @@ const consumer = () => {
     return { root, installed, bin: name => path.join(root, 'node_modules', '.bin', name) };
 };
 
-test('package.json declares the 5 entries as executable bins and ships their modules, not the specs', () => {
+test('package.json declares the B19-b/B26 entries as executable bins and ships their modules, not the specs', () => {
     for (const name of Object.keys(ENTRIES)) {
         const file = pkg.bin[name];
         assert.equal(file, `bin/${name}.mjs`);
