@@ -10,7 +10,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
-import loadEnviron, { credentials, loadProfile } from './environ';
+import loadEnviron, { loadProfile } from './environ';
 import { expect2 } from './common/test-helper';
 
 //! main test body.
@@ -27,14 +27,6 @@ describe('environ', () => {
             //* for `npm run test.lemon`
             expect2(() => PROFILE).toEqual(ENV);
         }
-    });
-
-    it(`should pass credentials(${ENV})`, async () => {
-        expect2(() => credentials(null)).toEqual();
-        expect2(() => credentials('')).toEqual();
-        expect2(() => credentials('lemon')).toEqual(
-            'WARN! credentials() is deprecated. use `asyncCredentials()` from lemon-devkit instead!',
-        );
     });
 
     it(`should pass loadEnviron(${ENV})`, async () => {

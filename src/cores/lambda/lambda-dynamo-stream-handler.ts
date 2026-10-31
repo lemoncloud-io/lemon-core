@@ -14,7 +14,7 @@ import { DynamoDBRecord } from 'aws-lambda';
 import { NextHandler } from 'lemon-model';
 import { LambdaHandler, DynamoStreamHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { toJavascript } from '../../lib/dynamodb-value';
-import { Elastic6Service, Elastic6Item } from '../elastic/';
+import { OS2CoreService, OS2Item } from '../elastic/';
 import { DynamoOption } from '../dynamo/';
 const NS = $U.NS('HDBS', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -85,13 +85,24 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
 
     /**
      * Default Handler.
+     * - v5 B5: never rejects. a failed record goes to `batchItemFailures` (by `dynamodb.SequenceNumber`).
      */
-    public handle: DynamoStreamHandler = async (event, context): Promise<void> => {
+    public handle: DynamoStreamHandler = async (
+        event,
+        context,
+    ): Promise<{ batchItemFailures: { itemIdentifier: string }[] }> => {
         //* for each records.
         const records: DynamoDBRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
         // _log(NS, '> event =', $U.json(event));
         const $doReportError = buildReportError(LambdaDynamoStreamHandler.REPORT_ERROR);
+        //* v5: indexes of the failed records.
+        const failed = new Set<number>();
+        //* mark the record as failed, then report (resolves the error message).
+        const $fail = (index: number) => (e: any, context?: any, event?: any, data?: any) => {
+            failed.add(index);
+            return $doReportError(e, context, event, data);
+        };
 
         const onStreamRecord = async (record: DynamoDBRecord, i: number): Promise<string> => {
             const region = record.awsRegion;
@@ -122,7 +133,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             const asyncNext = (fn: DynamoStreamNextHandler, j: number) =>
                 new Promise(resolve => {
                     resolve(fn('!', param, body, context));
-                }).catch(e => $doReportError(e, null, null, { record, i, j }));
+                }).catch(e => $fail(i)(e, null, null, { record, i, j }));
             const res = await Promise.all(this.listeners.map(asyncNext));
             _log(NS, `>> result[${i}] =`, $U.json(res));
             return `${i}`;
@@ -131,24 +142,30 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
         //* serialize all record...
         this.$lastResult = await do_parrallel(
             records,
-            (record, i) => onStreamRecord(record, i).catch(e => $doReportError(e, null, null, { record, i })),
+            (record, i) => onStreamRecord(record, i).catch(e => $fail(i)(e, null, null, { record, i })),
             1,
         );
+
+        //* v5: returns the partial batch response (empty if all succeeded).
+        const batchItemFailures = records
+            .filter((_, i) => failed.has(i))
+            .map(record => ({ itemIdentifier: `${record?.dynamodb?.SequenceNumber ?? ''}` }));
+        return { batchItemFailures };
     };
 
     /**
-     * create synchronizer to elastic6 via dynamo-stream.
+     * create synchronizer to OpenSearch via dynamo-stream.
      *  - procedure: (filter) -> (onBeforeSync) -> synchronization -> (onAfterSync)
      *
      * @param options       options of dynamo table.
-     * @param service?      (optional) Elastic6Service instance
+     * @param service?      (optional) OS2CoreService instance
      * @param filter        (optional) filter function
      * @param onBeforeSync  (optional) callback function invoked before synchronization
      * @param onAfterSync   (optional) callback function invoked after synchronization
      */
-    public static createSyncToElastic6<T extends Elastic6Item>(
+    public static createSyncToOS2<T extends OS2Item>(
         options: DynamoOption,
-        service?: Elastic6Service<T>,
+        service?: OS2CoreService<T>,
         filter?: DynamoStreamFilter<T>,
         onBeforeSync?: DynamoStreamCallback<T>,
         onAfterSync?: DynamoStreamCallback<T>,
@@ -204,7 +221,7 @@ export class LambdaDynamoStreamHandler extends LambdaSubHandler<DynamoStreamHand
             } else if (diff && Array.isArray(diff) && diff.length) {
                 //* try to update in advance, then save.
                 const $upt = diff.reduce<any>((M: any, key: string) => {
-                    M[key] = item[key as keyof Elastic6Item];
+                    M[key] = item[key as keyof OS2Item];
                     return M;
                 }, {});
                 _log(NS, `> updates[${_id}] @1 =`, $U.json($upt));

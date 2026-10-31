@@ -17,12 +17,41 @@
  */
 import fs from 'fs';
 import yaml from 'js-yaml';
-import { fromIni } from '@aws-sdk/credential-providers';
 import { CrendentialForAWS } from '../environ';
-import { RuntimeConfigAwsCredentialIdentityProvider } from '@aws-sdk/types/dist-types/identity/AwsCredentialIdentity';
 // import $engine from '../engine'; #WARN! DO NOT LOAD $engine here due to global initialization.
 import { LemonEngine } from '../engine/types';
 import { onlyDefined } from '../common/test-helper';
+import { measure } from '../lib/perf';
+
+/**
+ * `@aws-sdk/credential-providers`, required on the first use (not at import; v5 B2-c, K6).
+ */
+let $credentialProviders: typeof import('@aws-sdk/credential-providers') = null;
+// memoized sync loader; prints `PERF > lazy-load ...` only when an engine logger is given (`awsConfig`).
+const loadCredentialProviders = ($engine?: LemonEngine): typeof import('@aws-sdk/credential-providers') => {
+    if (!$credentialProviders) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const load = () => require('@aws-sdk/credential-providers');
+        $credentialProviders =
+            $engine?.inf && $engine?.U
+                ? measure($engine.inf, $engine.U.NS('PERF', 'cyan'), 'lazy-load @aws-sdk/credential-providers', load)
+                : load();
+    }
+    return $credentialProviders;
+};
+
+/**
+ * type: `AwsCredentialProvider`
+ * - the credentials provider (an async function) for the AWS SDK clients.
+ * - local structural type (v5 B2-c): no AWS SDK type in the published `.d.ts`.
+ * - not exported (no new root name); it shows in `.d.ts` through `AwsConfigParams.credentials`.
+ */
+type AwsCredentialProvider = (props?: Record<string, any>) => Promise<{
+    accessKeyId: string;
+    secretAccessKey: string;
+    sessionToken?: string;
+    expiration?: Date;
+}>;
 
 /**
  * Check if the current environment is AWS Lambda
@@ -62,7 +91,8 @@ export const loadDataYml = <T extends object = any>(file: string, folder?: strin
  * @returns {Promise<CrendentialForAWS>} - AWS credentials
  */
 export const asyncCredentials = async (profile?: string): Promise<CrendentialForAWS> => {
-    const provider = fromIni({ profile });
+    //* no logger here: `PERF` is printed only when `awsConfig()` loads the package first.
+    const provider = loadCredentialProviders().fromIni({ profile });
     const $res = await provider();
     return { ...$res, profile };
 };
@@ -78,7 +108,7 @@ export interface AwsConfigParams {
     /** AWS profile */
     profile?: string; // AWS profile
     /** AWS credentials provider */
-    credentials?: RuntimeConfigAwsCredentialIdentityProvider;
+    credentials?: AwsCredentialProvider;
 }
 
 /**
@@ -97,7 +127,7 @@ export const awsConfig = <T extends AwsConfigParams>(
     $engine: LemonEngine,
     /** params or region */
     params?: T | string | (() => string),
-): T & { credentials?: RuntimeConfigAwsCredentialIdentityProvider } => {
+): T & { credentials?: AwsCredentialProvider } => {
     const errScope = `awsConfig(${$engine?.id ?? ''})`;
     const region: string =
         params === undefined
@@ -123,12 +153,12 @@ export const awsConfig = <T extends AwsConfigParams>(
     if (typeof $conf.region === 'string' && !$conf.region)
         throw new Error(`.region[${$conf.region}] is invalid (empty) - ${errScope}`);
 
-    //! load the credentials provider(async function).
-    const credentials: RuntimeConfigAwsCredentialIdentityProvider =
+    //! load the credentials provider(async function); the package is loaded only when a profile is set.
+    const credentials: AwsCredentialProvider =
         typeof ($conf as any).credentials === 'function'
             ? ($conf as any).credentials
             : $conf.profile
-            ? fromIni({ profile: $conf.profile })
+            ? loadCredentialProviders($engine).fromIni({ profile: $conf.profile })
             : undefined;
 
     return onlyDefined({ ...$conf, credentials });

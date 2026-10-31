@@ -676,8 +676,12 @@ describe('ProxyStorageService', () => {
         expect2(() => notFoundResult404.total).toEqual(2);
         expect2(() => notFoundResult404.success.length).toEqual(0);
         expect2(() => notFoundResult404.failed.length).toEqual(2);
-        expect2(() => (notFoundResult404.failed[0] as any).error).toEqual('404 NOT FOUND - _id:TT:test:not-found-404-1');
-        expect2(() => (notFoundResult404.failed[1] as any).error).toEqual('404 NOT FOUND - _id:TT:test:not-found-404-2');
+        expect2(() => (notFoundResult404.failed[0] as any).error).toEqual(
+            '404 NOT FOUND - _id:TT:test:not-found-404-1',
+        );
+        expect2(() => (notFoundResult404.failed[1] as any).error).toEqual(
+            '404 NOT FOUND - _id:TT:test:not-found-404-2',
+        );
 
         // 2. mixed 404 + success - 일부만 404
         await $test.save('mixed-success-1', { name: 'Success Item' });
@@ -825,7 +829,9 @@ describe('ProxyStorageService', () => {
 
         // 404 error test
         // 1. if item not exist, doUpdateMulti automatically create item
-        const notFoundResult404 = await storage.doUpdateMulti('test', [{ id: 'not-found-404-3', name: 'Auto Created' }]);
+        const notFoundResult404 = await storage.doUpdateMulti('test', [
+            { id: 'not-found-404-3', name: 'Auto Created' },
+        ]);
         expect2(() => notFoundResult404.total).toEqual(1);
         expect2(() => notFoundResult404.success.length).toEqual(1);
         expect2(() => notFoundResult404.failed.length).toEqual(0);
@@ -840,8 +846,14 @@ describe('ProxyStorageService', () => {
         expect2(() => mixedUpdateResult404.total).toEqual(2);
         expect2(() => mixedUpdateResult404.success.length).toEqual(2);
         expect2(() => mixedUpdateResult404.failed.length).toEqual(0);
-        expect2(() => mixedUpdateResult404.success[0], '_id,name').toEqual({ _id: 'TT:test:mixed-success-1', name: 'Auto Created' });
-        expect2(() => mixedUpdateResult404.success[1], '_id,name').toEqual({ _id: 'TT:test:not-found-mixed', name: 'Auto Created' });
+        expect2(() => mixedUpdateResult404.success[0], '_id,name').toEqual({
+            _id: 'TT:test:mixed-success-1',
+            name: 'Auto Created',
+        });
+        expect2(() => mixedUpdateResult404.success[1], '_id,name').toEqual({
+            _id: 'TT:test:not-found-mixed',
+            name: 'Auto Created',
+        });
         await $test.delete('mixed-success-1').catch(GETERR);
         await $test.delete('not-found-mixed').catch(GETERR);
 

@@ -1,5 +1,7 @@
 # UPGRADE GUIDE: lemon-core V3 to V4
 
+> lemon-core v5 requires Node.js 24 (not 22 as below). See [HOW_TO_UPGRADE_V5.md](./HOW_TO_UPGRADE_V5.md).
+
 ---
 
 ## 0. Update lemon-core Version

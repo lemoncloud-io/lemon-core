@@ -4,6 +4,8 @@
  *
  * @author      Tim Hong <tim@lemoncloud.io>
  * @date        2020-06-05 initial version
+ * @date        2026-10-28 v5 B4: `fields` may be a model class (`resolveFields()`).
+ * @date        2026-10-28 v5 B4: `fieldsSource` keeps whether `FIELDS` came from a class or a list.
  *
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -11,6 +13,8 @@
 import { _log, _inf, _err, $U } from '../../engine/';
 import { CoreModel } from 'lemon-model';
 import { StorageMakeable, GeneralModelFilter, TypedStorageService, UniqueFieldManager } from './proxy-storage-service';
+//* v5 B4: field list from a `string[]` or a model class (`@field()` annotations).
+import { ModelClass, resolveFields } from './model-fields';
 const NS = $U.NS('MMGR', 'cyan'); // default namespace name
 
 /**
@@ -29,21 +33,31 @@ export abstract class AbstractManager<
     public readonly parent: S;
     public readonly storage: TypedStorageService<T, ModelType>;
     public readonly $unique: UniqueFieldManager<T, ModelType>;
+    /** v5 B4: where `FIELDS` came from - `class` (`fieldsOf(cls)`) or `list` (a `string[]` as is) */
+    public readonly fieldsSource: 'class' | 'list';
 
     /**
      * default constructor
      * @param type          model type string
      * @param parent        service instance which implements StorageMakeable interface
-     * @param fields        list of model field names
+     * @param fields        list of model field names, or a model class (`fieldsOf(cls)`, v5 B4)
      * @param uniqueField   (optional) unique field name
      * @param ns            (optional) namespace to be printed. pass NULL to suppress all logs.
      *                      global NS value will be used if not specified or undefined.
      */
-    protected constructor(type: ModelType, parent: S, fields: string[], uniqueField?: string, ns?: string) {
-        super(fields);
+    protected constructor(
+        type: ModelType,
+        parent: S,
+        fields: string[] | ModelClass,
+        uniqueField?: string,
+        ns?: string,
+    ) {
+        //* resolve a model class into its field names once; the filter and the storage share the same list.
+        super(resolveFields(fields));
+        this.fieldsSource = typeof fields === 'function' ? 'class' : 'list'; //* v5 B4: same test as `resolveFields()`.
         this.NS = ns === undefined ? NS : ns;
         this.parent = parent;
-        this.storage = parent.makeStorageService(type, fields, this);
+        this.storage = parent.makeStorageService(type, this.FIELDS, this);
         this.$unique = uniqueField ? this.storage.makeUniqueFieldManager(uniqueField) : null;
     }
 

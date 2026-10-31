@@ -37,35 +37,37 @@
  * @date        2026-01-05 optimized `hasAdminRole()` and `getCurrentSession()`.
  * @date        2026-02-11 optimized `proxy.mget()` with `throwable` options.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
+ * @date        2026-10-27 v5 B2-b: OpenSearch client, lazy `$OS2` (= `$ES6Routed`), one service set per instance.
+ * @date        2026-10-28 v5 B4: `CORE_FIELDS = fieldsOf(CoreModel)`; manager `fields` may be a model class.
+ * @date        2026-10-30 v5 B13: default data-access policy (`AccessPolicy`, `canDo` scopes, `list` pin by scope).
+ * @date        2026-10-30 v5 B15: policy keys `internal`/`cross`, cross-cloud `cid`, internal admin, internal session.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err, $engine } from '../../engine/';
-import $cores, {
-    ConfigModule,
-    SearchType,
-    Elastic6Service,
-    Elastic6Option,
-    Elastic6QueryService,
-    $ERROR,
-} from '../../cores/';
+import $cores, { ConfigModule, SearchType, OS2CoreService, OS2BaseOption, OS2QueryService, $ERROR } from '../../cores/';
 import { DynamoScanService, DynamoScanFilter, DynamoScanResult, ApiHttpProxy, APIHeaders } from '../../cores/';
-import { elasticsearch, SearchResponse, DynamoOption, Elastic6Item } from '../../cores/';
+import { DynamoOption, OS2Item } from '../../cores/'; //* v5 B3: `SearchResponse` went with the removed `search` override
+import type { Client } from '@opensearch-project/opensearch';
 import { NUL404, GETERR, GETERR$, waited } from '../../common/test-helper';
 import { asyncCredentials, loadJsonSync } from '../../tools/';
 import { my_parrallel, createSigV4Proxy, my_sequence, getIdentityId } from '../../helpers/';
 import {
-    _ES6,
-    Elastic6Synchronizer,
+    OS2Synchronizer,
     CoreManager,
     CoreService,
     SearchResult,
     ManagerProxy,
     AbstractProxy,
-    Elastic6Instance,
+    AbstractOS2Instance,
+    OS2ConstructParams,
 } from '../abstract-service';
+//* v5 B3: the local copy was identical to the L1 one (the root already used that); re-exported to keep this deep path.
+export { sourceToItem } from '../abstract-service';
+import { lazyInstance } from '../../lib/lazy';
+import { measure } from '../../lib/perf';
 import {
     Incrementable,
     CoreModel,
@@ -77,18 +79,23 @@ import {
     SortTerm,
     SimpleSet,
     GeneralItem,
+    fieldsOf,
 } from 'lemon-model';
 import { BulkItemsResult, IdentityToken, ListResult, PaginateParam } from './types';
 import { $T, onlyDefined, parsePaginateParam } from './commons';
 import { CrendentialForAWS } from '../../environ';
-import { fieldKeys } from '../../generated/field-registry';
+//* v5 B4: manager `fields` may be a model class.
+import { ModelClass } from '../../cores/storage/model-fields';
+//* v5 B15: the cross-cloud rule (one place, shared with the `TRACE` line).
+import { isCrossCloud } from '../../cores/protocol/protocol-relay';
 
 const NAME = $U.env('NAME', 'lemon');
 const NS = $U.NS('HDBS', 'green');
 /**
- * fields in core model.
+ * fields in core model (L2: the 14 L1 `CORE_FIELDS` + `id`, `_id`).
+ * - v5 B4: read from the `@field()` annotations of the `CoreModel` class (was the generated registry).
  */
-const CORE_FIELDS: string[] = fieldKeys.coreModel<CoreModel>();
+const CORE_FIELDS: string[] = fieldsOf(CoreModel);
 
 export type SearchParam<T> = T & { [key: string]: string | number };
 
@@ -114,17 +121,76 @@ const $LUT = {
 export type CanDoActionType = keyof typeof $LUT.CanDoAction;
 
 /**
+ * type: `AccessScope`
+ * - v5 B13: which rows one action may touch, against the caller's session (SPEC § 14.1).
+ * - `owner`: same `sid` and same non-empty `uid`. `group`: same `sid` and same non-empty `gid`.
+ * - `site`: same non-empty `sid`. `any`: every role holder.
+ */
+export type AccessScope = 'owner' | 'group' | 'site' | 'any';
+
+/**
+ * type: `AccessInternal`
+ * - v5 B15: how a protocol caller (`context.channel === 'internal'`) is evaluated (SPEC § 15.4).
+ * - `admin` (default): every action, no list pin. `identity`: by the relayed identity, as any other caller.
+ */
+export type AccessInternal = 'admin' | 'identity';
+
+/**
+ * type: `AccessCross`
+ * - v5 B15: how a cross-cloud caller (identity `cid` ≠ own `context.accountId`) is treated (SPEC § 15.1).
+ * - `accept` (default): the same rules as a same-cloud caller. `identity`: never internal admin. `deny`: 403.
+ */
+export type AccessCross = 'accept' | 'identity' | 'deny';
+
+/**
+ * type: `AccessPolicy`
+ * - v5 B13: the scope of each CRUD action.
+ * - v5 B15: + `internal` and `cross`, one per policy (caller state, not per action).
+ */
+export type AccessPolicy = Record<CanDoActionType, AccessScope> & {
+    /** v5 B15: protocol (`internal`) callers - `admin` (default) or `identity` */
+    internal: AccessInternal;
+    /** v5 B15: cross-cloud callers - `accept` (default), `identity` or `deny` */
+    cross: AccessCross;
+};
+
+/**
+ * v5 B13: the core default policy - list in the caller's site, the other four on own rows only.
+ * - override per type with `MyManagerProxy.accessPolicy()`, per controller with `options.policy`.
+ * - v5 B15: protocol callers are admin, cross-cloud callers are accepted.
+ */
+export const DEFAULT_ACCESS_POLICY: Readonly<AccessPolicy> = Object.freeze({
+    list: 'site',
+    read: 'owner',
+    create: 'owner',
+    update: 'owner',
+    delete: 'owner',
+    internal: 'admin', //* v5 B15
+    cross: 'accept', //* v5 B15
+});
+
+//* v5 B15: the known values of the two caller-state keys (an unknown value is refused).
+const ACCESS_INTERNAL: readonly string[] = ['admin', 'identity'];
+const ACCESS_CROSS: readonly string[] = ['accept', 'identity', 'deny'];
+
+//* v5 B15: true if `internal` and `cross` of a (merged) policy are known values.
+const isKnownCallerPolicy = (P: Partial<AccessPolicy>): boolean =>
+    ACCESS_INTERNAL.includes(P?.internal) && ACCESS_CROSS.includes(P?.cross);
+
+/**
  * Optional parameters for `canDo()`
  */
 export interface CanDoOptions {
     /** error scope to print */
     errScope?: string;
-    /** flag to throw error if not allowed (default false) */
+    /** flag to throw error if not allowed (default true) */
     throwable?: boolean;
-    /** flag to use session (default true) */
+    /** flag to use session (default env `USE_SESSION`) */
     useSession?: boolean;
     /** current context to override */
     context?: NextContext;
+    /** (optional) v5 B13: scopes to override the manager-proxy policy (used only with the session on); v5 B15: + `internal`, `cross` */
+    policy?: Partial<AccessPolicy>;
 }
 
 /**
@@ -184,9 +250,14 @@ export abstract class MyCoreService<
 
     /**
      * make proxy, and use callback to handle.
-     * - it will save automatically.
+     * - it will save automatically on success.
+     * - v5: on exception it saves only when `options.saveOnError` is true (default false, B5 § 6.7).
      */
-    public guardProxy = async <T>(context: NextContext, callback: (proxy: Proxy) => Promise<T>): Promise<T> => {
+    public guardProxy = async <T>(
+        context: NextContext,
+        callback: (proxy: Proxy) => Promise<T>,
+        options?: { saveOnError?: boolean },
+    ): Promise<T> => {
         const proxy = this.createProxy(context);
         try {
             const result = await callback(proxy);
@@ -194,21 +265,23 @@ export abstract class MyCoreService<
             _log(`> saved[${saved?.length}] =`, $U.json(saved));
             return result;
         } catch (e) {
-            //WARN! force to save models even for exception @240613
-            const saved = await proxy.saveAllUpdates().catch(e => GETERR$(e));
-            _log(`> saved =`, $U.json(saved));
+            //* v5: save pending updates on exception only by opt-in (v4 always saved @240613).
+            if (options?.saveOnError) {
+                const saved = await proxy.saveAllUpdates().catch(e => GETERR$(e));
+                _log(`> saved =`, $U.json(saved));
+            }
             throw e;
         }
     };
 
     /**
-     * run search
-     * - override this to hide `$ES6`
+     * run search (via `$OS2`)
+     * - override this to hide `$OS2`
      */
     public async doSearch<T>(body: SearchBody): Promise<SearchResult<T>> {
         _log(`doSearch()`);
         _log(`> list.query =`, $U.json(body));
-        const result = await $ES6.search<T>(body);
+        const result = await $OS2.search<T>(body);
         _log(`> list.res =`, $U.json({ ...result, list: [result?.list?.[0]] }));
         return result;
     }
@@ -222,18 +295,11 @@ export abstract class MyCoreService<
     }
 
     /**
-     * @deprecated typo kept for 1 minor as a non-breaking alias — use `isUseSession()` instead. (cores-migration P1, decision #2)
-     */
-    public isUseSssion(): boolean {
-        return this.isUseSession();
-    }
-
-    /**
      * check if search-engine is supportable
      * @returns
      */
     public hasSearchEngine(): boolean {
-        const useSearch = !!$ES6.options?.indexName;
+        const useSearch = !!$OS2.options?.indexName;
         return useSearch;
     }
 }
@@ -261,9 +327,10 @@ export abstract class MyCoreManager<
     protected constructor(
         type: ModelType,
         parent: Service,
-        fields: string[],
+        //* v5 B4: a `string[]` or a model class (resolved in `AbstractManager`).
+        fields: string[] | ModelClass,
         public readonly options?: {
-            /** enable to sync with es6 (default true) */
+            /** enable to sync with the search engine (v5 default false — B5 § 6.7) */
             enableSync?: boolean;
             /** unique field */
             uniqueField?: string;
@@ -272,8 +339,10 @@ export abstract class MyCoreManager<
         },
     ) {
         super(type, parent, fields, options?.uniqueField);
-        const enableSync = options?.enableSync ?? true;
-        if (enableSync) $ES6.synchronizer?.enableSynchronization(this.type);
+        //* v5: sync is opt-in (default false), so `$OS2` is built only when a manager asks (B5 § 6.7).
+        const enableSync = options?.enableSync ?? false;
+        //* the first manager with `enableSync: true` builds the lazy `$OS2` (1 listener when `OS2_ENDPOINT` is set).
+        if (enableSync) $OS2.synchronizer?.enableSynchronization(this.type);
         this.logNS = $U.NS(type, 'yellow');
     }
 
@@ -836,13 +905,14 @@ export abstract class MyCoreManager<
         };
 
         const _saveBulk = async <T = any>(operations: T[]) => {
-            const elastic = $ES6.client;
+            const elastic = $OS2.client;
             const $res = await elastic.bulk({ body: operations }).catch(e => {
                 _err(this.NS, `>> err=`, e);
                 throw e;
             });
+            //* the OS client types `items[].index.error` as an object; read it in the v4 shape.
             const list =
-                ($res.body as BulkResponseBody)?.items?.map<ItemList>(item => ({
+                ($res.body as unknown as BulkResponseBody)?.items?.map<ItemList>(item => ({
                     _id: item.index._id,
                     _version: item.index._version,
                     error: item.index.error,
@@ -866,7 +936,7 @@ export abstract class MyCoreManager<
         const _transformBulkOperations = (dataChunk: Model[]) => {
             return dataChunk.flatMap(doc => {
                 const { _id, ...items } = doc;
-                return [{ index: { _index: $ES6.options?.indexName, _id: doc._id } }, items as Model];
+                return [{ index: { _index: $OS2.options?.indexName, _id: doc._id } }, items as Model];
             });
         };
 
@@ -1000,7 +1070,8 @@ export class MyCoreProxy<
 
         const context = (options?.context ?? this.context) as unknown as NextContext<IdentityToken>;
         //* WARN - in case of local, no need to throw error.
-        const isLocal = context?.domain === 'localhost';
+        //* v5: local mode is a runtime setting (`LOCAL_MODE=1` off Lambda), never from `context.domain` (B5 § 6.3).
+        const isLocal = $U.isLocalMode();
 
         // load the `identity-token` from json file.
         const _load = (file: string): IdentityToken => {
@@ -1033,13 +1104,22 @@ export class MyCoreProxy<
                     return context?.identity;
                 }
             }
+            //* v5 B15: a protocol caller (`channel: 'internal'`, set by the entry) has no `userAgent` (a relay
+            //*   identity is a whitelist) → its non-empty identity is the session. not in local mode, and not with
+            //*   `useSession: false` (the session-off `canDo` rules stay unchanged).
+            const isInternal = !isLocal && useSession !== false && context?.channel === 'internal';
+            if (isInternal && $idt && typeof $idt === 'object' && Object.keys($idt).length > 0) {
+                return context?.identity;
+            }
 
             //TODO - 아래 코드는 개선의 여지가 있음(문제점???) @241210
-            if (LOCAL_ACCOUNT) return _default();
+            //* v5: `LOCAL_ACCOUNT` is honoured only in local mode (B5 § 6.3).
+            if (LOCAL_ACCOUNT && isLocal) return _default();
             if (useSession) {
                 // _inf(this.service.NS, `> use-session =`, useSession, USE_SESSION);
                 if (useSession === true || useSession === 'true' || useSession === '1') {
-                    if (USE_SESSION?.endsWith('.json')) {
+                    //* v5: a session file (`USE_SESSION=*.json`) is honoured only in local mode (B5 § 6.3).
+                    if (isLocal && USE_SESSION?.endsWith('.json')) {
                         const $sess = _load(USE_SESSION);
                         _inf(this.service.NS, `> use-session-json =`, $U.json($sess));
                         return $sess;
@@ -1083,7 +1163,8 @@ export class MyCoreProxy<
      */
     public asCurrentIdentityId = (context?: NextContext): string | null => {
         context = context ?? this.context;
-        if (context?.domain === 'localhost' && !(context as any)?.identity?.identityId) {
+        //* v5: `LOCAL_ACCOUNT` fallback only in local mode, not from `context.domain` (B5 § 6.3).
+        if ($U.isLocalMode() && !(context as any)?.identity?.identityId) {
             const LOCAL_ACCOUNT = $U.env('LOCAL_ACCOUNT', '');
             return LOCAL_ACCOUNT ? LOCAL_ACCOUNT : null;
         }
@@ -1119,8 +1200,8 @@ export class MyCoreProxy<
         const errScope = options?.errScope ?? `assertContext()`;
         const $idt = context?.identity as NextIdentityCognito;
         const isS = (s: string) => typeof s === 'string' && s?.length > 0;
-        //* call in local
-        const isLocal = context?.domain === 'localhost';
+        //* call in local (v5: runtime local mode only, never from `context.domain` — B5 § 6.3)
+        const isLocal = $U.isLocalMode();
         //* signed call with access-key
         const isSigned = isS($idt?.accessKey);
         //* authed by cognito provider.
@@ -1154,7 +1235,7 @@ export class MyCoreProxy<
 
     /**
      * check if current context has `admin` access
-     * 1. run in local environ (or internal protocol with domin='localhost')
+     * 1. run in local mode (`$U.isLocalMode()`, v5 — no longer `domain='localhost'`)
      * 2. access via signed access-key
      * 3. authorized cognito and has `admin` role in identity-token.
      *
@@ -1172,6 +1253,40 @@ export class MyCoreProxy<
         //TODO 아래는 임시로 role에서 바로 체크하도록함! @251212/steve (샘픔의 session-dev.json를 이용할경우 admin 체크가 잘 안됨)
         if (context?.identity?.roles?.includes(role)) return true;
         return false;
+    }
+
+    /**
+     * v5 B15: true if the caller identity comes from another cloud (SPEC § 15.1).
+     * - `identity.cid` (cloud-id = the caller's account) and `context.accountId` (this receiver's account) are
+     *   both non-empty and differ. a `#…` cid is empty. the values are compared, never logged.
+     *
+     * @param context (optional) the context to check (default the proxy context)
+     */
+    public isCrossCloud(context?: NextContext): boolean {
+        return isCrossCloud(context ?? this.context);
+    }
+
+    /**
+     * v5 B15: true if the caller is a protocol caller treated as admin (SPEC § 15.4).
+     * - `context.channel === 'internal'` (an entry without `channel` is not internal), `policy.internal === 'admin'`,
+     *   and not a cross-cloud caller under `cross: 'identity'` (or `'deny'`). `hasAdminRole()` is not changed.
+     * - an unknown `internal`/`cross` value is never admin.
+     *
+     * @param policy (optional) the effective policy (missing keys = `DEFAULT_ACCESS_POLICY`)
+     * @param context (optional) the context to check (default the proxy context)
+     */
+    public isInternalAdmin(policy?: Partial<AccessPolicy>, context?: NextContext): boolean {
+        const ctx = context ?? this.context;
+        if (ctx?.channel !== 'internal') return false;
+        //* the two caller-state keys, with the core defaults.
+        const P = {
+            internal: policy?.internal ?? DEFAULT_ACCESS_POLICY.internal,
+            cross: policy?.cross ?? DEFAULT_ACCESS_POLICY.cross,
+        };
+        if (!isKnownCallerPolicy(P) || P.internal !== 'admin') return false;
+        //* `cross: 'identity'` (and `'deny'`) never gives a cross-cloud caller the internal admin.
+        if (P.cross !== 'accept' && this.isCrossCloud(ctx)) return false;
+        return true;
     }
 
     /**
@@ -1230,17 +1345,23 @@ export class MyCoreProxy<
         const useSession = options?.useSession ?? false;
         const throwable = options?.throwable ?? false;
         const base = model ?? ({} as any);
+        //* v5 B13: copy a non-empty `gid` only (an absent group adds no `gid` key).
+        const _gid = (gid?: string) => {
+            if (base['gid'] === undefined && typeof gid === 'string' && gid) base['gid'] = gid;
+        };
         // STEP.0 populate with current parent.
         if (options?.parent) {
             const parent = options.parent;
             base['sid'] = base['sid'] ?? parent?.sid;
             base['uid'] = base['uid'] ?? parent?.uid;
+            _gid(parent?.gid); //* v5 B13: `gid` from the parent too.
         }
         // STEP.1 use session if applicable
         if (useSession) {
             const parent = this.getCurrentSession({ throwable });
             base['sid'] = base['sid'] ?? parent?.sid;
             base['uid'] = base['uid'] ?? parent?.uid;
+            _gid(parent?.gid); //* v5 B13: stamp the session `gid` (SPEC § 14.3 create).
         }
         return base;
     }
@@ -1316,20 +1437,29 @@ export class MyManagerProxy<
             limit?: number;
             /** (optional) error scope to use */
             errScope?: string;
+            /** (optional) v5 B13: list scope to pin (default: the effective policy `list`, session on only) */
+            scope?: AccessScope;
+            /** (optional) v5 B15: the caller's policy (`internal`/`cross` decide the internal admin, `list` the default scope) */
+            policy?: Partial<AccessPolicy>;
+            /** (optional) v5 B15: `false` pins an admin-like caller by `scope` too (ex: `view=mine`); never widens a non-admin */
+            asAdmin?: boolean;
         },
     ) {
-        const $ctx = this.proxy.context;
         const type = this.$mgr.type;
         const useSession = options?.useSession ?? false;
         const throwable = options?.throwable ?? true;
         const errScope = options?.errScope ?? `packSearchParam(${type})`;
-        const isLocal = $ctx?.domain === 'localhost';
-        const session = useSession ? this.proxy.getCurrentSession({ throwable }) : null;
+        const isLocal = $U.isLocalMode(); //* v5: drop the `sid` pin only in local mode (B5 § 6.3).
+        //* v5 B13: admin is decided before the session, so a session-less admin (IAM SigV4) lists without 403.
+        //* v5 B15: admin-like = `hasAdminRole` or the internal admin (same rule as `canDo`, `isAdminLike()`).
+        const adminLike = useSession && !isLocal ? this.isAdminLike({ policy: options?.policy }) : false;
+        //* v5 B15: `asAdmin: false` keeps the scope pin for an admin-like caller (it never makes a non-admin admin).
+        const isAdmin = adminLike && options?.asAdmin !== false;
+        const session = useSession ? this.proxy.getCurrentSession({ throwable: throwable && !adminLike }) : null;
 
         const _has = (name: string): boolean =>
             param && (typeof param[name] === 'string' || typeof param[name] === 'number');
         const _val = (name: string): string => (param ? $T.S2(param[name]) : undefined);
-        const _hasAdm = () => this.proxy.hasAdminRole('admin');
 
         // parse params
         const sort = _has('sort') ? $T.S2(param?.sort, '') : undefined;
@@ -1349,14 +1479,44 @@ export class MyManagerProxy<
         }, {} as SearchParam<MyModel>);
 
         // use w/ `identity-token` (known as session)
-        if (useSession && !isLocal) {
-            if (_hasAdm()) {
-                $param['sid'] = _has('sid') ? (_val('sid') === '0' ? session?.sid : _val('sid')) : session?.sid;
-            } else {
-                $param['sid'] = session?.sid;
-            }
+        if (useSession && !isLocal && isAdmin) {
+            //* admin: `?sid=` (or `0` = own site), else the session site (unchanged).
+            //* v5 B13: a session-less admin (empty `sid`) gets `null` = no site filter, not the `sid`-less rows.
+            const ownSid = session?.sid || null;
+            $param['sid'] = _has('sid') ? (_val('sid') === '0' ? ownSid : _val('sid')) : ownSid;
             //* use the current session's uid.
             if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
+        } else if (useSession && !isLocal) {
+            //* v5 B13: pin per the list scope (SPEC § 14.3 list).
+            const scope: AccessScope = options?.scope ?? this.effectivePolicy(options?.policy).list;
+            const S = { sid: $T.S2(session?.sid), uid: $T.S2(session?.uid), gid: $T.S2(session?.gid) };
+            const _deny = (name: string) =>
+                new Error(`403 NOT ALLOWED - list[${scope}] needs session .${name} @${errScope}`);
+            if (scope === 'any') {
+                //* `any`: no pin, `?sid=` and `?uid=` as given (`0` = the session value).
+                if (_has('sid')) $param['sid'] = _val('sid') === '0' ? session?.sid : _val('sid');
+                if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
+            } else if (scope === 'site' || scope === 'owner' || scope === 'group') {
+                //* every pinned scope needs the session site; an empty one lists nothing (was: no filter).
+                if (!S.sid) throw _deny('sid');
+                $param['sid'] = S.sid;
+                if (scope === 'owner') {
+                    //* `owner`: own rows only, `?uid=` is overridden.
+                    if (!S.uid) throw _deny('uid');
+                    $param['uid'] = S.uid;
+                } else {
+                    //* `site`/`group`: `?uid=` stays a narrowing filter (`0` = own uid).
+                    if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
+                    if (scope === 'group') {
+                        //* `group`: the caller's group only.
+                        if (!S.gid) throw _deny('gid');
+                        $param['gid'] = S.gid;
+                    }
+                }
+            } else {
+                //* an unknown scope never lists.
+                throw new Error(`403 NOT ALLOWED - list[${scope ?? ''}] is invalid @${errScope}`);
+            }
         } else {
             if (_has('sid')) $param['sid'] = _val('sid');
             if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
@@ -1437,11 +1597,52 @@ export class MyManagerProxy<
     }
 
     /**
+     * v5 B13: the default policy of this model type (override per type).
+     * - merged as `{ ...DEFAULT_ACCESS_POLICY, ...accessPolicy(), ...options.policy }`.
+     *
+     * @returns the scope per action
+     */
+    public accessPolicy(): AccessPolicy {
+        return { ...DEFAULT_ACCESS_POLICY };
+    }
+
+    /**
+     * v5 B13: the effective policy - core default, then `accessPolicy()`, then `policy` (undefined values skipped).
+     * - v5 B15: the 7 keys (5 scopes + `internal`, `cross`); a partial `policy` overrides only its keys.
+     *
+     * @param policy (optional) scopes from the caller (ex: controller `options.policy`)
+     * @returns the merged policy
+     */
+    public effectivePolicy(policy?: Partial<AccessPolicy>): AccessPolicy {
+        //* keep only the defined scopes, so `{ read: undefined }` does not erase a default.
+        const _defined = (P?: Partial<AccessPolicy>) =>
+            Object.entries(P ?? {}).reduce<Partial<AccessPolicy>>((M, [k, v]) => {
+                if (v !== undefined && v !== null) (M as any)[k] = v;
+                return M;
+            }, {});
+        return { ...DEFAULT_ACCESS_POLICY, ..._defined(this.accessPolicy()), ..._defined(policy) };
+    }
+
+    /**
+     * v5 B15: true if the caller is admin for the CRUD defaults - `hasAdminRole()` or the internal admin
+     *   (`MyCoreProxy.isInternalAdmin()` with the effective policy). `canDo`, `packSearchParam` and `doList` agree on it.
+     *
+     * @param options (optional) `policy` from the caller (merged as `effectivePolicy`), `context` to override
+     * @returns boolean
+     */
+    public isAdminLike(options?: { policy?: Partial<AccessPolicy>; context?: NextContext }): boolean {
+        const context = options?.context;
+        if (this.proxy.hasAdminRole(null, { context })) return true;
+        return this.proxy.isInternalAdmin(this.effectivePolicy(options?.policy), context);
+    }
+
+    /**
      * Check if the current user can perform the specified action on the given model.
-     * - override this method to implement custom logic.
+     * - override this method to implement custom logic (an override runs before this default).
+     * - v5 B13: with the session on, the effective `AccessPolicy` decides (SPEC § 14.2); with it off, § 6.4 as before.
      *
      * @param action The action to check.
-     * @param model The model to check against.
+     * @param model The model to check against. (`undefined` for `list` = the caller check only)
      * @param options Additional options for the check.
      * @returns True if the action is allowed, false otherwise.
      */
@@ -1452,22 +1653,106 @@ export class MyManagerProxy<
         const context = options?.context;
 
         // STEP.0 validate parameters.
-        const _act = $T.asLut(action, $LUT.CanDoAction, { throwable: false, default: null });
+        const _act = $T.asLut(action, $LUT.CanDoAction, { throwable: false, default: null }) as CanDoActionType;
         if (!_act || typeof _act !== 'string')
             throw new Error(`400 INVALID - action[${action ?? ''}] is invalid @${errScope}`);
 
+        //* v5 B13: session off → the § 6.4 rules, unchanged (SPEC § 14.3 "세션 꺼짐").
+        if (!useSession) return this.canDoWithoutSession(_act, model, { errScope, throwable, context });
+
+        //* v5 B13: one way to refuse (throw 403 or return false).
+        const _deny = (): boolean => {
+            if (throwable) throw new Error(`403 NOT ALLOWED - action[${_act}] is invalid @${errScope}`);
+            return false;
+        };
+        const hasModel = model !== undefined && model !== null;
+        const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid), gid: $T.S2(model?.gid) };
+        const legacy = $U.sidLegacyAccess();
+        //* v5 B15: the merged policy (7 keys); an unknown `internal`/`cross` value never allows (SPEC § 15.3).
+        const policy = this.effectivePolicy(options?.policy);
+        if (!isKnownCallerPolicy(policy)) return _deny();
+
+        //* v5 B13 (1): `deny` refuses update/delete of a `sid`-less record before the admin pass (B5 § 6.4, kept).
+        if (hasModel && !M.sid && (_act === 'update' || _act === 'delete') && legacy === 'deny') return _deny();
+
+        //* v5 B13 (2): admin before the session fetch - IAM SigV4 and `roles: ['admin']` claims pass (SPEC § 14.3).
+        if (this.proxy.hasAdminRole(null, { errScope, context })) return true;
+
+        //* v5 B15: `cross: 'deny'` refuses a cross-cloud caller (after the admin pass, SPEC § 15.3 order).
+        if (policy.cross === 'deny' && this.proxy.isCrossCloud(context)) return _deny();
+        //* v5 B15: a protocol caller is admin (`internal: 'admin'`), unless `cross: 'identity'` and cross-cloud.
+        if (this.proxy.isInternalAdmin(policy, context)) return true;
+
+        //* v5 B13 (3): the session is required (throwable → the current `403 IDENTITY-TOKEN` messages).
+        const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
+        if (!$sess) return _deny();
+
+        //* v5 B13 (4): caller state - a role holder with a site and a user (T-20, T-21, T-22).
+        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid), gid: $T.S2($sess?.gid) };
+        const hasRole = $sess?.roles?.length > 0 ? true : false; // guest if empty.
+        if (!hasRole || !S.uid || !S.sid) return _deny();
+
+        //* v5 B13 (6): `list` without a model = the caller check only; the rows are pinned by `packSearchParam()`.
+        if (_act === 'list' && !hasModel) return true;
+
+        //* v5 B13 (5): the scope of this action against the row.
+        const scope = policy[_act];
+        if (scope === 'any') return true;
+        //* a `sid`-less row → `SID_LEGACY_ACCESS` (`open` = v4, else admin only) (T-25, T-26, T-27).
+        if (!M.sid) return legacy === 'open' ? true : _deny();
+        switch (scope) {
+            case 'owner':
+                //* same site and same non-empty user (an empty `uid` never matches, T-24).
+                return S.sid === M.sid && S.uid === M.uid && !!S.uid ? true : _deny();
+            case 'group':
+                //* same site and same non-empty group.
+                return S.sid === M.sid && S.gid === M.gid && !!S.gid ? true : _deny();
+            case 'site':
+                //* same non-empty site.
+                return S.sid === M.sid && !!S.sid ? true : _deny();
+            default:
+                //* an unknown scope never allows.
+                return _deny();
+        }
+    }
+
+    /**
+     * the `canDo()` rules with the session off (v5 § 6.4, unchanged by B13).
+     * - `list`/`read`/`create`: same `sid` or a `sid`-less row; `update`/`delete`: same `sid` and `uid`.
+     *
+     * @param _act the validated action
+     * @param model the model to check against
+     * @param options { errScope, throwable, context }
+     * @returns True if the action is allowed, false otherwise.
+     */
+    protected canDoWithoutSession<T extends MyModel>(
+        _act: CanDoActionType,
+        model: T,
+        options: { errScope: string; throwable: boolean; context?: NextContext },
+    ): boolean {
+        const { errScope, throwable, context } = options;
+        const useSession = false;
+
         // no session but required.
         const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
-        if (useSession && !$sess) return false;
+
+        // session & model information.
+        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid) };
+        const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid) };
+        //* v5: access mode for update/delete of a `sid`-less record, env `SID_LEGACY_ACCESS` (B5 § 6.4).
+        const legacy = $U.sidLegacyAccess();
+        const isLegacyWrite = !M.sid && (_act === 'update' || _act === 'delete');
+
+        //* v5: `deny` refuses update/delete of a `sid`-less record before the admin pass (B5 § 6.4).
+        if (isLegacyWrite && legacy === 'deny') {
+            if (throwable) throw new Error(`403 NOT ALLOWED - action[${_act}] is invalid @${errScope}`);
+            return false;
+        }
 
         // admin can do anything.
         const isAdmin = this.proxy.hasAdminRole(null, { errScope, context });
         const hasRole = $sess?.roles?.length > 0 ? true : false; // guest if empty.
         if (isAdmin) return true;
-
-        // session & model information.
-        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid) };
-        const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid) };
 
         // check action.
         if (hasRole) {
@@ -1481,8 +1766,12 @@ export class MyManagerProxy<
                     break;
                 case 'update':
                 case 'delete':
-                    // (default) action is allowed if sid&uid matches or no sid.
-                    if (!M.sid) return true;
+                    // (default) action is allowed if sid&uid matches.
+                    //* v5: a `sid`-less record is admin-only for update/delete (B5 § 6.4); `open` keeps the v4 rule.
+                    if (!M.sid) {
+                        if (legacy === 'open') return true;
+                        break;
+                    }
                     if (S.sid === M.sid && S.uid === M.uid) return true;
                     break;
                 default:
@@ -1606,10 +1895,6 @@ interface ElasticParams<T extends object = any> {
      * body content.
      */
     body: T;
-    /**
-     * document type (optional).
-     */
-    type?: string;
 }
 /**
  * parameters for Elasticsearch search operations.
@@ -1626,139 +1911,41 @@ interface ElasticSearchParams<T extends object = any> {
      */
     body: T;
     /**
-     * document type (optional).
-     */
-    type?: string;
-    /**
      * search type
      * (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
      */
-    searchType: SearchType;
+    search_type?: SearchType;
 }
 
 /**
  * class: `OS2Service`
  * - Master 권한 전용 Elasticsearch 관리 서비스
- * - elasticsearch service for OS2.
+ * - service for OS2: data path via FGAC (`$fgac`), index management via the master client.
  */
-export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<any> {
-    protected declare _options: Elastic6Option;
-    public declare readonly _client: elasticsearch.Client;
+export class OS2Service<T extends OS2Item = any> extends OS2CoreService<any> {
     public readonly $fgac: OS2FGACManager;
 
-    public static override instance(endpoint: string) {
-        const _config = (n: string) => $cores.config.config.get(n);
-        const masterUser = _config('OS2_MASTER_UID');
-        const masterPass = _config('OS2_MASTER_PWD');
-        // if (!masterUser || !masterPass) throw new Error('400 NO MASTER - OS2_MASTER_UID/OS2_MASTER_PWD is required!');
-
-        const client = new elasticsearch.Client({
-            node: endpoint,
-            ssl: {
-                ca: process.env.elasticsearch_certificate,
-                rejectUnauthorized: false,
-            },
-            auth: {
-                username: masterUser,
-                password: masterPass,
-            },
-        });
-        return { client };
-    }
-
-    public constructor(options: Elastic6Option, fgac: OS2FGACManager) {
+    /**
+     * constructor (no client here; the master client is created on first `client` access)
+     */
+    public constructor(options: OS2BaseOption, fgac: OS2FGACManager) {
         super(options);
-        if (!options.endpoint) throw new Error('.endpoint (URL) is required');
-        if (!options.indexName) throw new Error('.indexName (string) is required');
-
-        const { client } = OS2Service.instance(options.endpoint);
-        this._options = { docType: '_doc', idName: '$id', version: '6.8', ...options };
-        this._client = client;
         this.$fgac = fgac;
     }
 
-    public get client(): elasticsearch.Client {
-        return this._client;
-    }
-
-    public get options(): Elastic6Option {
-        return this._options;
-    }
-
     /**
-     * describe `settings` and `mappings` of index.
+     * build the master client: `auth` is read from config now (after engine init), and set only when both exist.
      */
-    public async describe() {
-        const { indexName } = this.options;
-        //* call create index..
-        _log(NS, `- describe(${indexName})`);
-
-        //* read settings.
-        // const { client } = instance(endpoint);
-        const client = this.client;
-        const res = await client.indices.getSettings({ index: indexName }).catch(
-            // $ERROR.throwAsJson,
-            $ERROR.handler('describe', e => {
-                const msg = GETERR(e);
-                if (msg.startsWith('404 INDEX NOT FOUND')) throw new Error(`404 NOT FOUND - index:${indexName}`);
-                throw e;
-            }),
-        );
-        _log(NS, `> settings[${indexName}] =`, $U.json({ ...res, meta: undefined }));
-
-        const settings = (res.body && res.body[indexName] && res.body[indexName].settings) || {};
-        _log(NS, `> number_of_shards =`, settings.index && settings.index.number_of_shards); // 5
-        _log(NS, `> number_of_replicas =`, settings.index && settings.index.number_of_replicas); // 1
-
-        //* read mappings.
-        const res2 = await client.indices.getMapping({ index: indexName });
-        _log(NS, `> mappings[${indexName}] =`, $U.json(res2));
-        const mappings: any = (res2.body && res2.body[indexName] && res2.body[indexName].mappings) || {};
-
-        //* returns
-        return { settings, mappings };
+    protected override createClient(): Client {
+        const _config = (n: string) => $cores.config.config.get(n);
+        const username = _config('OS2_MASTER_UID');
+        const password = _config('OS2_MASTER_PWD');
+        const auth = username && password ? { auth: { username, password } } : {};
+        //* same node/ssl as the base; the package is loaded here, on first use.
+        return this.newClient(auth);
     }
 
-    /**
-     * create index by name
-     * @param settings - creating settings
-     */
-    public async createIndex(settings?: any) {
-        const { indexName, docType, idName, timeSeries, version } = this.options;
-        settings = settings || Elastic6Service.prepareSettings({ docType, idName, timeSeries, version });
-        if (!indexName) new Error('@index is required!');
-        _log(NS, `- createIndex(${indexName})`);
-
-        //* prepare payload
-        const payload = {
-            settings: {
-                number_of_shards: 5,
-                number_of_replicas: 1,
-            },
-            ...settings,
-        };
-        _log(NS, `> settings[${indexName}] = `, $U.json(payload));
-
-        //* call create index..
-        const client = this.client;
-        const res = await client.indices.create({ index: indexName, body: payload }).catch(
-            // $ERROR.throwAsJson,
-            $ERROR.handler('create', e => {
-                const msg = GETERR(e);
-                if (msg.startsWith('400 RESOURCE ALREADY EXISTS')) throw new Error(`400 IN USE - index:${indexName}`);
-                throw e;
-            }),
-        );
-        // if (res) throw res;
-        _log(NS, `> create[${indexName}] =`, $U.json({ ...res, meta: undefined }));
-
-        //* build result.
-        return {
-            status: res.statusCode,
-            index: indexName,
-            acknowledged: res.body.shards_acknowledged,
-        };
-    }
+    //* v5 B3: `describe`/`createIndex`/`search` are inherited from `OS2CoreService` (identical-body overrides removed).
 
     /**
      * delete index by name
@@ -1826,7 +2013,7 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
     public async bulkItems(items: T[], options?: { idName?: string }): Promise<BulkItemsResult> {
         const errScope = `bulkItems(${this.options.indexName})`;
         const { indexName } = this.options;
-        const client = this.client;
+        //* FGAC only: do not touch `this.client` here (it would create the master client).
         const idName = options?.idName ?? '_id';
 
         if (!Array.isArray(items) || items.length === 0)
@@ -1893,21 +2080,19 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
     }
 
     /**
-     * push item for time-series data.
+     * push item for time-series data (via FGAC; the result is the response body itself).
      *
      * @param item - item to push
-     * @param type - document type (default: doc-type given at construction time)
      */
-    public async pushItem(item: T, type?: string): Promise<T> {
-        const { indexName, docType } = this.options;
+    public async pushItem(item: T): Promise<T> {
+        const { indexName } = this.options;
         const id = (item.id as string) ?? '';
 
-        type = `${type || docType}`;
         const body: any = { ...item };
         const body2 = this.popullateAutocompleteFields(body);
 
         _log(NS, `- pushItem(${id})`);
-        const params = { index: indexName, type, body: body2, id };
+        const params = { index: indexName, body: body2, id };
         _log(NS, `> params[${id}] =`, $U.json(params));
 
         //NOTE - use npm `elasticsearch#13.2.0` for avoiding error.
@@ -1923,8 +2108,9 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
         // {"_index":"test-v3","_type":"_doc","_id":"rTeHiW4BPb_liACrA9qa","_version":1,"result":"created","_shards":{"total":2,"successful":2,"failed":0},"_seq_no":2,"_primary_term":1}
         _log(NS, `> create[${id}].res =`, $U.json({ ...res, meta: undefined }));
 
-        const _id = res.body?._id;
-        const _version = res.body?._version;
+        //* fixed: the FGAC result is the body itself (v4 read `res.body?._id`, always undefined)
+        const _id = res?._id;
+        const _version = res?._version;
         const res2: T = { ...body, _id, _version };
         return res2;
     }
@@ -1936,11 +2122,10 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
      * @param views - projections
      */
     public async readItem(id: string, views?: string[] | object): Promise<T> {
-        const { indexName, docType } = this.options;
-        const type = `${docType}`;
+        const { indexName } = this.options;
         _log(NS, `- readItem(${id})`);
 
-        const params: any = { index: indexName, type, id };
+        const params: any = { index: indexName, id };
         if (views) {
             const fields: string[] = [];
             const keys: string[] = Array.isArray(views) ? views : Object.keys(views);
@@ -1967,8 +2152,8 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
         const _version = res._version;
         const data: T = (res as any)?._source || res._source || {};
         // delete internal (analyzed) field
-        delete data[Elastic6Service.DECOMPOSED_FIELD];
-        delete data[Elastic6Service.QWERTY_FIELD];
+        delete data[OS2CoreService.DECOMPOSED_FIELD];
+        delete data[OS2CoreService.QWERTY_FIELD];
 
         const res2: T = { ...data, _id, _version };
         return res2;
@@ -1980,11 +2165,10 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
      * @param id - item-id
      */
     public async deleteItem(id: string): Promise<T> {
-        const { indexName, docType } = this.options;
-        const type = `${docType}`;
+        const { indexName } = this.options;
         _log(NS, `- deleteItem(${id})`);
 
-        const params: ElasticParams = { index: indexName, type, id, body: {} };
+        const params: ElasticParams = { index: indexName, id, body: {} };
         _log(NS, `> params[${id}] =`, $U.json(params));
         // const { client } = instance(endpoint);
 
@@ -2038,15 +2222,13 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
      */
     public async searchRaw<T extends object = any>(body: SearchBody, searchType?: SearchType): Promise<T> {
         if (!body) throw new Error('@body (SearchBody) is required');
-        const { indexName, docType } = this.options;
+        const { indexName } = this.options;
         _log(NS, `- search(${indexName}, ${searchType || ''})....`);
         _log(NS, `> body =`, $U.json(body));
 
-        const tmp = docType ? docType : '';
-        const params: ElasticSearchParams = { index: indexName, body, searchType };
-
-        // check version to include 'type' in params
-        _log(NS, `> params[${tmp}] =`, $U.json({ ...params, body: undefined }));
+        const params: ElasticSearchParams = { index: indexName, body };
+        if (searchType) params.search_type = searchType;
+        _log(NS, `> params =`, $U.json({ ...params, body: undefined }));
         const $res = await this.$fgac.doFgacSearch(params).catch(
             $ERROR.handler('search', e => {
                 _err(NS, `> search[${indexName}].err =`, e);
@@ -2057,31 +2239,6 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
         //* return raw results.
         return $res;
     }
-
-    /**
-     * run search, and get the formatmted response.
-     * @param body - Elasticsearch Query DSL that defines the search request (e.g., size, query, filters).
-     * @param searchType - type of search (e.g., 'query_then_fetch', 'dfs_query_then_fetch').
-     *
-     */
-    public async search(body: SearchBody, searchType?: SearchType): Promise<SearchResponse> {
-        const size = $U.N(body.size, 0);
-        const response = await this.searchRaw(body, searchType);
-        // return w/ transformed id
-        const hits = response.hits;
-        if (typeof hits !== 'object') throw new Error(`.hits (object) is required - hits:${$U.json(hits)}`);
-        //NOTE - ES6.8 w/ OS1.1
-        return {
-            total: typeof (hits.total as any)?.value === 'number' ? (hits.total as any)?.value : hits.total,
-            list: hits.hits.map((hit: any) => ({
-                ...(hit._source as any),
-                _id: hit._id,
-                _score: hit._score,
-            })),
-            last: hits.hits.length === size && size > 0 ? hits.hits[size - 1]?.sort : undefined,
-            aggregations: response.aggregations,
-        };
-    }
 }
 
 /**
@@ -2090,9 +2247,9 @@ export class OS2Service<T extends Elastic6Item = any> extends Elastic6Service<an
  */
 export class OS2FGACManager {
     private _fgacProxy: ApiHttpProxy;
-    public readonly options: Elastic6Option;
+    public readonly options: OS2BaseOption;
 
-    public constructor(options: Elastic6Option) {
+    public constructor(options: OS2BaseOption) {
         this.options = options;
     }
 
@@ -2136,7 +2293,7 @@ export class OS2FGACManager {
     public async doFgacSearch<R = any>(params: ElasticSearchParams): Promise<R> {
         const index = params?.index ?? '';
         const body = onlyDefined(params?.body ?? undefined);
-        const queryParams = params?.searchType ? { search_type: params?.searchType } : undefined;
+        const queryParams = params?.search_type ? { search_type: params?.search_type } : undefined;
         return this.proxy.doProxy('POST', index, `_search`, queryParams, body);
     }
 
@@ -2275,7 +2432,7 @@ export class OS2FGACManager {
 }
 
 /** extended option for `OS2Instance` */
-export interface OS2Option extends Elastic6Option {
+export interface OS2Option extends OS2BaseOption {
     /** (optional) role-name in FGAC */
     roleName?: string;
     /** (optional) user-name in FGAC */
@@ -2285,58 +2442,55 @@ export interface OS2Option extends Elastic6Option {
 /**
  * OS2 인스턴스
  * - describeIndex(), destroyIndex(), search() with elastic initialized by master-key
+ * - one service set (fgac, elastic, query, synchronizer) only when `endpoint && indexName`.
  */
-export class OS2Instance extends Elastic6Instance {
-    public declare readonly client?: elasticsearch.Client;
+export class OS2Instance extends AbstractOS2Instance {
     public declare readonly elastic?: OS2Service;
-    public declare readonly query?: Elastic6QueryService<any>;
-    public declare readonly synchronizer?: Elastic6Synchronizer;
+    public declare readonly query?: OS2QueryService<any>;
+    public declare readonly synchronizer?: OS2Synchronizer;
     public readonly fgac?: OS2FGACManager;
 
+    /**
+     * build one service set when `endpoint && indexName` (no client: it is created on first use).
+     */
     public constructor({
         endpoint,
         indexName,
         idName,
-        esVersion,
-        esDocType,
         tableName,
         autocompleteFields,
         roleName,
         userName,
-    }: {
-        endpoint: string;
-        indexName: string;
+    }: OS2ConstructParams & {
+        /** (optional) id-name (default `$id`, `null` = unset) */
         idName?: string;
-        esVersion: string;
-        esDocType: string;
-        tableName: string;
-        autocompleteFields: string[];
+        /** (optional) role-name in FGAC */
         roleName?: string;
+        /** (optional) user-name in FGAC */
         userName?: string;
     }) {
-        super({ endpoint, indexName, esVersion, esDocType, tableName, autocompleteFields });
+        super();
         const options: OS2Option = onlyDefined<OS2Option>({
             endpoint,
             indexName,
-            version: esVersion,
             autocompleteFields,
             roleName,
             userName,
             idName: idName === null ? undefined : idName ?? '$id',
         });
         if (endpoint && indexName) {
-            if (esDocType) options.docType = esDocType;
-
             this.fgac = new OS2FGACManager(options);
             this.elastic = new OS2Service(options, this.fgac);
-            this.client = this.elastic.client;
-            this.query = new Elastic6QueryService<any>(this.elastic);
-            this.synchronizer = new Elastic6Synchronizer(this.elastic, { tableName });
+            this.query = new OS2QueryService<any>(this.elastic);
+            this.synchronizer = new OS2Synchronizer(this.elastic, { tableName });
         }
     }
 
     public hello = () => `OS2Instance`;
 
+    //* v5 B3: `describeIndex` is inherited from `AbstractOS2Instance` (identical-body override removed).
+
+    //* kept (unlike the removed identical overrides): it narrows the return type to `OS2Option`.
     public get options(): OS2Option {
         if (!this.elastic) return null;
         return this.elastic.options;
@@ -2344,41 +2498,6 @@ export class OS2Instance extends Elastic6Instance {
 
     public get $X2(): typeof $X2 {
         return $X2;
-    }
-
-    /**
-     * display index settings and mappings
-     */
-    public async describeIndex(): Promise<any> {
-        return this.elastic && (await this.elastic.describe());
-    }
-
-    /**
-     * create Elasticsearch index with ES7+ mapping structure
-     */
-    public async createIndex(): Promise<any> {
-        if (!this.elastic) return null;
-
-        const { docType, idName, version = '2.10' } = this.options;
-        const settings = Elastic6Service.prepareSettings({ docType, idName, version });
-
-        // _doc 제거 및 properties 병합
-        if (settings.mappings?._doc) {
-            const { dynamic_templates, properties: docProperties } = settings.mappings._doc;
-
-            settings.mappings = {
-                ...settings.mappings,
-                ...(dynamic_templates ? { dynamic_templates } : {}),
-                properties: {
-                    ...(docProperties || {}),
-                    ...(settings.mappings.properties || {}),
-                },
-            };
-
-            delete settings.mappings._doc;
-        }
-
-        return this.elastic.createIndex(settings);
     }
 
     /**
@@ -2393,7 +2512,10 @@ export class OS2Instance extends Elastic6Instance {
     ): Promise<SearchResult<T>> {
         if (!this.elastic) throw new Error(`Could not read Elasticsearch endpoint or index setting.`);
         const searchType = params?.searchType;
-        const elastic = this.elastic;
+        //* v5 B22: honour `indexName` like `AbstractOS2Instance.search()` (same options and FGAC manager, other index).
+        const elastic = params?.indexName
+            ? new OS2Service<any>({ ...this.options, indexName: params.indexName }, this.fgac)
+            : this.elastic;
         return elastic.search(body, searchType);
     }
 
@@ -2515,15 +2637,6 @@ export class OS2Instance extends Elastic6Instance {
     }
 }
 
-export function sourceToItem<T>(_source: T, idName = '$id'): T {
-    const item: any = { ..._source };
-    if (idName in item) {
-        item._id = item[idName];
-        delete item[idName];
-    }
-    return item;
-}
-
 /**
  * internal tools
  */
@@ -2575,27 +2688,23 @@ const $X2 = {
 
 /**
  * factory of `OS2Instance`
+ * - reads `OS2_ENDPOINT`, `OS2_INDEX`, `MY_DYNAMO_TABLE`, `OS2_AUTOCOMPLETE_FIELDS` (no version, no doc-type).
  */
 export const _OS2 = (options?: OS2Option): OS2Instance => {
     return new (class extends OS2Instance {
+        // 0. load from env configuration, then 1. build the instance.
         public constructor() {
-            // 0. load from env configuration.
             const endpoint = options?.endpoint ?? $U.env('OS2_ENDPOINT', '');
             const indexName = options?.indexName ?? $U.env('OS2_INDEX', 'test-x1');
-            const esVersion = options?.version ?? $U.env('OS2_VERSION', '2.10');
-            const esDocType = options?.docType ?? $U.env('OS2_DOCTYPE', '');
             const tableName = $U.env('MY_DYNAMO_TABLE', '');
             const autocompleteFields = options?.autocompleteFields ?? $T.SS($U.env('OS2_AUTOCOMPLETE_FIELDS', ''));
 
             const roleName = options?.roleName;
             const userName = options?.userName;
 
-            // 1. initialize instance.
             super({
                 endpoint,
                 indexName,
-                esVersion,
-                esDocType,
                 tableName,
                 autocompleteFields,
                 roleName,
@@ -2612,17 +2721,17 @@ export const _OS2 = (options?: OS2Option): OS2Instance => {
     })();
 };
 
-/** dynamically load the OS2 instance if `OS2_ENDPOINT` is set */
-const hasOS2 = $U.env('OS2_ENDPOINT', '').startsWith('https://');
-export const $OS2 = _OS2();
-export const $ES6 = hasOS2 ? _OS2() : _ES6();
+/**
+ * the default `OS2Instance`, built lazily by `_OS2()` on first access (S-25).
+ * - nothing is built at import: no client, no dynamo-stream listener.
+ * - without `OS2_ENDPOINT` it is an `OS2Instance` with `options === null`.
+ */
+//* the factory prints one `PERF > instance $OS2` line (D40; the namespace is built at call time).
+export const $OS2: OS2Instance = lazyInstance(() =>
+    measure(_inf, $U.NS('PERF', 'cyan'), 'instance $OS2', () => _OS2()),
+);
 
 /**
- * explicit alias for the OS2-routing `$ES6` above (decision #3, cores-migration P1).
- * - kept as `$ES6` here for deep-import compatibility (`lemon-core/dist/extended/cores`).
- * - exported at root ONLY under this name: root `$ES6` stays pinned to the L1
- *   (non-OS2) `extended/abstract-service` version, so consumers must opt in by
- *   name instead of silently getting OS2-routing behavior via the root barrel.
+ * explicit alias of `$OS2` (the same object). The name is kept; the meaning is OS2.
  */
-export const $ES6Routed = $ES6;
-
+export const $ES6Routed: OS2Instance = $OS2;

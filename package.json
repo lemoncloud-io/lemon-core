@@ -1,20 +1,78 @@
 {
   "name": "lemon-core",
-  "version": "4.3.0",
+  "version": "5.0.16",
   "description": "Lemon Serverless Micro-Service Platform",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "lemon-fields-types": "bin/lemon-fields-types.mjs",
+    "lemon-lambda-invoke": "bin/lemon-lambda-invoke.mjs",
+    "lemon-lambda-logs": "bin/lemon-lambda-logs.mjs",
+    "lemon-lambda-perf": "bin/lemon-lambda-perf.mjs",
+    "lemon-fields-admin": "bin/lemon-fields-admin.mjs",
+    "lemon-loop-check": "bin/lemon-loop-check.mjs",
+    "lemon-lambda-pack": "bin/lemon-lambda-pack.mjs",
+    "lemon-lambda-local": "bin/lemon-lambda-local.mjs",
+    "lemon-lambda-deploy": "bin/lemon-lambda-deploy.mjs",
+    "lemon-lambda-deploy-dev": "bin/lemon-lambda-deploy-dev.mjs",
+    "lemon-lambda-migrate": "bin/lemon-lambda-migrate.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/common/test-helper.d.ts",
+      "import": "./dist/esm/testing.mjs",
+      "require": "./dist/common/test-helper.js",
+      "default": "./dist/common/test-helper.js"
+    },
+    "./model": {
+      "types": "./dist/model.d.ts",
+      "import": "./dist/esm/model.mjs",
+      "require": "./dist/model.js",
+      "default": "./dist/model.js"
+    },
+    "./dist/environ": {
+      "types": "./dist/environ.d.ts",
+      "import": "./dist/environ.js",
+      "require": "./dist/environ.js",
+      "default": "./dist/environ.js"
+    },
+    "./dist/cores/lambda/lambda-web-handler": {
+      "types": "./dist/cores/lambda/lambda-web-handler.d.ts",
+      "import": "./dist/cores/lambda/lambda-web-handler.js",
+      "require": "./dist/cores/lambda/lambda-web-handler.js",
+      "default": "./dist/cores/lambda/lambda-web-handler.js"
+    },
+    "./dist/extended/cores": {
+      "types": "./dist/extended/cores/index.d.ts",
+      "import": "./dist/extended/cores/index.js",
+      "require": "./dist/extended/cores/index.js",
+      "default": "./dist/extended/cores/index.js"
+    },
+    "./dist/*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "require": "./dist/*.js",
+      "default": "./dist/*.js"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
-    "build": "npm run fields:gen && npm run build-ts",
+    "build": "npm run build-ts && node scripts/gen-esm-wrapper.cjs",
     "build-ts": "tsc -v && tsc",
-    "fields:migrate": "lemon-fields migrate --report --update-tsconfig",
-    "fields:gen": "lemon-fields gen --report",
-    "fields:check": "lemon-fields --check",
-    "fields:guard-common": "lemon-fields guard-common --report",
+    "!v5": "------- v5 packaging gates -----",
+    "esm:smoke": "LS=1 node scripts/esm-smoke.mjs",
+    "api:names": "node scripts/api-names.cjs --out -",
+    "api:check": "node scripts/api-check.cjs",
+    "dup:check": "node scripts/dup-decls.cjs",
+    "l1l2:probe": "node scripts/l1l2-probe.cjs",
+    "fields:types": "node bin/lemon-fields-types.mjs",
     "watch-ts": "tsc -w",
-    "doc": "npm run doc:html && open dist/docs/index.html",
-    "doc:html": "typedoc src/ --exclude **/*.spec.ts --out dist/docs",
-    "doc:publish": "npm run doc:html && gh-pages -m \"docs(gh-pages): publish gh-pages via typedoc\" -d dist/docs",
     "lint": "tsc --noEmit && eslint '*/**/*.{js,ts,jsx,tsx}' --fix",
     "format": "prettier --write \"src/**/*.ts\" \"src/**/*.js\"",
     "!test": "------- run self-test with vitest -----",
@@ -22,7 +80,7 @@
     "test.lemon": "ENV=lemon npm run test",
     "test:dev": "LS=1 vitest",
     "!test:watch": "---- custom test with profile -----",
-    "test:watch": "lemon-fields guard-common && LS=1 vitest",
+    "test:watch": "LS=1 vitest",
     "test:watch.lemon": "ENV=lemon npm run test:watch",
     "!prepare": "------- run self-test with vitest -----",
     "prepare": "npm run build",
@@ -43,7 +101,46 @@
     ]
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "bin/lemon-fields-types.mjs",
+    "bin/lib/fields-types.mjs",
+    "bin/lemon-lambda-invoke.mjs",
+    "bin/lemon-lambda-logs.mjs",
+    "bin/lemon-lambda-perf.mjs",
+    "bin/lemon-fields-admin.mjs",
+    "bin/lemon-loop-check.mjs",
+    "bin/lib/common.mjs",
+    "bin/lib/event.mjs",
+    "bin/lib/invoke.mjs",
+    "bin/lib/logs.mjs",
+    "bin/lib/perf.mjs",
+    "bin/lib/fields-admin.mjs",
+    "bin/lib/loop-check.mjs",
+    "bin/lemon-lambda-pack.mjs",
+    "bin/lemon-lambda-local.mjs",
+    "bin/lemon-lambda-deploy.mjs",
+    "bin/lemon-lambda-deploy-dev.mjs",
+    "bin/lemon-lambda-migrate.mjs",
+    "bin/lib/is-main.mjs",
+    "bin/lib/optional-peer.mjs",
+    "bin/lib/org-defaults.mjs",
+    "bin/lib/pack-core.mjs",
+    "bin/lib/pack-zip.mjs",
+    "bin/lib/local-artifact.mjs",
+    "bin/lib/local-network.mjs",
+    "bin/lib/local-runner.mjs",
+    "bin/lib/local-runtime.mjs",
+    "bin/lib/deploy-plan.mjs",
+    "bin/lib/deploy-runner.mjs",
+    "bin/lib/deploy-client.mjs",
+    "bin/lib/deploy-receipt.mjs",
+    "bin/lib/deploy-credentials.mjs",
+    "bin/lib/dev-release.mjs",
+    "bin/lib/migrate-core.mjs",
+    "bin/lib/migrate-diagnostic.mjs",
+    "bin/lib/migrate-process.mjs",
+    "model/package.json",
+    "testing/package.json"
   ],
   "engines": {
     "node": ">=24.0.0"
@@ -51,72 +148,97 @@
   "author": "Steve Jung <steve@lemoncloud.io>",
   "license": "MIT",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.971.0",
-    "@aws-sdk/client-dynamodb-streams": "^3.971.0",
-    "@aws-sdk/client-iam": "^3.971.0",
-    "@aws-sdk/client-kms": "^3.971.0",
-    "@aws-sdk/client-lambda": "^3.971.0",
-    "@aws-sdk/client-s3": "^3.971.0",
-    "@aws-sdk/client-sns": "^3.971.0",
-    "@aws-sdk/client-sqs": "^3.971.0",
-    "@aws-sdk/client-sts": "^3.971.0",
-    "@aws-sdk/credential-providers": "^3.971.0",
-    "@aws-sdk/lib-dynamodb": "^3.971.0",
-    "@elastic/elasticsearch": "7.12",
+    "@aws-sdk/client-dynamodb": "^3.1159.0",
+    "@aws-sdk/lib-dynamodb": "^3.1159.0",
+    "@opensearch-project/opensearch": "^3.9.0",
+    "@smithy/signature-v4": "^5.3.8",
     "@types/aws-lambda": "^8.10.62",
-    "@types/ioredis": "^4.28.10",
     "@types/jsonwebtoken": "^8.5.9",
     "async": "^3.2.4",
     "crypto-js": "^4.2.0",
-    "ioredis": "^5.2.3",
     "js-yaml": "^4.1.1",
     "jsonwebtoken": "^9.0.3",
-    "lemon-model": "^1.1.1",
-    "lodash": "^4.17.21",
-    "memcached": "^2.2.2",
+    "lemon-model": "5.0.4",
     "mime-types": "^3.0.2",
     "node-cache": "^5.1.2",
-    "qs": "^6.15.1",
-    "query-string": "^7.1.3",
-    "request": "^2.88.2",
-    "source-map-support": "^0.5.21",
-    "uuid": "^9.0.1"
+    "qs": "^6.16.2",
+    "source-map-support": "^0.5.21"
   },
   "devDependencies": {
-    "@aws-sdk/types": "^3.972.0",
-    "@smithy/util-stream": "^3.3.4",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1159.0",
+    "@aws-sdk/client-iam": "^3.1159.0",
+    "@aws-sdk/client-kms": "^3.1159.0",
+    "@aws-sdk/client-lambda": "^3.1159.0",
+    "@aws-sdk/client-s3": "^3.1159.0",
+    "@aws-sdk/client-sns": "^3.1159.0",
+    "@aws-sdk/client-sqs": "^3.1159.0",
+    "@aws-sdk/client-sts": "^3.1159.0",
+    "@aws-sdk/credential-providers": "^3.1159.0",
     "@types/async": "^3.2.15",
     "@types/crypto-js": "^4.2.2",
     "@types/js-yaml": "^3.12.5",
-    "@types/lodash": "^4.17.16",
-    "@types/memcached": "^2.2.6",
     "@types/mime-types": "^2.1.0",
     "@types/node": "^24.12.2",
     "@types/qs": "^6.14.0",
-    "@types/request": "^2.48.8",
     "@types/supertest": "^2.0.10",
-    "@types/uuid": "^8.3.4",
     "@typescript-eslint/eslint-plugin": "^5.15.0",
     "@typescript-eslint/parser": "^5.15.0",
-    "@vitest/coverage-v8": "^4.1.4",
-    "codecov": "^3.7.2",
+    "@vitest/coverage-v8": "^4.1.12",
     "concurrently": "^5.3.0",
-    "dotenv": "^8.2.0",
     "eslint": "^8.23.1",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.0.0",
     "faker": "^4.1.0",
-    "gh-pages": "^5.0.0",
-    "husky": "^8.0.3",
-    "lemon-devkit": "^0.0.11",
     "lint-staged": "^13.1.0",
     "prettier": "^2.7.1",
-    "superagent": "^5.3.1",
-    "supertest": "^4.0.2",
+    "supertest": "^7.3.1",
     "ts-node": "^8.10.2",
-    "typedoc": "^0.28.19",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.12"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1159.0",
+    "@aws-sdk/client-iam": "^3.1159.0",
+    "@aws-sdk/client-kms": "^3.1159.0",
+    "@aws-sdk/client-lambda": "^3.1159.0",
+    "@aws-sdk/client-s3": "^3.1159.0",
+    "@aws-sdk/client-sns": "^3.1159.0",
+    "@aws-sdk/client-sqs": "^3.1159.0",
+    "@aws-sdk/client-sts": "^3.1159.0",
+    "@aws-sdk/credential-providers": "^3.1159.0",
+    "typescript": ">=4.7"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-cloudwatch-logs": {
+      "optional": true
+    },
+    "@aws-sdk/client-iam": {
+      "optional": true
+    },
+    "@aws-sdk/client-kms": {
+      "optional": true
+    },
+    "@aws-sdk/client-lambda": {
+      "optional": true
+    },
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@aws-sdk/client-sns": {
+      "optional": true
+    },
+    "@aws-sdk/client-sqs": {
+      "optional": true
+    },
+    "@aws-sdk/client-sts": {
+      "optional": true
+    },
+    "@aws-sdk/credential-providers": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
   },
   "private": false,
   "repository": {
@@ -131,5 +253,8 @@
   "bugs": {
     "url": "https://github.com/lemoncloud-io/lemon-core/issues"
   },
-  "homepage": "https://github.com/lemoncloud-io/lemon-core#readme"
+  "homepage": "https://github.com/lemoncloud-io/lemon-core#readme",
+  "allowScripts": {
+    "fsevents@2.3.3": true
+  }
 }

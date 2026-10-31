@@ -5,6 +5,8 @@
  *
  * @author      Steve <steve@lemoncloud.io>
  * @date        2022-03-31 optimize test-spec
+ * @date        2026-10-27 v5 B2-b: `$OS2` / `_OS2` instead of the removed L1 search instance and factory.
+ * @date        2026-10-28 v5 B4: `TestModel` is a class with `@field()` (no generated registry); field lists compared as sets.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -12,21 +14,13 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it } from 'vitest';
 import { loadProfile } from '../environ';
-import { CoreModel, NextContext, SearchBody } from '../cores/';
+import { CoreModel, NextContext } from '../cores/';
 import { _it, expect2, GETERR } from '../common/test-helper';
 import { $U, _log } from '../engine';
-import { fieldKeys } from '../generated/field-registry';
-import {
-    $ES6,
-    _ES6,
-    AbstractProxy,
-    CoreManager,
-    CoreService,
-    Elastic6SearchParams,
-    filterFields,
-    ManagerProxy,
-} from './abstract-service';
-import { asyncCredentials } from '../tools';
+//* v5 B4: field annotations come from lemon-model (not on the lemon-core root).
+import { field, fieldsOf } from 'lemon-model';
+import { AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
+import { $OS2, _OS2, OS2Instance, OS2Service } from './cores/abstract-services';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -37,14 +31,21 @@ const NS = $U.NS('TEST', 'blue'); // NAMESPACE FOR TEST LOGGING
  */
 export type ModelType = 'test';
 export type Model = CoreModel<ModelType>;
-export interface TestModel extends Model {
+//* v5 B4: a class over `CoreModel` - stored fields carry `@field()`, view fields (`Model`, `$model`) do not.
+export class TestModel extends CoreModel<ModelType> {
+    @field()
     name?: string;
+    @field()
     test?: number;
+    @field()
     A?: string;
+    @field()
     AB?: string;
+    @field()
     A_B?: string;
     Model?: Model;
     $model?: Model;
+    @field()
     object$?: {
         id?: string;
         userId?: string;
@@ -53,10 +54,12 @@ export interface TestModel extends Model {
         activateTokenTs?: string;
     };
     // For equivalence testing
+    @field()
     extra?: string;
+    @field()
     keepMe?: string;
 }
-const TEST_FIELDS = filterFields(fieldKeys.testModel<TestModel>());
+const TEST_FIELDS = filterFields(fieldsOf(TestModel));
 
 /**
  * class: `BackendService`
@@ -175,16 +178,19 @@ describe('abstract-service', () => {
         //* test filterFields()
         const isKeys = true;
         if (isKeys) {
-            expect2(() => filterFields(TEST_FIELDS).join(',')).toEqual(
-                'name,test,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
-            );
-            expect2(() => filterFields(TEST_FIELDS, ['test']).join(',')).toEqual(
-                'test,name,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id',
-            );
+            //* v5 B4: compared as sets - `fieldsOf()` lists parent fields first (the generator listed own fields first).
+            const sorted = (list: string[]) => [...list].sort().join(',');
+            const EXPECTED =
+                'name,test,A,AB,A_B,object$,extra,keepMe,ns,type,stereo,sid,uid,gid,lock,next,meta,createdAt,updatedAt,deletedAt,error,id';
+            expect2(() => sorted(filterFields(TEST_FIELDS))).toEqual(sorted(EXPECTED.split(',')));
+            expect2(() => sorted(filterFields(TEST_FIELDS, ['test']))).toEqual(sorted(EXPECTED.split(',')));
+            //* the `base` list still comes first.
+            expect2(() => filterFields(TEST_FIELDS, ['test'])[0]).toEqual('test');
         } else {
             //NOTE - improve..
             //@see https://www.npmjs.com/package/ts-transformer-keys
-            console.warn('check lemon-devkit!');
+            //* v5 B20: the env profile is loaded by lemon-core `loadProfile()` (no `lemon-devkit`).
+            console.warn('check the env profile (not loaded by loadProfile)!');
         }
 
         //* test CoreService()
@@ -347,6 +353,81 @@ describe('abstract-service', () => {
         await proxyA2.saveAllUpdates();
         const node2: any = await service.$test.find(ID2);
         expect2([...node2.A].sort().join('')).toEqual('ab');
+    });
+
+    //* inc() cache race — storage responses arrive out of order; the proxy cache must end at the final storage value.
+    it('should keep the proxy cache at the final value when inc() responses arrive out of order', async () => {
+        const { service } = instance();
+        const ID = 'inc-race-order';
+        const N = 5;
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+        //* delay the response of earlier calls longer (call #0 resolves last without serialization).
+        const $storage = service.$test.storage;
+        const update = $storage.update;
+        const calls: number[] = [];
+        $storage.update = async (id: string, model: TestModel, $inc?: TestModel) => {
+            const i = calls.push(calls.length) - 1;
+            const res = await update(id, model, $inc);
+            await new Promise(r => setTimeout(r, (N - i) * 10));
+            return res;
+        };
+        const proxy = service.buildProxy({});
+        await proxy.tests.get(ID);
+        await Promise.all(Array.from({ length: N }, () => proxy.tests.inc(ID, { test: 1 } as TestModel)));
+        $storage.update = update;
+        expect2((await service.$test.find(ID))?.test).toEqual(N);
+        expect2((await proxy.tests.get(ID)).test).toEqual(N);
+        //* full-model batch flush must not write a stale value back.
+        await proxy.saveAllUpdates({ useBatch: true });
+        expect2((await service.$test.find(ID))?.test).toEqual(N);
+    });
+
+    //* inc() lock — a rejected inc() must not block the next inc() on the same id.
+    it('should run the next inc() on the same id after a rejected inc()', async () => {
+        const { service } = instance();
+        const ID = 'inc-race-error';
+        await service.guardProxy({}, async proxy => {
+            await proxy.tests.get(ID, { type: 'test' as ModelType, test: 0 } as TestModel);
+        });
+        const $storage = service.$test.storage;
+        const update = $storage.update;
+        const calls: number[] = [];
+        //* fail only the first call.
+        $storage.update = async (id: string, model: TestModel, $inc?: TestModel) => {
+            calls.push(calls.length);
+            if (calls.length === 1) throw new Error('500 FAIL - inc');
+            return update(id, model, $inc);
+        };
+        const proxy = service.buildProxy({});
+        const [r1, r2] = await Promise.all([
+            proxy.tests.inc(ID, { test: 1 } as TestModel).catch(GETERR),
+            proxy.tests.inc(ID, { test: 2 } as TestModel).then(M => M.test),
+        ]);
+        $storage.update = update;
+        expect2(r1).toEqual('500 FAIL - inc');
+        expect2(r2).toEqual(2);
+        expect2((await service.$test.find(ID))?.test).toEqual(2);
+    });
+
+    //* dummy storage — managers of one service share the inner `.yml` storage; different services do not.
+    it('should share the inner dummy storage between managers of one service', async () => {
+        const { service } = instance();
+        const $a = service.$test;
+        const $b = new TestModelManager(service);
+        expect2($a.storage.storage.storage === $b.storage.storage.storage).toEqual(true);
+        //* raw `_id` saved through one manager is readable through the other.
+        const _id = 'TT:test:shared-1';
+        await $a.storage.storage.storage.save(_id, { name: 'shared' } as any);
+        expect2((await $b.storage.storage.storage.read(_id)).name).toEqual('shared');
+        //* nextSeq() continues across managers.
+        const s1 = await $a.storage.storage.nextSeq('test');
+        const s2 = await $b.storage.storage.nextSeq('test');
+        expect2(s2).toEqual(s1 + 1);
+        //* another service instance has its own storage.
+        const { service: other } = instance();
+        expect2(other.$test.storage.storage.storage === $a.storage.storage.storage).toEqual(false);
     });
 
     //* atomic inc() against real DynamoDB — proves Dynamo `ADD` / `list_append` semantics through ManagerProxy.
@@ -551,18 +632,19 @@ describe('abstract-service', () => {
         }
     }, 60000);
 
-    //* check of `$ES6`
-    it('should pass $ES6', async () => {
-        expect2(() => $ES6.hello()).toEqual('Elastic6Instance');
+    //* check of `$OS2` (lazy; no `OS2_ENDPOINT` in the test env)
+    it('should pass $OS2', async () => {
+        expect2(() => $OS2.hello()).toEqual('OS2Instance');
+        expect2(() => $OS2 instanceof OS2Instance).toEqual(true);
 
         //* check environment
-        expect2(() => $U.env('ES6_ENDPOINT', '')).toEqual('');
-        expect2(() => $U.env('ES6_INDEX', '')).toEqual('');
+        expect2(() => $U.env('OS2_ENDPOINT', '')).toEqual('');
 
-        //* the search options.
-        expect2(() => $ES6.options).toEqual(null);
+        //* the search options (no endpoint → no service set).
+        expect2(() => $OS2.options).toEqual(null);
+        expect2(() => $OS2.synchronizer).toEqual(undefined);
 
-        const $X = $ES6.$X;
+        const $X = $OS2.$X2;
         const describe = $X.describeEndpointUrl;
 
         expect2(() => describe(null, { errScope: 'test' })).toEqual('@url(string) is required - test');
@@ -625,70 +707,25 @@ describe('abstract-service', () => {
         }
     });
 
-    //* check of createHttpSearchProxy()
-    it('should pass $ES6.$X.createHttpSearchProxy()', async () => {
+    //* check of _OS2 (no request is sent: only the service set is checked)
+    it('should pass _OS2 factory', async () => {
         //* ignore if not in 'lemon'
         if (PROFILE !== 'lemon') {
             console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
             return;
         }
 
-        // use `lemon-hello-api` in prod.
-        const endpoint = `https://hg9errxv25.execute-api.ap-northeast-2.amazonaws.com/prod`;
-        const $X = $ES6.$X;
-        const credentials = await asyncCredentials(PROFILE);
-        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
-
-        // GET method test
-        expect2(
-            await proxy
-                .doProxy('GET', undefined)
-                .then((s: string) => s.split('\n').map(s => s.split('/')[0]))
-                .catch(GETERR),
-        ).toEqual(['lemon-hello-api', 'lemon-core']);
-
-        expect2(await proxy.doProxy('GET', 'hello', '1').catch(GETERR)).toEqual({ name: 'cloud' });
-        expect2(await proxy.doProxy('POST', 'hello', 'echo').catch(GETERR), 'id,cmd,param').toEqual({
-            id: '!',
-            cmd: 'echo',
-            param: null,
+        const endpoint = `https://localhost:9213`;
+        const agent = _OS2({ endpoint, indexName: 'test-v1' });
+        expect2(() => agent.hello()).toEqual('OS2Instance');
+        expect2(() => agent.options, 'endpoint,indexName,idName').toEqual({
+            endpoint,
+            indexName: 'test-v1',
+            idName: '$id',
         });
-    });
-
-    //* check of _ES6
-    it('should pass _ES6 factory', async () => {
-        //* ignore if not in 'lemon'
-        if (PROFILE !== 'lemon') {
-            console.info(`! ignored by profile[${PROFILE}] (expected of 'lemon')`);
-            return;
-        }
-
-        // use `lemon-templates-api` in dev.
-        const endpoint = `https://ag1qbtayhj.execute-api.ap-northeast-2.amazonaws.com/dev/search/echo/query`;
-        const $X = $ES6.$X;
-        const credentials = await asyncCredentials(PROFILE);
-        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
-
-        // GET method test
-        const param: Elastic6SearchParams = { searchType: 'query_then_fetch' };
-        const body: SearchBody = { size: 1, query: null };
-        const proxyResult = await proxy.doProxy('POST', null, null, param, { body }).catch(GETERR);
-        if (`${proxyResult}`.indexOf('ENOTFOUND') >= 0) return;
-        expect2(proxyResult, '!context').toEqual({
-            param,
-            body: { body },
-        });
-
-        const agent = _ES6({ endpoint, useProxy: true, credentials });
-        expect2(await agent.search(body, param).catch(GETERR), '!context').toEqual({
-            param,
-            body: {
-                body,
-                index: 'test-v1',
-                service: 'lemon-core',
-                signature: 'v1:84g6M+IU2X/yfcyYqUxNAgQPKYlnucbWrPhP+hFYXUE=',
-            },
-        });
+        expect2(() => agent.elastic instanceof OS2Service).toEqual(true);
+        expect2(() => agent.query.hello()).toEqual('os2-query-service:test-v1');
+        expect2(() => !!agent.synchronizer).toEqual(true);
     });
     it('should pass saveAllUpdates tests', async () => {
         //* ignore if not in 'lemon'

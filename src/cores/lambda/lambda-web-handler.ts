@@ -12,6 +12,9 @@
  * @date        2019-11-20 initial version via backbone
  * @date        2022-04-07 use env, and opt header-parser
  * @date        2025-05-09 improved to support `referer` and `origin` header.
+ * @date        2026-10-28 v5 B7: one `PERF: > request` line per request.
+ * @date        2026-10-30 v5 B14: `context.channel`, `context.trace`, the relay `x-lemon-relay` and the legacy modes.
+ * @date        2026-10-31 v5 B20: `{proxy+}` path, binary bodies (`Buffer` response), base64 flag only for non-textual types.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -31,20 +34,92 @@ import { LambdaHandler, WEBHandler, Context, LambdaSubHandler, WEBEvent } from '
 import { GETERR, onlyDefined } from '../../common/test-helper';
 import { loadJsonSync, awsConfig } from '../../tools/';
 import { HEADER_PROTOCOL_CONTEXT } from '../protocol/protocol-service';
+import {
+    HEADER_PROTOCOL_SIGNATURE,
+    HEADER_LEMON_IDENTITY,
+    assertSigned,
+    verifyContext,
+    readConfig,
+    readPrevRaw,
+    validPrevKey,
+    sameSig,
+} from '../protocol/protocol-sign';
+import {
+    HEADER_LEMON_RELAY,
+    decodeRelay,
+    asRelayContext,
+    assertHop,
+    acceptLegacy,
+    warnJsonIdentity,
+    entryTrace,
+    entryChannel,
+    logTrace,
+    accountOfArn,
+} from '../protocol/protocol-relay';
+import { maskValue, maskHeaders, registerSecret } from '../../lib/log-mask';
+import { randomUUID } from 'crypto';
 import { APIGatewayProxyResult, APIGatewayEventRequestContext, APIGatewayProxyEvent } from 'aws-lambda';
 import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
-import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import $config from '../config';
+import { measureAsync, PerfTrace } from '../../lib/perf';
+import { asWebPath, isTextualType, bodyLength } from '../../lib/web-body';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
+const PERF = $U.NS('PERF', 'cyan'); // v5 B7: namespace of the `PERF` lines.
+
+/**
+ * `@aws-sdk/client-sts`, imported on the first use (not at import; v5 B2-c, K6).
+ */
+let $sts: Promise<typeof import('@aws-sdk/client-sts')>;
+// memoized loader (the first call prints one `PERF` line).
+const loadSts = () =>
+    ($sts ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sts',
+        () => import('@aws-sdk/client-sts'),
+    ));
 
 //* header definitions by environment.
+//* v5 B5: true if a `host` header is present (case-insensitive key lookup) → the request is external.
+const hasHostHeader = (headers: { [key: string]: any }): boolean =>
+    Object.keys(headers || {}).some(key => key.toLowerCase() === 'host');
+
 const HEADER_LEMON_LANGUAGE = $U.env('HEADER_LEMON_LANGUAGE', 'x-lemon-language');
-const HEADER_LEMON_IDENTITY = $U.env('HEADER_LEMON_IDENTITY', 'x-lemon-identity');
+//* v5 B10-3: `HEADER_LEMON_IDENTITY` is defined in `protocol-sign.ts` (same env name, same default).
+//* v5 B10-3: fields of the API Gateway `requestContext.identity` (and `NextIdentity`) masked in logs.
+const IDENTITY_LOG_MASKED_FIELDS: readonly string[] = ['apiKey', 'accessKey'];
 const HEADER_COOKIE = $U.env('HEADER_COOKIE', 'cookie');
 const JWT_MAGIC_KEY = $U.env('JWT_MAGIC_KEY', '~jwt@MGC&key~'); // hard to modify.
-const JWT_SIGN_KEY = $U.env('JWT_SIGN_KEY', 'lemon'); // used to make sign key. (use change this)
+//* key rotation: env name of the JWT HS256 sign key A (read per call by `readJwtSignKey()`, default `lemon`).
+const JWT_SIGN_KEY = 'JWT_SIGN_KEY';
+//* lifetime of a session token from `encodeIdentityJWT()` without `exp`: env `JWT_TOKEN_TTL_SEC`, default 30 min
+//* (was 1 day), held to 30 min ~ 24 h. An explicit `exp` is used as given.
+const JWT_TOKEN_TTL_SEC = 'JWT_TOKEN_TTL_SEC';
+const JWT_TTL_MIN_SEC = 30 * 60;
+const JWT_TTL_MAX_SEC = 24 * 60 * 60;
+const readJwtTtlSec = (): number => {
+    const ttl = Math.floor(Number(readConfig(JWT_TOKEN_TTL_SEC)));
+    return Number.isFinite(ttl) ? Math.min(JWT_TTL_MAX_SEC, Math.max(JWT_TTL_MIN_SEC, ttl)) : JWT_TTL_MIN_SEC;
+};
+
+/** key rotation: JWT HS256 sign key A (config service, `*` decrypted). unset → `lemon` (as before), failed decrypt → throw */
+export const readJwtSignKey = (): string => {
+    const key = readConfig(JWT_SIGN_KEY);
+    if (!key) return 'lemon';
+    //* a configured key that failed to decrypt must not fall back to the public default (fail-closed).
+    if (key.startsWith('ERROR - ')) throw new Error(`500 INVALID CONFIG - ${JWT_SIGN_KEY} decrypt failed`);
+    //* a configured key is screened in logs.
+    registerSecret(key);
+    return key;
+};
+
+/** key rotation: JWT HS256 previous key B (`JWT_SIGN_KEY_PREV`) if valid at `now` (epoch seconds), else '' */
+export const readJwtPrevKey = (now: number = Math.floor(Date.now() / 1000)): string => {
+    const { key, until } = readPrevRaw(JWT_SIGN_KEY);
+    return validPrevKey(key, until, now);
+};
 const DEFAULT_FAVICON_ICO =
     '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';
 const FAVICON_ICO = $U.env('FAVICON_ICO', DEFAULT_FAVICON_ICO);
@@ -85,6 +160,9 @@ type ProxyChain = ProxyParams | ProxyResponser;
  * build http response body
  * - if body is string type, then content-type would be text/<some>.
  * - or default type is json
+ * - v5 B20: `isBase64Encoded` only for a non-textual content type (see `isTextualType()`), so `application/json`
+ *   or `application/xml` is not flagged. a `Buffer` body is sent as base64 (`isBase64Encoded: true`,
+ *   content type as given or `application/octet-stream`).
  *
  * @param statusCode http response code like 200
  * @param body string or object
@@ -100,12 +178,15 @@ export const buildResponse = (
     const contentType = options?.contentType;
     const origin = options?.origin === undefined ? '*' : options?.origin;
     const credentials = options?.credentials === undefined ? true : options?.credentials;
-    const isBase64Encoded = contentType && !contentType.startsWith('text/') ? true : false;
+    //* v5 B20: a `Buffer` body is always base64; else only a given non-textual content type.
+    const isBuffer = Buffer.isBuffer(body);
+    const isBase64Encoded = isBuffer || (contentType && !isTextualType(contentType)) ? true : false;
     const _isXml = (body: string) => body.startsWith('<?xml ') && body.trim().endsWith('>');
     const _isHtml = (body: string) =>
         body.startsWith('<!DOCTYPE html>') || (body.startsWith('<') && body.endsWith('>'));
     const _type = () => {
         if (contentType) return contentType;
+        if (isBuffer) return 'application/octet-stream';
         return typeof body === 'string'
             ? _isXml(body)
                 ? 'application/xml; charset=utf-8'
@@ -126,7 +207,7 @@ export const buildResponse = (
             // Required for CORS support as allowed headers.
             'Access-Control-Allow-Headers': origin === null ? undefined : headers,
         }),
-        body: typeof body === 'string' ? body : JSON.stringify(body),
+        body: isBuffer ? (body as Buffer).toString('base64') : typeof body === 'string' ? body : JSON.stringify(body),
         isBase64Encoded,
     };
 };
@@ -149,6 +230,52 @@ export const redirect = (location: any, status?: number) => {
     return res;
 };
 
+//* v5 B7: the request trace per event object (from `packContext()` to `handle()`).
+const $traces = new WeakMap<object, PerfTrace>();
+//* v5 B7: count of `request` lines in this process (only the first one is `cold=1`).
+let $requests = 0;
+
+//* v5 B7: start a new trace for the event (kept only if the event is an object).
+const startTrace = (event: any): PerfTrace => {
+    const trace = new PerfTrace();
+    if (event && typeof event === 'object') $traces.set(event, trace);
+    return trace;
+};
+
+//* v5 B7: take the trace of the event out of the map, or start a new one (`context=0`).
+const takeTrace = (event: any): PerfTrace => {
+    const trace = event && typeof event === 'object' ? $traces.get(event) : undefined;
+    if (!trace) return new PerfTrace();
+    $traces.delete(event);
+    return trace;
+};
+
+/**
+ * v5 B7: print one `PERF: > request <total> ms mode=… type=… [cmd=…] status=… context=… param=… handler=… response=… cold=…` line.
+ * - values are the route words and numbers only (no path, id, host, header or body). never throws.
+ */
+const logRequest = (trace: PerfTrace, param: ProtocolParam | undefined, res: ProxyResult): void => {
+    try {
+        const total = trace.elapsed();
+        const m = trace.marks();
+        const status = res && res.statusCode !== undefined ? `${res.statusCode}` : undefined;
+        const tail = trace.line({
+            mode: param?.mode,
+            type: param?.type,
+            cmd: param?.cmd,
+            status,
+            context: m.context ?? 0,
+            param: m.param,
+            handler: m.handler,
+            response: m.response,
+            cold: ++$requests === 1,
+        });
+        _inf(PERF, '>', 'request', `${total.toFixed(1)} ms`, tail);
+    } catch (e) {
+        //* a log line must not break the response.
+    }
+};
+
 /**
  * start proxy-chain by event & context.
  * @param event     event
@@ -169,10 +296,11 @@ export const promised = async (event: WEBEvent, $ctx: NextContext): Promise<Prox
 };
 
 /**
- * builder for default handler
+ * (internal) the default handler with an optional trace.
+ * - v5 B7: marks `handler` after `handleProtocol()`, and `response` after the response is built.
  */
-export const mxNextHandler =
-    (thiz: LambdaWEBHandler) =>
+const nextHandlerOf =
+    (thiz: LambdaWEBHandler, trace: PerfTrace | null) =>
     async (params: ProxyChain): Promise<ProxyResult> => {
         //* determine if param or func.
         const fx: ProxyResponser = typeof params == 'function' ? params : null;
@@ -181,72 +309,101 @@ export const mxNextHandler =
 
         //* call the main handler()
         const R = $param ? await thiz.handleProtocol(param, event) : fx;
+        trace?.mark('handler');
 
-        //* - if like to override the full response, then return function.
-        if (R && typeof R == 'function') return R();
+        //* build the response (the same rules as before).
+        const res = await ((): ProxyResult => {
+            //* - if like to override the full response, then return function.
+            if (R && typeof R == 'function') return R();
 
-        //* - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
-        const { httpMethod: method, headers } = event || {};
-        if (method && method != 'GET') {
-            const origin = `${(headers && headers['origin']) || ''}`;
-            return success(R, null, origin);
-        }
+            //* - override `Access-Control-Allow-Origin` to the current origin due to ajax credentials.
+            const { httpMethod: method, headers } = event || {};
+            if (method && method != 'GET') {
+                const origin = `${(headers && headers['origin']) || ''}`;
+                return success(R, null, origin);
+            }
 
-        //* returns response..
-        return success(R);
+            //* returns response..
+            return success(R);
+        })();
+        trace?.mark('response');
+        return res;
     };
 
 /**
- * builder for failure promised.
+ * builder for default handler
  */
-export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => (e: any) => {
-    _err(NS, `! err =`, e instanceof Error ? e : $U.json(e));
-    const message = `${e.message || e.reason || $U.json(e)}`;
-    if (message.startsWith('404 NOT FOUND')) return notfound(message);
-    _err(NS, `! err.msg =`, message);
+export const mxNextHandler = (thiz: LambdaWEBHandler) => nextHandlerOf(thiz, null);
 
-    //* common format of error.
-    if (typeof message == 'string' && /^[1-9][0-9]{2} [A-Z ]+/.test(message)) {
-        const status = $U.N(message.substring(0, 3), 0);
+/**
+ * v5 B5: classify an error by the `mxNextFailure` rules — the HTTP failure response and whether to report it.
+ * - no side effect (no log, no report), so the top-level `LambdaHandler.handle()` can reuse it.
+ */
+export const asFailureResult = (
+    e: any,
+): { message: string; response: ReturnType<typeof buildResponse>; report: boolean } => {
+    const message = `${e?.message || e?.reason || $U.json(e)}`;
+    if (message.startsWith('404 NOT FOUND')) return { message, response: notfound(message), report: false };
+
+    //* v5 B5: a typed `status` (ex: `LemonError`) wins over the message prefix (S-33).
+    const typed = typeof e?.status === 'number' && e.status >= 100 && e.status <= 599 ? (e.status as number) : 0;
+    //* common format of error. v5: only 3xx~5xx prefixes (`200 OK - …` is no longer a success).
+    if (typed || (typeof message == 'string' && /^[345][0-9]{2} [A-Z ]+/.test(message))) {
+        const status = typed || $U.N(message.substring(0, 3), 0);
         //* handle for 302/301 redirect. format: 303 REDIRECT - http://~~~
         if ((status == 301 || status == 302) && message.indexOf(' - ') > 0) {
             const loc = message.substring(message.indexOf(' - ') + 3).trim();
-            if (loc) return redirect(loc, status);
+            if (loc) return { message, response: redirect(loc, status), report: false };
         }
         //* handle for `400 SIGNATURE - fail to verify!`. ignore report-error.
         if (status == 400 && message.startsWith('400 SIGNATURE')) {
-            return failure(message, status);
+            return { message, response: failure(message, status), report: false };
         }
-
         //* report error and returns
-        if (LambdaHandler.REPORT_ERROR)
-            return doReportError(e, $ctx, event)
-                .catch(GETERR)
-                .then(() => failure(message, status));
-        return failure(message, status);
+        return { message, response: failure(message, status), report: true };
     } else if (typeof message == 'string' && /^\.[a-zA-Z0-9_\-]+/.test(message)) {
         //* handle for message `.name () is required!`
-        if (LambdaHandler.REPORT_ERROR)
-            return doReportError(e, $ctx, event)
-                .catch(GETERR)
-                .then(() => failure(message, 400));
-        return failure(message, 400);
+        return { message, response: failure(message, 400), report: true };
     } else if (typeof message == 'string' && /^\@[a-zA-Z0-9_\-]+/.test(message)) {
         //* handle for message `@name () is required!`
-        if (LambdaHandler.REPORT_ERROR)
-            return doReportError(e, $ctx, event)
-                .catch(GETERR)
-                .then(() => failure(message, 400));
-        return failure(message, 400);
+        return { message, response: failure(message, 400), report: true };
     }
 
+    //* report error and returns (default 503).
+    return { message, response: failure(e instanceof Error ? message : e), report: true };
+};
+
+/**
+ * (internal) the failure handler with an optional trace.
+ * - v5 B7: closes the open steps at the throw (`param` too if it failed before the handler),
+ *   and marks `response` after `asFailureResult()`.
+ */
+const nextFailureOf = (event: WEBEvent, $ctx: NextContext, trace: PerfTrace | null) => (e: any) => {
+    //* v5 B7: the step that threw ends here.
+    if (trace) {
+        const m = trace.marks();
+        if (m.param === undefined) trace.mark('param');
+        if (m.handler === undefined) trace.mark('handler');
+    }
+    _err(NS, `! err =`, e instanceof Error ? e : $U.json(e));
+    const { message, response, report } = asFailureResult(e);
+    trace?.mark('response');
+    if (message.startsWith('404 NOT FOUND')) return response;
+    _err(NS, `! err.msg =`, message);
+
     //* report error and returns
-    if (LambdaHandler.REPORT_ERROR)
+    if (report && LambdaHandler.REPORT_ERROR)
         return doReportError(e, $ctx, event)
             .catch(GETERR)
-            .then(() => failure(e instanceof Error ? message : e));
-    return failure(e instanceof Error ? message : e);
+            .then(() => response);
+    return response;
 };
+
+/**
+ * builder for failure promised.
+ * - v5 B5: the rules live in `asFailureResult()`; this adds the log and the report.
+ */
+export const mxNextFailure = (event: WEBEvent, $ctx: NextContext) => nextFailureOf(event, $ctx, null);
 
 /**
  * class: LambdaWEBHandler
@@ -313,6 +470,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      * Default WEB Handler.
      */
     public handle: WEBHandler = async (event, $ctx) => {
+        //* v5 B7: the trace from `packContext()` (or a new one), and the param for the `request` line.
+        const trace = takeTrace(event);
+        let param: ProtocolParam;
+
         //* inspect API parameters.
         _log(NS, `handle()....`);
         const $path = event.pathParameters || {};
@@ -322,7 +483,20 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         _log(NS, '! $param =', $U.json($param));
 
         //* start promised..
-        return promised(event, $ctx).then(mxNextHandler(this)).catch(mxNextFailure(event, $ctx));
+        return promised(event, $ctx)
+            .then(chain => {
+                //* v5 B7: the param step ends here.
+                trace.mark('param');
+                param = chain && typeof chain == 'object' ? chain.param : undefined;
+                return chain;
+            })
+            .then(nextHandlerOf(this, trace))
+            .catch(nextFailureOf(event, $ctx, trace))
+            .then(res => {
+                //* v5 B7: one `PERF: > request` line per request (success and failure).
+                logRequest(trace, param, res);
+                return res;
+            });
     };
 
     /**
@@ -333,7 +507,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
      */
     public async handleProtocol<TResult = any>(param: ProtocolParam, event?: APIGatewayProxyEvent): Promise<TResult> {
         if (!param) throw new Error(`@param (protocol-param) is required!`);
-        //TODO [Steve] id, cmd can (or should) be null or empty! (support for `/{cmd+}` pattern) @251212
+        //* v5 B20: `id`/`cmd` may be empty, and `cmd` may hold `/` (`{proxy+}`, `{cmd+}`; see `asWebPath()`).
         const TYPE = `${param.type || ''}`;
         const MODE: NextMode = `${param.mode || 'GET'}` as NextMode;
         const ID = `${param.id || ''}`;
@@ -347,7 +521,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         if (!$body) {
             _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID})....`);
         } else {
-            _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID}).... body.len=`, $body ? $U.json($body).length : -1);
+            //* v5 B20: a `Buffer` (or file) body is counted by bytes, not by its JSON.
+            _log(NS, `#${MODE}:${CMD} (${TYPE}/${ID}).... body.len=`, bodyLength($body));
         }
 
         //* find target next function
@@ -413,6 +588,8 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
     public async packContext(event: APIGatewayProxyEvent, orgContext?: Context): Promise<NextContext> {
         _log(NS, `packContext(${event ? '' : 'null'})..`);
         if (!event) return null;
+        //* v5 B7: start the request trace (`handle()` takes it by the same event object).
+        const trace = startTrace(event);
         //* prepare chain object.
         const reqContext: APIGatewayEventRequestContext = event?.requestContext;
         orgContext && _log(NS, `> orgContext =`, $U.S(orgContext, 256, 32));
@@ -420,14 +597,52 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         // STEP.1 support lambda call JWT Token authentication.
         const headers = event.headers;
-        if (headers && headers[HEADER_PROTOCOL_CONTEXT]) {
-            //* if it is protocol request via lambda, then returns valid context.
-            const $param = $protocol.service.asTransformer('web').transformToParam(event);
-            return $param?.context;
+        const $tool = this.tools(headers);
+        //* v5 B14: the relay of an internal hop (`r1.<base64url(JSON)>`).
+        const relayText = $tool.getHeader(HEADER_LEMON_RELAY);
+        //* v5 B5: a `host` header (any case) means external → `x-protocol-context`/`-signature` are ignored (S-29).
+        //* v5 B14: the relay too (exactly like the legacy header).
+        if (!hasHostHeader(headers)) {
+            const contextJson = headers?.[HEADER_PROTOCOL_CONTEXT];
+            const idt = $tool.getHeader(HEADER_LEMON_IDENTITY);
+            const hasJsonIdentity = typeof idt === 'string' && idt.startsWith('{') && idt.endsWith('}');
+            //* host-less internal claim (relay, protocol context or JSON identity) → verify the signature, then apply the mode.
+            if (relayText || contextJson || hasJsonIdentity) {
+                const signature = $tool.getHeader(HEADER_PROTOCOL_SIGNATURE);
+                //* v5 B14: the relay string is in the context slot of the canonical (else the legacy header as before).
+                const ctxText = relayText ? relayText : typeof contextJson === 'string' ? contextJson : '';
+                assertSigned('web', () => verifyContext(signature, ctxText, event.body));
+            }
+            if (relayText) {
+                //* v5 B14: the relay wins over the legacy header → the receiver context (D2), hop cap `508`.
+                const $ctx = relayContextOf(relayText, reqContext, orgContext);
+                logTrace($ctx);
+                trace.mark('context');
+                return $ctx;
+            }
+            if (contextJson) {
+                //* if it is protocol request via lambda, then returns valid context (bad JSON → `400 INVALID CONTEXT`).
+                try {
+                    const $param = $protocol.service.asTransformer('web').transformToParam(event);
+                    //* v5 B14: deprecated legacy context by `PROTOCOL_LEGACY_ACCEPT` (reject → 400), kept as is + internal.
+                    const legacy: NextContext = $param?.context;
+                    acceptLegacy('web', legacy);
+                    const $ctx: NextContext = { ...legacy, channel: 'internal', trace: entryTrace(legacy) };
+                    logTrace($ctx);
+                    trace.mark('context');
+                    return $ctx;
+                } catch (e) {
+                    const msg = GETERR(e);
+                    throw new Error(/^[1-5][0-9]{2} [A-Z]/.test(msg) ? msg : `400 INVALID CONTEXT - ${msg}`);
+                }
+            }
+            //* v5 B14: a JSON identity of an internal call is deprecated (one line; the behaviour is unchanged).
+            if (hasJsonIdentity) warnJsonIdentity('web');
+        } else if (headers?.[HEADER_PROTOCOL_CONTEXT] || relayText) {
+            _log(NS, `> ignore ${relayText ? HEADER_LEMON_RELAY : HEADER_PROTOCOL_CONTEXT} (external request)`);
         }
 
         // STEP.2 use internal identity json data via python lambda call.
-        const $tool = this.tools(headers);
         const identity = await $tool.parseIdentityHeader();
         const _prepare = (): NextContext => {
             const cookie = $tool.parseCookiesHeader();
@@ -441,12 +656,43 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
         // STEP.3. prepare the final `next-context`.
         const $ctx = await $tool.prepareContext(_prepare(), reqContext);
-        $ctx.source = $protocol.service.myProtocolURI($ctx); // self service-uri as source
+        //* v5 B10: self service-uri + the first request path (`/{type}/{id}/{cmd}`) as source (no path if no `pathParameters`).
+        //* v5 B20: `{proxy+}` mapped to `id`/`cmd` as in `web.transformToParam()`.
+        const $path = event.pathParameters ? asWebPath(event.pathParameters) : null;
+        //* v5 B10: `type` by the same rule as `web.transformToParam()` (path param, or the 1st segment of resource/path).
+        const type = $path ? $path.type || `${event.resource || event.path || ''}`.split('/')[1] || '' : '';
+        $ctx.source = $path
+            ? $protocol.service.myProtocolURI($ctx, type, $path.id, $path.cmd)
+            : $protocol.service.myProtocolURI($ctx);
+        //* v5 B14: the channel of this entry (local mode wins, else `host` → external, else internal), and hop 0.
+        $ctx.channel = entryChannel(hasHostHeader(headers));
+        $ctx.trace = entryTrace($ctx);
+        logTrace($ctx);
 
         // FINIAL. returns
+        trace.mark('context');
         return $ctx;
     }
 }
+
+/**
+ * v5 B14: the receiver context of a web relay (D2).
+ * - decode (400), hop cap (508), the caller's requestId = `requestContext.requestId` (the sender sets both).
+ * - own ids: the Lambda `awsRequestId` (else a new id), the account of `invokedFunctionArn` (else `requestContext`).
+ */
+const relayContextOf = (
+    relayText: string,
+    reqContext: APIGatewayEventRequestContext,
+    orgContext?: Context,
+): NextContext => {
+    const relay = decodeRelay(relayText);
+    assertHop(relay.hop);
+    const reqId = `${reqContext?.requestId || ''}`;
+    if (reqId && relay.pid !== undefined && relay.pid !== reqId) throw new Error(`400 INVALID CONTEXT - relay pid`);
+    const requestId = `${orgContext?.awsRequestId || ''}` || randomUUID();
+    const accountId = accountOfArn(orgContext?.invokedFunctionArn) || `${reqContext?.accountId || ''}` || undefined;
+    return asRelayContext(relay, { requestId, accountId });
+};
 
 /**
  * class: `HttpHeaderSet`
@@ -547,12 +793,14 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
 
     /**
      * build default JWT secret from AWS account id + magic key.
+     * - key rotation: `signKey` (default: `readJwtSignKey()`) selects A or B.
      */
-    public buildJwtSecret = async (): Promise<string> => {
+    public buildJwtSecret = async (signKey?: string): Promise<string> => {
         const accountId = await this.getAccountId();
         const secret = JWT_MAGIC_KEY; // 유출되면 피곤함.
+        const signer = signKey ?? readJwtSignKey();
         const _hmac = (msg: string, key = secret) => $U.hmac(msg, key, 'sha256', 'base64'); // 기본 로직
-        return _hmac(_hmac(accountId, _hmac(JWT_SIGN_KEY)), JWT_SIGN_KEY);
+        return _hmac(_hmac(accountId, _hmac(signer)), signer);
     };
 
     /**
@@ -575,6 +823,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
 
                 // 2. fallback: STS 호출 (awsConfig 사용)
                 const cfg = awsConfig($engine);
+                const { STSClient, GetCallerIdentityCommand } = await loadSts(); // a new client per call.
                 const sts = new STSClient(cfg);
                 const data = await sts.send(new GetCallerIdentityCommand({}));
                 return data?.Account || '000000000000';
@@ -625,9 +874,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
      * @returns true if in external
      */
     public isExternal = (): boolean => {
-        const host = this.getHeader('host');
-        const isExternal = host ? true : false;
-        return !!isExternal;
+        //* v5 B5: the presence of `host` (any case, even empty) means external (API-GW, ALB, URL, express).
+        return hasHostHeader(this.headers);
     };
 
     /**
@@ -661,7 +909,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             }
         } catch (e) {
             _err(NS, '!WARN! parse.err =', e);
-            _err(NS, '!WARN! identity =', val);
+            //* v5 B10-3: the identity header value is a token or an internal context → length only.
+            _err(NS, '!WARN! identity =', maskValue(val));
             result.error = GETERR(e);
         }
         //* overwrite finally language selection.
@@ -704,7 +953,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             alias?: string;
             /** current ms */
             current?: number;
-            /** expiration time in seconds */
+            /** expiration time in seconds (epoch). default: `iat + readJwtTtlSec()` (30 min, env 30 min ~ 24 h) */
             exp?: number;
             /** if true, use HS256 */
             useHs256?: boolean;
@@ -735,7 +984,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             ...identity,
             iss, //* issuer name.
             iat: Math.floor(current / 1000), //* issued at
-            exp: params?.exp ?? Math.floor(current / 1000) + 24 * 60 * 60, //* max 1 day.
+            exp: params?.exp ?? Math.floor(current / 1000) + readJwtTtlSec(), //* default 30 min (30 min ~ 24 h).
         };
         const base64url = (t: string) => fromBase64(Buffer.from(t).toString('base64'));
         const data = {
@@ -770,14 +1019,15 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
         if (typeof token !== 'string' || !token)
             throw new Error(`@token (string) is required (but ${typeof token}) - ${errScope}`);
         const sections = token.split('.');
-        if (sections.length !== 3) throw new Error(`@token[${token}] is invalid (format) - ${errScope}`);
+        //* key rotation: no token value in the error (it reaches logs) — length only.
+        if (sections.length !== 3) throw new Error(`@token${maskValue(token)} is invalid (format) - ${errScope}`);
 
         // STEP.1 decode jwt, and extract { iss, iat, exp }
         const current = params?.current ?? $U.current_time_ms();
         const [header, payload, signature] = sections;
         const message = [header, payload].join('.');
         const data = $U.jwt().decode(token, { complete: false, json: true });
-        if (!data) throw new Error(`@token[${token}] is invalid (failed to decode) - ${errScope}`);
+        if (!data) throw new Error(`@token${maskValue(token)} is invalid (failed to decode) - ${errScope}`);
         const { iss, iat, exp } = data;
 
         // STEP.1-1 validate parameters.
@@ -838,7 +1088,8 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             if (!$idt) throw new Error(`.identity (NextIdentity) is required - ${errScope}`);
 
             const $req = reqContext.identity;
-            _inf(NS, '! identity(req) :=', $U.json($req));
+            //* v5 B10-3: `apiKey` (usage-plan key) and `accessKey` (temporary IAM key id) are credentials → length only in logs.
+            _inf(NS, '! identity(req) :=', $U.json(maskHeaders($req as any, IDENTITY_LOG_MASKED_FIELDS)));
             $idt.identityProvider = $req.cognitoAuthenticationProvider; // provider string.
             $idt.identityPoolId = $req.cognitoIdentityPoolId; // identity-pool-id like 'ap-northeast-2:618ce9d2-3ad6-49df-b3b3-e248ea51425e'
             $idt.identityId = $req.cognitoIdentityId; // identity-id like 'ap-northeast-2:dbd95fb4-7423-48b8-8a04-56e5bc95e444'
@@ -847,7 +1098,7 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             if (typeof $req.caller == 'string') $idt.caller = $req.caller;
             if (typeof $req.accessKey == 'string') $idt.accessKey = $req.accessKey;
             if (typeof $req.apiKey == 'string') $idt.apiKey = $req.apiKey;
-            _inf(NS, '! identity(new) :=', $U.json({ ...$idt }));
+            _inf(NS, '! identity(new) :=', $U.json(maskHeaders({ ...$idt }, IDENTITY_LOG_MASKED_FIELDS)));
         }
 
         // STEP.5 extract additional request infor from req-context.
@@ -898,9 +1149,14 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
 
                 // verify if issued by current service
                 if (issuer === currentService) {
-                    const secret = await this.buildJwtSecret();
-                    const expected = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
-                    const valid = expected === signature;
+                    //* key rotation: A first, then B while valid. constant-time compare.
+                    const _same = async (key?: string) =>
+                        sameSig(
+                            fromBase64($U.hmac(message, await this.buildJwtSecret(key), 'sha256', 'base64')),
+                            signature,
+                        );
+                    const prevKey = readJwtPrevKey();
+                    const valid = (await _same()) || (!!prevKey && (await _same(prevKey)));
                     return { valid };
                 }
 
@@ -941,13 +1197,15 @@ export class MyHttpHeaderTool implements HttpHeaderTool<APIGatewayEventRequestCo
             if (!alias) return '';
             const $kms = new AWSKMSService(`alias/${alias}`);
             const signature = await $kms.sign(message, true);
-            _inf(NS, `> signature[${alias}] with KMS =`, signature);
+            //* v5 B10-3: no signature value in logs.
+            _inf(NS, `> signature[${alias}] with KMS =`, maskValue(signature));
             return signature;
         } else {
             // HS256: sign directly with secret
             const secret = await this.buildJwtSecret();
             const signature = fromBase64($U.hmac(message, secret, 'sha256', 'base64'));
-            _inf(NS, `> signature[${alias}] with HS256 =`, signature);
+            //* v5 B10-3: no signature value in logs.
+            _inf(NS, `> signature[${alias}] with HS256 =`, maskValue(signature));
             return signature;
         }
     }

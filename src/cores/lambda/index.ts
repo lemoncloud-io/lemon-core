@@ -6,11 +6,13 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2018-05-23 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2026-10-28 v5 B7: one `PERF: > handle` line per call (with `initialize()`).
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import { $engine, EngineModule, LemonEngine } from '../../engine/';
+import { $engine, $U, EngineModule, LemonEngine } from '../../engine/';
 import { ConfigModule } from '../config';
+import { nowMs } from '../../lib/perf';
 
 //* export default
 export * from './lambda-handler';
@@ -46,6 +48,10 @@ import { LambdaCognitoHandler } from './lambda-cognito-handler';
 import { LambdaDynamoStreamHandler } from './lambda-dynamo-stream-handler';
 import { LambdaNotificationHandler } from './lambda-notification-handler';
 
+//* v5 B7: namespace of the `PERF` lines, and the count of `handle` lines in this process (the first is `cold=1`).
+const PERF = $U.NS('PERF', 'cyan');
+let $handles = 0;
+
 /**
  * class: `LambdaModule`
  * - default module
@@ -60,7 +66,25 @@ export class LambdaModule implements EngineModule {
         const thiz = this;
         const lambda = new (class extends LambdaHandler {
             public async handle(event: any, context: Context): Promise<any> {
-                return thiz.engine.initialize().then(() => super.handle(event, context));
+                const t0 = nowMs();
+                try {
+                    //* v5 B5: an init failure is resolved like any other failure (never rejects, D7).
+                    return await thiz.engine.initialize().then(
+                        () => super.handle(event, context),
+                        e => this.asFailure(e, event, context),
+                    );
+                } finally {
+                    //* v5 B7: one `PERF: > handle <ms> ms type=<type> cold=<1|0>` line (with `initialize()`).
+                    const type = ((): string => {
+                        try {
+                            return (event && this.findService(event)) || 'unknown';
+                        } catch (e) {
+                            return 'unknown';
+                        }
+                    })();
+                    const ms = `${(nowMs() - t0).toFixed(1)} ms`;
+                    thiz.engine.inf(PERF, '>', 'handle', ms, `type=${type} cold=${++$handles === 1 ? 1 : 0}`);
+                }
             }
         })();
         this.lambda = lambda;

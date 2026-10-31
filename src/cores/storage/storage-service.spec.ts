@@ -1478,9 +1478,7 @@ describe('StorageService', () => {
 
             const D_DYN = 'AT0008D';
             testDataIds.add(D_DYN);
-            await Promise.all(
-                dElements.split('').map(s => $dynamo.update(D_DYN, {} as any, { tags: [s] } as any)),
-            );
+            await Promise.all(dElements.split('').map(s => $dynamo.update(D_DYN, {} as any, { tags: [s] } as any)));
             const dynD: any = await $dynamo.read(D_DYN);
             expect2([...dynD.tags].sort().join('')).toEqual(dElements);
             await $dynamo.delete(D_DYN).catch(() => {});

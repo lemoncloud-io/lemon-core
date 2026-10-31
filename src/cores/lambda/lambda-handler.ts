@@ -26,6 +26,8 @@ import { NextContext } from 'lemon-model';
 import { ProtocolParam, CoreConfigService } from './../core-services';
 import { GETERR } from '../../common/test-helper';
 import * as $lambda from 'aws-lambda';
+import { maskHeaders } from '../../lib/log-mask';
+import { PROTOCOL_LOG_MASKED_HEADERS } from '../protocol/protocol-sign';
 const NS = $U.NS('LMDA', 'green'); // NAMESPACE TO BE PRINTED.
 
 export type ConfigService = CoreConfigService;
@@ -64,10 +66,11 @@ export type ALBHandler = MyHandler<ALBEvent, ALBResult>;
 export type WEBHandler = MyHandler<WEBEvent, WEBResult>;
 export type WSSHandler = MyHandler<WSSEvent, WSSResult>;
 export type SNSHandler = MyHandler<SNSEvent, void>;
-export type SQSHandler = MyHandler<SQSEvent, void>;
+//* v5 B5: SQS/DDS handlers return the partial batch response (`ReportBatchItemFailures`).
+export type SQSHandler = MyHandler<SQSEvent, { batchItemFailures: { itemIdentifier: string }[] }>;
 export type CronHandler = MyHandler<CronEvent, void>;
 export type CognitoHandler = MyHandler<PreSignUpTriggerEvent>;
-export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, void>;
+export type DynamoStreamHandler = MyHandler<DynamoDBStreamEvent, { batchItemFailures: { itemIdentifier: string }[] }>;
 export type NotificationHandler = MyHandler<WEBEvent, WEBResult>;
 
 /**
@@ -191,7 +194,8 @@ export class LambdaHandler {
     //* Find Service By Event
     public findService(event: any): HandlerType {
         const headers = (event && event.headers) || {};
-        _log(NS, `> headers =`, $U.json(headers));
+        //* v5 B10-3: log a masked copy only; the checks below read the original `headers`.
+        _log(NS, `> headers =`, $U.json(maskHeaders(headers, PROTOCOL_LOG_MASKED_HEADERS)));
         //* check if AWS SNS Notification Subscription -> notification controller.
         if (
             event.requestContext &&
@@ -233,12 +237,23 @@ export class LambdaHandler {
     /**
      * decode event to proper handler.
      * - NOTE! - returns promised results with `async`
+     * - v5 B5: never rejects (D7). a failure is caught, reported, and resolved by `asFailure()`.
      *
      * @returns boolean
      */
     public async handle(event: any, context: Context): Promise<any> {
-        if (!event) throw new Error('@event is required!');
+        try {
+            if (!event) throw new Error('@event is required!');
+            return await this.handleEvent(event, context);
+        } catch (e) {
+            return this.asFailure(e, event, context);
+        }
+    }
 
+    /**
+     * v5 B5: dispatch the event to the target handler (may reject — `handle()` catches).
+     */
+    protected async handleEvent(event: any, context: Context): Promise<any> {
         //* WARN! allows for using callbacks as finish/error-handlers
         if (context) context.callbackWaitsForEmptyEventLoop = false;
 
@@ -289,30 +304,44 @@ export class LambdaHandler {
             });
 
         //* call main.. (it will return result or promised)
-        return promise(main, event, context)
-            .then(_ => {
-                // if (_ !== undefined) _log(NS, '! res =', $U.json(_));
-                if (_ !== undefined) _log(NS, '! res =', $U.S(_, 320, 64, ' .... ')); //* cut result string.
-                // ((context && context.done) || callback)(null, _);
-                // return true;
-                return _;
-            })
-            .catch(e => {
-                _err(NS, '! err =', e);
-                if (!LambdaHandler.REPORT_ERROR) {
-                    // ((context && context.done) || callback)(e, null);
-                    // return false;
-                    throw e;
-                }
-                //* report this error.
-                return doReportError(e, context, event)
-                    .catch(_ => _) // safe call w/o error.
-                    .then(() => {
-                        // ((context && context.done) || callback)(e, null);
-                        // return false;
-                        throw e;
-                    });
-            });
+        return promise(main, event, context).then(_ => {
+            if (_ !== undefined) _log(NS, '! res =', $U.S(_, 320, 64, ' .... ')); //* cut result string.
+            return _;
+        });
+    }
+
+    /**
+     * v5 B5: turn a caught failure into a resolved result (S-35, D7).
+     * - report (if `REPORT_ERROR`), then by the event type:
+     *   `web` → the HTTP failure response by the `mxNextFailure` rules (no 2nd report),
+     *   `sqs`/`dds` → every record in `batchItemFailures`, `cognito` → rethrow, else → `{ error: <message> }`.
+     */
+    protected async asFailure(e: any, event: any, context: Context): Promise<any> {
+        _err(NS, '! err =', e);
+        //* report this error (safe call, resolves the message).
+        const message = await buildReportError(LambdaHandler.REPORT_ERROR)(e, context, event);
+        //* the event type (safe: a broken event is `undefined`).
+        const type = ((): HandlerType => {
+            try {
+                return event ? this.findService(event) : undefined;
+            } catch (_) {
+                return undefined;
+            }
+        })();
+        //* v5 B5: cognito's failure contract is the thrown error (message reaches the client) — rethrow after the report.
+        if (type === 'cognito') throw e;
+        const records: any[] = Array.isArray(event?.Records) ? event.Records : [];
+        if (type === 'web') {
+            //* lazy import: `lambda-web-handler` extends this module (no import cycle at load).
+            const { asFailureResult } = await import('./lambda-web-handler');
+            return asFailureResult(e).response;
+        } else if (type === 'sqs') {
+            return { batchItemFailures: records.map(r => ({ itemIdentifier: `${r?.messageId ?? ''}` })) };
+        } else if (type === 'dds') {
+            const toId = (r: any) => `${r?.dynamodb?.SequenceNumber ?? ''}`;
+            return { batchItemFailures: records.map(r => ({ itemIdentifier: toId(r) })) };
+        }
+        return { error: message };
     }
 
     /**
