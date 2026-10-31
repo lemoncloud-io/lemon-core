@@ -12,12 +12,11 @@ import { ORG_DEFAULTS } from './org-defaults.mjs';
 //* v5 B19: the migration pins come from `org-defaults.mjs` (values unchanged).
 const MIGRATION = ORG_DEFAULTS.migration;
 
-export const REVISION = MIGRATION.revision;
+//* v5 B24: the reviewed target registry (frozen); one entry per supported stack.
+export const TARGETS = MIGRATION.targets;
 export const PHASES = ['plan', 'retain', 'remove', 'tag', 'apply', 'verify'];
-export const TARGET = MIGRATION.target;
-const RECEIPT = MIGRATION.receiptFile,
-    OWNER = MIGRATION.ownerFile,
-    LOCK = MIGRATION.lockFile;
+// the config keys that must equal one registry entry (B19 order).
+const IDENTITY = ['project', 'stage', 'stack'];
 const hash = x => createHash('sha256').update(x).digest('hex');
 const canonical = x => JSON.stringify(x);
 export class MigrationError extends Error {
@@ -32,6 +31,20 @@ const fail = (code, message, unknown = false) => {
     throw new MigrationError(code, message, { unknown });
 };
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+//* v5 B24: the registry entry whose project/stage/stack all equal the config's, else undefined.
+export const findTarget = c => (object(c) ? TARGETS.find(t => IDENTITY.every(k => c[k] === t[k])) : undefined);
+//* v5 B24: the matched registry entry; a config outside the registry is TARGET_MISMATCH.
+export function migrationTarget(c) {
+    const target = findTarget(c);
+    if (!target)
+        fail(
+            'TARGET_MISMATCH',
+            `Only reviewed migration targets are supported: ${TARGETS.map(t => `${t.project} ${t.stage}`).join(', ')}.`,
+        );
+    return target;
+}
+// the public identity of an entry, in the B19 key order (`project`, `stage`, `stack`).
+const identity = t => Object.fromEntries(IDENTITY.map(k => [k, t[k]]));
 const text = (v, re, field) => {
     if (typeof v !== 'string' || !re.test(v)) fail('INVALID_INPUT', `Invalid ${field}.`);
     return v;
@@ -63,9 +76,8 @@ export function validateMigrationConfig(raw, configFile) {
     ];
     if (!object(raw) || Object.keys(raw).some(k => !allowed.includes(k)) || raw.schemaVersion !== 1)
         fail('INVALID_INPUT', 'Invalid migration config.');
-    for (const [k, v] of Object.entries(TARGET))
-        if (raw[k] !== v) fail('TARGET_MISMATCH', `Only ${TARGET.project} ${TARGET.stage} migration is supported.`);
-    if (raw.migrationRevision !== REVISION) fail('REVISION_MISMATCH', 'Unsupported migration revision.');
+    const target = migrationTarget(raw);
+    if (raw.migrationRevision !== target.revision) fail('REVISION_MISMATCH', 'Unsupported migration revision.');
     text(raw.migrationRepo, /^[^\0\r\n]+$/, 'migrationRepo');
     text(raw.profile, /^[A-Za-z0-9_.@-]{1,128}$/, 'profile');
     // Reuse the deployed-code target validator; this does not read credentials or contact AWS.
@@ -137,7 +149,10 @@ export function targetEnvironment(c, parent = process.env) {
         AWS_CLI_AUTO_PROMPT: 'off',
     };
 }
-export async function validateRepository(c, { revision = REVISION, origin = MIGRATION.origin } = {}) {
+export async function validateRepository(
+    c,
+    { revision = migrationTarget(c).revision, origin = MIGRATION.origin } = {},
+) {
     const root = await realpath(c.migrationRepo).catch(() =>
         fail('REPOSITORY_INVALID', 'Migration checkout is unavailable.'),
     );
@@ -197,12 +212,13 @@ export function commandFor(c, phase, execute = false) {
     return { command: process.execPath, args: [path.join(c.migrationRepo, MIGRATION.entry), ...args] };
 }
 export function migrationPlan(c, phase) {
+    const target = migrationTarget(c);
     return {
         schemaVersion: 1,
         execution: 'offline-plan',
         phase,
         target: {
-            ...TARGET,
+            ...identity(target),
             account: c.account,
             region: c.region,
             profile: c.profile,
@@ -210,7 +226,7 @@ export function migrationPlan(c, phase) {
             artifactBucket: c.artifactBucket,
         },
         migrationRepo: c.migrationRepo,
-        migrationRevision: REVISION,
+        migrationRevision: target.revision,
         command: commandFor(c, phase, true),
         runtimeOverride: c.runtime ?? null,
         sequence: PHASES,
@@ -225,7 +241,7 @@ export function migrationPlan(c, phase) {
         requiredFlags: [
             '--execute',
             ...(phase === 'plan' ? ['--allow-sensitive-backup'] : []),
-            ...(phase === 'remove' ? [`--confirm-stack ${TARGET.stack}`] : []),
+            ...(phase === 'remove' ? [`--confirm-stack ${target.stack}`] : []),
         ],
         limitations: [
             'No migration or AWS command has run.',
@@ -289,6 +305,7 @@ async function privateTree(root) {
     }
 }
 export async function snapshotIdentity(run, c, { after = false } = {}) {
+    const target = migrationTarget(c);
     await privateTree(run);
     const plan = await json(path.join(run, 'plan.json')),
         env = await json(path.join(run, 'env.json')),
@@ -307,7 +324,8 @@ export async function snapshotIdentity(run, c, { after = false } = {}) {
         (plan.kms?.encrypt ?? undefined) !== c.kmsEncryptKeyArn
     )
         fail('SNAPSHOT_INVALID', 'Snapshot KMS settings differ from config.');
-    const expected = [`${c.project}-dev-lambda`, `${c.project}-dev-backend`].sort();
+    //* v5 B24: the two dev functions of the matched stack (`<stack>-lambda`, `<stack>-backend`; B19 had `<project>-dev-*`).
+    const expected = [`${target.stack}-lambda`, `${target.stack}-backend`].sort();
     if (
         !Array.isArray(plan.functions) ||
         plan.functions.length !== 2 ||
@@ -316,7 +334,7 @@ export async function snapshotIdentity(run, c, { after = false } = {}) {
         canonical(Object.keys(env).sort()) !== canonical(expected) ||
         !object(before.functions)
     )
-        fail('SNAPSHOT_INVALID', 'Snapshot must contain exactly the two templates dev functions.');
+        fail('SNAPSHOT_INVALID', `Snapshot must contain exactly the two dev functions of ${target.stack}.`);
     if (
         !object(plan.codeFiles) ||
         !object(plan.api) ||
@@ -383,16 +401,17 @@ export async function snapshotIdentity(run, c, { after = false } = {}) {
     return hashes;
 }
 async function validateOwned(run, c) {
+    const target = migrationTarget(c);
     await privateTree(run);
-    const owner = await json(path.join(run, OWNER));
+    const owner = await json(path.join(run, target.ownerFile));
     if (
         owner.schemaVersion !== 1 ||
-        owner.tool !== MIGRATION.ownerTool ||
+        owner.tool !== target.ownerTool ||
         owner.fingerprint !== fingerprint(c) ||
         !owner.id
     )
         fail('STATE_MISMATCH', 'Run directory is not owned by this target/config.');
-    const receipt = await readReceipt(path.join(run, RECEIPT));
+    const receipt = await readReceipt(path.join(run, target.receiptFile));
     if (
         receipt.ownerId !== owner.id ||
         receipt.fingerprint !== owner.fingerprint ||
@@ -405,6 +424,7 @@ export async function verifyMigrationReceipt(file, deployConfig) {
     const receipt = await readReceipt(file),
         c = receipt.config;
     validateMigrationConfig(c, file);
+    const target = migrationTarget(c);
     if (
         !object(c) ||
         receipt.fingerprint !== fingerprint(c) ||
@@ -420,12 +440,12 @@ export async function verifyMigrationReceipt(file, deployConfig) {
     );
     if (
         root !== c.migrationRepo ||
-        path.basename(file) !== RECEIPT ||
-        run !== path.join(root, MIGRATION.runsDir, TARGET.stack)
+        path.basename(file) !== target.receiptFile ||
+        run !== path.join(root, MIGRATION.runsDir, target.stack)
     )
         fail('RECEIPT_INVALID', 'Receipt is not in the owned canonical run directory.');
     await validateOwned(run, c);
-    if (await lstat(path.join(run, LOCK)).catch(() => null))
+    if (await lstat(path.join(run, target.lockFile)).catch(() => null))
         fail('LOCKED', 'Migration still has an unresolved execution lock.');
     const hashes = await snapshotIdentity(run, c, { after: true });
     if (canonical(hashes) !== canonical(receipt.snapshots))
@@ -435,14 +455,19 @@ export async function verifyMigrationReceipt(file, deployConfig) {
 export async function executeMigration(c, phase, options = {}, deps = {}) {
     if (process.platform === 'win32')
         fail('UNSUPPORTED_PLATFORM', 'Execution requires macOS/Linux process-group cleanup.');
+    //* v5 B24: every state name below comes from the matched registry entry.
+    const target = migrationTarget(c);
+    const RECEIPT = target.receiptFile,
+        OWNER = target.ownerFile,
+        LOCK = target.lockFile;
     rejectPlaceholders(c);
     if (phase === 'plan' && !options.allowSensitiveBackup)
         fail('BACKUP_CONSENT_REQUIRED', 'plan --execute requires --allow-sensitive-backup.');
     if (phase === 'remove' && options.confirmStack !== c.stack)
-        fail('STACK_CONFIRMATION_REQUIRED', `remove --execute requires --confirm-stack ${TARGET.stack}.`);
+        fail('STACK_CONFIRMATION_REQUIRED', `remove --execute requires --confirm-stack ${target.stack}.`);
     const root = await (deps.validateRepository ?? validateRepository)(c);
     c = { ...c, migrationRepo: root };
-    const run = path.join(root, MIGRATION.runsDir, c.stack),
+    const run = path.join(root, MIGRATION.runsDir, target.stack),
         receiptFile = path.join(run, RECEIPT);
     await noSymlinkChain(root, MIGRATION.runsDir);
     let exists = await lstat(run).catch(() => null),
@@ -451,7 +476,7 @@ export async function executeMigration(c, phase, options = {}, deps = {}) {
         if (phase !== 'plan') fail('SEQUENCE_INVALID', 'Run plan first; no owned snapshot exists.');
         await mkdir(path.dirname(run), { recursive: true, mode: 0o700 });
         await mkdir(run, { mode: 0o700 });
-        const owner = { schemaVersion: 1, tool: MIGRATION.ownerTool, id: randomUUID(), fingerprint: fingerprint(c) };
+        const owner = { schemaVersion: 1, tool: target.ownerTool, id: randomUUID(), fingerprint: fingerprint(c) };
         await atomic(path.join(run, OWNER), owner);
         state = {
             schemaVersion: 1,

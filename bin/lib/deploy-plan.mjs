@@ -272,6 +272,9 @@ export const FUNCTION_SHAPES = Object.freeze([
     { memorySize: 512, timeout: 30 },
     { memorySize: 512, timeout: 300 },
 ]);
+//* v5 B24: the two functions a deployment targets — the deploy service's sls rule `<project>-<stage>-<component>`.
+export const plannedFunctionNames = c =>
+    Object.freeze({ lambda: `${c.project}-${c.stage}-lambda`, backend: `${c.project}-${c.stage}-backend` });
 export const LOG_RETENTION_DAYS = 14;
 export const SCHEDULE = Object.freeze({
     scheduleExpression: 'cron(0/1 * * * ? *)',

@@ -10,7 +10,7 @@ import { isMain } from './lib/is-main.mjs';
 import { validateDiagnostic } from './lib/migrate-diagnostic.mjs';
 import {
     PHASES,
-    TARGET,
+    TARGETS,
     MigrationError,
     json,
     validateMigrationConfig,
@@ -60,7 +60,9 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
         const options = parseMigrationArgs(argv);
         if (options.help) {
             stdout(
-                `Usage: npm run lambda:migrate -- <plan|retain|remove|tag|apply|verify> --config <file> [--execute] [--allow-sensitive-backup] [--confirm-stack ${TARGET.stack}]\nDefault is offline planning, including plan/verify phases. apply --execute writes without upstream --go. No all-phases option.`,
+                `Usage: npm run lambda:migrate -- <plan|retain|remove|tag|apply|verify> --config <file> [--execute] [--allow-sensitive-backup] [--confirm-stack <stack>]\nDefault is offline planning, including plan/verify phases. apply --execute writes without upstream --go. No all-phases option.\nReviewed targets (config project/stage/stack): ${TARGETS.map(
+                    t => t.stack,
+                ).join(', ')}.`,
             );
             return 0;
         }

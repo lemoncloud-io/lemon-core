@@ -85,7 +85,8 @@ async function fixture(t) {
         await put(root, file);
     return { root, pkg, lock };
 }
-function fakeDocker(root, { fail, wrongArchitecture = false } = {}) {
+//* v5 B24-b: `extraProduction` adds files to the fake production install (to prove the ZIP guard).
+function fakeDocker(root, { fail, wrongArchitecture = false, extraProduction = [] } = {}) {
     const calls = [];
     const run = async (command, args, opts) => {
         calls.push({ command, args, opts });
@@ -156,11 +157,32 @@ function fakeDocker(root, { fail, wrongArchitecture = false } = {}) {
             'node_modules/runtime/types.d.ts',
             'node_modules/required-peer/index.js',
             'node_modules/.package-lock.json',
+            ...extraProduction,
         ])
             await put(mount, file);
         return '';
     };
     return { run, calls };
+}
+//* v5 B24-b: the services' dev-only stand-in — `deepmerge` as a `file:` devDependency linked to an in-repo folder.
+function withDevLink(
+    pkg,
+    lock,
+    { target = 'scripts/deepmerge-safe', own = { version: '4.3.1-safe.0', dev: true } } = {},
+) {
+    const devDependencies = { ...pkg.devDependencies, deepmerge: `file:./${target}` };
+    return {
+        pkg: { ...pkg, devDependencies },
+        lock: {
+            ...lock,
+            packages: {
+                ...lock.packages,
+                '': { ...lock.packages[''], devDependencies },
+                'node_modules/deepmerge': { resolved: target, link: true },
+                ...(own ? { [target]: own } : {}),
+            },
+        },
+    };
 }
 
 test('strict CLI and explicit runtime/architecture selection', () => {
@@ -213,6 +235,81 @@ test('lock mismatch and local dependency fail before container execution', async
             log: () => {},
         }),
         /root mismatch/,
+    );
+    assert.equal(calls, 0);
+});
+
+//* v5 B24-b: a dev-only in-repo link is accepted; every other local link keeps the B19 error.
+test('dev-only in-repo link is accepted; non-dev, escaping, absolute, scheme, missing or prod-nested links fail', async t => {
+    const { pkg, lock } = await fixture(t);
+    const linked = withDevLink(pkg, lock);
+    assert.deepEqual(validateLock(linked.pkg, linked.lock), [
+        { name: 'node_modules/deepmerge', target: 'scripts/deepmerge-safe' },
+    ]);
+    assert.deepEqual(validateLock(pkg, lock), []);
+    // swap one lock entry of the accepted shape.
+    const variant = patch => ({ ...linked.lock, packages: { ...linked.lock.packages, ...patch } });
+    for (const bad of [
+        variant({ 'scripts/deepmerge-safe': { version: '1.0.0' } }),
+        variant({ 'scripts/deepmerge-safe': { version: '1.0.0', devOptional: true } }),
+        variant({ 'node_modules/deepmerge': { resolved: '../outside/deepmerge-safe', link: true } }),
+        variant({ 'node_modules/deepmerge': { resolved: 'scripts/../../outside', link: true } }),
+        variant({ 'node_modules/deepmerge': { resolved: '/abs/deepmerge-safe', link: true } }),
+        variant({ 'node_modules/deepmerge': { resolved: 'file:scripts/deepmerge-safe', link: true } }),
+        variant({ 'node_modules/deepmerge': { resolved: 'link:scripts/deepmerge-safe', link: true } }),
+        variant({ 'node_modules/deepmerge': { resolved: 'scripts/missing', link: true } }),
+        variant({ 'node_modules/deepmerge': { resolved: 'node_modules/other', link: true } }),
+        variant({ 'node_modules/deepmerge': { link: true } }),
+        variant({ 'scripts/deepmerge-safe/node_modules/prod': { version: '1.0.0' } }),
+        variant({ 'scripts/deepmerge-safe/node_modules/local': { resolved: 'file:x', dev: true } }),
+        variant({ 'scripts/deepmerge-safe': { version: '1.0.0', dev: true, link: true, resolved: 'other' } }),
+        variant({ 'scripts/stand-in': { resolved: 'scripts/deepmerge-safe', link: true } }),
+    ])
+        assert.throws(() => validateLock(linked.pkg, bad), /Local dependency is unsupported/);
+});
+test('dev-only link never reaches the ZIP and a symlinked link target is refused', async t => {
+    const base = await fixture(t);
+    const linked = withDevLink(base.pkg, base.lock);
+    await put(base.root, 'package.json', JSON.stringify(linked.pkg));
+    await put(base.root, 'package-lock.json', JSON.stringify(linked.lock));
+    await put(base.root, 'scripts/deepmerge-safe/index.js', 'module.exports = () => ({});');
+    const result = await pack({
+        cwd: base.root,
+        options: { output: 'result' },
+        run: fakeDocker(base.root).run,
+        log: () => {},
+    });
+    const names = result.manifest.files.map(file => file.path);
+    assert.ok(names.includes('handler.js') && names.includes('node_modules/runtime/src/index.js'));
+    assert.ok(!names.some(name => /deepmerge|^scripts\//.test(name)));
+    assert.ok(!result.manifest.source.files.some(file => file.path.startsWith('scripts/')));
+    // a production install that still materialises the link is refused before the ZIP.
+    await assert.rejects(
+        pack({
+            cwd: base.root,
+            options: { output: 'leak' },
+            run: fakeDocker(base.root, { extraProduction: ['node_modules/deepmerge/index.js'] }).run,
+            log: () => {},
+        }),
+        /Dev-only local dependency reached the runtime files: node_modules\/deepmerge/,
+    );
+    assert.ok(!(await readdir(base.root)).includes('leak'));
+    // a link target that is a symlink out of the project is refused before any container runs.
+    await rm(path.join(base.root, 'scripts/deepmerge-safe'), { recursive: true });
+    const outside = await temp(t);
+    await symlink(outside, path.join(base.root, 'scripts/deepmerge-safe'));
+    let calls = 0;
+    await assert.rejects(
+        pack({
+            cwd: base.root,
+            options: { output: 'escape' },
+            run: async () => {
+                calls++;
+                return `${'b'.repeat(40)}\n`;
+            },
+            log: () => {},
+        }),
+        /Local dependency is unsupported: node_modules\/deepmerge/,
     );
     assert.equal(calls, 0);
 });

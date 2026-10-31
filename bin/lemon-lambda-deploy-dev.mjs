@@ -9,7 +9,7 @@ import path from 'node:path';
 //* v5 B19: shares the argument parser of the `lemon-lambda-deploy` entry.
 import { parseDeployArgs } from './lemon-lambda-deploy.mjs';
 import { runDevRelease, DeployError } from './lib/dev-release.mjs';
-import { MigrationError, TARGET } from './lib/migrate-core.mjs';
+import { MigrationError, TARGETS } from './lib/migrate-core.mjs';
 import { isMain } from './lib/is-main.mjs';
 
 export function parseDevArgs(argv) {
@@ -31,7 +31,9 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
         const options = parseDevArgs(argv);
         if (options.help) {
             stdout(
-                `Usage: npm run lambda:deploy:dev -- --config <dev-code-config> --artifact <pack-directory> [--migration-receipt <verified-receipt>] [--apply] [--receipt-dir <directory>]\nDefault is an offline plan; only ${TARGET.project}/dev/code is supported. Existing deploy ownership and artifact checks remain active.`,
+                `Usage: npm run lambda:deploy:dev -- --config <dev-code-config> --artifact <pack-directory> [--migration-receipt <verified-receipt>] [--apply] [--receipt-dir <directory>]\nDefault is an offline plan; only reviewed dev targets are supported (${TARGETS.map(
+                    t => `${t.project}/dev/code`,
+                ).join(', ')}). Existing deploy ownership and artifact checks remain active.`,
             );
             return 0;
         }

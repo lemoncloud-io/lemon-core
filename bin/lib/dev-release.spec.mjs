@@ -182,6 +182,8 @@ test('dev loader uses a private immutable config copy despite original config ch
         load: async options => {
             copied = options.configFile;
             assert.notEqual(copied, a.file);
+            // v5 B24 compat: the templates temp-dir prefix is byte-identical (captured on v5 @ 06727a94).
+            assert.match(path.basename(path.dirname(copied)), /^templates-dev-config-[A-Za-z0-9]{6}$/);
             assert.equal((await stat(path.dirname(copied))).mode & 0o777, 0o700);
             assert.equal((await stat(copied)).mode & 0o777, 0o600);
             await writeFile(a.file, JSON.stringify({ ...raw, stage: 'prod', environmentFile: 'missing-secret.json' }));

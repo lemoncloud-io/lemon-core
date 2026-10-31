@@ -235,10 +235,14 @@ test('org-specific defaults are one frozen block without hostnames, account numb
     assert.ok(
         Object.isFrozen(ORG_DEFAULTS) &&
             Object.isFrozen(ORG_DEFAULTS.deploy) &&
-            Object.isFrozen(ORG_DEFAULTS.migration),
+            Object.isFrozen(ORG_DEFAULTS.deploy.abortReasonPrefixes) &&
+            Object.isFrozen(ORG_DEFAULTS.migration) &&
+            Object.isFrozen(ORG_DEFAULTS.migration.targets) &&
+            ORG_DEFAULTS.migration.targets.every(t => Object.isFrozen(t)),
     );
     const text = JSON.stringify(ORG_DEFAULTS);
     assert.doesNotMatch(text, /\b\d{12}\b|arn:|https?:|\.com\b|amazonaws/);
     assert.equal(ORG_DEFAULTS.deploy.toolNamespace, 'lemon.deploy');
-    assert.equal(ORG_DEFAULTS.migration.target.stack, `${ORG_DEFAULTS.migration.target.project}-dev`);
+    //* v5 B24: every reviewed target is the dev stack of its project.
+    for (const t of ORG_DEFAULTS.migration.targets) assert.equal(t.stack, `${t.project}-dev`);
 });
