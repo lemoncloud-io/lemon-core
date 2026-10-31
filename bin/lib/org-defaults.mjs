@@ -5,7 +5,8 @@
  *   consumer's config file; nothing here is a hostname, an account number, an ARN or a token.
  * - these are contract pins of the deploy service (`eureka-deploy` tools) and of the reviewed migration targets.
  */
-//* v5 B24: pinned commit of the canonical migration checkout (both reviewed targets were rehearsed at it).
+//* v5 B24: pinned commit of the canonical migration checkout (templates and hello were rehearsed at it).
+//  v5 B28: the eureka-hello entry uses it too; its rehearsal record is pending.
 const PINNED_REVISION = '66d1e91a60a240765d44dedfdab73a92af6abd51';
 //* v5 B24: private run-state names of a target added after B19 (named after the tool, not the service).
 const GENERIC_STATE = Object.freeze({
@@ -53,7 +54,7 @@ export const ORG_DEFAULTS = Object.freeze({
     //  the deploy service by the canonical migration script at a pinned revision.
     migration: Object.freeze({
         //* v5 B24: the reviewed target registry. A config must match exactly one entry (project, stage, stack);
-        //  each entry is rehearsed at its pinned revision before it is added (a lemon-core change and release).
+        //  each entry is rehearsed at its pinned revision before it ships (a lemon-core change and release).
         targets: Object.freeze([
             // the B19 target: values and state-file names unchanged.
             target({
@@ -72,6 +73,15 @@ export const ORG_DEFAULTS = Object.freeze({
                 project: 'lemon-hello-api',
                 stage: 'dev',
                 stack: 'lemon-hello-api-dev',
+                revision: PINNED_REVISION,
+                ...GENERIC_STATE,
+            }),
+            // v5 B28: added at the pinned revision; rehearsal record pending (owner: "rehearse, then migrate"). The
+            //  entry ships only after a sandbox rehearsal through `verify` (all same) is recorded.
+            target({
+                project: 'eureka-hello-api',
+                stage: 'dev',
+                stack: 'eureka-hello-api-dev',
                 revision: PINNED_REVISION,
                 ...GENERIC_STATE,
             }),

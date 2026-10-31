@@ -28,10 +28,11 @@ lemon-templates-api dev. B24 turns that single pin into a registry of reviewed t
 
 Registry (`bin/lib/org-defaults.mjs`):
 
-| project               | stage | stack                     | revision           | receipt / owner / lock                                               | owner tag              | dev temp prefix         |
-| --------------------- | ----- | ------------------------- | ------------------ | -------------------------------------------------------------------- | ---------------------- | ----------------------- |
-| `lemon-templates-api` | `dev` | `lemon-templates-api-dev` | `66d1e91a…` (B19)  | `templates-receipt.json` / `templates-owner.json` / `templates.lock` | `templates-migrate`    | `templates-dev-config-` |
-| `lemon-hello-api`     | `dev` | `lemon-hello-api-dev`     | `66d1e91a…` (same) | `migrate-receipt.json` / `migrate-owner.json` / `migrate.lock`       | `lemon-lambda-migrate` | `lemon-dev-config-`     |
+| project                                      | stage | stack                     | revision           | receipt / owner / lock                                               | owner tag              | dev temp prefix         |
+| -------------------------------------------- | ----- | ------------------------- | ------------------ | -------------------------------------------------------------------- | ---------------------- | ----------------------- |
+| `lemon-templates-api`                        | `dev` | `lemon-templates-api-dev` | `66d1e91a…` (B19)  | `templates-receipt.json` / `templates-owner.json` / `templates.lock` | `templates-migrate`    | `templates-dev-config-` |
+| `lemon-hello-api`                            | `dev` | `lemon-hello-api-dev`     | `66d1e91a…` (same) | `migrate-receipt.json` / `migrate-owner.json` / `migrate.lock`       | `lemon-lambda-migrate` | `lemon-dev-config-`     |
+| `eureka-hello-api` (B28, rehearsal: pending) | `dev` | `eureka-hello-api-dev`    | `66d1e91a…` (same) | `migrate-receipt.json` / `migrate-owner.json` / `migrate.lock`       | `lemon-lambda-migrate` | `lemon-dev-config-`     |
 
 Removed (internal, not reachable through the package `exports` map): `ORG_DEFAULTS.migration.target`,
 `.revision`, `.receiptFile`, `.ownerFile`, `.lockFile`, `.ownerTool`, `.devConfigPrefix`, and the `TARGET` /
@@ -95,6 +96,26 @@ Use `lemon-lambda-migrate` (then `lemon-lambda-deploy-dev`, `code` mode) for lem
 empty table next to hello's existing table (named outside the rule). The function environment would then point to
 the new table and the data would be split between two tables.
 
+## B28 — eureka-hello-api dev (rehearsal: pending)
+
+Status: implemented on `feat/v5-b28-eureka-hello-target` (base `v5` @ 5.0.18). Not released; no version bump.
+
+-   The third registry entry: `eureka-hello-api` / `dev` / `eureka-hello-api-dev`, the same pinned revision as the
+    other two, and the generic state names (as lemon-hello-api). Its run state is `runs/eureka-hello-api-dev/`, so the
+    shared names never meet hello's.
+-   **Rehearsal: pending.** The owner chose "rehearse, then migrate". This entry ships (merge and release) only after
+    a sandbox rehearsal of `eureka-hello-api-dev` with the canonical script at the pinned revision has run through
+    `verify` (all the same) and is recorded where the deploy service records its rehearsals (step 1 of
+    § Onboarding another service). Its rehearsal record is pending; this document does not record a rehearsal.
+-   Naming: eureka-hello-api's table follows the lemon naming rule, unlike lemon-hello-api's table. So the two-table
+    risk of § lemon-hello-api: never use bootstrap mode does not apply to it.
+-   Bootstrap mode is still not used for it, or for any other migrated service: use `lemon-lambda-migrate`, then
+    `lemon-lambda-deploy-dev` (`code` mode). Bootstrap re-ensures the role, table, queue, topic, log groups, functions,
+    mappings, schedule and routes with the tool's fixed shapes and the config's routes, not the setup the migration
+    carried over from the live stack.
+-   Messages that list the reviewed targets now name it too (`TARGET_MISMATCH` of both tools, both `--help` texts).
+    lemon-templates-api and lemon-hello-api outputs are byte-identical (§ Tests, B28).
+
 ## B24-b — `lemon-lambda-pack` accepts a dev-only in-repo link
 
 Both services (lemon-hello-api, lemon-templates-api v5 heads) carry a dev-only stand-in for `deepmerge`
@@ -146,6 +167,18 @@ lemon-templates-api; the B19 `validateLock()` still throws on both locks, the B2
 -   `deploy.spec.mjs` (+2): a non-templates project aborts with `lemon-lambda-deploy:TOOL_FAILED`; resolved names that
     differ from the planned targets stop with `TARGET_MISMATCH` before any read or `deploy.begin`.
 -   `bin-entries.spec.mjs`: the frozen check covers `targets`, each entry and `abortReasonPrefixes`.
+-   B28, `migrate-targets.spec.mjs` (+6; the four B24 compat locks unchanged): eureka-hello generic state names at the
+    pinned revision; its config matches its entry and every phase plan names only its stack; mixed identity fields
+    across the three entries (and a stage or name change) are `TARGET_MISMATCH`, another revision
+    `REVISION_MISMATCH`, exit 2; all six phases in `runs/eureka-hello-api-dev/`, its receipt gates neither hello nor
+    templates; dev release with `lemon-dev-config-` and its own receipt (a hello config cannot use it); the runner's
+    planned names `eureka-hello-api-dev-lambda` / `-backend` and the default abort prefix `lemon-lambda-deploy`. The
+    B24 registry cases now expect three entries and the longer target lists.
+-   B28, `migrate-inspect.spec.mjs` (+2): the B27 compat locks keep their captured values for templates and hello
+    (the `--help` lock compares the text without the appended `, eureka-hello-api-dev` target); the eureka-hello
+    offline plans and `--execute` outputs equal the hello ones with the project renamed (only the receipt's snapshot
+    digests, hashes of files that hold the name, are masked); `inspect` accepts it offline with run state and with
+    `--discover` (`runs/eureka-hello-api-dev.observed/`).
 -   `pack.spec.mjs` (+2, B24-b): a dev-only in-repo link is accepted; non-dev (`dev` missing or `devOptional`),
     `../` escape, absolute, `file:` / `link:` scheme, target missing from the lock, target under `node_modules`,
     link without `resolved`, prod package nested under the target, local entry under the target, chained link,

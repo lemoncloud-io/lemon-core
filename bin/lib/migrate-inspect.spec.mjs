@@ -3,6 +3,7 @@
  * - offline tests of the B27 follow-up commands of `lemon-lambda-migrate` (`inspect`, `reconcile`, `resolve`).
  * - the compat section holds values captured on `v5` @ 68b05490 (5.0.17, before B27): the existing phases stay
  *   byte-identical.
+ * - v5 B28: the locks keep their templates / hello values; the eureka-hello entry is compared to hello by name.
  * - run: `npm test` (vitest `bin/**\/*.spec.mjs`). Temp dirs under `os.tmpdir()`; fake `aws` CLI; no AWS, no network.
  */
 //* v5 B27: compat lock first (only APIs that existed before B27), command cases after.
@@ -67,27 +68,67 @@ const GOLDEN_EXECUTE = {
     'lemon-templates-api': '5847a7b45edd8473ee2cae145dcf2ec98a5de182a3d2397f72da69acf411e109',
     'lemon-hello-api': '1351c3b889e35573259be6d564e4650678d10b560efe3384da577719a3d90409',
 };
+//* v5 B28: the locks cover the targets captured before B27 (templates, hello); eureka-hello is compared to hello.
+const lockedTargets = golden => TARGETS.filter(t => Object.hasOwn(golden, t.project));
+// v5 B28: the one intended change of the general help: the reviewed target list ends with the eureka-hello stack.
+const B28_HELP_TARGET = ', eureka-hello-api-dev.';
 
-test('B27 compat: the general --help output is byte-identical', async () => {
+// the masked stdout of the six CLI offline plans of `target` (checkout root stubbed), one text.
+async function cliPlanText(t, target) {
+    const f = await fixture(t, { target });
+    await writeFile(f.configFile, JSON.stringify(fullConfig(target)));
+    const lines = [];
+    for (const phase of PHASES) {
+        const { code, out, err } = await cli([phase, '--config', f.configFile], {
+            validateRepository: async () => '/fixture/canonical',
+        });
+        assert.deepEqual([code, err], [0, []]);
+        lines.push(...out.map(s => mask(s, f.root)));
+    }
+    return lines.join('\n');
+}
+// the masked stdout of the six CLI `--execute` phases of `target`, its masked final receipt and run dir, one text.
+async function cliExecuteText(t, target) {
+    const f = await fixture(t, { target });
+    const lines = [];
+    for (const phase of PHASES) {
+        const extra =
+            phase === 'plan'
+                ? ['--allow-sensitive-backup']
+                : phase === 'remove'
+                ? ['--confirm-stack', target.stack]
+                : [];
+        const { code, out, err } = await cli([phase, '--config', f.configFile, '--execute', ...extra], f.deps);
+        assert.deepEqual([code, err], [0, []]);
+        // the elapsed time is the only volatile value of the result.
+        lines.push(...out.map(s => mask(s, f.root).replace(/"elapsedMs": [0-9.e+-]+/, '"elapsedMs": 0')));
+    }
+    const envelope = JSON.parse(await readFile(path.join(f.run, target.receiptFile), 'utf8'));
+    const p = envelope.payload;
+    // mask the run id, the temp-path fingerprint and the step times; everything else must be equal.
+    const masked = {
+        ...p,
+        ownerId: '<id>',
+        fingerprint: '<fingerprint>',
+        config: { ...p.config, migrationRepo: '<repo>' },
+        steps: p.steps.map(s => ({ ...s, startedAt: '<t>', finishedAt: '<t>', elapsedMs: 0 })),
+    };
+    lines.push(JSON.stringify(masked), JSON.stringify(Object.keys(envelope)));
+    lines.push(JSON.stringify((await readdir(f.run)).sort()));
+    return lines.join('\n');
+}
+
+test('B27 compat: the general --help output is byte-identical (B28: plus the eureka-hello target)', async () => {
     const { code, out, err } = await cli(['--help']);
     assert.deepEqual([code, err], [0, []]);
-    assert.equal(sha(out.join('\n')), GOLDEN_HELP, sha(out.join('\n')));
+    const text = out.join('\n');
+    // the B28 entry appears once, at the end of the target list; without it the help is the captured one.
+    assert.equal(text.split(B28_HELP_TARGET).length, 2, text);
+    assert.equal(sha(text.replace(B28_HELP_TARGET, '.')), GOLDEN_HELP, sha(text));
 });
 test('B27 compat: the offline plan output of every phase is byte-identical for both targets', async t => {
     const got = {};
-    for (const target of TARGETS) {
-        const f = await fixture(t, { target });
-        await writeFile(f.configFile, JSON.stringify(fullConfig(target)));
-        const lines = [];
-        for (const phase of PHASES) {
-            const { code, out, err } = await cli([phase, '--config', f.configFile], {
-                validateRepository: async () => '/fixture/canonical',
-            });
-            assert.deepEqual([code, err], [0, []]);
-            lines.push(...out.map(s => mask(s, f.root)));
-        }
-        got[target.project] = sha(lines.join('\n'));
-    }
+    for (const target of lockedTargets(GOLDEN_CLI_PLANS)) got[target.project] = sha(await cliPlanText(t, target));
     assert.deepEqual(got, GOLDEN_CLI_PLANS, JSON.stringify(got));
 });
 test('B27 compat: the existing argument errors keep their output and exit codes', async t => {
@@ -113,36 +154,27 @@ test('B27 compat: the existing argument errors keep their output and exit codes'
 });
 test('B27 compat: the six --execute outputs and the final receipt are byte-identical for both targets', async t => {
     const got = {};
-    for (const target of TARGETS) {
-        const f = await fixture(t, { target });
-        const lines = [];
-        for (const phase of PHASES) {
-            const extra =
-                phase === 'plan'
-                    ? ['--allow-sensitive-backup']
-                    : phase === 'remove'
-                    ? ['--confirm-stack', target.stack]
-                    : [];
-            const { code, out, err } = await cli([phase, '--config', f.configFile, '--execute', ...extra], f.deps);
-            assert.deepEqual([code, err], [0, []]);
-            // the elapsed time is the only volatile value of the result.
-            lines.push(...out.map(s => mask(s, f.root).replace(/"elapsedMs": [0-9.e+-]+/, '"elapsedMs": 0')));
-        }
-        const envelope = JSON.parse(await readFile(path.join(f.run, target.receiptFile), 'utf8'));
-        const p = envelope.payload;
-        // mask the run id, the temp-path fingerprint and the step times; everything else must be equal.
-        const masked = {
-            ...p,
-            ownerId: '<id>',
-            fingerprint: '<fingerprint>',
-            config: { ...p.config, migrationRepo: '<repo>' },
-            steps: p.steps.map(s => ({ ...s, startedAt: '<t>', finishedAt: '<t>', elapsedMs: 0 })),
-        };
-        lines.push(JSON.stringify(masked), JSON.stringify(Object.keys(envelope)));
-        lines.push(JSON.stringify((await readdir(f.run)).sort()));
-        got[target.project] = sha(lines.join('\n'));
-    }
+    for (const target of lockedTargets(GOLDEN_EXECUTE)) got[target.project] = sha(await cliExecuteText(t, target));
     assert.deepEqual(got, GOLDEN_EXECUTE, JSON.stringify(got));
+});
+//* v5 B28: eureka-hello has the generic state names of hello, so its outputs are hello's with the project renamed.
+test('B28 compat: the eureka-hello plan and --execute outputs are the hello ones with the project renamed', async t => {
+    const eureka = TARGETS.find(x => x.project === 'eureka-hello-api');
+    const hello = TARGETS.find(x => x.project === 'lemon-hello-api');
+    // rename eureka-hello to hello; the rename is one-to-one (the eureka-hello text never names hello itself).
+    const renamed = text => {
+        assert.ok(text.includes('eureka-hello-api-dev') && !text.includes('lemon-hello-api'));
+        return text.replaceAll('eureka-hello-api', 'lemon-hello-api');
+    };
+    // the offline plans equal the captured hello plans.
+    assert.equal(sha(renamed(await cliPlanText(t, eureka))), GOLDEN_CLI_PLANS['lemon-hello-api']);
+    // the receipt's snapshot digests hash files that hold the project name, so only they are masked.
+    const digests = text => text.replace(/"((?:after|before|env|plan)\.json)":"[0-9a-f]{64}"/g, '"$1":"<sha>"');
+    const helloText = await cliExecuteText(t, hello);
+    assert.equal(sha(helloText), GOLDEN_EXECUTE['lemon-hello-api']);
+    const eurekaText = renamed(await cliExecuteText(t, eureka));
+    assert.notEqual(digests(helloText), helloText);
+    assert.equal(digests(eurekaText), digests(helloText));
 });
 
 //* ---- B27 fixtures: a migrated run, a fake read-only `aws` CLI, and the guards every command case checks ----
@@ -640,6 +672,33 @@ test('B27 inspect: the offline plan lists the read APIs from the baseline and ca
         [1, 'RUN_STATE_MISSING', 0, 0],
     );
     // the run dir was not created (a later `plan` phase still starts fresh).
+    assert.equal(await lstat(g.run).catch(() => null), null);
+});
+
+//* v5 B28: the eureka-hello entry is accepted by the offline `inspect` plans (with run state, and `--discover`).
+test('B28 inspect: the offline plan accepts the eureka-hello target, with run state and with --discover', async t => {
+    const eureka = TARGETS.find(x => x.project === 'eureka-hello-api');
+    const f = await migratedRun(t, { target: eureka });
+    const r = await cmd(f, ['inspect', '--config', f.configFile]);
+    assert.deepEqual([r.code, r.err, r.writes, r.probes.length], [0, [], [], 0]);
+    assert.deepEqual(
+        [r.json.execution, r.json.runState, r.json.runReceipt, r.json.baseline],
+        ['offline-plan', 'owned', 'completed', 'after.json'],
+    );
+    // the same read plan as hello (both stacks have the same shape).
+    const h = await migratedRun(t, { target: HELLO });
+    assert.deepEqual(r.json.reads, (await cmd(h, ['inspect', '--config', h.configFile])).json.reads);
+    // no run state: the discover plan names the eureka-hello `.observed` dir and calls nothing.
+    const g = await fixture(t, { target: eureka });
+    const plan = await cmd(g, ['inspect', '--config', g.configFile, '--discover']);
+    assert.deepEqual(
+        [plan.code, plan.json.mode, plan.json.execution, plan.json.runState],
+        [0, 'discover', 'offline-plan', 'absent'],
+    );
+    assert.deepEqual(plan.json.writes, [
+        'scripts/migrate/runs/eureka-hello-api-dev.observed/inspections/<UTC-stamp>.json (0600)',
+    ]);
+    assert.deepEqual([plan.aws.length, g.calls.length], [0, 0]);
     assert.equal(await lstat(g.run).catch(() => null), null);
 });
 
