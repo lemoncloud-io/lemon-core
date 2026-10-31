@@ -1,5 +1,7 @@
 # v5 B26 — Lambda environment from the env file (`lemon-lambda-env`)
 
+Track: v5 deployment (in preparation, `HOW_TO_DEPLOY_V5.md`), not the code upgrade (`HOW_TO_UPGRADE_V5.md`).
+
 Status: P0 implemented on `feat/v5-b26-lambda-env` (base `v5` @ `16d38a92`, lemon-core 5.0.16). Not released; no
 version bump. P1 and P2 are an outlook only (§ Outlook).
 
