@@ -1,5 +1,7 @@
 # UPGRADE GUIDE: lemon-core V4 to V5
 
+> **Scope: upgrading your service code to v5.** This guide covers the code track: lemon-core 5, Node 24, imports, dependencies and the local tools. Moving a deployed service, or a similar environment, to the v5 deployment is a separate track, **in preparation**: see [HOW_TO_DEPLOY_V5.md](HOW_TO_DEPLOY_V5.md). `lemon-lambda-migrate` belongs to the deployment track: it migrates a deployed stack, not your code.
+
 > Work in progress. This guide grows with each v5 bundle. This revision covers B1 (packaging), B2-a (dependencies: `request`, `lodash`, `ioredis`, `memcached` removed) B2-b (search: OpenSearch client, ES names, lazy `$OS2`) and B2-c (AWS SDK: optional peers, lazy loading, `PERF` lines), B3 (L1/L2 merge) and B4 (field annotations: `@field()` replaces the generated field registry).
 
 ---
@@ -998,6 +1000,8 @@ Details: `docs/v5/security-key-rotation.md`.
 
 The Lambda tools that services copied from lemon-templates-api `bin/` now ship with lemon-core as npm `bin` commands. They run from your service root (`process.cwd()`; `--cwd <dir>` on the invoke/observe tools). Flags and output are the same as the templates-api versions.
 
+Code track (this guide): tools you use while developing and observing a service.
+
 | Script in your `package.json` | Before (copied `bin/`) | Now |
 | --- | --- | --- |
 | `lambda:invoke` | `node bin/lambda-invoke.mjs` | `lemon-lambda-invoke` |
@@ -1005,19 +1009,15 @@ The Lambda tools that services copied from lemon-templates-api `bin/` now ship w
 | `perf:lambda` | `node bin/perf-lambda.mjs` | `lemon-lambda-perf` |
 | `fields:admin` | `node bin/fields-admin.mjs` | `lemon-fields-admin` |
 | `loop:check` | `node bin/loop-check.mjs` | `lemon-loop-check` |
-| `pack` | `node bin/pack.mjs` | `lemon-lambda-pack` |
 | `lambda:local` | `node bin/lambda-local.mjs` | `lemon-lambda-local` |
-| `lambda:deploy` | `node bin/deploy.mjs` | `lemon-lambda-deploy` |
-| `lambda:deploy:dev` | `node bin/deploy-dev.mjs` | `lemon-lambda-deploy-dev` |
-| `lambda:migrate` | `node bin/migrate.mjs` | `lemon-lambda-migrate` |
+
+Deployment track (**in preparation**, [HOW_TO_DEPLOY_V5.md](HOW_TO_DEPLOY_V5.md)): `lemon-lambda-pack`, `lemon-lambda-deploy`, `lemon-lambda-deploy-dev`, `lemon-lambda-migrate`, `lemon-lambda-env`. Upgrading your code does not require them; a service can keep its current deployment until the deployment track is ready.
 
 * Remove your copied `bin/` tools and their `node --test bin/lib/*.test.mjs` scripts; the tests live in lemon-core.
-* AWS SDK packages stay optional peers. A tool that needs a missing one stops with `npm i -D <package>`: `@aws-sdk/client-lambda` and `@aws-sdk/credential-providers` (invoke, perf, fields-admin, loop-check, deploy `--apply`), `@aws-sdk/client-sts` (`--profile` identity), `@aws-sdk/client-cloudwatch-logs` (logs, perf `--logs`, loop-check). `--help`, dry runs and the local `express` targets need none.
+* AWS SDK packages stay optional peers. A tool that needs a missing one stops with `npm i -D <package>`: `@aws-sdk/client-lambda` and `@aws-sdk/credential-providers` (invoke, perf, fields-admin, loop-check), `@aws-sdk/client-sts` (`--profile` identity), `@aws-sdk/client-cloudwatch-logs` (logs, perf `--logs`, loop-check). `--help`, dry runs and the local `express` targets need none.
 * `lemon-fields-admin` loads the verifier from lemon-core `dist/` (always present in the published package).
-* `lemon-lambda-migrate` and `lemon-lambda-deploy-dev` keep the guarded migration of the source: the target project, stack and reviewed revision must match one entry of the reviewed registry (`bin/lib/org-defaults.mjs` `migration.targets`). Since B24 the registry has `lemon-templates-api` dev and `lemon-hello-api` dev (`docs/v5/B24-migration-targets.md`). A new service is added by a reviewed lemon-core change and release; it cannot be configured. Other services use `lemon-lambda-pack` / `lemon-lambda-deploy` with their own deploy config.
-* Since B24 a failed deploy round of any project other than lemon-templates-api is aborted with the reason `lemon-lambda-deploy:<code>` (lemon-templates-api keeps `templates-cli:<code>`), and `lemon-lambda-deploy` stops with `TARGET_MISMATCH` before `deploy.begin` when the deploy service resolves function names other than `<project>-<stage>-lambda` / `<project>-<stage>-backend`.
 
-Details: `docs/v5/B19-bin-tools.md` (invoke / observe) and `docs/v5/B19-bin-deploy.md` (pack / local / deploy / migrate).
+Details: `docs/v5/B19-bin-tools.md` (invoke / observe) and `docs/v5/B19-bin-deploy.md` (local, and the deployment-track tools).
 
 ---
 
