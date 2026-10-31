@@ -1,11 +1,12 @@
-# v5 B27 — read-only follow-up of a migrated stack (`lemon-lambda-migrate inspect | reconcile | resolve`)
+# v5 B27 — read-only follow-up of a migrated stack (`lemon-lambda-migrate inspect | reconcile | resolve | adopt-baseline`)
 
 Track: v5 deployment (in preparation, `HOW_TO_DEPLOY_V5.md`), not the code upgrade (`HOW_TO_UPGRADE_V5.md`).
 
 Status: implemented on `feat/v5-b27-migrate-inspect` (base `v5` @ `68b05490`, lemon-core 5.0.17). Not released; no
 version bump. This is one slice of the deployment-migration tool plan (inventory / reconcile / no-op for stacks that
 are already migrated). The other strategies of that plan (keep / detach / retire / adopt, the server-side approval
-and lease) are not part of it.
+and lease) are not part of it. B27-b (same branch) adds the first-observation baseline for a migrated target without
+run state in the checkout (§ First-observation baseline).
 
 ## Why
 
@@ -22,19 +23,22 @@ or a snapshot file.
 ## Commands
 
 ```text
-lemon-lambda-migrate inspect   --config <file> [--execute] [--http-probe]
+lemon-lambda-migrate inspect   --config <file> [--execute] [--http-probe | --discover]
 lemon-lambda-migrate reconcile --config <file> --inventory <file> [--deploy-receipt <file>] [--resolution <file>]...
 lemon-lambda-migrate resolve   --config <file> --inventory <file> --accept <path>=<from>-><to> [--accept ...] --reason <text>
-lemon-lambda-migrate <inspect|reconcile|resolve> --help
+lemon-lambda-migrate adopt-baseline --config <file> --inventory <file> --reason <text>
+lemon-lambda-migrate <inspect|reconcile|resolve|adopt-baseline> --help
 ```
 
 -   `--config` is the existing migration config (schema unchanged). It must match one reviewed target of the B24
     registry, and the pinned checkout is validated exactly as for the phases (`validateRepository`).
 -   The command must be the **first** argument. Every other argv takes the B19/B24 path unchanged; the general
     `--help` keeps its text (the new usage is `<command> --help`).
--   All three need the owned run state of the target (`<runsDir>/<stack>/`, owner file + integrity-checked receipt
-    of this config). `inspect --execute` without it stops with `RUN_STATE_MISSING` and creates nothing: creating
-    the run dir would make a later `plan` phase refuse to start.
+-   `inspect`, `reconcile` and `resolve` need the owned run state of the target (`<runsDir>/<stack>/`, owner file +
+    integrity-checked receipt of this config). `inspect --execute` without it stops with `RUN_STATE_MISSING` and
+    creates nothing: creating the run dir would make a later `plan` phase refuse to start. A target without run
+    state uses `inspect --discover`, `adopt-baseline` and `reconcile` against that baseline (§ First-observation
+    baseline); `--discover` and `adopt-baseline` are refused (`RUN_STATE_PRESENT`, exit 2) when run state exists.
 
 | Exit | `inspect`                                   | `reconcile`                        | `resolve`           |
 | ---- | ------------------------------------------- | ---------------------------------- | ------------------- |
@@ -168,6 +172,7 @@ Classes (`class`), with the reasons of `blocked` (all that apply):
 | `target-mismatch`            | inventory of another target or config, live ARN outside the account/region, deploy receipt of another target |
 | `baseline-changed`           | a snapshot file differs from the hash the receipt recorded (`changed-after-verify` / `-plan`)                |
 | `cf-owned-resource`          | a retained resource is still owned by a live CloudFormation stack                                            |
+| `ambiguous-discovery`        | first-observation mode only: the discovery could not attribute a resource to exactly one stage (B27-b)       |
 
 The result also reports, unchanged, the original run receipt status (`completed`, `unknown`, …), the lock
 (`present` / `absent`), the baseline binding (`bound-at-verify`, `unbound-at-verify` when `verify` stopped before
@@ -229,6 +234,91 @@ npm run lambda:migrate -- reconcile --config migration.json --inventory <inspect
 #   → verified-no-op, runState resolved-observed-diff, receipt still unknown, lock present
 ```
 
+## First-observation baseline (B27-b)
+
+Owner decision (2026-11-01): a target that was migrated but has **no run state in this checkout** (lemon-templates-api
+dev) adopts its **first observation** as the baseline. Without `--discover` nothing changes: `inspect --execute` on
+such a target still stops with `RUN_STATE_MISSING` before any AWS call.
+
+```sh
+npm run lambda:migrate -- inspect --config migration.json --execute --discover
+npm run lambda:migrate -- adopt-baseline --config migration.json --inventory <.observed/inspections/…json> --reason '<owner decision>'
+# later
+npm run lambda:migrate -- inspect --config migration.json --execute --discover
+npm run lambda:migrate -- reconcile --config migration.json --inventory <the newer inventory> [--deploy-receipt <receipt.json>]
+```
+
+### `inspect --execute --discover`
+
+Allowed only when `<runsDir>/<stack>/` does not exist. Same STS check, same read-only allowlist, same per-resource
+reads and field shapes as `inspect`; no HTTP probes (`--http-probe` is refused with `--discover`). The resources are
+discovered from five sources, each recorded on the resource as `discoveredBy`:
+
+| Source                 | Read                                                                                                                                                                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the two functions      | `<stack>-lambda`, `<stack>-backend` (`lambda get-function-configuration`, `list-tags`, `list-event-source-mappings`)                                                                                                               |
+| `event-source-mapping` | their mapping sources: a DynamoDB stream ARN gives the table, an SQS ARN the queue (this account/region only)                                                                                                                      |
+| `sns-subscription`     | `sns list-subscriptions` (account-wide, filtered by `--query` to `Endpoint` = one of the two function ARNs)                                                                                                                        |
+| `log-group-prefix`     | `/aws/lambda/<function>` (`logs describe-log-groups --log-group-name-prefix`)                                                                                                                                                      |
+| `tag`                  | `resourcegroupstaggingapi get-resources --tag-filters Key=deploy-managed,Values=true Key=deploy-project,Values=<project without -api> --resource-type-filters dynamodb:table sqs sns s3 logs:log-group apigateway lambda:function` |
+
+The tag rule is the one of the canonical `tag` phase at the pinned revision (`deploy-managed=true`,
+`deploy-project` = the project without `-api`; tables, queues, topics, log groups, the REST API, and buckets via
+`PutBucketTagging`). A tagged REST API is named with `apigateway get-rest-api`; a tagged mapping of another function
+is attributed through `lambda get-event-source-mapping` (its function).
+
+**Stage attribution.** `deploy-project` carries no stage, so each tagged resource is attributed by its name (a REST
+API by its API name, e.g. `dev-<service>`; an API stage by its stage name):
+
+1. The name is split into lower-case alphanumeric segments; the segments of the project name are ignored. The
+   stage words are `local`, `dev`, `develop`, `test`, `qa`, `stage`, `staging`, `prod`, `production` and the config
+   stage. Exactly one stage word attributes the resource to that stage; none or several is not attributable.
+2. A tagged resource that the two functions already lead to (mapping, subscription, log group) is ours when its
+   name has our stage word or none; a name with another stage word is a **conflict**.
+3. Another stage is **excluded** (recorded with its stage; stdout counts per stage).
+4. Not attributable, a conflict, a tagged function of our stage other than the two, several REST APIs of our stage,
+   or a tagged API stage of another API is **ambiguous**: the inventory `status` is `blocked`, reason
+   `ambiguous-discovery`, with the names of the ambiguous items only (exit 3). Nothing is guessed.
+5. Other tagged types of our stage are recorded as `otherTagged` (not observed); mapping sources of another
+   service or account are recorded as `external`.
+
+The functions have no env backup: env **key names** only (`env: no-backup`). The inventory is written to
+`<runsDir>/<stack>.observed/inspections/<UTC-stamp>.json` (a sibling private dir, 0700/0600, the same record
+rules). `<runsDir>/<stack>/` is never created, so a later `plan` phase starts as before (tested).
+
+### `adopt-baseline`
+
+Offline. The inventory must be a `--discover` inventory of this target and config with `status: observed` (no read
+error, no `ambiguous-discovery`), stack `absent`, both functions present, `Active` / `Successful` and
+`deploy-managed=true`, and not older than 1 h. Writes `<runsDir>/<stack>.observed/baseline.json` with an exclusive
+create; an existing baseline is never replaced (`BASELINE_EXISTS`, exit 2; a later re-adoption needs its own
+design). The record binds the inventory sha256, the target, the config fingerprint, the tool version / Git SHA,
+`createdAt` and the reason: `kind: local-attestation`, `provenance: first-observation`, `authorizesMutation: false`,
+`notProven: [equality-with-migration-time-state, data-equality, event-delivery, deploy-service-history]`.
+
+### `reconcile` against the first observation
+
+When `<runsDir>/<stack>/` does not exist and `baseline.json` does, `reconcile` compares a **newer** `--discover`
+inventory (another file, later `startedAt`; else `INVENTORY_NOT_NEWER`, exit 2) with the adopted one (its sha256
+must still match the baseline). Same axes and rules as above, with the adopted values as expected values: the table
+id is compared too, the code sha must equal the adopted one or the artifact of a valid completed deploy receipt,
+env is the key-name set only, and a resource discovered now but not at adoption is a difference
+(`discovered-resource-set`). Blocking reasons: `ambiguous-discovery`, `read-error`, `stack-present`,
+`inventory-stale`, `target-mismatch`, `cf-owned-resource`. `--resolution` is refused (there is no receipt). The
+result carries `baseline: first-observation`, `runReceipt: none`, `notProven`, `scope` and `notCompared`, and is
+written to `.observed/inspections/<inventory-stamp>.reconcile-<UTC-stamp>.json`.
+
+### Limits of a first-observation baseline
+
+-   It proves nothing about the state at migration time: the first observation is only what was live at that
+    moment, adopted by an owner decision (`notProven`). It is not the T4 approval and authorizes no write.
+-   Stage attribution relies on stage words in resource names. A resource of our stage whose name has no stage word
+    and that no function leads to blocks the discovery; the owner must resolve that outside the tool.
+-   The tag rule, the `--resource-type-filters` strings and the `sns list-subscriptions` filter follow the AWS CLI
+    and the canonical script; they are not yet confirmed against a live account. A rejected filter or call is a read
+    error (`observed-with-errors`), which adoption refuses (fail-closed).
+-   Env values cannot be compared (no backup); only key names.
+
 ## Private records
 
 | Record     | Path (under `<runsDir>/<stack>/`)                          | Kind                             |
@@ -236,6 +326,10 @@ npm run lambda:migrate -- reconcile --config migration.json --inventory <inspect
 | inventory  | `inspections/<UTC-stamp>.json`                             | `lemon-lambda-migrate/inventory` |
 | reconcile  | `inspections/<inventory-stamp>.reconcile-<UTC-stamp>.json` | `lemon-lambda-migrate/reconcile` |
 | resolution | `resolutions/<UTC-stamp>.json`                             | `local-attestation`              |
+
+B27-b, without run state (under `<runsDir>/<stack>.observed/`): `inspections/<UTC-stamp>.json` (discover inventory,
+`mode: discover`), `inspections/<inventory-stamp>.reconcile-<UTC-stamp>.json` (`mode: first-observation`), and
+`baseline.json` (`local-attestation`, `provenance: first-observation`), with the same file rules.
 
 -   Dirs 0700, files 0600, owned, one link, no symlink (a symlinked or loose record dir is refused before any AWS
     call). Each file is created with `wx` (never an overwrite) and carries the receipt-style envelope
@@ -275,7 +369,7 @@ Every command case also checks that the receipt, owner, lock, `plan.json`, `env.
 
 ## Tests
 
-`bin/lib/migrate-inspect.spec.mjs` (18): the 4 compat locks above, and — with a fake `aws` CLI (an injected
+`bin/lib/migrate-inspect.spec.mjs` (22): the 4 compat locks above, and — with a fake `aws` CLI (an injected
 `execFile`), a fetch spy and a control-write spy — the offline plan and `RUN_STATE_MISSING` (no run dir created);
 the inventory (fields with `sourceApi`/`observedAt`, deploy-\* tags only, mapping and subscription shapes, env
 categories with a KMS key, the filtered bucket list, one owner read per retained resource); absent vs AccessDenied
@@ -286,5 +380,11 @@ classes and every reason; code sha via a deploy receipt (valid, three tampered f
 runtime override; the hello flow (unknown verify → resolve → `resolved-observed-diff`, receipt and lock unchanged,
 `--migration-receipt` gate and phases still refuse); resolve refusals (env key, env value, code, URL, item count,
 partial / extra set, wrong from/to, syntax, duplicate, reason, stale, moved live value, completed run); CLI help and
-argument errors. Every case asserts the read-only allowlist (no write verb, no `get-function`, no `invoke`), the
+argument errors. B27-b (4): discovery from all five sources with prod resources of the same tag excluded (not
+ambiguous) and a stage-less table attributed by its wiring; ambiguous cases (no stage word, several stage words, a
+conflict with the wiring, an extra function, two REST APIs of the stage) blocked; `--discover` refused with run state; adopt refusals (read
+error, stack present, ambiguous, unmanaged / not Active function, stale) and the append-only baseline; reconcile
+against it (`verified-no-op`, a new code sha with and without a deploy receipt, a new resource and env keys, stale,
+ambiguous, `--resolution` refused); no `<runsDir>/<stack>/` after all commands and a later `plan` phase still starts.
+Every case asserts the read-only allowlist (no write verb, no `get-function`, no `invoke`), the
 scrubbed environment and the absence of env values, ARNs, the account and credentials on stdout/stderr.

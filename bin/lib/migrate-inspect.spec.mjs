@@ -440,6 +440,31 @@ function fakeAws(world, calls) {
                 });
             case 'apigateway get-stages':
                 return ok({ item: world.api.stages.map(stageName => ({ stageName })) });
+            case 'sns list-subscriptions': {
+                // the CLI applies `--query Subscriptions[?Endpoint=='<arn>' || ...]`: only those entries reach the tool.
+                const endpoints = [...flag(args, '--query').matchAll(/Endpoint=='([^']+)'/g)].map(m => m[1]);
+                return ok((world.subscriptions ?? []).filter(x => endpoints.includes(x.Endpoint)));
+            }
+            case 'resourcegroupstaggingapi get-resources':
+                assert.deepEqual(args.slice(2, 5), [
+                    '--tag-filters',
+                    'Key=deploy-managed,Values=true',
+                    `Key=deploy-project,Values=${world.projectTag}`,
+                ]);
+                assert.equal(flag(args, '--resource-type-filters'), 'dynamodb:table');
+                return ok({
+                    ResourceTagMappingList: (world.tagged ?? []).map(x => ({
+                        ResourceARN: x.arn,
+                        Tags: [
+                            { Key: 'deploy-managed', Value: 'true' },
+                            { Key: 'deploy-project', Value: x.project ?? world.projectTag },
+                        ],
+                    })),
+                });
+            case 'apigateway get-rest-api':
+                return ok({ id: flag(args, '--rest-api-id'), name: world.apis[flag(args, '--rest-api-id')].name });
+            case 'lambda get-event-source-mapping':
+                return ok({ UUID: flag(args, '--uuid'), FunctionArn: world.esmFunctions[flag(args, '--uuid')] });
             default:
                 throw new Error(`unexpected aws call: ${op}`);
         }
@@ -481,6 +506,7 @@ async function cmd(f, argv, { world, now, http } = {}) {
     const out = [],
         err = [],
         writes = [],
+        files = [],
         aws = [],
         probes = [];
     const stsBefore = f.calls.length;
@@ -492,7 +518,10 @@ async function cmd(f, argv, { world, now, http } = {}) {
             return { status: http?.[new URL(url).pathname.replace(/^\/dev/, '')] ?? 200, body: null };
         },
         now: now ? () => new Date(now) : undefined,
-        onControlWrite: rel => writes.push(rel),
+        onControlWrite: (rel, file) => {
+            writes.push(rel);
+            files.push(file);
+        },
         toolRevision: async () => TOOL,
         environment: { ...process.env, AWS_ACCESS_KEY_ID: KEY_MARKER, AWS_SECRET_ACCESS_KEY: KEY_MARKER },
         stdout: s => out.push(s),
@@ -511,9 +540,11 @@ async function cmd(f, argv, { world, now, http } = {}) {
     }
     // the STS check is the only private child; no canonical migration child runs.
     assert.ok(f.calls.slice(stsBefore).every(c => c.mode === 'sts'));
-    // spy 2: control records only, under the record dirs of the run.
+    // spy 2: control records only, under the record dirs of the run or of its `.observed` sibling.
     for (const w of writes)
-        assert.match(w, /^(inspections|resolutions)\/\d{8}T\d{9}Z(\.reconcile-\d{8}T\d{9}Z)?\.json$/);
+        assert.match(w, /^((inspections|resolutions)\/\d{8}T\d{9}Z(\.reconcile-\d{8}T\d{9}Z)?\.json|baseline\.json)$/);
+    for (const file of files)
+        assert.ok(file.startsWith(f.run + path.sep) || file.startsWith(`${f.run}.observed${path.sep}`), file);
     for (const s of [...out, ...err])
         for (const marker of [SECRET, CIPHER, KEY_MARKER, ACCOUNT, 'arn:', '<arn>', '<account>', 'https://sqs'])
             assert.ok(!s.includes(marker), `output holds ${marker}`);
@@ -1322,12 +1353,12 @@ test('B27 resolve: refuses env keys, code, ARNs, partial or extra paths, wrong f
 //* ---- B27 CLI ----
 
 test('B27 CLI: <command> --help, argument errors, and the general help keeps the B24 text', async t => {
-    for (const command of ['inspect', 'reconcile', 'resolve']) {
+    for (const command of ['inspect', 'reconcile', 'resolve', 'adopt-baseline']) {
         const r = await cli([command, '--help']);
         assert.deepEqual([r.code, r.err], [0, []]);
         assert.match(
             r.out[0],
-            /^Usage: npm run lambda:migrate -- inspect --config <file> \[--execute\] \[--http-probe\]/,
+            /^Usage: npm run lambda:migrate -- inspect --config <file> \[--execute\] \[--http-probe \| --discover\]/,
         );
     }
     const general = await cli(['--help']);
@@ -1342,6 +1373,10 @@ test('B27 CLI: <command> --help, argument errors, and the general help keeps the
         ['resolve', '--config', f.configFile, '--inventory', 'x', '--accept', 'a=1->2'],
         ['inspect', '--config', f.configFile, '--config', f.configFile],
         ['inspect', '--config', '--execute'],
+        ['inspect', '--config', f.configFile, '--execute', '--discover', '--http-probe'],
+        ['adopt-baseline', '--config', f.configFile, '--inventory', 'x'],
+        ['adopt-baseline', '--config', f.configFile, '--reason', 'r'],
+        ['adopt-baseline', '--config', f.configFile, '--inventory', 'x', '--reason', 'r', '--discover'],
     ]) {
         const r = await cli(argv, f.deps);
         assert.deepEqual([r.code, JSON.parse(r.err[0]).code], [2, 'INVALID_ARGS'], argv.join(' '));
@@ -1357,4 +1392,429 @@ test('B27 CLI: <command> --help, argument errors, and the general help keeps the
             notComparable: ['K'],
         },
     );
+});
+
+//* ---- B27-b: first-observation baseline (a migrated target without run state in this checkout) ----
+
+// the templates entry: the owner case (migrated, no run state in this checkout).
+const TEMPLATES = TARGETS.find(t => t.project === 'lemon-templates-api');
+// synthetic names of the templates discover world (stage words as separate segments).
+const T_DEV = 'lemon-templates-api-dev';
+const T_LEGACY = 'LegacyTemplatesTable';
+const T_PROD = 'lemon-templates-api-prod';
+const Q_DEV = 'lemon-templates-api-dev-queue';
+const TOPIC_DEV = `arn:aws:sns:${REGION}:${ACCOUNT}:lemon-templates-api-dev-topic`;
+const B_DEV = 'lemon-templates-api-dev-web';
+const API_DEV = 'tplapidev1';
+const API_PROD = 'tplapiprd1';
+// the stream ARN of a table.
+const streamOf = t => `arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${t}/stream/2026-01-01T00:00:00.000`;
+// the function ARN of a name.
+const fnArn = n => `arn:aws:lambda:${REGION}:${ACCOUNT}:function:${n}`;
+
+/**
+ * the live world of templates dev without run state: the two functions (no env backup), mappings to two tables
+ * (one without a stage word, attributed by its wiring) and a queue, a subscription, two log groups, and the tagged
+ * resources of the project tag in two stages (dev observed, prod excluded).
+ */
+function discoverWorld(f) {
+    const [lambda, backend] = fnNames(f.target);
+    const functions = {};
+    for (const fn of [lambda, backend])
+        functions[fn] = {
+            config: {
+                FunctionArn: fnArn(fn),
+                Runtime: 'nodejs24.x',
+                Architectures: ['x86_64'],
+                Handler: 'handler.lambda',
+                MemorySize: 512,
+                Timeout: fn === backend ? 300 : 30,
+                CodeSha256: b64(sha('templates code fixture')),
+                LastModified: '2026-10-31T00:00:00.000+0000',
+                Role: `arn:aws:iam::${ACCOUNT}:role/fixture-role`,
+                State: 'Active',
+                LastUpdateStatus: 'Successful',
+                Environment: { Variables: { NAME: 'templates', SECRET } },
+            },
+            tags: { 'deploy-managed': 'true', 'deploy-project': 'lemon-templates', owner: 'not-recorded' },
+            esm:
+                fn === backend
+                    ? [
+                          {
+                              UUID: 'esm-a',
+                              EventSourceArn: streamOf(T_DEV),
+                              State: 'Enabled',
+                              BatchSize: 1,
+                              StartingPosition: 'LATEST',
+                          },
+                          {
+                              UUID: 'esm-b',
+                              EventSourceArn: streamOf(T_LEGACY),
+                              State: 'Enabled',
+                              BatchSize: 1,
+                              StartingPosition: 'LATEST',
+                          },
+                          {
+                              UUID: 'esm-c',
+                              EventSourceArn: `arn:aws:sqs:${REGION}:${ACCOUNT}:${Q_DEV}`,
+                              State: 'Enabled',
+                              BatchSize: 1,
+                          },
+                      ]
+                    : [],
+        };
+    const lg = logGroups(f.target);
+    return {
+        stack: { absent: true },
+        functions,
+        projectTag: 'lemon-templates',
+        subscriptions: [
+            { Protocol: 'lambda', Endpoint: fnArn(backend), TopicArn: TOPIC_DEV, SubscriptionArn: 'x' },
+            {
+                Protocol: 'lambda',
+                Endpoint: fnArn('lemon-templates-api-prod-backend'),
+                TopicArn: `${TOPIC_DEV}-prod`,
+                SubscriptionArn: 'y',
+            },
+        ],
+        tagged: [
+            { arn: `arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${T_DEV}` },
+            { arn: `arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${T_LEGACY}` },
+            { arn: `arn:aws:dynamodb:${REGION}:${ACCOUNT}:table/${T_PROD}` },
+            { arn: `arn:aws:sqs:${REGION}:${ACCOUNT}:${Q_DEV}` },
+            { arn: TOPIC_DEV },
+            { arn: `arn:aws:s3:::${B_DEV}` },
+            { arn: `arn:aws:logs:${REGION}:${ACCOUNT}:log-group:${lg[0]}` },
+            { arn: `arn:aws:logs:${REGION}:${ACCOUNT}:log-group:${lg[1]}:*` },
+            { arn: `arn:aws:apigateway:${REGION}::/restapis/${API_DEV}` },
+            { arn: `arn:aws:apigateway:${REGION}::/restapis/${API_DEV}/stages/dev` },
+            { arn: `arn:aws:apigateway:${REGION}::/restapis/${API_PROD}` },
+            { arn: `arn:aws:apigateway:${REGION}::/restapis/${API_PROD}/stages/prod` },
+            { arn: fnArn(lambda) },
+            { arn: fnArn(backend) },
+            { arn: fnArn('lemon-templates-api-prod-lambda') },
+            // another project's tag value (the CLI filter would drop it; the tool drops it again).
+            { arn: `arn:aws:s3:::other-project-dev-bucket`, project: 'other-project' },
+        ],
+        apis: { [API_DEV]: { name: 'dev-lemon-templates-api' }, [API_PROD]: { name: 'prod-lemon-templates-api' } },
+        esmFunctions: {},
+        tables: {
+            [T_DEV]: { created: '2026-01-01T00:00:00+00:00', items: 1, stream: streamOf(T_DEV) },
+            [T_LEGACY]: { created: '2026-01-01T00:00:00+00:00', items: 2, stream: streamOf(T_LEGACY) },
+        },
+        queues: { [Q_DEV]: { url: `https://sqs.${REGION}.amazonaws.com/${ACCOUNT}/${Q_DEV}`, created: '1767225600' } },
+        topics: { [TOPIC_DEV]: { subscriptions: 1 } },
+        buckets: {
+            [B_DEV]: { created: '2026-01-01T00:00:00+00:00', objects: 3, website: true, policySids: ['PublicRead'] },
+        },
+        logGroups: Object.fromEntries(lg.map(g => [g, { created: 1767225600000, retention: 14 }])),
+        api: { id: API_DEV, routes: ['GET / NONE'], stages: ['dev'] },
+        owners: {},
+        fail: {},
+    };
+}
+// `inspect --execute --discover` on a world at `now`; returns the result and the inventory payload.
+const discovered = (f, world, now = Date.now()) => inspected(f, world, ['--discover'], { now });
+// the `.observed` dir of a fixture target.
+const observedDir = f => `${f.run}.observed`;
+
+test('B27-b discover: five sources, stage attribution, a private inventory next to (never in) the run dir', async t => {
+    const f = await fixture(t, { target: TEMPLATES });
+    const plan = await cmd(f, ['inspect', '--config', f.configFile, '--discover']);
+    assert.deepEqual(
+        [plan.code, plan.json.mode, plan.json.execution, plan.json.runState],
+        [0, 'discover', 'offline-plan', 'absent'],
+    );
+    assert.deepEqual(plan.json.writes, [
+        'scripts/migrate/runs/lemon-templates-api-dev.observed/inspections/<UTC-stamp>.json (0600)',
+    ]);
+    const r = await discovered(f, discoverWorld(f));
+    assert.equal(r.code, 0, JSON.stringify(r.json));
+    assert.deepEqual([r.json.mode, r.json.status, r.json.runReceipt], ['discover', 'observed', 'none']);
+    assert.ok(r.json.inventory.startsWith(`${observedDir(f)}/inspections/`));
+    assert.equal((await stat(observedDir(f))).mode & 0o777, 0o700);
+    // the run dir is never created.
+    assert.equal(await lstat(f.run).catch(() => null), null);
+    const inv = r.inventory;
+    const [lambda, backend] = fnNames(TEMPLATES);
+    assert.deepEqual(inv.tables[T_DEV].discoveredBy, ['event-source-mapping', 'tag']);
+    assert.deepEqual(inv.tables[T_LEGACY].discoveredBy, ['event-source-mapping', 'tag']);
+    assert.deepEqual(inv.queues[Q_DEV].discoveredBy, ['event-source-mapping', 'tag']);
+    assert.deepEqual(inv.topics[TOPIC_DEV].discoveredBy, ['sns-subscription', 'tag']);
+    assert.deepEqual(inv.buckets[B_DEV].discoveredBy, ['tag']);
+    for (const g of logGroups(TEMPLATES)) assert.deepEqual(inv.logGroups[g].discoveredBy, ['log-group-prefix', 'tag']);
+    assert.deepEqual([inv.api.fields.id.value, inv.api.discoveredBy], [API_DEV, ['tag']]);
+    assert.equal(inv.tables[T_PROD], undefined);
+    // the prod resources of the same project tag are excluded by their stage word, not ambiguous.
+    assert.deepEqual(inv.discovery.excluded.map(x => `${x.type} ${x.name} ${x.stage}`).sort(), [
+        'api prod-lemon-templates-api prod',
+        'apiStage prod prod',
+        'function lemon-templates-api-prod-lambda prod',
+        `table ${T_PROD} prod`,
+    ]);
+    assert.deepEqual([inv.discovery.ambiguous, inv.discovery.reasons], [[], []]);
+    assert.deepEqual(r.json.discovery, {
+        projectTag: 'lemon-templates',
+        reasons: [],
+        excluded: { prod: 4 },
+        ambiguous: [],
+        otherTagged: 0,
+        external: 0,
+    });
+    // the same per-resource reads and shapes as inspect; no env backup: key names only.
+    assert.deepEqual(Object.keys(inv.tables[T_DEV].fields), [
+        'arn',
+        'id',
+        'created',
+        'keySchema',
+        'stream',
+        'items',
+        'cfOwner',
+    ]);
+    assert.equal(inv.functions[lambda].fields.env.state, 'no-backup');
+    assert.deepEqual(inv.functions[lambda].fields.envKeys.value, ['NAME', 'SECRET']);
+    assert.equal(inv.functions[backend].fields.state.value, 'Active');
+    // the account-wide subscription list is filtered by the CLI to the two functions.
+    const subs = r.aws.find(c => c.args[1] === 'list-subscriptions');
+    assert.equal(
+        flag(subs.args, '--query'),
+        `Subscriptions[?Endpoint=='${fnArn(lambda)}' || Endpoint=='${fnArn(backend)}']`,
+    );
+    assert.equal(r.aws.filter(c => c.args[1] === 'get-rest-api').length, 2);
+});
+
+test('B27-b discover: ambiguous or conflicting tagged resources block; --discover is refused with run state', async t => {
+    const f = await fixture(t, { target: TEMPLATES });
+    // a tagged bucket without a stage word.
+    const world = discoverWorld(f);
+    world.tagged.push({ arn: 'arn:aws:s3:::lemon-templates-shared-assets' });
+    const a = await discovered(f, world);
+    assert.deepEqual([a.code, a.json.status, a.json.discovery.reasons], [3, 'blocked', ['ambiguous-discovery']]);
+    assert.deepEqual(a.json.discovery.ambiguous, ['bucket lemon-templates-shared-assets (no-stage)']);
+    // a function mapping to a table whose tag says prod: a conflict; an extra dev function of the same tag.
+    const w2 = discoverWorld(f);
+    w2.functions[fnNames(TEMPLATES)[1]].esm.push({
+        UUID: 'esm-d',
+        EventSourceArn: streamOf(T_PROD),
+        State: 'Enabled',
+        BatchSize: 1,
+    });
+    w2.tables[T_PROD] = { created: '2026-01-01T00:00:00+00:00', items: 9, stream: streamOf(T_PROD) };
+    w2.tagged.push({ arn: fnArn('lemon-templates-api-dev-worker') });
+    const b = await discovered(f, w2, Date.now() + 5);
+    assert.deepEqual(b.json.discovery.ambiguous.sort(), [
+        'function lemon-templates-api-dev-worker (unexpected-function)',
+        `table ${T_PROD} (conflicts-with-function-wiring)`,
+    ]);
+    // two stage words in one name, and a stage of the dev API attributed elsewhere, are ambiguous too.
+    const w3 = discoverWorld(f);
+    w3.tagged.push({ arn: `arn:aws:sqs:${REGION}:${ACCOUNT}:lemon-templates-dev-to-prod` });
+    const c3 = await discovered(f, w3, Date.now() + 10);
+    assert.deepEqual(c3.json.discovery.ambiguous, ['queue lemon-templates-dev-to-prod (several-stages)']);
+    // two REST APIs of the dev stage: both, and the tagged dev stage, are ambiguous (one API per stage).
+    const w4 = discoverWorld(f);
+    w4.tagged.push({ arn: `arn:aws:apigateway:${REGION}::/restapis/tplapidev2` });
+    w4.apis.tplapidev2 = { name: 'dev-lemon-templates-api-v2' };
+    const d4 = await discovered(f, w4, Date.now() + 15);
+    assert.deepEqual(d4.json.discovery.ambiguous.sort(), [
+        `api ${API_DEV} (several-apis)`,
+        'api tplapidev2 (several-apis)',
+        `apiStage ${API_DEV} (stage-of-another-api)`,
+    ]);
+    assert.equal(d4.inventory.api, null);
+    // with run state, --discover is refused before any AWS call (plan and execute).
+    const g = await migratedRun(t);
+    for (const extra of [[], ['--execute']]) {
+        const r = await cmd(g, ['inspect', '--config', g.configFile, '--discover', ...extra], {
+            world: discoverWorld(g),
+        });
+        assert.deepEqual([r.code, r.error.code, r.aws.length], [2, 'RUN_STATE_PRESENT', 0]);
+    }
+    assert.equal(await lstat(observedDir(g)).catch(() => null), null);
+    assert.equal(await lstat(f.run).catch(() => null), null);
+});
+
+test('B27-b adopt-baseline: refusals, then the append-only first-observation baseline', async t => {
+    const f = await fixture(t, { target: TEMPLATES });
+    // adopt one inventory of this target.
+    const adopt = async (inv, extra = {}) =>
+        cmd(
+            f,
+            [
+                'adopt-baseline',
+                '--config',
+                f.configFile,
+                '--inventory',
+                inv,
+                '--reason',
+                'Owner adopts the first observation.',
+            ],
+            extra,
+        );
+    // read errors, a present stack, an ambiguous discovery, a function without the management tag or not Active.
+    let n = 0;
+    for (const [patch, text] of [
+        [
+            w =>
+                (w.fail['resourcegroupstaggingapi get-resources'] = awsError(
+                    'ThrottlingException',
+                    'GetResources',
+                    'Rate exceeded',
+                )),
+            'read errors',
+        ],
+        [w => (w.stack = { status: 'UPDATE_COMPLETE' }), 'stack is not absent'],
+        [w => w.tagged.push({ arn: 'arn:aws:s3:::lemon-templates-shared-assets' }), 'ambiguous'],
+        [
+            w => (w.functions[fnNames(TEMPLATES)[0]].tags = { 'deploy-project': 'lemon-templates' }),
+            'deploy-managed=true',
+        ],
+        [w => (w.functions[fnNames(TEMPLATES)[1]].config.State = 'Pending'), 'Active/Successful'],
+    ]) {
+        const w = discoverWorld(f);
+        patch(w);
+        const i = await discovered(f, w, Date.now() + n++);
+        const r = await adopt(i.json.inventory);
+        assert.deepEqual([r.code, r.error.code], [2, 'ADOPTION_REFUSED'], text);
+        assert.ok(r.error.message.includes(text), r.error.message);
+    }
+    // a stale inventory.
+    const good = await discovered(f, discoverWorld(f), Date.now() + n++);
+    const stale = await adopt(good.json.inventory, { now: Date.now() + STALE_AFTER_MS + 60_000 });
+    assert.ok(stale.error.message.includes('older than 1 h'));
+    assert.equal(await lstat(path.join(observedDir(f), 'baseline.json')).catch(() => null), null);
+    // adopted: a local attestation bound to the inventory sha256.
+    const r = await adopt(good.json.inventory);
+    assert.equal(r.code, 0, JSON.stringify(r.err));
+    assert.deepEqual(
+        [r.json.status, r.json.kind, r.json.provenance, r.json.authorizesMutation],
+        ['adopted', 'local-attestation', 'first-observation', false],
+    );
+    assert.deepEqual(r.writes, ['baseline.json']);
+    const b = await assertNoValues(r.json.baseline);
+    assert.deepEqual(b.notProven, [
+        'equality-with-migration-time-state',
+        'data-equality',
+        'event-delivery',
+        'deploy-service-history',
+    ]);
+    assert.equal(b.inventory.sha256, sha(await readFile(good.json.inventory)));
+    assert.deepEqual([b.kind, b.provenance, b.tool], ['local-attestation', 'first-observation', TOOL]);
+    // never replaced.
+    const bytes = await readFile(r.json.baseline);
+    const again = await adopt(good.json.inventory);
+    assert.deepEqual([again.code, again.error.code], [2, 'BASELINE_EXISTS']);
+    assert.deepEqual(await readFile(r.json.baseline), bytes);
+    assert.equal(await lstat(f.run).catch(() => null), null);
+    // a target with run state cannot adopt.
+    const g = await migratedRun(t);
+    const run = await cmd(g, [
+        'adopt-baseline',
+        '--config',
+        g.configFile,
+        '--inventory',
+        good.json.inventory,
+        '--reason',
+        'x',
+    ]);
+    assert.deepEqual([run.code, run.error.code], [2, 'RUN_STATE_PRESENT']);
+});
+
+test('B27-b reconcile against the first observation; a later plan phase still starts', async t => {
+    const f = await fixture(t, { target: TEMPLATES });
+    const t0 = Date.now();
+    const first = await discovered(f, discoverWorld(f), t0);
+    const adopt = await cmd(
+        f,
+        ['adopt-baseline', '--config', f.configFile, '--inventory', first.json.inventory, '--reason', 'owner'],
+        { now: t0 + 1 },
+    );
+    assert.equal(adopt.code, 0);
+    // reconcile at a later, distinct time (each result is a new record).
+    let tick = 1000;
+    const reconcile = async (inv, extra = [], options = {}) =>
+        cmd(f, ['reconcile', '--config', f.configFile, '--inventory', inv, ...extra], { now: t0 + tick++, ...options });
+    // the adopted inventory itself is not a new observation.
+    const self = await reconcile(first.json.inventory);
+    assert.deepEqual([self.code, self.error.code], [2, 'INVENTORY_NOT_NEWER']);
+    // the same live state later: verified-no-op against the first observation.
+    const same = await discovered(f, discoverWorld(f), t0 + 10);
+    const ok = await reconcile(same.json.inventory);
+    assert.equal(ok.code, 0, JSON.stringify(ok.json));
+    assert.deepEqual(
+        [ok.json.mode, ok.json.class, ok.json.baseline, ok.json.runReceipt],
+        ['first-observation', 'verified-no-op', 'first-observation', 'none'],
+    );
+    assert.deepEqual(ok.json.notProven, [
+        'equality-with-migration-time-state',
+        'data-equality',
+        'event-delivery',
+        'deploy-service-history',
+    ]);
+    for (const axis of [
+        'discovered-resource-set',
+        'table-identity(arn,id,created,keySchema,stream)',
+        'function-env-keys',
+        'cloudformation-owner-of-retained-resources',
+    ])
+        assert.ok(ok.json.scope.includes(axis), axis);
+    assert.ok(ok.json.notCompared.includes('function-env-values (no backup or no function)'));
+    assert.ok(ok.json.result.startsWith(`${observedDir(f)}/inspections/`));
+    assert.equal((await assertNoValues(ok.json.result)).runReceipt, 'none');
+    // a new code sha: reconcile-required without a receipt, explained by a valid completed deploy receipt.
+    const world = discoverWorld(f);
+    const hex = sha('templates new code');
+    for (const fn of fnNames(TEMPLATES)) world.functions[fn].config.CodeSha256 = b64(hex);
+    const code = await discovered(f, world, t0 + 20);
+    const without = await reconcile(code.json.inventory);
+    assert.deepEqual(
+        [without.code, without.json.class, without.json.differing.sort()],
+        [
+            3,
+            'reconcile-required',
+            fnNames(TEMPLATES)
+                .map(n => `functions/${n}/codeSha`)
+                .sort(),
+        ],
+    );
+    const withReceipt = await reconcile(code.json.inventory, ['--deploy-receipt', await deployReceipt(f, { hex })]);
+    assert.deepEqual(
+        [withReceipt.code, withReceipt.json.class, Object.values(withReceipt.json.code)],
+        [0, 'verified-no-op', ['deploy-receipt', 'deploy-receipt']],
+    );
+    // a resource discovered later, and env key names that changed, are differences.
+    const w2 = discoverWorld(f);
+    w2.tagged.push({ arn: `arn:aws:sqs:${REGION}:${ACCOUNT}:lemon-templates-api-dev-extra` });
+    w2.queues['lemon-templates-api-dev-extra'] = {
+        url: `https://sqs.${REGION}.amazonaws.com/${ACCOUNT}/lemon-templates-api-dev-extra`,
+        created: '1767225601',
+    };
+    w2.functions[fnNames(TEMPLATES)[0]].config.Environment.Variables.ADDED = 'x';
+    const more = await discovered(f, w2, t0 + 30);
+    const diff = await reconcile(more.json.inventory);
+    assert.deepEqual(diff.json.differing.sort(), [
+        `functions/${fnNames(TEMPLATES)[0]}/envKeys`,
+        'queues/lemon-templates-api-dev-extra',
+    ]);
+    // a stale or ambiguous new inventory blocks; --resolution has no place without run state.
+    assert.deepEqual((await reconcile(same.json.inventory, [], { now: t0 + STALE_AFTER_MS + 60_000 })).json.reasons, [
+        'inventory-stale',
+    ]);
+    const w3 = discoverWorld(f);
+    w3.tagged.push({ arn: 'arn:aws:s3:::lemon-templates-shared-assets' });
+    const amb = await discovered(f, w3, t0 + 40);
+    assert.deepEqual((await reconcile(amb.json.inventory)).json.reasons, ['ambiguous-discovery']);
+    const res = await reconcile(same.json.inventory, ['--resolution', same.json.inventory]);
+    assert.deepEqual([res.code, res.error.code], [2, 'INVALID_ARGS']);
+    // no run dir was created by any command; the first `plan` phase of this target still starts.
+    assert.equal(await lstat(f.run).catch(() => null), null);
+    const before = (await readdir(observedDir(f), { recursive: true })).sort();
+    const planned = await executeMigration(f.config, 'plan', { allowSensitiveBackup: true }, f.deps);
+    assert.deepEqual([planned.status, planned.completed], ['ready', ['plan']]);
+    assert.deepEqual((await readdir(observedDir(f), { recursive: true })).sort(), before);
+    // with run state now, --discover is refused.
+    const refused = await cmd(f, ['inspect', '--config', f.configFile, '--execute', '--discover'], {
+        world: discoverWorld(f),
+    });
+    assert.deepEqual([refused.code, refused.error.code], [2, 'RUN_STATE_PRESENT']);
 });

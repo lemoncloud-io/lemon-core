@@ -41,6 +41,12 @@ For a stack that the phases already moved, `lemon-lambda-migrate` has three foll
     equality are listed under `notCompared`. `ItemCount` is an approximate reference only.
 -   A resolution is not an approval: it authorizes no write, the receipt stays `unknown` and the run stays not
     resumable; `--migration-receipt` still refuses such a run.
+-   A migrated target **without run state** in your checkout (for example lemon-templates-api dev) uses the first
+    observation as its baseline: `inspect --execute --discover` (functions, their mappings, subscriptions and log
+    groups, and the resources the migration tagged; each resource attributed to the stage by its name, otherwise
+    `blocked: ambiguous-discovery`), then `adopt-baseline --inventory <file> --reason <text>` once, then `reconcile` with
+    a newer `--discover` inventory. It never creates the run dir. Such a baseline proves nothing about the state at
+    migration time (`notProven`).
 
 ## Where it stands
 

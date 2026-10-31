@@ -41,7 +41,7 @@ const MIGRATION = ORG_DEFAULTS.migration;
 export const DOC_REF = 'docs/v5/B27-migrate-inspect.md';
 
 // the follow-up commands (first argument of `lemon-lambda-migrate`).
-export const INSPECTION_COMMANDS = Object.freeze(['inspect', 'reconcile', 'resolve']);
+export const INSPECTION_COMMANDS = Object.freeze(['inspect', 'reconcile', 'resolve', 'adopt-baseline']);
 
 // an inventory older than this is stale for `reconcile` and `resolve` (1 h).
 export const STALE_AFTER_MS = 60 * 60 * 1000;
@@ -62,6 +62,7 @@ export const REASONS = Object.freeze([
     'target-mismatch',
     'baseline-changed',
     'cf-owned-resource',
+    'ambiguous-discovery',
 ]);
 
 // the run states `reconcile` reports next to the original receipt status.
@@ -72,6 +73,7 @@ export const KINDS = Object.freeze({
     inventory: 'lemon-lambda-migrate/inventory',
     reconcile: 'lemon-lambda-migrate/reconcile',
     resolution: 'local-attestation',
+    baseline: 'local-attestation',
 });
 
 // the private sub-directories of the run dir that hold the control records (0700, files 0600).
@@ -132,6 +134,11 @@ export const READS = Object.freeze({
     'logs:DescribeLogGroups': ['logs', 'describe-log-groups'],
     'apigateway:GetResources': ['apigateway', 'get-resources'],
     'apigateway:GetStages': ['apigateway', 'get-stages'],
+    //* v5 B27-b: the extra reads of `inspect --discover` (first-observation baseline).
+    'sns:ListSubscriptions': ['sns', 'list-subscriptions'],
+    'tag:GetResources': ['resourcegroupstaggingapi', 'get-resources'],
+    'apigateway:GetRestApi': ['apigateway', 'get-rest-api'],
+    'lambda:GetEventSourceMapping': ['lambda', 'get-event-source-mapping'],
 });
 
 // AWS error codes classified as `throttling` / `access-denied`; anything else unexpected is `other`.
@@ -684,7 +691,7 @@ async function recordDir(run, sub) {
  * envelope `{ payload, sha256 }`; `onWrite` (tests) sees its run-relative path.
  */
 export async function writeRecord(run, sub, name, payload, onWrite) {
-    const dir = await recordDir(run, sub);
+    const dir = sub ? await recordDir(run, sub) : run;
     const file = path.join(dir, name);
     let handle;
     try {
@@ -703,7 +710,7 @@ export async function writeRecord(run, sub, name, payload, onWrite) {
     }
     await handle.close();
     await privateEntry(file, 'file');
-    onWrite?.(path.relative(run, file));
+    onWrite?.(path.relative(run, file), file);
     return file;
 }
 
@@ -712,7 +719,11 @@ export async function readRecord(run, sub, file, kind, code) {
     const dir = path.join(run, sub);
     const abs = path.resolve(file);
     const real = await realpath(path.dirname(abs)).catch(() => null);
-    if (real !== dir) fail('INVALID_ARGS', `The ${sub} record must be a file in ${sub}/ of this target's run.`);
+    if (real !== dir)
+        fail(
+            'INVALID_ARGS',
+            `The ${sub || 'baseline'} record must be a file in ${sub || '.'}/ of this target's state.`,
+        );
     await privateEntry(dir, 'dir');
     const at = path.join(dir, path.basename(abs));
     const st = await privateEntry(at, 'file');
@@ -727,7 +738,7 @@ export async function readRecord(run, sub, file, kind, code) {
     const p = envelope?.payload;
     if (!object(p) || envelope.sha256 !== hash(canonical(p)) || p.schemaVersion !== 1 || p.kind !== kind)
         fail(code, 'Control record integrity check failed.');
-    return { payload: p, sha256: hash(bytes), file: at, rel: `${sub}/${path.basename(at)}` };
+    return { payload: p, sha256: hash(bytes), file: at, rel: sub ? `${sub}/${path.basename(at)}` : path.basename(at) };
 }
 
 //* ---- deploy receipts (code sha explanation) ----
@@ -912,6 +923,8 @@ export function inventoryErrors(inv) {
             visit(`${s}/${s === 'topics' ? arnName(k) : k}`, v);
     if (inv.api) visit('api', inv.api);
     for (const [p, v] of Object.entries(object(inv.http) ? inv.http : {})) visit(`http/${p}`, v);
+    // v5 B27-b: the discovery reads of a `--discover` inventory.
+    if (object(inv.discovery?.sources)) visit('discovery', { fields: inv.discovery.sources });
     return out;
 }
 
@@ -929,7 +942,7 @@ const liveOf = (res, field) => {
  * compare the inventory with the baseline (and the config / plan / deploy receipt where they define the expected
  * value). Returns the compared entries, the approximate references, the axes compared and not compared.
  */
-export function compareInventory({ c, target, inv, baseline, plan, deploy }) {
+export function compareInventory({ c, target, inv, baseline, plan, deploy, mode = 'run' }) {
     const entries = [],
         approximate = {},
         code = {},
@@ -1032,7 +1045,12 @@ export function compareInventory({ c, target, inv, baseline, plan, deploy }) {
     for (const t of Object.keys(sec('tables'))) {
         const res = inv.tables?.[t],
             b = sec('tables')[t];
-        const axis = 'table-identity(arn,created,keySchema,stream)';
+        const firstObservation = mode === 'first-observation';
+        const axis = firstObservation
+            ? 'table-identity(arn,id,created,keySchema,stream)'
+            : 'table-identity(arn,created,keySchema,stream)';
+        // a first-observation baseline holds the table id (the canonical snapshot does not).
+        if (firstObservation) check(axis, `tables/${t}/id`, b?.id, liveOf(res, 'id'), 'id');
         check(
             axis,
             `tables/${t}/arn`,
@@ -1117,7 +1135,7 @@ export function compareInventory({ c, target, inv, baseline, plan, deploy }) {
         'sns-subscription-endpoints (recorded only)',
         'table-item-count (approximate reference only)',
         'queue-message-count (approximate)',
-        'table-id (no baseline value)',
+        ...(mode === 'run' ? ['table-id (no baseline value)'] : ['http-status (not probed in discover mode)']),
     ])
         notCompared.add(x);
     return { entries, approximate, code, env, cfOwned, scope: [...scope].sort(), notCompared: [...notCompared].sort() };
@@ -1353,10 +1371,11 @@ function inspectSummary(inv, file) {
         schemaVersion: 1,
         command: 'inspect',
         execution: 'read-only',
-        status: errors.length ? 'observed-with-errors' : 'observed',
+        ...(inv.mode === 'discover' ? { mode: 'discover' } : {}),
+        status: inv.status ?? (errors.length ? 'observed-with-errors' : 'observed'),
         target: inv.target,
         baseline: inv.baseline?.file ?? 'none',
-        runReceipt: inv.runReceipt.status,
+        runReceipt: inv.runReceipt?.status ?? 'none',
         lock: inv.lock,
         stack: { state: inv.stack.state, ...(inv.stack.status ? { status: inv.stack.status } : {}) },
         functions: Object.fromEntries(Object.entries(inv.functions).map(([k, v]) => [k, v.state])),
@@ -1374,22 +1393,13 @@ function inspectSummary(inv, file) {
                 : { mode: 'off' },
         observations: states,
         errors: Object.fromEntries(errors.map(e => [e.path, e.kind])),
+        ...(inv.mode === 'discover' ? { discovery: discoverySummary(inv.discovery) } : {}),
         inventory: file,
     };
 }
 
-// `inspect`: offline plan, or (with `--execute`) the STS check and the read-only inventory.
-async function commandInspect(c, options, deps) {
-    const state = await readRunState(c, { requireRun: Boolean(options.execute) });
-    const ids = baselineIdentities(state.baseline?.value, c);
-    if (!options.execute) return { output: inspectPlan(c, state, ids, options), exitCode: 0 };
-    if (process.platform === 'win32') fail('UNSUPPORTED_PLATFORM', 'Execution requires macOS/Linux.');
-    rejectPlaceholders(c);
-    const backup = envBackupOf(state);
-    const now = deps.now ?? (() => new Date());
-    const startedAt = iso(now());
-    const deadline = Date.now() + c.timeoutMs;
-    // STS first, in the private child with the explicit profile (the check of every phase).
+// STS first, in the private child with the explicit profile (the check of every phase); a mismatch stops all reads.
+async function confirmAccount(c, deps) {
     const sts = await (deps.runChild ?? runPrivateChild)({
         mode: 'sts',
         command: 'aws',
@@ -1411,28 +1421,35 @@ async function commandInspect(c, options, deps) {
     });
     if (sts.code !== 0 || sts.account !== c.account)
         fail('ACCOUNT_MISMATCH', 'STS account could not be confirmed for the configured profile.');
-    const read = awsReader(c, { exec: deps.exec, environment: deps.environment, now, deadline, signal: deps.signal });
-    const stackRead = await read('cloudformation:DescribeStacks', ['--stack-name', c.stack], {
-        absent: [
-            {
-                code: 'ValidationError',
-                message: new RegExp(`Stack with id ${escapeRe(c.stack)} does not exist`),
-            },
-        ],
+}
+
+// the CloudFormation stack: `present` (with its status), `absent` only for the exact not-found error, else an error.
+async function observeStack(read, c) {
+    const r = await read('cloudformation:DescribeStacks', ['--stack-name', c.stack], {
+        absent: [{ code: 'ValidationError', message: new RegExp(`Stack with id ${escapeRe(c.stack)} does not exist`) }],
     });
-    const stackStatus = stackRead.value?.Stacks?.[0]?.StackStatus;
-    const stack =
-        stackRead.state === 'value'
-            ? typeof stackStatus === 'string'
-                ? {
-                      name: c.stack,
-                      state: 'present',
-                      status: stackStatus,
-                      sourceApi: stackRead.sourceApi,
-                      observedAt: stackRead.observedAt,
-                  }
-                : { name: c.stack, ...errorOf(stackRead, 'other') }
-            : { name: c.stack, ...resourceOf(stackRead) };
+    const status = r.value?.Stacks?.[0]?.StackStatus;
+    if (r.state !== 'value') return { name: c.stack, ...resourceOf(r) };
+    if (typeof status !== 'string') return { name: c.stack, ...errorOf(r, 'other') };
+    return { name: c.stack, state: 'present', status, sourceApi: r.sourceApi, observedAt: r.observedAt };
+}
+
+// `inspect`: offline plan, or (with `--execute`) the STS check and the read-only inventory.
+async function commandInspect(c, options, deps) {
+    //* v5 B27-b: `--discover` is the first observation of a target without run state.
+    if (options.discover) return commandDiscover(c, options, deps);
+    const state = await readRunState(c, { requireRun: Boolean(options.execute) });
+    const ids = baselineIdentities(state.baseline?.value, c);
+    if (!options.execute) return { output: inspectPlan(c, state, ids, options), exitCode: 0 };
+    if (process.platform === 'win32') fail('UNSUPPORTED_PLATFORM', 'Execution requires macOS/Linux.');
+    rejectPlaceholders(c);
+    const backup = envBackupOf(state);
+    const now = deps.now ?? (() => new Date());
+    const startedAt = iso(now());
+    const deadline = Date.now() + c.timeoutMs;
+    await confirmAccount(c, deps);
+    const read = awsReader(c, { exec: deps.exec, environment: deps.environment, now, deadline, signal: deps.signal });
+    const stack = await observeStack(read, c);
     const functions = {};
     for (const fn of functionNames(state.target)) functions[fn] = await observeFunction(read, c, fn, backup?.[fn]);
     // observe every identity of one baseline section, in order.
@@ -1480,6 +1497,9 @@ async function commandInspect(c, options, deps) {
 
 // `reconcile`: offline comparison of an inventory with the run baseline; writes the result next to the inventory.
 async function commandReconcile(c, options, deps) {
+    //* v5 B27-b: no run state but an adopted first-observation baseline -> compare with that baseline.
+    const observed = await observedState(c);
+    if (!observed.runPresent && observed.baselinePresent) return reconcileObserved(c, options, deps, observed);
     const state = await readRunState(c);
     const now = (deps.now ?? (() => new Date()))();
     const inventory = await readRecord(
@@ -1752,6 +1772,678 @@ async function commandResolve(c, options, deps) {
     };
 }
 
+//* ---- v5 B27-b: first-observation baseline (a migrated target without run state in this checkout) ----
+
+// what a first-observation baseline never proves (recorded in the baseline and in every result).
+export const NOT_PROVEN = Object.freeze([
+    'equality-with-migration-time-state',
+    'data-equality',
+    'event-delivery',
+    'deploy-service-history',
+]);
+
+// the stage words a resource name is matched against (with the config stage); see `stageOf`.
+export const STAGE_WORDS = Object.freeze([
+    'local',
+    'dev',
+    'develop',
+    'test',
+    'qa',
+    'stage',
+    'staging',
+    'prod',
+    'production',
+]);
+
+// the resource types `tag:GetResources` is asked for (the kept types of the canonical `tag` phase, and functions).
+export const TAG_TYPES = Object.freeze([
+    'dynamodb:table',
+    'sqs',
+    'sns',
+    's3',
+    'logs:log-group',
+    'apigateway',
+    'lambda:function',
+]);
+
+// the `deploy-project` tag value of the canonical `tag` phase: the project without its `-api` suffix.
+export const projectTag = c => c.project.replace(/-api$/, '');
+
+/**
+ * the stage a resource name carries: the one stage word among its segments (split on non-alphanumerics; the
+ * segments of the project name are ignored). `null` when there is none, `'multiple'` when there are several.
+ */
+export function stageOf(name, c) {
+    // the lower-case alphanumeric segments of a name.
+    const segments = n =>
+        `${n ?? ''}`
+            .toLowerCase()
+            .split(/[^a-z0-9]+/)
+            .filter(Boolean);
+    const project = new Set(segments(c.project));
+    const words = new Set([...STAGE_WORDS, c.stage.toLowerCase()]);
+    const found = new Set(segments(name).filter(t => !project.has(t) && words.has(t)));
+    return found.size === 1 ? [...found][0] : found.size ? 'multiple' : null;
+}
+
+/** a tagged ARN of this account/region as `{ type, key, name }` (`key` as the inventory sections use it). */
+export function taggedResource(arn, c) {
+    const ra = `${escapeRe(c.region)}:${escapeRe(c.account)}`;
+    // the first rule that matches the ARN.
+    const rules = [
+        ['table', new RegExp(`^arn:aws:dynamodb:${ra}:table/([^/]+)$`), m => [m[1], m[1]]],
+        ['queue', new RegExp(`^arn:aws:sqs:${ra}:([^:/]+)$`), m => [m[1], m[1]]],
+        ['topic', new RegExp(`^arn:aws:sns:${ra}:([^:/]+)$`), m => [arn, m[1]]],
+        ['bucket', /^arn:aws:s3:::([^/]+)$/, m => [m[1], m[1]]],
+        ['logGroup', new RegExp(`^arn:aws:logs:${ra}:log-group:(.+?)(:\\*)?$`), m => [m[1], m[1]]],
+        [
+            'api',
+            new RegExp(`^arn:aws:apigateway:${escapeRe(c.region)}::/restapis/([a-z0-9]{1,32})$`),
+            m => [m[1], m[1]],
+        ],
+        [
+            'apiStage',
+            new RegExp(`^arn:aws:apigateway:${escapeRe(c.region)}::/restapis/([a-z0-9]{1,32})/stages/([^/]+)$`),
+            m => [m[1], m[2]],
+        ],
+        ['function', new RegExp(`^arn:aws:lambda:${ra}:function:([^:]+)$`), m => [m[1], m[1]]],
+        ['esm', new RegExp(`^arn:aws:lambda:${ra}:event-source-mapping:([A-Za-z0-9-]+)$`), m => [m[1], m[1]]],
+    ];
+    for (const [type, re, pick] of rules) {
+        const m = typeof arn === 'string' ? re.exec(arn) : null;
+        if (m) {
+            const [key, name] = pick(m);
+            return { type, key, name };
+        }
+    }
+    return { type: 'other', key: `${arn}`, name: arnName(arn) };
+}
+
+// the inventory section of a tagged type (`null` for types that are not observed as retained resources).
+const SECTION_OF = Object.freeze({
+    table: 'tables',
+    queue: 'queues',
+    topic: 'topics',
+    bucket: 'buckets',
+    logGroup: 'logGroups',
+});
+
+// the table of a DynamoDB stream ARN in this account/region (else null).
+const streamTable = (arn, c) =>
+    new RegExp(`^arn:aws:dynamodb:${escapeRe(c.region)}:${escapeRe(c.account)}:table/([^/]+)/stream/`).exec(
+        `${arn}`,
+    )?.[1] ?? null;
+// the queue of an SQS ARN in this account/region (else null).
+const queueOf = (arn, c) =>
+    new RegExp(`^arn:aws:sqs:${escapeRe(c.region)}:${escapeRe(c.account)}:([^:/]+)$`).exec(`${arn}`)?.[1] ?? null;
+// a topic ARN of this account/region.
+const isTopicArn = (arn, c) => ID_RULES(c).topics.test(`${arn}`);
+
+/**
+ * discover the retained resources of a target without run state, from five sources (each recorded):
+ * the two functions (observed before), their event source mappings, SNS subscriptions to them, their log groups,
+ * and the resources the canonical `tag` phase tagged (`deploy-managed=true`, `deploy-project=<project w/o -api>`).
+ * - a tagged resource is attributed to a stage by its name (`stageOf`), cross-checked with the function-derived
+ *   resources. Another stage is excluded; no stage, several stages, or a conflict is `ambiguous` (never guessed).
+ */
+export async function discover(read, c, target, functions) {
+    const ours = c.stage.toLowerCase();
+    const names = functionNames(target);
+    const fnArns = names.map(n => `arn:aws:lambda:${c.region}:${c.account}:function:${n}`);
+    const found = { tables: new Map(), queues: new Map(), topics: new Map(), buckets: new Map(), logGroups: new Map() };
+    const apis = new Map();
+    // record one discovery source of a resource key.
+    const add = (map, key, by) => {
+        if (!map.has(key)) map.set(key, new Set());
+        map.get(key).add(by);
+    };
+    const sources = {},
+        ambiguous = [],
+        excluded = [],
+        otherTagged = [],
+        external = [];
+    // 1. the event source mappings of the two functions (observed with the functions).
+    const ownEsm = new Set();
+    for (const fn of names)
+        for (const m of functions[fn]?.fields?.eventSourceMappings?.value ?? []) {
+            ownEsm.add(m.uuid);
+            const table = streamTable(m.sourceArn, c),
+                queue = queueOf(m.sourceArn, c);
+            if (table && ID_RULES(c).tables.test(table)) add(found.tables, table, 'event-source-mapping');
+            else if (queue && ID_RULES(c).queues.test(queue)) add(found.queues, queue, 'event-source-mapping');
+            else external.push({ source: 'event-source-mapping', name: arnName(m.sourceArn) });
+        }
+    // 2. SNS subscriptions whose endpoint is one of the two functions (the account list, filtered by the CLI).
+    const query = `Subscriptions[?${fnArns.map(a => `Endpoint=='${a}'`).join(' || ')}]`;
+    const subs = await read('sns:ListSubscriptions', ['--query', query]);
+    if (subs.state === 'value') {
+        const own = (Array.isArray(subs.value) ? subs.value : []).filter(
+            x => x?.Protocol === 'lambda' && fnArns.includes(x?.Endpoint),
+        );
+        sources.snsSubscriptions = fieldOf(subs, own.length);
+        for (const x of own)
+            if (isTopicArn(x.TopicArn, c)) add(found.topics, x.TopicArn, 'sns-subscription');
+            else external.push({ source: 'sns-subscription', name: arnName(x.TopicArn) });
+    } else sources.snsSubscriptions = errorOf(subs);
+    // 3. the log groups of the two functions (read by the log group observation below).
+    for (const fn of names) add(found.logGroups, `/aws/lambda/${fn}`, 'log-group-prefix');
+    // 4. the resources tagged by the canonical `tag` phase for this project (any stage).
+    const tag = projectTag(c);
+    const tagged = await read('tag:GetResources', [
+        '--tag-filters',
+        'Key=deploy-managed,Values=true',
+        `Key=deploy-project,Values=${tag}`,
+        '--resource-type-filters',
+        ...TAG_TYPES,
+    ]);
+    const stageApis = [];
+    if (tagged.state !== 'value') sources.tagged = errorOf(tagged);
+    else {
+        const list = (
+            Array.isArray(tagged.value?.ResourceTagMappingList) ? tagged.value.ResourceTagMappingList : []
+        ).filter(x => {
+            const t = Object.fromEntries((x?.Tags ?? []).map(k => [k?.Key, k?.Value]));
+            return t['deploy-managed'] === 'true' && t['deploy-project'] === tag;
+        });
+        sources.tagged = fieldOf(tagged, list.length);
+        for (const item of list) {
+            const r = taggedResource(item.ResourceARN, c);
+            let stage;
+            if (r.type === 'api') {
+                // the REST API name carries the stage (`dev-<service>` by default).
+                const g = await read('apigateway:GetRestApi', ['--rest-api-id', r.key]);
+                if (g.state !== 'value') {
+                    sources[`restApi/${r.key}`] = errorOf(g);
+                    continue;
+                }
+                r.name = typeof g.value?.name === 'string' ? g.value.name : r.key;
+                stage = stageOf(r.name, c);
+            } else if (r.type === 'esm' && !ownEsm.has(r.key)) {
+                // a mapping of another function: attributed by that function's name.
+                const g = await read('lambda:GetEventSourceMapping', ['--uuid', r.key]);
+                if (g.state !== 'value') {
+                    sources[`eventSourceMapping/${r.key}`] = errorOf(g);
+                    continue;
+                }
+                stage = stageOf(arnName(g.value?.FunctionArn), c);
+            } else stage = r.type === 'esm' ? ours : stageOf(r.name, c);
+            const section = SECTION_OF[r.type];
+            // a resource wired to the two functions is ours unless its name says another stage (a conflict).
+            if (section && found[section].has(r.key)) {
+                if (stage === ours || stage === null) add(found[section], r.key, 'tag');
+                else ambiguous.push({ type: r.type, name: r.name, why: 'conflicts-with-function-wiring' });
+                continue;
+            }
+            if (stage === null || stage === 'multiple') {
+                ambiguous.push({ type: r.type, name: r.name, why: stage ? 'several-stages' : 'no-stage' });
+                continue;
+            }
+            if (stage !== ours) {
+                excluded.push({ type: r.type, name: r.name, stage });
+                continue;
+            }
+            if (section) add(found[section], r.key, 'tag');
+            else if (r.type === 'api') add(apis, r.key, 'tag');
+            else if (r.type === 'apiStage') stageApis.push(r.key);
+            else if (r.type === 'function' && !names.includes(r.key))
+                ambiguous.push({ type: r.type, name: r.name, why: 'unexpected-function' });
+            else if (!['function', 'esm'].includes(r.type)) otherTagged.push({ type: r.type, name: r.name });
+        }
+    }
+    // one REST API per stage; a tagged stage of this stage must belong to it.
+    if (apis.size > 1) for (const id of apis.keys()) ambiguous.push({ type: 'api', name: id, why: 'several-apis' });
+    for (const id of stageApis)
+        if (!apis.has(id) || apis.size > 1) ambiguous.push({ type: 'apiStage', name: id, why: 'stage-of-another-api' });
+    // a discovery map as a sorted object of sorted source lists.
+    const asObject = map =>
+        Object.fromEntries([...map].sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, [...v].sort()]));
+    return {
+        found: Object.fromEntries(Object.entries(found).map(([k, m]) => [k, asObject(m)])),
+        api: apis.size === 1 ? [...apis.keys()][0] : null,
+        record: {
+            projectTag: tag,
+            stage: c.stage,
+            stageWords: STAGE_WORDS,
+            resourceTypes: TAG_TYPES,
+            sources,
+            excluded,
+            ambiguous,
+            otherTagged,
+            external,
+            reasons: ambiguous.length ? ['ambiguous-discovery'] : [],
+        },
+    };
+}
+
+// the stdout part of a discovery record: counts, the excluded stages and the ambiguous names only.
+function discoverySummary(d) {
+    const excluded = {};
+    for (const x of d?.excluded ?? []) excluded[x.stage] = (excluded[x.stage] ?? 0) + 1;
+    return {
+        projectTag: d?.projectTag,
+        reasons: d?.reasons ?? [],
+        excluded,
+        ambiguous: (d?.ambiguous ?? []).map(x => `${x.type} ${x.name} (${x.why})`),
+        otherTagged: (d?.otherTagged ?? []).length,
+        external: (d?.external ?? []).length,
+    };
+}
+
+/** the state of a target without run state: the run dir flag and the private `<runsDir>/<stack>.observed` dir. */
+export async function observedState(c, { create = false } = {}) {
+    const target = migrationTarget(c);
+    const runRel = `${MIGRATION.runsDir}/${target.stack}`;
+    const rel = `${runRel}.observed`;
+    const run = path.join(c.migrationRepo, runRel),
+        dir = path.join(c.migrationRepo, rel);
+    await noSymlinkChain(c.migrationRepo, rel);
+    const runPresent = Boolean(await lstat(run).catch(() => null));
+    let present = Boolean(await lstat(dir).catch(() => null));
+    // created only to write a record; the run dir itself is never created here.
+    if (!present && create) {
+        await mkdir(path.dirname(dir), { recursive: true, mode: 0o700 });
+        await mkdir(dir, { mode: 0o700 });
+        await chmod(dir, 0o700);
+        present = true;
+    }
+    if (present) await privateEntry(dir, 'dir');
+    const baselineFile = path.join(dir, 'baseline.json');
+    const baselinePresent = present && Boolean(await lstat(baselineFile).catch(() => null));
+    return { target, run, runPresent, dir, rel, present, baselineFile, baselinePresent };
+}
+
+// `inspect --discover` without `--execute`: the discovery reads; nothing is called.
+function discoverPlan(c, os) {
+    return {
+        schemaVersion: 1,
+        command: 'inspect',
+        mode: 'discover',
+        execution: 'offline-plan',
+        target: identityOf(os.target),
+        runState: 'absent',
+        baseline: os.baselinePresent ? 'first-observation' : 'none',
+        projectTag: projectTag(c),
+        reads: [
+            { api: 'sts:GetCallerIdentity', calls: 1 },
+            { api: 'cloudformation:DescribeStacks', calls: 1 },
+            { api: 'lambda:GetFunctionConfiguration', calls: 2 },
+            { api: 'lambda:ListTags', calls: 2 },
+            { api: 'lambda:ListEventSourceMappings', calls: 2 },
+            { api: 'sns:ListSubscriptions (filtered to the two functions)', calls: 1 },
+            { api: 'tag:GetResources (deploy-managed=true, deploy-project)', calls: 1 },
+            { api: 'apigateway:GetRestApi (per tagged REST API)', calls: 'per tagged API' },
+            { api: 'lambda:GetEventSourceMapping (per tagged mapping of another function)', calls: 'per mapping' },
+            { api: 'the per-resource reads of inspect, for every discovered resource', calls: 'per resource' },
+        ],
+        httpProbes: { mode: 'off' },
+        writes: [`${os.rel}/${RECORD_DIRS.inventory}/<UTC-stamp>.json (0600)`],
+        requiredFlags: ['--execute'],
+        limitations: [
+            'No AWS call has run.',
+            `Never creates ${MIGRATION.runsDir}/${os.target.stack}/ (a later plan phase starts as before).`,
+            'A tagged resource without exactly one stage word in its name, or conflicting with the function wiring, blocks the inventory (ambiguous-discovery).',
+            'No env backup exists: env key names only.',
+        ],
+    };
+}
+
+// `inspect --execute --discover`: STS, the five discovery sources, the per-resource reads; a private inventory.
+async function commandDiscover(c, options, deps) {
+    const os = await observedState(c);
+    if (os.runPresent) fail('RUN_STATE_PRESENT', 'This target has run state; use inspect without --discover.');
+    if (!options.execute) return { output: discoverPlan(c, os), exitCode: 0 };
+    if (process.platform === 'win32') fail('UNSUPPORTED_PLATFORM', 'Execution requires macOS/Linux.');
+    rejectPlaceholders(c);
+    const now = deps.now ?? (() => new Date());
+    const startedAt = iso(now());
+    const deadline = Date.now() + c.timeoutMs;
+    await confirmAccount(c, deps);
+    const read = awsReader(c, { exec: deps.exec, environment: deps.environment, now, deadline, signal: deps.signal });
+    const stack = await observeStack(read, c);
+    const functions = {};
+    for (const fn of functionNames(os.target)) functions[fn] = await observeFunction(read, c, fn, undefined);
+    const d = await discover(read, c, os.target, functions);
+    // observe one discovered section with the per-resource reads of inspect, keeping its discovery sources.
+    const observeAll = async (section, fn) => {
+        const out = {};
+        for (const [k, by] of Object.entries(d.found[section]))
+            out[k] = { ...(await fn(read, c, k)), discoveredBy: by };
+        return out;
+    };
+    const inventory = {
+        schemaVersion: 1,
+        kind: KINDS.inventory,
+        mode: 'discover',
+        execution: 'read-only',
+        tool: await (deps.toolRevision ?? toolRevision)(),
+        target: identityOf(os.target),
+        configFingerprint: fingerprint(c),
+        startedAt,
+        runReceipt: null,
+        lock: 'none',
+        baseline: null,
+        envBackup: null,
+        httpProbes: 'off',
+        stack,
+        functions,
+        discovery: d.record,
+        tables: await observeAll('tables', observeTable),
+        queues: await observeAll('queues', observeQueue),
+        topics: await observeAll('topics', observeTopic),
+        buckets: await observeAll('buckets', observeBucket),
+        logGroups: await observeAll('logGroups', observeLogGroup),
+        api: d.api ? { ...(await observeApi(read, c, d.api)), discoveredBy: ['tag'] } : null,
+        http: {},
+    };
+    inventory.finishedAt = iso(now());
+    const errors = inventoryErrors(inventory);
+    inventory.status = d.record.reasons.length ? 'blocked' : errors.length ? 'observed-with-errors' : 'observed';
+    const dir = (await observedState(c, { create: true })).dir;
+    const file = await writeRecord(
+        dir,
+        RECORD_DIRS.inventory,
+        `${stampOf(new Date(startedAt))}.json`,
+        inventory,
+        deps.onControlWrite,
+    );
+    return { output: inspectSummary(inventory, file), exitCode: inventory.status === 'observed' ? 0 : 3 };
+}
+
+/** why a discover inventory cannot become the first-observation baseline (a message with names only), else null. */
+export function adoptionRefusal(inv, c, target, now) {
+    if (inv.mode !== 'discover') return 'Only an inventory of inspect --execute --discover can be adopted.';
+    if (canonical(inv.target) !== canonical(identityOf(target)) || inv.configFingerprint !== fingerprint(c))
+        return 'The inventory belongs to another target or config.';
+    const started = Date.parse(inv.startedAt);
+    if (!Number.isFinite(started) || now - started > STALE_AFTER_MS || started - now > FUTURE_SKEW_MS)
+        return 'The inventory is older than 1 h; run inspect --execute --discover again.';
+    if ((inv.discovery?.reasons ?? []).length) return 'The discovery is ambiguous (ambiguous-discovery).';
+    if (inv.status !== 'observed' || inventoryErrors(inv).length) return 'The inventory has read errors.';
+    if (inv.stack?.state !== 'absent') return 'The CloudFormation stack is not absent.';
+    for (const fn of functionNames(target)) {
+        const f = inv.functions?.[fn];
+        if (f?.state !== 'present') return `Function ${fn} is not present.`;
+        if (f.fields?.state?.value !== 'Active' || f.fields?.lastUpdateStatus?.value !== 'Successful')
+            return `Function ${fn} is not Active/Successful.`;
+        if (f.fields?.tags?.value?.['deploy-managed'] !== 'true')
+            return `Function ${fn} does not carry deploy-managed=true.`;
+    }
+    return null;
+}
+
+// `adopt-baseline`: the first observation becomes the baseline (append-only `baseline.json`, a local attestation).
+async function commandAdopt(c, options, deps) {
+    const os = await observedState(c);
+    if (os.runPresent)
+        fail(
+            'RUN_STATE_PRESENT',
+            'This target has run state; a first-observation baseline is only for a target without one.',
+        );
+    if (!os.present) fail('RUN_STATE_MISSING', 'No discover inventory exists; run inspect --execute --discover first.');
+    if (os.baselinePresent)
+        fail('BASELINE_EXISTS', 'A first-observation baseline exists already; it is never replaced.');
+    const now = (deps.now ?? (() => new Date()))();
+    const inventory = await readRecord(
+        os.dir,
+        RECORD_DIRS.inventory,
+        options.inventoryFile,
+        KINDS.inventory,
+        'INVENTORY_INVALID',
+    );
+    const why = adoptionRefusal(inventory.payload, c, os.target, now);
+    if (why) fail('ADOPTION_REFUSED', why);
+    const reason = options.reason;
+    if (typeof reason !== 'string' || !reason.trim() || reason.length > 500 || /[\u0000-\u001f\u007f]/.test(reason))
+        fail('INVALID_ARGS', '--reason must be 1-500 printable characters.');
+    const payload = {
+        schemaVersion: 1,
+        kind: KINDS.baseline,
+        provenance: 'first-observation',
+        authorizesMutation: false,
+        notProven: NOT_PROVEN,
+        note: 'Local attestation: the owner adopts this first observation as the baseline of a migrated target without run state. It authorizes no write and proves nothing about the state at migration time.',
+        target: identityOf(os.target),
+        configFingerprint: fingerprint(c),
+        inventory: { file: inventory.rel, sha256: inventory.sha256, startedAt: inventory.payload.startedAt },
+        reason,
+        tool: await (deps.toolRevision ?? toolRevision)(),
+        createdAt: iso(now),
+    };
+    let file;
+    try {
+        file = await writeRecord(os.dir, '', 'baseline.json', payload, deps.onControlWrite);
+    } catch (error) {
+        if (error?.code === 'RECORD_EXISTS')
+            fail('BASELINE_EXISTS', 'A first-observation baseline exists already; it is never replaced.');
+        throw error;
+    }
+    return {
+        output: {
+            schemaVersion: 1,
+            command: 'adopt-baseline',
+            status: 'adopted',
+            kind: payload.kind,
+            provenance: payload.provenance,
+            authorizesMutation: false,
+            target: payload.target,
+            inventory: inventory.rel,
+            notProven: NOT_PROVEN,
+            baseline: file,
+        },
+        exitCode: 0,
+    };
+}
+
+// the canonical snapshot shape of an adopted inventory (the baseline values `compareInventory` expects).
+const snapshotOfInventory = inv => {
+    // the observed values of the given fields of every resource of one section.
+    const section = (s, fields) =>
+        Object.fromEntries(
+            Object.entries(object(inv[s]) ? inv[s] : {}).map(([k, r]) => [
+                k,
+                Object.fromEntries(fields.map(f => [f, r?.state === 'present' ? r.fields?.[f]?.value : undefined])),
+            ]),
+        );
+    const api = inv.api?.state === 'present' ? inv.api.fields : null;
+    return {
+        functions: section('functions', ['runtime', 'handler', 'memory', 'timeout', 'codeSha', 'envKeys']),
+        tables: section('tables', ['id', 'created', 'stream', 'items']),
+        queues: section('queues', ['url', 'created', 'messages']),
+        topics: section('topics', ['subscriptions']),
+        buckets: section('buckets', ['created', 'objects', 'website', 'policySids']),
+        logGroups: section('logGroups', ['created', 'retention']),
+        api: inv.api ? { id: api?.id?.value, routes: api?.routes?.value, stages: api?.stages?.value } : null,
+        http: {},
+    };
+};
+// the key schemas of an adopted inventory in the `plan.json` `tableProps` form.
+const tablePropsOfInventory = inv => ({
+    tableProps: Object.fromEntries(
+        Object.entries(object(inv.tables) ? inv.tables : {}).map(([k, r]) => [
+            k,
+            {
+                KeySchema: (r?.fields?.keySchema?.value ?? []).map(x => ({
+                    AttributeName: x.attributeName,
+                    KeyType: x.keyType,
+                })),
+            },
+        ]),
+    ),
+});
+
+/** the pure first-observation reconcile: a newer discover inventory against the adopted one (same axes). */
+export function reconcileFirstObservation({ c, target, baseline, adopted, inventory, deploy, now }) {
+    const inv = inventory.payload,
+        base = adopted.payload;
+    const reasons = new Set();
+    for (const p of [inv, base, baseline.payload])
+        if (canonical(p.target) !== canonical(identityOf(target)) || p.configFingerprint !== fingerprint(c))
+            reasons.add('target-mismatch');
+    const started = Date.parse(inv.startedAt);
+    if (!Number.isFinite(started) || now - started > STALE_AFTER_MS || started - now > FUTURE_SKEW_MS)
+        reasons.add('inventory-stale');
+    if ((inv.discovery?.reasons ?? []).length || inv.status === 'blocked') reasons.add('ambiguous-discovery');
+    if (inv.stack?.state === 'present') reasons.add('stack-present');
+    else if (inv.stack?.state !== 'absent') reasons.add('read-error');
+    const errors = inventoryErrors(inv);
+    if (errors.length) reasons.add('read-error');
+    if (errors.some(e => e.kind === 'target-mismatch')) reasons.add('target-mismatch');
+    if (deploy?.status === 'other-target') reasons.add('target-mismatch');
+    const cmp = compareInventory({
+        c,
+        target,
+        inv,
+        baseline: snapshotOfInventory(base),
+        plan: tablePropsOfInventory(base),
+        deploy: deploy?.status === 'valid' ? deploy : undefined,
+        mode: 'first-observation',
+    });
+    if (cmp.cfOwned.length) reasons.add('cf-owned-resource');
+    // the discovered resource set: a resource found now but not at adoption is a difference.
+    const extra = [];
+    for (const s of ['tables', 'queues', 'topics', 'buckets', 'logGroups'])
+        for (const k of Object.keys(object(inv[s]) ? inv[s] : {}))
+            if (!Object.hasOwn(base[s] ?? {}, k))
+                extra.push({
+                    path: `${s}/${s === 'topics' ? arnName(k) : k}`,
+                    axis: 'discovered-resource-set',
+                    equal: false,
+                    newResource: true,
+                });
+    if ((inv.api?.fields?.id?.value ?? null) !== (base.api?.fields?.id?.value ?? null) && inv.api && !base.api)
+        extra.push({ path: 'api', axis: 'discovered-resource-set', equal: false, newResource: true });
+    const entries = [...cmp.entries, ...extra];
+    const differing = entries.filter(e => !e.equal);
+    const klass = reasons.size ? 'blocked' : differing.length ? 'reconcile-required' : 'verified-no-op';
+    return {
+        class: klass,
+        reasons: REASONS.filter(r => reasons.has(r)),
+        errors,
+        cmp: { ...cmp, entries, scope: [...new Set([...cmp.scope, 'discovered-resource-set'])].sort() },
+        differing,
+    };
+}
+
+// `reconcile` of a target without run state: a newer discover inventory against the adopted first observation.
+async function reconcileObserved(c, options, deps, os) {
+    if (options.resolutionFiles?.length) fail('INVALID_ARGS', '--resolution applies to a run state only.');
+    const now = (deps.now ?? (() => new Date()))();
+    const baseline = await readRecord(os.dir, '', os.baselineFile, KINDS.baseline, 'BASELINE_INVALID');
+    if (baseline.payload.provenance !== 'first-observation')
+        fail('BASELINE_INVALID', 'Not a first-observation baseline.');
+    const adopted = await readRecord(
+        os.dir,
+        RECORD_DIRS.inventory,
+        path.join(os.dir, `${baseline.payload.inventory?.file ?? ''}`),
+        KINDS.inventory,
+        'BASELINE_INVALID',
+    );
+    if (adopted.sha256 !== baseline.payload.inventory.sha256)
+        fail('BASELINE_INVALID', 'The adopted inventory changed after adoption.');
+    const inventory = await readRecord(
+        os.dir,
+        RECORD_DIRS.inventory,
+        options.inventoryFile,
+        KINDS.inventory,
+        'INVENTORY_INVALID',
+    );
+    if (inventory.payload.mode !== 'discover')
+        fail('INVALID_ARGS', 'Reconcile against a first observation needs a --discover inventory.');
+    if (
+        inventory.file === adopted.file ||
+        inventory.sha256 === adopted.sha256 ||
+        !(Date.parse(inventory.payload.startedAt) > Date.parse(adopted.payload.startedAt))
+    )
+        fail('INVENTORY_NOT_NEWER', 'Reconcile needs a discover inventory newer than the adopted one.');
+    const deploy = options.deployReceiptFile ? await readDeployReceipt(options.deployReceiptFile, c) : null;
+    const r = reconcileFirstObservation({ c, target: os.target, baseline, adopted, inventory, deploy, now });
+    const counts = {
+        compared: r.cmp.entries.length,
+        equal: r.cmp.entries.filter(e => e.equal).length,
+        differing: r.differing.length,
+        readErrors: r.errors.length,
+    };
+    const record = {
+        schemaVersion: 1,
+        kind: KINDS.reconcile,
+        mode: 'first-observation',
+        execution: 'offline',
+        tool: await (deps.toolRevision ?? toolRevision)(),
+        target: identityOf(os.target),
+        configFingerprint: fingerprint(c),
+        createdAt: iso(now),
+        class: r.class,
+        reasons: r.reasons,
+        runReceipt: 'none',
+        baseline: {
+            provenance: 'first-observation',
+            file: baseline.rel,
+            sha256: baseline.sha256,
+            inventory: { file: adopted.rel, sha256: adopted.sha256, startedAt: adopted.payload.startedAt },
+        },
+        inventory: { file: inventory.rel, sha256: inventory.sha256, startedAt: inventory.payload.startedAt },
+        notProven: NOT_PROVEN,
+        deployReceipt: deploy
+            ? {
+                  status: deploy.status,
+                  ...(deploy.status === 'valid'
+                      ? { sha256: deploy.sha256, deployId: deploy.deployId, mode: deploy.mode }
+                      : {}),
+              }
+            : null,
+        counts,
+        differing: r.differing.map(e => ({
+            path: e.path,
+            axis: e.axis,
+            ...(e.codeSource ? { codeSource: e.codeSource } : {}),
+            ...(e.notObserved ? { notObserved: true } : {}),
+            ...(e.newResource ? { newResource: true } : {}),
+            ...(Object.hasOwn(e, 'expected') && !e.notObserved
+                ? { expected: boxed(e.expected), observed: boxed(e.observed) }
+                : {}),
+        })),
+        readErrors: r.errors,
+        cfOwned: r.cmp.cfOwned,
+        approximate: r.cmp.approximate,
+        code: r.cmp.code,
+        scope: r.cmp.scope,
+        notCompared: r.cmp.notCompared,
+    };
+    const stem = path.basename(inventory.file, '.json');
+    const file = await writeRecord(
+        os.dir,
+        RECORD_DIRS.inventory,
+        `${stem}.reconcile-${stampOf(now)}.json`,
+        record,
+        deps.onControlWrite,
+    );
+    return {
+        output: {
+            schemaVersion: 1,
+            command: 'reconcile',
+            execution: 'offline',
+            mode: 'first-observation',
+            class: r.class,
+            reasons: r.reasons,
+            target: record.target,
+            baseline: 'first-observation',
+            runReceipt: 'none',
+            notProven: NOT_PROVEN,
+            counts,
+            differing: r.differing.map(e => e.path),
+            readErrors: r.errors.map(e => e.path),
+            cfOwned: r.cmp.cfOwned,
+            approximate: r.cmp.approximate,
+            code: r.cmp.code,
+            deployReceipt: deploy ? deploy.status : 'not-given',
+            scope: r.cmp.scope,
+            notCompared: r.cmp.notCompared,
+            result: file,
+        },
+        exitCode: r.class === 'verified-no-op' ? 0 : 3,
+    };
+}
+
 //* ---- CLI ----
 
 // the flags of the follow-up commands: key, whether it takes a value / repeats, and the commands it belongs to.
@@ -1759,16 +2451,22 @@ const FLAGS = Object.freeze({
     '--config': { key: 'configFile', value: true, path: true, commands: INSPECTION_COMMANDS },
     '--execute': { key: 'execute', commands: ['inspect'] },
     '--http-probe': { key: 'httpProbe', commands: ['inspect'] },
-    '--inventory': { key: 'inventoryFile', value: true, path: true, commands: ['reconcile', 'resolve'] },
+    '--discover': { key: 'discover', commands: ['inspect'] },
+    '--inventory': {
+        key: 'inventoryFile',
+        value: true,
+        path: true,
+        commands: ['reconcile', 'resolve', 'adopt-baseline'],
+    },
     '--deploy-receipt': { key: 'deployReceiptFile', value: true, path: true, commands: ['reconcile'] },
     '--resolution': { key: 'resolutionFiles', value: true, path: true, many: true, commands: ['reconcile'] },
     '--accept': { key: 'accepts', value: true, many: true, commands: ['resolve'] },
-    '--reason': { key: 'reason', value: true, commands: ['resolve'] },
+    '--reason': { key: 'reason', value: true, commands: ['resolve', 'adopt-baseline'] },
     '--help': { key: 'help', commands: INSPECTION_COMMANDS },
     '-h': { key: 'help', commands: INSPECTION_COMMANDS },
 });
 
-/** parse `<inspect|reconcile|resolve> [flags]`; an unknown, duplicate or misplaced flag is INVALID_ARGS. */
+/** parse `<inspect|reconcile|resolve|adopt-baseline> [flags]`; an unknown, duplicate or misplaced flag is INVALID_ARGS. */
 export function parseInspectionArgs(argv) {
     const command = argv[0];
     if (!INSPECTION_COMMANDS.includes(command)) fail('INVALID_ARGS', 'Unknown command.');
@@ -1792,15 +2490,20 @@ export function parseInspectionArgs(argv) {
     if (command !== 'inspect' && !result.inventoryFile) fail('INVALID_ARGS', '--inventory is required.');
     if (command === 'resolve' && (!result.accepts?.length || result.reason === undefined))
         fail('INVALID_ARGS', 'resolve needs at least one --accept and --reason.');
+    if (command === 'adopt-baseline' && result.reason === undefined)
+        fail('INVALID_ARGS', 'adopt-baseline needs --reason.');
+    if (result.discover && result.httpProbe) fail('INVALID_ARGS', '--http-probe is not available with --discover.');
     return result;
 }
 
 // the usage of the follow-up commands (`<command> --help`; the general `--help` stays the B19/B24 text).
 export const INSPECTION_USAGE = [
-    'Usage: npm run lambda:migrate -- inspect --config <file> [--execute] [--http-probe]',
+    'Usage: npm run lambda:migrate -- inspect --config <file> [--execute] [--http-probe | --discover]',
     '       npm run lambda:migrate -- reconcile --config <file> --inventory <file> [--deploy-receipt <file>] [--resolution <file>]...',
     '       npm run lambda:migrate -- resolve --config <file> --inventory <file> --accept <path>=<from>-><to> [--accept ...] --reason <text>',
+    '       npm run lambda:migrate -- adopt-baseline --config <file> --inventory <file> --reason <text>',
     'For a stack already migrated by the phases: read-only live inventory (inspect; offline plan without --execute), offline comparison with the run baseline (reconcile), local attestation of the setting DIFF of an unknown verify (resolve).',
+    'Without run state in this checkout: inspect --execute --discover, then adopt-baseline (the first observation becomes the baseline), then reconcile a newer --discover inventory.',
     `None of them changes an AWS resource, the receipt, the owner file or the lock. See ${DOC_REF}.`,
 ].join('\n');
 
@@ -1814,6 +2517,10 @@ const INVALID_INPUT = new Set([
     'DEPLOY_RECEIPT_INVALID',
     'RESOLUTION_REFUSED',
     'INVENTORY_STALE',
+    'RUN_STATE_PRESENT',
+    'ADOPTION_REFUSED',
+    'BASELINE_EXISTS',
+    'INVENTORY_NOT_NEWER',
 ]);
 
 // JSON for stdout/stderr with a last guard: the configured account and any ARN are masked.
@@ -1839,7 +2546,12 @@ export async function inspectionMain(argv, deps = {}) {
         config = validateMigrationConfig(await json(options.configFile), options.configFile);
         const root = await (deps.validateRepository ?? validateRepository)(config);
         config.migrationRepo = root;
-        const run = { inspect: commandInspect, reconcile: commandReconcile, resolve: commandResolve }[options.command];
+        const run = {
+            inspect: commandInspect,
+            reconcile: commandReconcile,
+            resolve: commandResolve,
+            'adopt-baseline': commandAdopt,
+        }[options.command];
         const { output, exitCode } = await run(config, options, deps);
         stdout(publicText(output, config));
         return exitCode;
