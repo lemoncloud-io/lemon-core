@@ -28,11 +28,11 @@ lemon-templates-api dev. B24 turns that single pin into a registry of reviewed t
 
 Registry (`bin/lib/org-defaults.mjs`):
 
-| project                                      | stage | stack                     | revision           | receipt / owner / lock                                               | owner tag              | dev temp prefix         |
-| -------------------------------------------- | ----- | ------------------------- | ------------------ | -------------------------------------------------------------------- | ---------------------- | ----------------------- |
-| `lemon-templates-api`                        | `dev` | `lemon-templates-api-dev` | `66d1e91a…` (B19)  | `templates-receipt.json` / `templates-owner.json` / `templates.lock` | `templates-migrate`    | `templates-dev-config-` |
-| `lemon-hello-api`                            | `dev` | `lemon-hello-api-dev`     | `66d1e91a…` (same) | `migrate-receipt.json` / `migrate-owner.json` / `migrate.lock`       | `lemon-lambda-migrate` | `lemon-dev-config-`     |
-| `eureka-hello-api` (B28, rehearsal: pending) | `dev` | `eureka-hello-api-dev`    | `66d1e91a…` (same) | `migrate-receipt.json` / `migrate-owner.json` / `migrate.lock`       | `lemon-lambda-migrate` | `lemon-dev-config-`     |
+| project                                       | stage | stack                     | revision           | receipt / owner / lock                                               | owner tag              | dev temp prefix         |
+| --------------------------------------------- | ----- | ------------------------- | ------------------ | -------------------------------------------------------------------- | ---------------------- | ----------------------- |
+| `lemon-templates-api`                         | `dev` | `lemon-templates-api-dev` | `66d1e91a…` (B19)  | `templates-receipt.json` / `templates-owner.json` / `templates.lock` | `templates-migrate`    | `templates-dev-config-` |
+| `lemon-hello-api`                             | `dev` | `lemon-hello-api-dev`     | `66d1e91a…` (same) | `migrate-receipt.json` / `migrate-owner.json` / `migrate.lock`       | `lemon-lambda-migrate` | `lemon-dev-config-`     |
+| `eureka-hello-api` (B28, migrated 2026-11-01) | `dev` | `eureka-hello-api-dev`    | `66d1e91a…` (same) | `migrate-receipt.json` / `migrate-owner.json` / `migrate.lock`       | `lemon-lambda-migrate` | `lemon-dev-config-`     |
 
 Removed (internal, not reachable through the package `exports` map): `ORG_DEFAULTS.migration.target`,
 `.revision`, `.receiptFile`, `.ownerFile`, `.lockFile`, `.ownerTool`, `.devConfigPrefix`, and the `TARGET` /
@@ -96,17 +96,29 @@ Use `lemon-lambda-migrate` (then `lemon-lambda-deploy-dev`, `code` mode) for lem
 empty table next to hello's existing table (named outside the rule). The function environment would then point to
 the new table and the data would be split between two tables.
 
-## B28 — eureka-hello-api dev (rehearsal: pending)
+## B28 — eureka-hello-api dev
 
 Status: implemented on `feat/v5-b28-eureka-hello-target` (base `v5` @ 5.0.18). Not released; no version bump.
 
 -   The third registry entry: `eureka-hello-api` / `dev` / `eureka-hello-api-dev`, the same pinned revision as the
     other two, and the generic state names (as lemon-hello-api). Its run state is `runs/eureka-hello-api-dev/`, so the
     shared names never meet hello's.
--   **Rehearsal: pending.** The owner chose "rehearse, then migrate". This entry ships (merge and release) only after
-    a sandbox rehearsal of `eureka-hello-api-dev` with the canonical script at the pinned revision has run through
-    `verify` (all the same) and is recorded where the deploy service records its rehearsals (step 1 of
-    § Onboarding another service). Its rehearsal record is pending; this document does not record a rehearsal.
+-   **No sandbox rehearsal, by owner decision.** The owner first chose "rehearse, then migrate", then decided to run
+    the dev stack directly ("dev is for experiments"). This is an exception to step 1 of § Onboarding another service:
+    the real dev run below is the record of this entry.
+-   **Dev migration, 2026-11-01**, with this branch's wrapper and the pinned checkout. Pre-checks: no KMS ciphertext
+    in either function's environment, and the live code loaded on Node 24, so the config set `"runtime": "nodejs24.x"`
+    (live was `nodejs22.x`). `plan`: 0 warnings, 8 kept resources (API, 2 log groups, topic, queue, public bucket and
+    its policy, table), dropped only the Lambda versions and the Serverless deployment bucket, log retention 14 days
+    from the template. `retain` set `DeletionPolicy` and `UpdateReplacePolicy` to `Retain` on all 8. `remove`, `tag`
+    and `apply` completed; API downtime was at most 2 min 51 s (start of `remove` to end of `apply`). `verify`:
+    **completed, all the same**; the only snapshot difference is the intended runtime change, which the verifier
+    excludes. No lock was left.
+-   **After the run:** `inspect` read 0 errors; `reconcile` gave `verified-no-op` on the completed receipt (36 axes
+    the same, environment 10/10 values the same in both functions). Both functions are `Active` / `Successful` on
+    Node 24, and their logs had no error lines in the next 15 minutes. The same public GET paths returned the same
+    status codes before and after. Not shown: data equality, event delivery during the window, publishers of the
+    topic (unknown; dev was accepted as an experiment environment).
 -   Naming: eureka-hello-api's table follows the lemon naming rule, unlike lemon-hello-api's table. So the two-table
     risk of § lemon-hello-api: never use bootstrap mode does not apply to it.
 -   Bootstrap mode is still not used for it, or for any other migrated service: use `lemon-lambda-migrate`, then

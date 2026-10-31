@@ -6,7 +6,7 @@
  * - these are contract pins of the deploy service (`eureka-deploy` tools) and of the reviewed migration targets.
  */
 //* v5 B24: pinned commit of the canonical migration checkout (templates and hello were rehearsed at it).
-//  v5 B28: the eureka-hello entry uses it too; its rehearsal record is pending.
+//  v5 B28: the eureka-hello entry uses it too; its dev stack was migrated with it (2026-11-01, verify all same).
 const PINNED_REVISION = '66d1e91a60a240765d44dedfdab73a92af6abd51';
 //* v5 B24: private run-state names of a target added after B19 (named after the tool, not the service).
 const GENERIC_STATE = Object.freeze({
@@ -76,8 +76,8 @@ export const ORG_DEFAULTS = Object.freeze({
                 revision: PINNED_REVISION,
                 ...GENERIC_STATE,
             }),
-            // v5 B28: added at the pinned revision; rehearsal record pending (owner: "rehearse, then migrate"). The
-            //  entry ships only after a sandbox rehearsal through `verify` (all same) is recorded.
+            // v5 B28: added at the pinned revision. By owner decision the dev stack itself was the first run, without a
+            //  sandbox rehearsal (2026-11-01: six phases, `verify` all same); that real run is this entry's record.
             target({
                 project: 'eureka-hello-api',
                 stage: 'dev',
