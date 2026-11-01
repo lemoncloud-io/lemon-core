@@ -46,6 +46,8 @@ const ENTRIES = {
     'lemon-lambda-migrate': /Usage: npm run lambda:migrate/,
     //* v5 B26: the env build / diff tool.
     'lemon-lambda-env': /Usage: lemon-lambda-env build/,
+    //* v5 B31: the migration guard commands.
+    'lemon-lambda-guard': /Usage: lemon-lambda-guard <init\|register\|status\|resolve>/,
 };
 
 // a fresh temp dir, removed after the test.

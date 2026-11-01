@@ -16,7 +16,8 @@
     "lemon-lambda-deploy": "bin/lemon-lambda-deploy.mjs",
     "lemon-lambda-deploy-dev": "bin/lemon-lambda-deploy-dev.mjs",
     "lemon-lambda-migrate": "bin/lemon-lambda-migrate.mjs",
-    "lemon-lambda-env": "bin/lemon-lambda-env.mjs"
+    "lemon-lambda-env": "bin/lemon-lambda-env.mjs",
+    "lemon-lambda-guard": "bin/lemon-lambda-guard.mjs"
   },
   "exports": {
     ".": {
@@ -144,6 +145,8 @@
     "bin/lib/migrate-guard.mjs",
     "bin/lemon-lambda-env.mjs",
     "bin/lib/lambda-env.mjs",
+    "bin/lemon-lambda-guard.mjs",
+    "bin/lib/guard-cli.mjs",
     "model/package.json",
     "testing/package.json"
   ],

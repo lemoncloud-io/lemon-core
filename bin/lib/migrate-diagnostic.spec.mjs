@@ -14,6 +14,8 @@ import { runPrivateChild } from './migrate-process.mjs';
 import { fixture } from './migrate-test-fixture.mjs';
 import { executeMigration, readReceipt } from './migrate-core.mjs';
 import { main } from '../lemon-lambda-migrate.mjs';
+//* v5 B31: a migration `--execute` runs under the guard, so the CLI case runs with a guard installation.
+import { guardFixture } from './guard-test-fixture.mjs';
 
 //* v5 B19: node:test had no per-test deadline; the process cases (fork/spawn) need more than 5 s on a busy host.
 vi.setConfig({ testTimeout: 60_000 });
@@ -295,6 +297,8 @@ test('failed step receipt and CLI JSON propagate safe diagnostic while exit/stat
                 : { code: 1, reason: 'failed', diagnostic: diag },
         stdout: assert.fail,
         stderr: s => errors.push(s),
+        // v5 B31: a registered guard installation of the reviewed target.
+        guardEnv: (await guardFixture({ account: second.config.account, region: second.config.region })).env,
     });
     assert.equal(code, 3);
     const output = JSON.parse(errors[0]);

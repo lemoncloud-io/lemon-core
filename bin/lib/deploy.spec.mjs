@@ -17,6 +17,8 @@ import { loadDeployment, validateConfig, deploymentPlan, DeployError } from './d
 import { runDeployment } from './deploy-runner.mjs';
 import { createDeployClient } from './deploy-client.mjs';
 import { main, parseDeployArgs } from '../lemon-lambda-deploy.mjs';
+//* v5 B31: the templates config is a reviewed target, so its apply cases run with a guard installation.
+import { guardFixture } from './guard-test-fixture.mjs';
 
 //* v5 B19: node:test had no per-test deadline; the process cases (fork/spawn) need more than 5 s on a busy host.
 vi.setConfig({ testTimeout: 60_000 });
@@ -732,6 +734,8 @@ test('failed abort escalates original failure to unknown in CLI and receipt', as
                 stderr = JSON.parse(s);
             },
             clientFactory: async () => client,
+            // v5 B31: a registered guard installation of the reviewed target.
+            guardEnv: (await guardFixture({ account: f.config.account, region: f.config.region })).env,
         },
     );
     assert.equal(exit, 3);
@@ -847,6 +851,8 @@ test.skipIf(process.platform === 'win32')(
             AWS_CONFIG_FILE: config,
             AWS_SHARED_CREDENTIALS_FILE: credentials,
             AWS_EC2_METADATA_DISABLED: 'true',
+            // v5 B31: a registered guard installation of the reviewed target.
+            ...(await guardFixture({ account: f.config.account, region: f.config.region })).env,
         };
         const started = Date.now();
         let error;
@@ -979,6 +985,8 @@ test.skipIf(process.platform === 'win32')(
                     AWS_CONFIG_FILE: awsConfig,
                     AWS_SHARED_CREDENTIALS_FILE: credentials,
                     AWS_EC2_METADATA_DISABLED: 'true',
+                    // v5 B31: a registered guard installation of the reviewed target.
+                    ...(await guardFixture({ account: f.config.account, region: f.config.region })).env,
                 },
             },
         );

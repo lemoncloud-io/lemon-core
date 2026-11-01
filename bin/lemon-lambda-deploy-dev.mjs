@@ -11,6 +11,8 @@ import { parseDeployArgs } from './lemon-lambda-deploy.mjs';
 import { runDevRelease, DeployError } from './lib/dev-release.mjs';
 import { MigrationError, TARGETS } from './lib/migrate-core.mjs';
 import { isMain } from './lib/is-main.mjs';
+//* v5 B31: the blocked report and the journal fields of a guarded write.
+import { blockedReport, guardErrorFields } from './lib/migrate-guard.mjs';
 
 export function parseDevArgs(argv) {
     const forwarded = [];
@@ -40,6 +42,11 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
         stdout(JSON.stringify(await runDevRelease(options, deps), null, 2));
         return 0;
     } catch (error) {
+        //* v5 B31: a blocked guarded write has its own one-line report (exit 1).
+        if (error?.code === 'GUARD_BLOCKED' && error.guardReason) {
+            stderr(JSON.stringify(blockedReport(error)));
+            return 1;
+        }
         const known = error instanceof DeployError || error instanceof MigrationError;
         stderr(
             JSON.stringify({
@@ -48,6 +55,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
                 message: known ? error.message : 'Could not prepare dev deployment; raw errors are not logged.',
                 ...(known && error.receipt ? { receipt: error.receipt } : {}),
                 ...(known && error.deployId ? { deployId: error.deployId } : {}),
+                //* v5 B31: the journal operation of a guarded write that did not complete.
+                ...guardErrorFields(error),
             }),
         );
         return (

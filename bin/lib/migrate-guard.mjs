@@ -6,7 +6,9 @@
  *   `not-applicable`: the guard reads or opens nothing for it (no install file, no root, no port, no journal) — N14.
  * - order of a guarded write: target classification → installation → host lock → journal → write.
  * - a cooperative procedural control between the tools of one installation; it is not a security boundary.
- * - library only in B30: no deploy / migrate writer calls it yet. No AWS call; no network but a loopback listen.
+ * - library only in B30; v5 B31 connects the writers (`lemon-lambda-deploy`, `lemon-lambda-deploy-dev`,
+ *   `lemon-lambda-migrate` six phases) through `runGuarded` / `planGuard` (§ G) and adds the `lemon-lambda-guard` CLI.
+ *   No AWS call; no network but a loopback listen.
  * - messages carry a code and a short sentence: no account, no root path, no value.
  * - see `docs/v5/B30-migration-guard.md`.
  */
@@ -944,4 +946,105 @@ export async function guardStatus(input, expected, { env = process.env, deps } =
     if (reason) return blocked(reason);
     const why = await preflight(inst, identity, want, deps);
     return why ? blocked(why) : { applicability: 'applicable', status: 'ready', identity };
+}
+
+//* ---- G. writer wiring (v5 B31) ----
+
+//* v5 B31: the one fixed sentence of a blocked write (no reason detail, no value).
+export const GUARD_BLOCKED_MESSAGE =
+    'The migration guard blocked this write; check lemon-lambda-guard status before any retry.';
+
+/** a blocked guarded write as the error the writer entries report (`GUARD_BLOCKED`, exit 1, `guardReason`). */
+export function guardBlockedError(reason) {
+    const error = new MigrationError('GUARD_BLOCKED', GUARD_BLOCKED_MESSAGE);
+    error.guardReason = reason;
+    error.exitCode = 1;
+    return error;
+}
+
+/** the one-line stderr report of a blocked write: `{ status, code, reason, message }`. */
+export const blockedReport = error => ({
+    status: 'blocked',
+    code: 'GUARD_BLOCKED',
+    reason: error.guardReason,
+    message: GUARD_BLOCKED_MESSAGE,
+});
+
+/** the guard fields a writer adds to its failure report (none for a write that never reached the journal). */
+export const guardErrorFields = error => ({
+    ...(typeof error?.operationId === 'string' ? { operationId: error.operationId } : {}),
+    ...(error?.stateWriteFailed === true ? { stateWriteFailed: true } : {}),
+});
+
+/**
+ * the guard summary of a dry-run plan: `undefined` outside the registry (classification only, no state I/O), else
+ * `{ applicability, status: 'ready' | 'blocked', reason? }` from `guardStatus` (read-only, no lock).
+ */
+export async function planGuard(input, expected, { env = process.env, deps } = {}) {
+    const status = await guardStatus(input, expected, { env, deps });
+    if (status.applicability === 'not-applicable') return undefined;
+    return {
+        applicability: status.applicability,
+        status: status.status,
+        ...(status.reason ? { reason: status.reason } : {}),
+    };
+}
+
+// the journal result of a writer result: its deploy id as a request id when it has the id form, else nothing.
+const writeResultOf = result =>
+    typeof result?.deployId === 'string' && REQUEST_ID_RE.test(result.deployId)
+        ? { requestIds: [result.deployId] }
+        : undefined;
+
+/**
+ * run a writer's existing write function `run()` under the guard (`guardedWrite`, holder = the tool name):
+ * - outside the registry: `run()` as passthrough, `{ result }` (no guard field, no state I/O);
+ * - blocked: throws `guardBlockedError(reason)` before `run()` (no receipt, credential, network or lock file);
+ * - completed: `{ result, guard: { operationId, journal: 'completed' } }`;
+ * - `run()` threw: its own error is re-thrown with `operationId` (the journal records it `unknown`); with
+ *   `stateWriteFailed` it is also made unknown (exit 3);
+ * - `run()` returned but the journal could not be written: `WRITE_UNKNOWN` (exit 3) with `operationId`,
+ *   `stateWriteFailed` and the result's `receipt` / `deployId`.
+ */
+export async function runGuarded({ input, expected, holder, run, env = process.env, deps, signal } = {}) {
+    let outcome;
+    // the write keeps its own result or error for the report; the guard sees only the journal form.
+    const write = async () => {
+        try {
+            outcome = { result: await run() };
+        } catch (error) {
+            outcome = { error };
+            throw error;
+        }
+        return writeResultOf(outcome.result);
+    };
+    let guarded;
+    try {
+        guarded = await guardedWrite({
+            input,
+            expected,
+            env,
+            holder,
+            signal,
+            deps,
+            adapter: { passthrough: run, write },
+        });
+    } catch (e) {
+        if (e?.code !== 'WRITE_UNKNOWN' || typeof e.operationId !== 'string') throw e;
+        // the writer's own error (code, receipt, diagnostic, exit code) plus the operation id.
+        if (outcome?.error) {
+            const error = outcome.error;
+            error.operationId = e.operationId;
+            if (e.stateWriteFailed) Object.assign(error, { stateWriteFailed: true, unknown: true, exitCode: 3 });
+            throw error;
+        }
+        // the write returned (or never ran) and the journal is uncertain.
+        e.exitCode = 3;
+        if (typeof outcome?.result?.receipt === 'string') e.receipt = outcome.result.receipt;
+        if (typeof outcome?.result?.deployId === 'string') e.deployId = outcome.result.deployId;
+        throw e;
+    }
+    if (guarded.applicability === 'not-applicable') return { result: guarded.adapterResult };
+    if (guarded.status === 'blocked') throw guardBlockedError(guarded.reason);
+    return { result: outcome.result, guard: { operationId: guarded.operationId, journal: 'completed' } };
 }

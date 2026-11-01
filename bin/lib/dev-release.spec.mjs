@@ -14,6 +14,8 @@ import { writeZip, sha256 } from './pack-zip.mjs';
 import { main } from '../lemon-lambda-deploy-dev.mjs';
 import { DeployError, validateConfig, loadDeployment } from './deploy-plan.mjs';
 import { verifyMigrationReceipt } from './migrate-core.mjs';
+//* v5 B31: every dev release target is reviewed, so its apply case runs with a guard installation.
+import { guardFixture } from './guard-test-fixture.mjs';
 
 //* v5 B19: node:test had no per-test deadline; the process cases (fork/spawn) need more than 5 s on a busy host.
 vi.setConfig({ testTimeout: 60_000 });
@@ -123,6 +125,8 @@ test('dev wrapper propagates existing deployment failure exit and uncertainty', 
             run: async () => {
                 throw error;
             },
+            // v5 B31: a registered guard installation of the reviewed target.
+            guardEnv: (await guardFixture({ account: a.config.account, region: a.config.region })).env,
         }),
         3,
     );
