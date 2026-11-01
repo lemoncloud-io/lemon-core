@@ -56,6 +56,9 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
                 message: known ? error.message : 'Could not prepare dev deployment; raw errors are not logged.',
                 ...(known && error.receipt ? { receipt: error.receipt } : {}),
                 ...(known && error.deployId ? { deployId: error.deployId } : {}),
+                //* v5 B34 (D-2): the tool's own scrubbed error message / code of a failed step, when there is one.
+                ...(known && error.errorMessage ? { errorMessage: error.errorMessage } : {}),
+                ...(known && error.toolErrorCode ? { toolErrorCode: error.toolErrorCode } : {}),
                 //* v5 B31: the journal operation of a guarded write that did not complete.
                 ...guardErrorFields(error),
             }),

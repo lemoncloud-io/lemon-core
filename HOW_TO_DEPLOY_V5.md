@@ -76,6 +76,28 @@ check made before the guard).
 -   The root must be on a local volume that is not synced (`--confirmed-by` records who checked it); the port is
     reserved for the guard.
 
+## Throttle retry and the tool's error text (in preparation)
+
+Since B34 (`docs/v5/B34-deploy-resilience.md`), `lemon-lambda-deploy` / `lemon-lambda-deploy-dev`:
+
+-   **Retry.** When an `ensure-` / `resolve-` tool of the deploy service answers `status: failed` because of
+    throttling (`Too Many Requests`, `TooManyRequests…`, `Throttling`, `Rate exceeded`, HTTP 429), the same request is
+    sent again after 2 s, 4 s, 8 s, 16 s (five attempts at most), only while the wait and one request fit in the round
+    deadline / lease (checked again after the wait; if it no longer fits, the original `TOOL_FAILED` stands). Only the
+    reviewed tools of the runner are retried (`RETRYABLE_TOOLS`); `begin`, `end`, presign, upload, `subscribe`,
+    `deploy-stage`, status lookups and other failures are not. The step in the receipt keeps one entry with
+    `attempts`, `retried: "throttle"` and `previousErrorCode`; during the wait it shows `nextAttemptAt`.
+-   **Error text.** A failed step keeps the tool's own message as `errorMessage` (accounts, ARNs, local paths and
+    secret-like words hidden, one line, 300 characters) and its code as `toolErrorCode`; the stderr JSON line shows
+    both next to the fixed `message`.
+-   `routeDelayMs` stays 1500 by default. In the 2026-11-01 dev bootstrap, 1500 hit API Gateway 429s on 18- and
+    23-route services and 4000 passed; the retry is expected to absorb the 429s seen on 2026-11-01, but this is not yet
+    verified on a live run, and 4000 remains an option. When another deploy runs in the same account at the same
+    time, no pacing is a guarantee.
+-   Limits: retries multiply control-plane reads and spend lease time, and the writer's 4 retries sit on top of the
+    deploy service's own 1 s retry. A retried attempt that ends unknown (transport 429 / 504, timeout) makes the run
+    unknown: no abort, the lease is held until it expires, and the next run stops with `TAKEOVER_UNKNOWN`.
+
 ## Where it stands
 
 -   The dev stages of lemon-templates-api and lemon-hello-api were moved to the deploy service as early runs of this track. Their prod stages were not moved.

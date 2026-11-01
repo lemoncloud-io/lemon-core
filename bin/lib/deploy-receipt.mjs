@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { DeployError } from './deploy-plan.mjs';
 
-/** No raw request/response, environment, credentials, upload URL, or remote error text belongs here. */
+/**
+ * No raw request/response, environment, credentials, upload URL, or raw remote error text belongs here.
+ * v5 B34 (D-2): a failed step may carry the tool's error as `errorMessage` (scrubbed, 300 characters) / `toolErrorCode`.
+ */
 export async function createReceipt(directory, plan) {
     try {
         await mkdir(directory, { recursive: true, mode: 0o700 });
