@@ -52,4 +52,5 @@ For a stack that the phases already moved, `lemon-lambda-migrate` has three foll
 ## Where it stands
 
 -   The dev stages of lemon-templates-api and lemon-hello-api were moved to the deploy service as early runs of this track. Their prod stages were not moved.
+-   The B30 migration guard (`docs/v5/B30-migration-guard.md`, one guarded write at a time per installation for the reviewed targets) is a library only; it is not connected to the deploy or migrate writers yet.
 -   Open items before the track is ready: sending the environment with a deploy (B26 P1), removing keys (B26 P2), prod stages, and onboarding more services.
