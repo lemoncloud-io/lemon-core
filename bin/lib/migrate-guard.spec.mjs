@@ -692,7 +692,15 @@ const crashWrite = (s, t = A) =>
 // why (M1): a decision ref must survive byte for byte (URL, id@sha) and be bound to a digest; a secret-like ref is refused.
 test('R2-M1 decision { ref, digest }: stored byte for byte, digest required, canary refs refused and not stored', async () => {
     const s = await setup();
-    for (const ref of ['https://github.com/o/r/pull/1#issuecomment-99', 'D94@8f6396aa']) {
+    // r3: a pinned 40-hex commit sha with 12 digits in a row is a normal ref (review should-fix: no chance refusal).
+    const SHA_WITH_DIGITS = 'ab' + '123456789012' + 'cdef0123456789abcdef012345';
+    assert.equal(SHA_WITH_DIGITS.length, 40);
+    for (const ref of [
+        'https://github.com/o/r/pull/1#issuecomment-99',
+        'D94@8f6396aa',
+        `D94@${SHA_WITH_DIGITS}`,
+        `https://github.com/o/r/blob/${SHA_WITH_DIGITS}/docs/x.md`,
+    ]) {
         const err = await crashWrite(s);
         assert.equal(err.code, 'WRITE_UNKNOWN');
         // a missing or malformed digest is refused.
@@ -733,6 +741,14 @@ test('R2-M1 decision { ref, digest }: stored byte for byte, digest required, can
     const text = Object.values(await tree(s.root)).join('\n');
     for (const canary of ['987654321098', 'arn:aws', 'ARN%3AAWS', 'SECRET_CANARY_x', 'token=1'])
         assert.equal(text.includes(canary), false, canary);
+});
+
+// r3 (review note a): the dashed-account mask keeps hex boundaries, so a uuid inside a scrubbed message survives.
+test('R3 scrub: a uuid is kept whole, a bare dashed account id is still masked', () => {
+    // the tail has no 12 digits in a row (that would be masked by `redact()` itself, a rule this module keeps).
+    const uuid = '0f0e0d0c-0b0a-4908-8706-05040302a100';
+    assert.ok(scrub(`op ${uuid} failed`).includes(uuid));
+    assert.equal(scrub('acct 1234-5678-9012 here').includes('1234-5678-9012'), false);
 });
 
 // a fs whose `rename` fails once armed (the adapter arms it), else the real fs.

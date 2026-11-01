@@ -93,7 +93,7 @@ English message and no value (no account, no root path, no secret). Every functi
    `completed` (same file, replaced atomically). A throw or an invalid result makes it `unknown` (error code and a
    scrubbed message of at most 200 characters), and `WRITE_UNKNOWN` is thrown (`unknown: true`, `operationId`) —
    without the adapter's own message, which may hold a secret. When the journal itself cannot be written after the
-   adapter call (`completed` or `unknown`), `WRITE_UNKNOWN` also carries `stateWriteFailed: true` and the file stays
+   adapter call (`completed` or `unknown`), `WRITE_UNKNOWN` also carries `stateWriteFailed: true` and the file may stay
    `inflight` (still blocking).
 7. Returns `{ applicability: 'applicable', status: 'completed', operationId, identity }`. The lock is released in
    every case.
@@ -249,7 +249,7 @@ held elsewhere (no lock taken; the write is `busy`); V13-12 canary strings (`AKI
 `SECRET_CANARY_…`, a URL-encoded ARN, a dashed account id) in the holder, decision refs, adapter error, install note
 and refused inputs never reach a state file, a thrown message or a returned object. Review round 2: R2-M1 decision
 refs stored byte for byte, digest required, secret-like refs refused and not stored; R2-S1 a journal write failing
-after the adapter (success and throw) → `WRITE_UNKNOWN` + `stateWriteFailed`, file stays `inflight`; R2-S2 injected
+after the adapter (success and throw) → `WRITE_UNKNOWN` + `stateWriteFailed`, file stays `inflight` when the rename itself failed (after a successful rename only the directory fsync is unproven); R2-S2 injected
 `open` / directory `open` / `chmod` / `mkdir` failures are `MigrationError`s without a path; R2-S3 run-state enums and
 `run-unresolved`; R2-S4 relative env path, default home path, missing default; R2-S6 two concurrent
 `resolveOperation` (one `LOCK_BUSY`) and `resolveOperation` / `registerTarget` during a write (`LOCK_BUSY`).

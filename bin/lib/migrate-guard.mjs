@@ -150,7 +150,8 @@ export const scrub = (text, max = TEXT_MAX) => {
     // v5 B30 r2: URL-encoded ARNs and dashed account ids first, then `redact()`.
     const pre = stripControl(`${text}`)
         .replace(/arn%3Aaws[^\s]*/gi, '<arn>')
-        .replace(/\d{4}-\d{4}-\d{4}/g, '<acct>');
+        // r3: hex boundaries so a uuid or a 40-hex sha is not cut (review note a).
+        .replace(/(?<![0-9A-Fa-f-])\d{4}-\d{4}-\d{4}(?![0-9A-Fa-f-])/g, '<acct>');
     const s = redact(pre).replace(/[A-Za-z0-9_.-]+/g, w => (isSensitiveKey(w) ? '<redacted>' : w));
     return [...s].slice(0, max).join('');
 };
@@ -612,8 +613,9 @@ const decisionRefOk = ref =>
     ref.length >= 1 &&
     ref.length <= TEXT_MAX &&
     DECISION_REF_RE.test(ref) &&
-    !/\d{12}/.test(ref) &&
-    !/\d{4}-\d{4}-\d{4}/.test(ref) &&
+    // r3: 12 digits only outside a hex run, so a pinned 40-hex commit sha in the ref is not refused by chance.
+    !/(?<![0-9A-Fa-f])\d{12}(?![0-9A-Fa-f])/.test(ref) &&
+    !/(?<![0-9A-Fa-f-])\d{4}-\d{4}-\d{4}(?![0-9A-Fa-f-])/.test(ref) &&
     !/(?:AKIA|ASIA)[0-9A-Z]{16}/.test(ref) &&
     !/arn(?::|%3a)aws/i.test(ref) &&
     !SENSITIVE_KEY_PARTS.some(p => ref.toLowerCase().includes(p));
@@ -838,7 +840,7 @@ async function preflight(inst, identity, want, deps) {
  * 6. journal `inflight` (fsync) → `adapter.write({ identity, operationId, signal })` → `completed`; a throw (or an
  *    invalid result) is recorded `unknown` (scrubbed message, 200 characters) and `WRITE_UNKNOWN` is thrown; when the
  *    journal itself cannot be written after the call, `WRITE_UNKNOWN` carries `stateWriteFailed: true` and the file
- *    stays `inflight`.
+ *    may stay `inflight` (the rename may have landed while the directory fsync failed).
  * The install file is found by `installPath` (env or default path). The lock is released in all cases.
  */
 export async function guardedWrite({ input, expected, env = process.env, adapter, holder, signal, deps } = {}) {
@@ -888,7 +890,7 @@ export async function guardedWrite({ input, expected, env = process.env, adapter
             const err = new MigrationError(
                 'WRITE_UNKNOWN',
                 stateWriteFailed
-                    ? 'The write ended and its journal record could not be written; the operation stays inflight.'
+                    ? 'The write ended and its journal record may not be durable; the operation may stay inflight.'
                     : 'The write did not complete; the journal records it as unknown until it is resolved.',
                 { unknown: true },
             );
