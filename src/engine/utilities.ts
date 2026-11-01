@@ -13,10 +13,24 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import crypto from 'crypto';
-import QUERY_STRING from 'query-string';
 import $jwt, { DecodeOptions } from 'jsonwebtoken';
-import * as uuid from 'uuid';
+import { qsParse, qsStringify } from '../lib/qs-compat'; //* v5 B11: `query-string` -> `qs` (same output).
 const NS = 'util';
+
+//* default time-zone for this api (Asia/Seoul +9 hours). v5: the default of `$U.ts()`/`$U.dt()` (B5 § 6.8).
+export const DEFAULT_TIME_ZONE = 9;
+
+//* v5: default time-zone of `$U.ts()`/`$U.dt()` — env `DEFAULT_TIME_ZONE` (hours) at call time, else 9 (B5 § 6.8).
+export const defaultTimeZone = (): number => {
+    const val = `${process?.env?.DEFAULT_TIME_ZONE ?? ''}`.trim();
+    //* a blank value is unset (`Number('')` would be 0).
+    const num = val ? Number(val) : NaN;
+    return Number.isFinite(num) ? num : DEFAULT_TIME_ZONE;
+};
+
+//* v5: clock of a date-only string — env `DATE_ONLY_CLOCK` `midnight` → 00:00:00, else noon (B5 § 6.8).
+export const dateOnlyClock = (): ' 12:00:00' | ' 00:00:00' =>
+    process?.env?.DATE_ONLY_CLOCK === 'midnight' ? ' 00:00:00' : ' 12:00:00';
 
 const COLORS = {
     red: '\x1b[31m',
@@ -87,6 +101,24 @@ export class Utilities {
 
     public env(name: string, def_val?: string): any {
         return this.get_env(name, def_val);
+    }
+
+    /**
+     * v5: local mode — `LOCAL_MODE=1` and not running in Lambda (B5 § 6.3).
+     * - read from `process.env` on every call (no cache), never from the event or context.
+     */
+    public isLocalMode(): boolean {
+        return process?.env?.LOCAL_MODE === '1' && !process?.env?.AWS_LAMBDA_FUNCTION_NAME;
+    }
+
+    /**
+     * v5: who may update/delete a `sid`-less record — env `SID_LEGACY_ACCESS` (B5 § 6.4).
+     * - `admin` (default, unknown value too): admin only. `open`: the v4 rule. `deny`: nobody, not even admin.
+     * - read from `process.env` on every call (no cache). read/list stay open in every mode.
+     */
+    public sidLegacyAccess(): 'admin' | 'open' | 'deny' {
+        const val = process?.env?.SID_LEGACY_ACCESS;
+        return val === 'open' || val === 'deny' ? val : 'admin';
     }
 
     public is_dev(): boolean {
@@ -172,22 +204,24 @@ export class Utilities {
     }
 
     /**
-     * timestamp string like `2020-02-22`
+     * timestamp string like `2020-02-22 12:34:56`
+     * - v5: wall clock of `timeZone` (default `defaultTimeZone()`: env `DEFAULT_TIME_ZONE`, else 9), host TZ and DST free (B5 § 6.8).
+     * - v5: never mutates the input `Date`.
      */
     public static timestamp(date?: undefined | number | Date, timeZone?: number): string {
-        const dt = date && typeof date === 'object' ? date : date ? new Date(date) : new Date();
-        const now = new Date();
-        const tzo = now.getTimezoneOffset(); // Asia/Seoul => -540
-        const diff = (timeZone ?? 0) * 60 + tzo;
-        if (diff) dt.setSeconds(dt.getSeconds() + 1 * diff * 60);
+        const tz = timeZone ?? defaultTimeZone();
+        //* the instant in ms (a `Date` is read, never changed).
+        const ms = date && typeof date === 'object' ? date.getTime() : date ? new Date(date).getTime() : Date.now();
+        //* shift by the zone offset, then read the UTC fields (= wall clock of `tz`).
+        const dt = new Date(ms + tz * 60 * 60 * 1000);
 
-        const y = dt.getFullYear();
-        const m = dt.getMonth() + 1; //Months are zero based
-        const d = dt.getDate();
+        const y = dt.getUTCFullYear();
+        const m = dt.getUTCMonth() + 1; //Months are zero based
+        const d = dt.getUTCDate();
 
-        const h = dt.getHours();
-        const i = dt.getMinutes();
-        const s = dt.getSeconds();
+        const h = dt.getUTCHours();
+        const i = dt.getUTCMinutes();
+        const s = dt.getUTCSeconds();
 
         const d2 = (x: number) => `${x < 10 ? '0' : ''}${x}`;
 
@@ -197,23 +231,26 @@ export class Utilities {
 
     /**
      * parse timestamp to date.
+     * - v5: a string is read as the wall clock of `timeZone` (default `defaultTimeZone()`: env `DEFAULT_TIME_ZONE`, else 9) via `Date.UTC` (B5 § 6.8).
+     * - v5: a date-only string is read at `dateOnlyClock()` (env `DATE_ONLY_CLOCK`, default noon).
+     * - v5: number/`Date`/`undefined` ignore `timeZone`; a `Date` input returns a copy.
      */
     public static datetime(dt?: string | number | Date, timeZone?: number) {
         let ret = null;
         if (typeof dt == 'string') {
-            const now = new Date();
-            const tzo = now.getTimezoneOffset();
-            const diff = (timeZone ?? 0) * 60 + tzo;
+            const tz = timeZone ?? defaultTimeZone();
+            //* v5: the clock of a date-only string, read once per call.
+            const clock = dateOnlyClock();
             let tstr = '';
             if (/^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 1978-12-01
-                tstr = dt + ' 12:00:00';
+                tstr = dt + clock;
             } else if (/^[4-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 79-12-01
-                tstr = '19' + dt + ' 12:00:00';
+                tstr = '19' + dt + clock;
             } else if (/^[0-3][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 19-12-01
-                tstr = '20' + dt + ' 12:00:00';
+                tstr = '20' + dt + clock;
             } else if (/^[12]\d{3}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]) ([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(dt)) {
                 // like 1978-12-01 12:34
                 tstr = dt + ':00';
@@ -224,7 +261,7 @@ export class Utilities {
                 tstr = dt + '';
             } else if (/^[12]\d{3}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(dt)) {
                 // like 19781201
-                tstr = dt.substr(0, 4) + '-' + dt.substr(4, 2) + '-' + dt.substr(6, 2) + ' 12:00:00';
+                tstr = dt.substr(0, 4) + '-' + dt.substr(4, 2) + '-' + dt.substr(6, 2) + clock;
             } else if (/^[12]\d{3}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01]) ([01]?[0-9]|2[0-3])[0-5][0-9]$/.test(dt)) {
                 // like 19781201 1234
                 tstr =
@@ -250,14 +287,14 @@ export class Utilities {
                 const h = parseInt(hh[0]);
                 const i = parseInt(hh[1]);
                 const s = parseInt(hh[2]);
-                return new Date(y, m, d, h, i, s, 0);
+                //* v5: wall clock of `tz` → instant, host TZ and DST free (= `Date.UTC(y, m, d, h - tz, i, s)`).
+                return new Date(Date.UTC(y, m, d, h, i, s, 0) - tz * 60 * 60 * 1000);
             })(tstr);
-            if (ret && diff) ret.setSeconds(ret.getSeconds() + -1 * diff * 60);
             return ret;
         } else if (typeof dt == 'number') {
             ret = new Date(dt);
         } else if (typeof dt == 'object' && (dt as any) instanceof Date) {
-            ret = dt;
+            ret = new Date((dt as Date).getTime()); //* v5: a copy, not the same reference (B5 § 6.8).
         } else if (dt === undefined) {
             ret = new Date();
         } else {
@@ -703,7 +740,7 @@ export class Utilities {
      * @param query
      */
     public qs_parse(query: string) {
-        const param: any = QUERY_STRING.parse(query);
+        const param: any = qsParse(query);
         Object.keys(param).forEach(key => {
             if (false) {
             }
@@ -724,7 +761,7 @@ export class Utilities {
      * @param query
      */
     public qs_stringify(query: { [key: string]: any }) {
-        const param = QUERY_STRING.stringify(query);
+        const param = qsStringify(query);
         return param;
     }
 
@@ -740,75 +777,6 @@ export class Utilities {
          * stringify qs object
          */
         stringify: (q: { [key: string]: any }) => this.qs_stringify(q),
-    };
-
-    /**
-     * get crypto object.
-     *
-     * @deprecated since nodejs22, use `crypto2` instead.
-     */
-    public readonly crypto = (passwd: string, algorithm?: string) => {
-        algorithm = algorithm || 'aes-256-ctr';
-        const MAGIC = 'LM!#';
-
-        /**
-         * Simulate OpenSSL's EVP_BytesToKey method
-         */
-        const evpBytesToKey = (password: Buffer, keyLen: number, ivLen: number): { key: Buffer; iv: Buffer } => {
-            let data = Buffer.alloc(0);
-            let prev = Buffer.alloc(0);
-
-            while (data.length < keyLen + ivLen) {
-                const hash = crypto.createHash('md5');
-                hash.update(Buffer.concat([prev, password]));
-                prev = hash.digest();
-                data = Buffer.concat([data, prev]);
-            }
-
-            return {
-                key: data.slice(0, keyLen),
-                iv: data.slice(keyLen, keyLen + ivLen),
-            };
-        };
-
-        const getKeyIV = () => {
-            const passwordBuf = Buffer.from(passwd, 'binary');
-            const keyLen = 32; // for aes-256
-            const ivLen = 16; // AES block size
-            return evpBytesToKey(passwordBuf, keyLen, ivLen);
-        };
-
-        return new (class {
-            /** @deprecated since nodejs22 */
-            public encrypt = (val?: string | null): string => {
-                val = val === undefined ? null : val;
-                // msg = msg && typeof msg == 'object' ? JSON_TAG+JSON.stringify(msg) : msg;
-                //* 어느 데이터 타입이든 저장하기 위해서, object로 만든다음, 암호화 시킨다.
-                const msg = JSON.stringify({ alg: algorithm, val: val });
-                const buffer = Buffer.from(`${MAGIC}${msg || ''}`, 'utf8');
-
-                const { key, iv } = getKeyIV();
-                const cipher = crypto.createCipheriv(algorithm!, key, iv);
-                const crypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
-                return crypted.toString(1 ? 'base64' : 'utf8');
-            };
-            /** @deprecated since nodejs22 */
-            public decrypt = (msg: string): string => {
-                const buffer = Buffer.from(`${msg || ''}`, 'base64');
-
-                const { key, iv } = getKeyIV();
-                const decipher = crypto.createDecipheriv(algorithm!, key, iv);
-                const decrypted = Buffer.concat([decipher.update(buffer), decipher.final()]);
-                const dec = decrypted.toString('utf8');
-
-                if (!dec.startsWith(MAGIC)) throw new Error('400 INVALID PASSWD - invalid magic string!');
-                const data = dec.slice(MAGIC.length);
-                if (data && !data.startsWith('{') && !data.endsWith('}'))
-                    throw new Error('400 INVALID PASSWD - invalid json string!');
-                const $msg = JSON.parse(data) || {};
-                return $msg.val;
-            };
-        })();
     };
 
     /**
@@ -1005,9 +973,10 @@ export class Utilities {
     };
 
     /**
-     * get UUID as `uuid.v4()`
+     * get UUID v4 (lower-case, 36 chars).
      */
     public uuid() {
-        return uuid.v4();
+        //* v5 B11: `uuid.v4()` -> Node built-in `crypto.randomUUID()` (same v4 form).
+        return crypto.randomUUID();
     }
 }

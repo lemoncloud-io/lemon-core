@@ -1,0 +1,55 @@
+# B2-a: Redis storage removed, cache backend types exported (K4)
+-RedisOptions
+-RedisStorageService
+-DummyRedisStorageService
++CacheBackend
++ItemEntry
+# B2-b: OpenSearch client, ES names removed or renamed (K5) — SPEC § 3.4.2
+-$ES6
+-_ES6
+-elasticsearch
+-DummyElastic6Service
+-Elastic6Instance
+-ElasticIndexService
+-Elastic6Service
+-Elastic6QueryService
+-Elastic6Synchronizer
+-AbstractElastic6Instance
+-Elastic6ContructParams
+-Elastic6SearchParams
+-Elastic6Option
+-ElasticOption
+-Elastic6Item
+-ElasticItem
+# B2-b: version detection removed (SPEC § 3.4.1) — its two public types go with it
+-EngineType
+-ParsedVersion
++OS2ClientService
++OS2CoreService
++OS2QueryService
++OS2Synchronizer
++AbstractOS2Instance
++OS2ConstructParams
++OS2SearchParams
++OS2BaseOption
++OS2Item
+# B4: `CoreModel` is a class since lemon-model 5.0.0 — kind change type → value+type, name kept (api-check prints a kind change as one `-` and one `+`)
+-CoreModel
++CoreModel
+# B5: one status-carrying error class (S-33, SPEC § 6.6) — `message` keeps the `<status> <CODE> - <detail>` wire contract
++LemonError
+# B4: one verifier of the `fields/admin` report (`fields-admin.ts`) — server self-check, tests and harnesses share it
++checkFieldsAdmin
++FieldsAdminReport
++FieldsAdminRuntime
++FieldsAdminExpect
+# 2026-10-30: opt-in local transport (`LOCAL_TRANSPORT=mock`, mock delivery in local mode; HOW_TO_UPGRADE_V5 § 11.3.1)
++$localTransport
++LocalDelivery
+# B13: default data-access policy of the CRUD controller (`canDo` scopes; docs/v5/B13-access-policy.md)
++AccessScope
++AccessPolicy
++DEFAULT_ACCESS_POLICY
+# B15: policy keys of the caller state (`internal`, `cross`; docs/v5/B15-security.md)
++AccessInternal
++AccessCross

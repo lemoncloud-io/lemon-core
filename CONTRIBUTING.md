@@ -40,6 +40,20 @@ common to the LemonCloud module repos (`lemon-core`, `lemon-model`,
   confirm one). If your repo has a house style, follow it; otherwise pick a
   short descriptive branch name and call it out in the PR description.
 
+### 5.x work (`v5` branch) — lemon-core
+
+Since 2026-10 all 5.x work lands on the **`v5`** branch. `v5` is an
+integration branch kept open: it is not merged into `develop` yet, and
+`develop` stays the default branch for 4.x.
+
+- Branch from `v5`, open PRs with base `v5`.
+- Bundle branch names: `feat/v5-<bundle>-<topic>`, `docs/v5-<bundle>-<topic>`,
+  `fix/v5-<bundle>-<topic>` (for example `feat/v5-b16-model-subpath`).
+- Squash or merge commit is the owner's call.
+- The publish commits (`vX.Y.Z published`) are made by the owner on `v5`.
+- Each bundle is recorded in `docs/v5/` (one file per bundle) and, when it
+  changes what users do, in `HOW_TO_UPGRADE_V5.md`.
+
 ## Commit messages
 
 Observed convention (measured from `git log --oneline -20` on each repo,
@@ -88,7 +102,7 @@ npm run lint
 3. Make sure `npm test` and `npm run lint` pass locally.
 4. Update the README / CHANGELOG (or the `## VERSION INFO` table, per repo
    convention) if your change is user-visible.
-5. A maintainer will review and merge into `develop`.
+5. A maintainer will review and merge into `develop` (4.x) or `v5` (5.x).
 
 ## License
 

@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2026-10-27 v5 B2-b: `createSyncToOS2()` with an in-memory fake (no search spec import).
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -16,7 +17,42 @@ import { LambdaHandler } from './lambda-handler';
 import { LambdaDynamoStreamHandler, DynamoStreamFilter, DynamoStreamCallback } from './lambda-dynamo-stream-handler';
 import { DynamoOption } from './../dynamo/';
 import * as $lambda from './lambda-handler.spec';
-import * as $elastic6 from './../elastic/elastic6-service.spec';
+import { OS2CoreService } from '../elastic/';
+
+/**
+ * in-memory fake of `OS2CoreService` (read/save/update/delete only; no client is ever built).
+ * - `updateItem` throws `404 NOT FOUND` for a missing id, so the synchronizer falls back to `saveItem`.
+ */
+class MemoryOS2Service extends OS2CoreService<any> {
+    private buffer: { [id: string]: any } = {};
+    // a local endpoint is required by the constructor but never contacted.
+    public constructor() {
+        super({ endpoint: 'http://127.0.0.1:9', indexName: 'test-memory', idName: '@id' });
+    }
+    // read from the buffer (404 if missing).
+    public async readItem(id: string): Promise<any> {
+        const item = this.buffer[id];
+        if (item === undefined) throw new Error(`404 NOT FOUND - id:${id}`);
+        return item;
+    }
+    // save into the buffer.
+    public async saveItem(id: string, item: any): Promise<any> {
+        this.buffer[id] = { id, ...item };
+        return { [this.options.idName]: id, ...item, _version: 1 };
+    }
+    // update in the buffer (404 if missing).
+    public async updateItem(id: string, item: any): Promise<any> {
+        const org = await this.readItem(id);
+        this.buffer[id] = { ...org, ...item };
+        return { id, ...item };
+    }
+    // delete from the buffer.
+    public async deleteItem(id: string): Promise<any> {
+        const org = this.buffer[id];
+        delete this.buffer[id];
+        return { ...org };
+    }
+}
 
 class LambdaDynamoStreamHandlerLocal extends LambdaDynamoStreamHandler {
     public constructor(lambda: LambdaHandler) {
@@ -40,7 +76,7 @@ describe('LambdaDynamoStreamHandler', () => {
             data = { id, param, body, context };
         });
         const res = await service.handle(event, null);
-        expect2(res).toEqual(undefined);
+        expect2(res).toEqual({ batchItemFailures: [] }); //* v5 B5: partial batch response (was `undefined`).
 
         //* check handled data.
         expect2(data, 'id').toEqual({ id: '!' });
@@ -60,10 +96,28 @@ describe('LambdaDynamoStreamHandler', () => {
         });
     });
 
-    //* test sync to es6
-    it('should pass createSyncToElastic6()', async () => {
+    //* v5 B5: 1 of 2 records fails → 1 `batchItemFailures` by `dynamodb.SequenceNumber`, and resolves.
+    it('should pass batchItemFailures of a failed record (v5)', async () => {
         const { service } = instance();
-        const { dummy: elastic6 } = $elastic6.instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.dynamo-stream.json');
+        const rec2 = JSON.parse(JSON.stringify(event.Records[0]));
+        rec2.dynamodb.SequenceNumber = 'seq-2';
+        event.Records.push(rec2);
+        let calls = 0;
+        //* fail only the 2nd record.
+        service.addListener(async () => {
+            calls++;
+            if (calls === 2) throw new Error('boom-dds');
+        });
+        const res = await service.handle(event, null);
+        expect2(res).toEqual({ batchItemFailures: [{ itemIdentifier: 'seq-2' }] });
+        expect2(calls).toEqual(2);
+    });
+
+    //* test sync to OpenSearch (in-memory fake)
+    it('should pass createSyncToOS2()', async () => {
+        const { service } = instance();
+        const os2 = new MemoryOS2Service();
 
         const tableName = 'MetricsTest';
         const idName = '@id';
@@ -100,24 +154,18 @@ describe('LambdaDynamoStreamHandler', () => {
             // check extra field set
             expect2(item['X']).toBe('x');
         };
-        const handler = LambdaDynamoStreamHandler.createSyncToElastic6(
-            options,
-            elastic6,
-            filter,
-            onBeforeSync,
-            onAfterSync,
-        );
+        const handler = LambdaDynamoStreamHandler.createSyncToOS2(options, os2, filter, onBeforeSync, onAfterSync);
         service.addListener(handler);
 
         //* pre-condition.
-        expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`);
+        expect2(await os2.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`);
 
         //* trigger event, handler
         const res = await service.handle(event, null);
-        expect2(res).toEqual(undefined);
+        expect2(res).toEqual({ batchItemFailures: [] }); //* v5 B5: partial batch response (was `undefined`).
 
         //* check post-condition.
-        expect2(await elastic6.readItem(id).catch(GETERR)).toEqual({
+        expect2(await os2.readItem(id).catch(GETERR)).toEqual({
             [idName]: `${id}`,
             '@ts': 1574150700000,
             count: 6,
@@ -133,8 +181,8 @@ describe('LambdaDynamoStreamHandler', () => {
         event.Records[0].eventName = 'REMOVE';
         handlersCalled = { filter: false, onBeforeSync: false, onAfterSync: false };
         const res2 = await service.handle(event, null);
-        expect2(res2).toEqual(undefined);
-        expect2(await elastic6.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`); // must be deleted.
+        expect2(res2).toEqual({ batchItemFailures: [] }); //* v5 B5: partial batch response (was `undefined`).
+        expect2(await os2.readItem(id).catch(GETERR)).toEqual(`404 NOT FOUND - id:${id}`); // must be deleted.
         expect2(handlersCalled).toEqual({ filter: true, onBeforeSync: true, onAfterSync: true });
     });
 });

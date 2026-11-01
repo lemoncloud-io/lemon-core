@@ -10,7 +10,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import _ from 'lodash';
+import { isObject, isPlainObject, mapValues } from './lang';
 import * as utils from './utils';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 // const DocClient = require('aws-sdk/lib/dynamodb/document_client');
@@ -29,7 +29,7 @@ const internals = {
         // } else {
         //     return internals.docClient.createSet([value]);
         // }
-        if (_.isArray(value)) {
+        if (Array.isArray(value)) {
             return JSON.parse(JSON.stringify(value));
         } else {
             return JSON.parse(JSON.stringify([value]));
@@ -37,7 +37,7 @@ const internals = {
     },
     serialize: {
         binary: function (value: any) {
-            if (_.isString(value)) {
+            if (typeof value === 'string') {
                 return utils.strToBin(value);
             }
 
@@ -45,7 +45,7 @@ const internals = {
         },
 
         date: function (value: any) {
-            if (_.isDate(value)) {
+            if (value instanceof Date) {
                 return value.toISOString();
             } else {
                 return new Date(value).toISOString();
@@ -70,17 +70,21 @@ const internals = {
 
         binarySet: function (value: any) {
             let bins = value;
-            if (!_.isArray(value)) {
+            if (!Array.isArray(value)) {
                 bins = [value];
             }
 
-            const vals = _.map(bins, serialize.binary);
+            const vals = bins.map((bin: any) => serialize.binary(bin));
             return internals.createSet(vals, 'B');
         },
     },
 
     deserializeAttribute: (value: any) => {
-        if (_.isObject(value) && _.isFunction((value as any).detectType) && _.isArray((value as any).values)) {
+        if (
+            isObject(value) &&
+            typeof (value as any).detectType === 'function' &&
+            Array.isArray((value as any).values)
+        ) {
             // value is a Set object from document client
             return (value as any).values;
         } else {
@@ -94,7 +98,7 @@ const internals = {
             return value;
         }
 
-        if (_.isNull(value)) {
+        if (value === null) {
             return null;
         }
 
@@ -121,34 +125,37 @@ const internals = {
 
 const serialize = internals.serialize;
 serializer.serializeAttribute = internals.serializeAttribute;
+//* build the key item from a key object (with index keys) or from hash and range values.
 serializer.buildKey = (hashKey: any, rangeKey: any, schema: any) => {
     const obj: any = {};
 
-    if (_.isPlainObject(hashKey)) {
+    if (isPlainObject(hashKey)) {
         obj[schema.hashKey] = hashKey[schema.hashKey];
 
-        if (schema.rangeKey && !_.isNull(hashKey[schema.rangeKey]) && !_.isUndefined(hashKey[schema.rangeKey])) {
+        if (schema.rangeKey && hashKey[schema.rangeKey] !== null && hashKey[schema.rangeKey] !== undefined) {
             obj[schema.rangeKey] = hashKey[schema.rangeKey];
         }
-        _.each(schema.globalIndexes, function (keys) {
-            if (_.has(hashKey, keys.hashKey)) {
+        //* copy the global index keys present in the key object.
+        Object.values(schema.globalIndexes ?? {}).forEach(function (keys: any) {
+            if (Object.hasOwn(hashKey, keys.hashKey)) {
                 obj[keys.hashKey] = hashKey[keys.hashKey];
             }
 
-            if (_.has(hashKey, keys.rangeKey)) {
+            if (Object.hasOwn(hashKey, keys.rangeKey)) {
                 obj[keys.rangeKey] = hashKey[keys.rangeKey];
             }
         });
 
-        _.each(schema.secondaryIndexes, function (keys) {
-            if (_.has(hashKey, keys.rangeKey)) {
+        //* copy the local index range keys present in the key object.
+        Object.values(schema.secondaryIndexes ?? {}).forEach(function (keys: any) {
+            if (Object.hasOwn(hashKey, keys.rangeKey)) {
                 obj[keys.rangeKey] = hashKey[keys.rangeKey];
             }
         });
     } else {
         obj[schema.hashKey] = hashKey;
 
-        if (schema.rangeKey && !_.isNull(rangeKey) && !_.isUndefined(rangeKey)) {
+        if (schema.rangeKey && rangeKey !== null && rangeKey !== undefined) {
             obj[schema.rangeKey] = rangeKey;
         }
     }
@@ -166,41 +173,38 @@ serializer.serializeItem = (schema: any, item: any, options: any) => {
             return null;
         }
 
-        return _.reduce(
-            item,
-            function (result: any, val: any, key: any) {
-                if (options.expected && _.isObject(val) && _.isBoolean((val as any).Exists)) {
-                    result[key] = val;
-                    return result;
-                }
+        //* serialize each attribute by its datatype (nested objects and typed lists recurse).
+        return Object.entries(item).reduce(function (result: any, [key, val]: [string, any]) {
+            if (options.expected && isObject(val) && typeof (val as any).Exists === 'boolean') {
+                result[key] = val;
+                return result;
+            }
 
-                if (_.isPlainObject(val)) {
-                    result[key] = serialize(val, datatypes[key]);
-                    return result;
-                }
+            if (isPlainObject(val)) {
+                result[key] = serialize(val, datatypes[key]);
+                return result;
+            }
 
-                if (_.isArray(val) && _.isArray(datatypes[key])) {
-                    result[key] = _.map(val, function (item) {
-                        return serialize(item, datatypes[key][0]);
-                    });
-
-                    return result;
-                }
-
-                const attr = internals.serializeAttribute(val, datatypes[key], options);
-
-                if (!_.isNull(attr) || options.returnNulls) {
-                    if (options.expected) {
-                        result[key] = { Value: attr };
-                    } else {
-                        result[key] = attr;
-                    }
-                }
+            if (Array.isArray(val) && Array.isArray(datatypes[key])) {
+                result[key] = val.map(function (item: any) {
+                    return serialize(item, datatypes[key][0]);
+                });
 
                 return result;
-            },
-            {},
-        );
+            }
+
+            const attr = internals.serializeAttribute(val, datatypes[key], options);
+
+            if (attr !== null || options.returnNulls) {
+                if (options.expected) {
+                    result[key] = { Value: attr };
+                } else {
+                    result[key] = attr;
+                }
+            }
+
+            return result;
+        }, {});
     };
 
     return serialize(item, schema._modelDatatypes);
@@ -210,50 +214,43 @@ serializer.serializeItemForUpdate = function (schema: any, action: any, item: an
     const datatypes = schema._modelDatatypes;
 
     const data = utils.omitPrimaryKeys(schema, item);
-    return _.reduce(
-        data,
-        function (result: any, value: any, key: any) {
-            if (_.isNull(value)) {
-                result[key] = { Action: 'DELETE' };
-            } else if (_.isPlainObject(value) && value.$add) {
-                result[key] = { Action: 'ADD', Value: internals.serializeAttribute(value.$add, datatypes[key]) };
-            } else if (_.isPlainObject(value) && value.$del) {
-                result[key] = { Action: 'DELETE', Value: internals.serializeAttribute(value.$del, datatypes[key]) };
-            } else {
-                result[key] = { Action: action, Value: internals.serializeAttribute(value, datatypes[key]) };
-            }
+    //* one update action per attribute (null → DELETE, `$add` → ADD, `$del` → DELETE, else the given action).
+    return Object.entries(data ?? {}).reduce(function (result: any, [key, value]: [string, any]) {
+        if (value === null) {
+            result[key] = { Action: 'DELETE' };
+        } else if (isPlainObject(value) && value.$add) {
+            result[key] = { Action: 'ADD', Value: internals.serializeAttribute(value.$add, datatypes[key]) };
+        } else if (isPlainObject(value) && value.$del) {
+            result[key] = { Action: 'DELETE', Value: internals.serializeAttribute(value.$del, datatypes[key]) };
+        } else {
+            result[key] = { Action: action, Value: internals.serializeAttribute(value, datatypes[key]) };
+        }
 
-            return result;
-        },
-        {},
-    );
+        return result;
+    }, {});
 };
 
 serializer.deserializeItem = function (item: any) {
-    if (_.isNull(item)) {
+    if (item === null) {
         return null;
     }
 
+    //* walk objects and arrays, turning document-client sets back into arrays.
     const formatter = (data: any): any => {
-        let map: any = _.mapValues;
-
-        if (_.isArray(data)) {
-            map = _.map;
-        }
-
-        return map(data, function (value: any) {
+        const each = function (value: any) {
             let result;
 
-            if (_.isPlainObject(value)) {
+            if (isPlainObject(value)) {
                 result = formatter(value);
-            } else if (_.isArray(value)) {
+            } else if (Array.isArray(value)) {
                 result = formatter(value);
             } else {
                 result = internals.deserializeAttribute(value);
             }
 
             return result;
-        });
+        };
+        return Array.isArray(data) ? data.map(value => each(value)) : mapValues(data, value => each(value));
     };
 
     return formatter(item);

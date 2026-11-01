@@ -10,7 +10,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
 import { LambdaWEBHandler, LambdaHandler } from '../cores/lambda';
-import { ProtocolParam, Elastic6QueryService } from '../cores';
+import { ProtocolParam, OS2QueryService } from '../cores';
 import { buildEngine } from '../engine';
 import { buildExpress } from '../tools';
 import { expect2, GETERR } from '../common/test-helper';
@@ -37,7 +37,7 @@ class MyGeneralAPIController extends GeneralAPIController<TypedStorageService<$p
     public constructor(
         type: string,
         storage: TypedStorageService<$proxy.MyModel, $proxy.MyType>,
-        search: Elastic6QueryService<any>,
+        search: OS2QueryService<any>,
         uniqueField?: string,
     ) {
         super(type, storage, search, uniqueField);

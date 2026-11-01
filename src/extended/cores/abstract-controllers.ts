@@ -27,6 +27,11 @@
  * @date        2025-09-03 optimized `makeModelBase()` to have `type` default.
  * @date        2026-02-03 optimized `modelAsView()` to show cores in local.
  * @date        2026-04-09 optimized `types` to fix `ModelType` cast error.
+ * @date        2026-10-28 v5 B4: `GET /<type>/fields/admin` reports the field lists (local or direct invoke only).
+ * @date        2026-10-30 v5 B14: the `fields/admin` gate reads `context.channel` (not `domain`).
+ * @date        2026-10-28 v5 B4: `fields/admin` self-check uses the shared `checkFieldsAdmin()`.
+ * @date        2026-10-30 v5 B13: handlers pass `{ useSession, policy }` to `canDo`, `doList` checks `list`, bulk in 2 phases.
+ * @date        2026-10-30 v5 B15: `doList` reads `?view=` (`resolveListView()`, ceiling `policy.list`), internal admin.
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -36,17 +41,41 @@ import { $U, _log, _inf, _err } from '../../engine/';
 import { my_sequence, my_parrallel } from '../../helpers/';
 import { $T } from './commons';
 import { onlyDefined } from '../../common/test-helper';
-import { loadDataYml } from '../../tools/';
+import { loadDataYml, loadJsonSync } from '../../tools/';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { GeneralWEBController } from '../../controllers/';
 import { CoreModel, AbstractTransformer, View, Body, NextContext, NextHandler, SimpleSet } from 'lemon-model';
+import { fieldsOf } from 'lemon-model'; //* v5 B4: L2 core fields, re-derived (the services' `CORE_FIELDS` is module-local).
 import { BulkBody, ListResult, PaginatedListResult, PaginateParam } from './types';
-import { MyCoreManager, MyCoreService, MyCoreProxy } from './abstract-services';
+import { MyCoreManager, MyCoreService, MyCoreProxy, MyManagerProxy } from './abstract-services';
+import { AccessPolicy, AccessScope, CanDoOptions } from './abstract-services';
+import { checkFieldsAdmin, FieldsAdminReport } from './fields-admin';
 export { CoreModel, AbstractTransformer, GeneralWEBController };
+
+//* v5 B15: the list scopes from the narrowest to the widest (`view` ceiling = `policy.list`).
+const LIST_SCOPES: readonly AccessScope[] = ['owner', 'group', 'site', 'any'];
 
 /**
  * convert as id string.
  */
 const _id = (id: any): string => (id === '' || id === 0 ? '' : $T.S2(id));
+
+/**
+ * v5 B4: the installed `lemon-core` version for `fields/admin` → `runtime.lemonCore`.
+ * - reads lemon-core's own `package.json` (three levels up from `dist/extended/cores/` or `src/extended/cores/`).
+ * - fallback: the service's declared dependency with a leading `^`/`~` stripped, else `null`.
+ */
+const _coreVersion = (): string => {
+    try {
+        const own = JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+        if (own?.name === 'lemon-core' && own?.version) return `${own.version}`;
+    } catch {
+        //* not installed as a package (ex: bundled) - fall through.
+    }
+    const dep: string = loadJsonSync('package.json')?.dependencies?.['lemon-core'];
+    return typeof dep === 'string' ? dep.replace(/^[\^~]/, '') : null;
+};
 
 /**
  * type: `CRUDCreationOptions`
@@ -67,6 +96,14 @@ interface CRUDCreationOptions {
      * @see proxy.makeModelBase()
      */
     throwable?: boolean;
+    /**
+     * (optional) v5 B13: access scopes for the 7 CRUD handlers of this controller (session on only).
+     * - merged over the manager-proxy `accessPolicy()`; ex: `{ read: 'site' }` restores the v5 § 6.4 read rule.
+     * - v5 B15: also `internal` (`'admin'` | `'identity'`) and `cross` (`'accept'` | `'identity'` | `'deny'`).
+     *
+     * @see MyManagerProxy.canDo()
+     */
+    policy?: Partial<AccessPolicy>;
 }
 
 /**
@@ -140,9 +177,8 @@ export abstract class AbstractCRUDController<
      * get config of using session.
      */
     public get confUseSession(): boolean {
-        // _log(this.logNS, `! STAGE =`, $U.env('STAGE'));
-        const STAGE = $U.env('STAGE');
-        if (STAGE === 'local') return false;
+        //* v5: local mode (`LOCAL_MODE=1` off Lambda) disables session, not `STAGE` (B5 § 6.3).
+        if ($U.isLocalMode()) return false;
         const useSession = this.options?.useSession ?? this.service.isUseSession();
         return useSession;
     }
@@ -155,10 +191,57 @@ export abstract class AbstractCRUDController<
     }
 
     /**
+     * v5 B13: access scopes of this controller (override this getter to compute them).
+     */
+    protected get confPolicy(): Partial<AccessPolicy> | undefined {
+        return this.options?.policy;
+    }
+
+    /**
+     * v5 B13: the `canDo()` options of the CRUD handlers - session switch and policy of this controller.
+     */
+    protected canDoOptions(errScope: string, options?: CanDoOptions): CanDoOptions {
+        return { errScope, useSession: this.confUseSession, policy: this.confPolicy, ...options };
+    }
+
+    /**
+     * v5 B15: true if the caller is admin for the CRUD defaults (`hasAdminRole` or the internal admin of this policy).
+     * - the same rule as `MyManagerProxy.isAdminLike()` (used by `canDo` and `packSearchParam`).
+     */
+    protected isAdminLike(proxy: MyCoreProxy<ModelType, any>): boolean {
+        const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
+        return $prxy ? $prxy.isAdminLike({ policy: this.confPolicy }) : proxy.hasAdminRole();
+    }
+
+    /**
+     * v5 B15: the list view of `GET /<type>?view=<view>` (session on only) → a list scope, or `'admin'` (no pin).
+     * - default: `mine` → `owner`, `group`, `site`, `admin`; anything else → `400 INVALID - view[…] is invalid`.
+     * - override to add views (ex: DoU `public`); the caller check (`canDo('list')`), the `admin` gate and the
+     *   `policy.list` ceiling still apply to the returned value.
+     *
+     * @param view the non-empty `?view=` value
+     * @param $ctx the request context
+     * @returns a list scope, or `'admin'`
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    protected resolveListView(view: string, $ctx: NextContext): AccessScope | 'admin' {
+        switch (view) {
+            case 'mine':
+                return 'owner';
+            case 'group':
+            case 'site':
+            case 'admin':
+                return view;
+            default:
+                throw new Error(`400 INVALID - view[${view}] is invalid @resolveListView(${this.type()})`);
+        }
+    }
+
+    /**
      * model transformer from model to view
      */
     public modelAsView(model: MyModel, options?: { useOnlyDefined?: boolean; hasCores?: boolean }): MyView {
-        const isLocal = $U.env('STAGE') === 'local';
+        const isLocal = $U.isLocalMode(); //* v5: runtime local mode, never from request (B5 § 6.3).
         const useOnlyDefined = options?.useOnlyDefined ?? true;
         const hasCores = options?.hasCores ?? (isLocal ? true : this.confUseSession); // show cores in local always.
 
@@ -191,7 +274,9 @@ export abstract class AbstractCRUDController<
     ): Promise<MyModel> {
         const parent = options?.parent ?? null;
         const useSession = options?.useSession ?? this.confUseSession;
-        const throwable = options?.throwable ?? this.confThrowable;
+        //* v5 B13: an admin without a session (IAM SigV4, `roles: ['admin']` claim) creates without `403 IDENTITY-TOKEN`.
+        //* v5 B15: the internal admin too (a protocol call may carry no identity).
+        const throwable = options?.throwable ?? (this.confThrowable && !(useSession && this.isAdminLike(proxy)));
         const $model = onlyDefined<CoreModel<ModelType>>({
             type: this.manager.type,
         });
@@ -208,6 +293,12 @@ export abstract class AbstractCRUDController<
 
     /**
      * load mock-model from `.yml` file.
+     *
+     * - an object key starting with a capital letter (`Users`) holds nested models; their `type` is the key with
+     *   the first letter lower-cased and the **last letter dropped**, i.e. the key is read as a plural
+     *   (`Users` → `user`, `Items` → `item`).
+     * - a singular key loses a real letter (`Owner` → `owne`); an array item may set its own `type` to override it.
+     * - v5 B22: documented only, not changed — the derived `type` (and its id sequence) is part of existing mock data.
      */
     public async loadFromFile(file: string) {
         if (!file) throw new Error(`@file (string) is required!`);
@@ -280,13 +371,33 @@ export abstract class AbstractCRUDController<
 
         // request search
         return this.service.guardProxy($ctx, async proxy => {
+            //* v5 B15: `?view=` is reserved (never a filter, session on or off) - split it off the query.
+            const { view: view0, ...query } = (param ?? {}) as SimpleSet;
+            const view =
+                typeof view0 === 'string' ? view0.trim() : view0 === undefined || view0 === null ? '' : `${view0}`;
+            const $query = param ? (query as PaginateParam & SimpleSet) : param;
             //WARN - has no internal properties like `sid`, `uid`
             //TODO - `stereo` 같은 경우가 모델 생성시 필수값일때, 쿼리와 겹침. (not-exists) 개선필요함 @230926
-            const model = param ? this.bodyToModel(param as any, true) : null; // could have all
+            const model = $query ? this.bodyToModel($query as any, true) : null; // could have all
             const useSession = this.confUseSession;
 
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
-            const { $page, $param } = $prxy.packSearchParam(param, model, { useSession });
+            //* v5 B13: the caller may list at all (guest, no session, empty `sid`/`uid` → 403), session on only.
+            if (useSession && !$prxy.canDo('list', undefined, this.canDoOptions(errScope)))
+                throw new Error(`403 NOT ALLOWED - action[list] is invalid @${errScope}`);
+            //* v5 B13: pin the rows per the effective `list` scope (the same merge as `canDo`).
+            //* v5 B15: the scope comes from the view (default `mine`, `admin` for admin-like); `policy.list` is the ceiling.
+            const { scope, asAdmin } = useSession
+                ? this.listScopeOf($prxy, view, $ctx, errScope)
+                : { scope: undefined, asAdmin: undefined };
+            const policy = this.confPolicy;
+            const { $page, $param } = $prxy.packSearchParam($query, model, {
+                useSession,
+                scope,
+                errScope,
+                policy,
+                asAdmin,
+            });
             _log(this.logNS, `>> $param =`, $U.json($param));
 
             //* search from manager.
@@ -300,6 +411,35 @@ export abstract class AbstractCRUDController<
             return { total, limit: $page.limit, page: $page.page, list };
         });
     };
+
+    /**
+     * v5 B15: the list scope of `doList` from `?view=` (SPEC § 15.2, session on only).
+     * - no view → `admin` for an admin-like caller, else `owner` (= `mine`). else `resolveListView()`.
+     * - `admin` by a non-admin → 403. a scope wider than `policy.list` (owner < group < site < any) by a non-admin → 403.
+     *
+     * @returns `{ scope, asAdmin }` for `packSearchParam()`
+     */
+    protected listScopeOf(
+        $prxy: MyManagerProxy<MyModel, any, any>,
+        view: string,
+        $ctx: NextContext,
+        errScope: string,
+    ): { scope: AccessScope; asAdmin: boolean } {
+        const policy = $prxy.effectivePolicy(this.confPolicy);
+        const adminLike = $prxy.isAdminLike({ policy: this.confPolicy });
+        const resolved = view ? this.resolveListView(view, $ctx) : adminLike ? 'admin' : 'owner';
+        //* `admin`: no pin, admin-like callers only.
+        if (resolved === 'admin') {
+            if (!adminLike) throw new Error(`403 NOT ALLOWED - view[${view || resolved}] needs admin @${errScope}`);
+            return { scope: policy.list, asAdmin: true };
+        }
+        //* a scope: a non-admin may not go wider than `policy.list` (an unknown scope never passes).
+        const rank = (S: string) =>
+            LIST_SCOPES.includes(S as AccessScope) ? LIST_SCOPES.indexOf(S as AccessScope) : NaN;
+        if (!adminLike && !(rank(resolved) <= rank(policy.list)))
+            throw new Error(`403 NOT ALLOWED - view[${view || resolved}] is over list[${policy.list}] @${errScope}`);
+        return { scope: resolved, asAdmin: false };
+    }
 
     /**
      * list types by id
@@ -329,11 +469,15 @@ export abstract class AbstractCRUDController<
 
     /**
      * internal admin command
+     * - `GET /<type>/fields/admin`: the field lists (v5 B4) - see `doGetAdminFields()`, gated by channel not role.
      */
     public doGetAdmin: NextHandler = async (id, param, body, $ctx) => {
         const errScope = `doGetAdmin(${this.type()}/${id ?? ''})`;
         _log(this.logNS, `${errScope}...`);
         $ctx && _log(this.logNS, `> context =`, $U.json($ctx));
+
+        //* v5 B4: `fields` runs before the admin-role check - a direct invoke may carry no identity.
+        if (id === 'fields') return this.doGetAdminFields($ctx, errScope);
 
         const save = $T.B(param?.save, param?.save === '' ? 1 : 0);
         const clear = $T.B(param?.clear, param?.clear === '' ? 1 : 0);
@@ -368,6 +512,52 @@ export abstract class AbstractCRUDController<
     };
 
     /**
+     * v5 B4: report the manager's field list (`GET /<type>/fields/admin`) to verify it in Lambda too.
+     * - v5 B14: allowed only when `$ctx.channel !== 'external'` (set once by the entry: `local` for the local
+     *   express, `internal` for a host-less invoke or a protocol call). `domain` is information only, never the gate.
+     * - no admin role is required: a direct invoke is already gated by IAM `lambda:InvokeFunction`.
+     */
+    protected async doGetAdminFields($ctx: NextContext, errScope: string) {
+        const local = $U.isLocalMode();
+        //* `runtime.external` keeps reporting the request domain (information, unchanged).
+        const external = !!`${$ctx?.domain ?? ''}`.trim();
+        if ($ctx?.channel === 'external')
+            throw new Error(`403 NOT ALLOWED - fields/admin is local or direct-invoke only @${errScope}`);
+
+        //* the lists: L2 core (16), the manager's full list, and the model-specific rest.
+        const core: string[] = fieldsOf(CoreModel);
+        const fields: string[] = [...(this.manager.FIELDS ?? [])];
+        const extra = fields.filter(k => !core.includes(k));
+        const source = this.manager.fieldsSource;
+
+        //* runtime, to tell the local harness from the deployed Lambda.
+        const runtime = {
+            local,
+            external,
+            lambda: process.env.AWS_LAMBDA_FUNCTION_NAME ?? null,
+            node: process.version,
+            lemonCore: _coreVersion(),
+        };
+        const counts = { core: core.length, fields: fields.length, extra: extra.length };
+        const report: FieldsAdminReport = {
+            id: 'fields',
+            type: this.type(),
+            model: this.modelType,
+            core,
+            fields,
+            extra,
+            counts,
+            source,
+            ok: true,
+            issues: [],
+            runtime,
+        };
+        //* self-check w/ the shared verifier (the same one every test or harness runs).
+        const { ok, issues } = checkFieldsAdmin(report);
+        return { ...report, ok, issues };
+    }
+
+    /**
      * read a `MyModel`
      *
      * ```sh
@@ -389,7 +579,8 @@ export abstract class AbstractCRUDController<
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
             const model = await $prxy.get(id, false);
             if (!model?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
-            if (!proxy.canDo('read', model, { errScope })) return null; // no permission to read.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('read', model, this.canDoOptions(errScope))) return null; // no permission to read.
             // STEP.2 returns as view.
             if (model?.deletedAt > 0)
                 throw new Error(`404 NOT FOUND - deleted at ${$U.ts(model.deletedAt)} @${errScope}`);
@@ -410,7 +601,7 @@ export abstract class AbstractCRUDController<
         param && _log(this.logNS, `> param =`, $U.json(param));
         body && _log(this.logNS, `> body =`, $U.json(body));
         id = id === '0' ? '' : $T.S2(id).trim();
-        const isLocal = $ctx?.domain === 'localhost';
+        const isLocal = $U.isLocalMode(); //* v5: custom `id` only in local mode, not from `$ctx.domain` (B5 § 6.3).
 
         // STEP.0 validate paramters.
         if (id && !isLocal) throw new Error(`@id (string) is invalid - ${errScope}`);
@@ -427,7 +618,8 @@ export abstract class AbstractCRUDController<
             if (!$base.type) throw new Error(`.type (ModelType) is missing - ${errScope}`); // confirm type explicitly.
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
             const $valid = await $prxy.validateModel(toCreate, null);
-            if (!proxy.canDo('create', { ...$valid, ...$base }, { errScope })) return null; // no permission to create.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('create', { ...$valid, ...$base }, this.canDoOptions(errScope))) return null; // no permission to create.
             const $saves = await $prxy.onBeforeSave($valid, null);
             const $saved = await $prxy.makeModel({ ...$saves, ...$base }, false); //WARN! - already validated.
             const $final = await $prxy.onAfterSave($saved, null);
@@ -465,11 +657,16 @@ export abstract class AbstractCRUDController<
             const $base = await this.makeModelBase(proxy);
             if (!$base.type) throw new Error(`.type (ModelType) is missing - ${errScope}`); // confirm type explicitly.
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
-            const _can = (model: MyModel) => proxy.canDo('create', { ...model, ...$base }, { errScope });
-            const $valid = await Promise.all(
-                models.map(N => $prxy.validateModel(N, null).then(N => (_can(N) ? N : null))),
-            );
-            //* only for all validated models.
+            //* v5 B13 phase 1: validate every item and collect the denied ones (`false` counts as denied), no write.
+            const $valid = await Promise.all(models.map(N => $prxy.validateModel(N, null)));
+            const $opts = this.canDoOptions(errScope, { throwable: false });
+            const denied = $valid.reduce<string[]>((L, N, i) => {
+                if (!proxy.canDo('create', { ...N, ...$base }, $opts)) L.push(N?.id ? `${N.id}` : `#${i}`);
+                return L;
+            }, []);
+            if (denied.length)
+                throw new Error(`403 NOT ALLOWED - bulk[create] denied ids[${denied.join(',')}] @${errScope}`);
+            //* v5 B13 phase 2: every item passed, so write them all.
             const filtered = await my_sequence($valid, async validated => {
                 const filtered = await $prxy.onBeforeSave(validated, null);
                 const created = await $prxy.makeModel({ ...filtered, ...$base }, false); //WARN! - already validated.
@@ -505,7 +702,8 @@ export abstract class AbstractCRUDController<
             const $org = await $prxy.get(id, false);
             if (!$org?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
             if ($org?.deletedAt) throw new Error(`404 NOT FOUND - deleted @${errScope}`);
-            if (!proxy.canDo('update', $org, { errScope })) return null; // no permission to update.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('update', $org, this.canDoOptions(errScope))) return null; // no permission to update.
 
             // STEP.3 validate and update.
             const $valid = await $prxy.validateModel(toUpdate, id);
@@ -548,16 +746,27 @@ export abstract class AbstractCRUDController<
             const $prxy = proxy.getManagerProxy<MyModel, MyManager>(this.modelType);
             if (!$prxy) throw new Error(`.model-type[${this.modelType}] is required - ${errScope}`);
 
+            //* v5 B13: a session-less non-admin caller keeps the `403 IDENTITY-TOKEN` message (as the single handlers).
+            //* v5 B15: the internal admin is admin here too.
+            if (this.confUseSession && !this.isAdminLike(proxy))
+                proxy.getCurrentSession({ throwable: this.confThrowable });
+
+            //* v5 B13 phase 1: load every stored row (404 first, current messages) and check it, no write.
             const _can = async (N: MyModel, i?: number) => {
                 const errScope = `doPutBulk(${this.type()}:${i}/${N?.id ?? ''})`;
                 const model = N?.id ? await $prxy.get(N?.id, false) : null;
                 if (!model?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
                 if (model?.deletedAt) throw new Error(`404 NOT FOUND - deleted @${errScope}`);
-                if (!proxy.canDo('update', model, { errScope })) return null; // no permission to update.
-                // return model;
-                return N; // 업데이트할 새 데이터를 반환 (기존 model이 아님)
+                const allowed = proxy.canDo('update', model, this.canDoOptions(errScope, { throwable: false }));
+                return { N, allowed }; // 업데이트할 새 데이터를 반환 (기존 model이 아님)
             };
-            const list = await Promise.all(models.map(N => _can(N)));
+            const checked = await Promise.all(models.map((N, i) => _can(N, i)));
+            //* v5 B13: one denied row → 403 with every denied id, before any write.
+            const denied = checked.filter(C => !C.allowed).map(C => `${C.N?.id ?? ''}`);
+            if (denied.length)
+                throw new Error(`403 NOT ALLOWED - bulk[update] denied ids[${denied.join(',')}] @${errScope}`);
+            //* v5 B13 phase 2: every row passed, so write them all.
+            const list = checked.map(C => C.N);
 
             //* validate and update.
             const $res = await my_parrallel(
@@ -596,7 +805,7 @@ export abstract class AbstractCRUDController<
         param && _log(this.logNS, `> param =`, $U.json(param));
         body && _log(this.logNS, `> body =`, $U.json(body));
         id = id === '0' ? '' : $T.S2(id).trim();
-        const isLocal = $ctx?.domain === 'localhost';
+        const isLocal = $U.isLocalMode(); //* v5: `?destroy` only in local mode, not from `$ctx.domain` (B5 § 6.3).
         const destroy = !!$T.B(param?.destroy, param?.destroy === '' ? 1 : 0);
 
         // STEP.0 validate paramters.
@@ -608,7 +817,8 @@ export abstract class AbstractCRUDController<
             const model = await $prxy.get(id, false);
             if (!model?.id) throw new Error(`404 NOT FOUND - not found @${errScope}`);
             if (!destroy && model?.deletedAt) throw new Error(`404 NOT FOUND - deleted @${errScope}`);
-            if (!proxy.canDo('delete', model, { errScope })) return null; // no permission to update.
+            //* v5 B13: session switch and policy of this controller.
+            if (!proxy.canDo('delete', model, this.canDoOptions(errScope))) return null; // no permission to delete.
 
             const deleted = await $prxy.$mgr.delete(id, isLocal && destroy);
             const $final = await $prxy.onAfterSave(null, deleted);

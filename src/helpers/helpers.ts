@@ -8,6 +8,7 @@
  * @date        2021-12-21 protocol support `//self` url.
  * @date        2021-12-23 optimize types of $protocol.
  * @date        2022-03-17 addition text processing. (S2, P)
+ * @date        2026-10-28 v5 B3: single `$T` (L1/L2 merged), single `parseListParam`/`parsePaginateParam`.
  *
  * @copyright (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
@@ -25,8 +26,8 @@ import { GETERR, onlyDefined } from '../common/test-helper';
 import { sigV4Client, sigV4ClientConfig } from '../extended/libs/sig-v4';
 import { performance } from 'perf_hooks';
 
-import REQUEST from 'request';
-import queryString from 'query-string';
+import { fetchProxyBody, isJsonBody, toPayload } from '../lib/http-fetch';
+import { qsParse, qsStringify } from '../lib/qs-compat'; //* v5 B11: `query-string` -> `qs` (same output).
 import { ListParam, PaginateParam } from './types';
 
 /**
@@ -44,6 +45,17 @@ const _B = (val: any, def: BoolFlag = 0): BoolFlag => {
 const _N = (val: any, def = 0): number => {
     const n = $U.N(val, def);
     return Number.isNaN(n) ? def : n;
+};
+
+//* the former L1 `$T.S2` body (with `delim`) — kept local as the base of the L2 `S2`/`SS`.
+const _S2 = (val: any, def = '', delim = ' '): string => `${val ?? def}`.replace(/\s+/g, delim).trim();
+
+//* the former L1 `$T.SS` body — kept local: the L2 `SS` splits a non-array value with it.
+const _SS = <T extends string = string>(val: any, def = [] as T[]): T[] => {
+    if (val === null || val === undefined) return def;
+    if (typeof val === 'string') return val ? val.split(',').map(_ => _S2(_) as T) : def;
+    if (Array.isArray(val)) return val.length > 0 ? val.map(_ => $T.S<T>(_, '')) : def;
+    return [$T.S(val)];
 };
 
 /**
@@ -94,25 +106,32 @@ export function parsePaginateParam(
 /**
  * Helpers to transform data-types.
  */
+//* v5 B3: the single `$T` (32 members; L1 + the L2 `S2`/`SS`/`N`/`US`). `extended/cores/commons.ts` re-exports it.
 export const $T = {
     /**
      * transform to string w/ trim()
      */
     S: <T extends string = string>(val: any, def = ''): T => `${val ?? def}`.trim() as T,
     /**
-     * as string w/o white-space.
+     * clear white-spaces and trim.
      */
-    S2: <T extends string = string>(val: any, def = '', delim = ' '): T =>
-        `${val ?? def}`.replace(/\s+/g, delim).trim() as T,
+    //* v5 B3: L2 body (the root `$T` already had it) — a 3rd `delim` argument is no longer honoured.
+    S2: <T extends string = string>(v?: any, def: string = ''): T => _S2(v, def).trim() as T,
     /**
-     * transform to string[]
+     * array string with clear white-spaces and trim
      */
-    SS: <T extends string = string>(val: any, def = [] as T[]): T[] => {
-        if (val === null || val === undefined) return def;
-        if (typeof val === 'string') return val ? val.split(',').map<T>(_ => $T.S2<T>(_)) : def;
-        if (Array.isArray(val)) return val.length > 0 ? val.map<T>(_ => $T.S<T>(_, '')) : def;
-        return [$T.S(val)];
-    },
+    //* v5 B3: L2 body — `def` is not taken; array items get their inner white-spaces collapsed too.
+    SS: <T extends string = string>(v?: any): T[] =>
+        (v && Array.isArray(v) ? v : _SS<T>(v)).map(v => _S2(v, '').trim() as T),
+    /**
+     * remove duplicates from string array using reduce
+     */
+    //* v5 B3: moved from the L2 `$T` (`extended/cores/commons.ts`) so one object has all 32 members.
+    US: <T extends string = string>(arr: T[]): T[] =>
+        arr?.reduce<T[]>((acc, v) => {
+            if (!acc.includes(v)) acc.push(v);
+            return acc;
+        }, []) ?? [],
     /**
      * text to Plain text (remove html tag)
      */
@@ -127,7 +146,8 @@ export const $T = {
     /**
      * transform to number(integer).
      */
-    N: (v?: boolean | number | string, def: number = 0): number =>
+    //* v5 B3: L2 signature (`unknown` accepted); same result as before.
+    N: (v: boolean | number | string | unknown, def: number = 0): number =>
         typeof v === 'boolean' ? (v ? 1 : 0) : typeof v === 'number' || typeof v === 'string' ? _N(v, def) : def,
     /**
      * number array
@@ -526,6 +546,7 @@ export const $rand = {
 
 /**
  * builder to support protocol-service.
+ * - legacy form: `$protocol(service, param?, body?)` (the 1st argument is the service url, the context is `{}`).
  * @param context   the current context (or service name).
  * @param service   service name
  * @param options   additional options.
@@ -540,14 +561,17 @@ export const $protocol = (
     },
 ) => {
     //* for backward compartibility. shift arguments if 1st context is string.
-    const ctx = typeof context === 'string' ? {} : context;
-    service = typeof context === 'string' ? context : service;
-    const param: any = typeof context === 'string' ? service : options?.param;
-    const body: any = typeof context === 'string' ? param : options?.body;
+    //* v5 B22: the legacy form `$protocol(service, param, body)` reads `param`/`body` before `service` is reassigned.
+    const legacy = typeof context === 'string';
+    const param: any = legacy ? (service as any) : options?.param;
+    const body: any = legacy ? (options as any) : options?.body;
+    const ctx = legacy ? {} : context;
+    service = legacy ? (context as string) : service;
     if (!ctx) throw new Error(`@context (NextContext) is required!`);
     if (!service) throw new Error(`@service (string) is required!`);
     const $proto: ProtocolService = $cores.protocol.service;
-    const isProd = options?.isProd !== undefined ? options?.isProd : $U.env('NS') === 'SS' ? true : false;
+    //* v5 B22: in the legacy form the 3rd argument is the body, so `isProd` comes from the env only.
+    const isProd = !legacy && options?.isProd !== undefined ? options.isProd : $U.env('NS') === 'SS' ? true : false;
     //TODO - `STAGE` is not changed from env.yml file @211215.
     // _inf(NS, 'NS =', $U.env('NS'), $engine.cores.config.config.get('NS'), process.env['NS']);
     // _inf(NS, 'stage =', $U.env('STAGE'), $engine.cores.config.config.get('STAGE'), process.env['STAGE']); //NOTE - STAGE is not changed.
@@ -565,7 +589,7 @@ export const $protocol = (
             const [path, qs] = callback.split('?');
             if (path) {
                 const [type, id, cmd] = path.split('/');
-                const param = queryString.parse(qs);
+                const param = qsParse(qs);
                 return { type, id, cmd, param };
             }
         }
@@ -694,7 +718,8 @@ export const $event = (context: NextContext, defEndpoint: string = '') => {
  */
 export function getIdentityId(context?: NextContext | null): string | undefined {
     const identityId = (context?.identity as NextIdentityCognito)?.identityId;
-    if (!identityId && context?.domain === 'localhost') {
+    //* v5: `env[LOCAL_ACCOUNT]` only in local mode, never from `context.domain` (B5 § 6.3).
+    if (!identityId && $U.isLocalMode()) {
         //* use `env[LOCAL_ACCOUNT]` only if runs in local server.
         return $U.env('LOCAL_ACCOUNT', '');
     }
@@ -711,8 +736,8 @@ export function getIdentityId(context?: NextContext | null): string | undefined 
  */
 export function isUserAuthorized(context: NextContext, params?: any): boolean {
     const identityId = getIdentityId(context);
-    //WARN - in local server, override the identity w/ param
-    if (context?.domain === 'localhost') {
+    //WARN - in local server, override the identity w/ param (v5: local mode only — B5 § 6.3)
+    if ($U.isLocalMode()) {
         //!* override with optional parameter.
         if (context) {
             context.identity = {
@@ -931,25 +956,24 @@ export const createSigV4Proxy = (
 
             //* prepare request parameters
             // eslint-disable-next-line prettier/prettier
-            const query_string = _isNa($param)
-                ? ''
-                : typeof $param == 'object'
-                ? queryString.stringify($param)
-                : `${$param}`;
+            const query_string = _isNa($param) ? '' : typeof $param == 'object' ? qsStringify($param) : `${$param}`;
             const url =
                 endpoint +
                 (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
                 (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
                 (!query_string ? '' : '?' + query_string);
-            const request = REQUEST;
+            //* serialize the body once: the same string is signed and sent.
+            const json = isJsonBody($body);
+            const payload = toPayload($body, json);
             const options: any = {
                 method,
                 uri: url,
                 headers: { ...this.headers },
-                body: $body === null ? undefined : $body,
-                json: typeof $body === 'string' ? false : true,
+                body: payload,
+                json,
             };
 
+            //* sign with SigV4 (the signed body is the exact `payload` string)
             if (sigClient) {
                 const signedRequest = sigClient.signRequest({
                     method,
@@ -958,7 +982,7 @@ export const createSigV4Proxy = (
                         (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`),
                     queryParams: $param,
                     headers: options.headers,
-                    body: $body,
+                    body: payload,
                 });
                 options.headers = { ...options.headers, ...signedRequest.headers };
                 options.uri = signedRequest.url;
@@ -979,41 +1003,10 @@ export const createSigV4Proxy = (
             _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
             _log(NS, '> options =', $U.json(options));
 
-            //* returns promise
-            return new Promise((resolve, reject) => {
-                //* start request..
-                request(options, function (error: any, response: any, body: any) {
-                    error && _err(NS, '>>>>> requested! err=', error);
-                    if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
-                    //* detect trouble.
-                    const statusCode = response.statusCode;
-                    const statusMessage = response.statusMessage;
-                    //* if not in success
-                    if (statusCode !== 200 && statusCode !== 201) {
-                        const msg = body ? GETERR(body) : `${statusMessage || ''}`;
-                        if (statusCode === 400 || statusCode === 404) {
-                            const title = `${(statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'}`.toUpperCase();
-                            const message = msg.startsWith('404 NOT FOUND') ? msg : `${statusCode} ${title} - ${msg}`;
-                            return reject(new Error(message));
-                        }
-                        statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
-                        body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
-                        return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
-                    }
-                    //* try to parse body.
-                    try {
-                        if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
-                            body = JSON.parse(body);
-                        } else if (body && typeof body == 'string' && body.startsWith('[') && body.endsWith(']')) {
-                            body = JSON.parse(body);
-                        }
-                    } catch (e) {
-                        _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
-                    }
-                    //* ok! succeeded.
-                    resolve(body);
-                });
-            }).then((res: any) => {
+            //* send via `fetch` (status check, error format and body parse in `http-fetch`)
+            const logger = { log: (...a: any[]) => _log(NS, ...a), err: (...a: any[]) => _err(NS, ...a) };
+            const req = { method, url: options.uri, headers: options.headers, payload, json };
+            return fetchProxyBody(req, logger).then((res: any) => {
                 if (resultKey && res && res[resultKey] !== undefined) return res[resultKey];
                 return res;
             });

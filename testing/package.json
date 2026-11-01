@@ -1,0 +1,7 @@
+{
+    "name": "lemon-core-testing",
+    "private": true,
+    "description": "v5 B16-b: resolution shim for `lemon-core/testing` under moduleResolution=node / Jest 27 (Node itself uses the exports map).",
+    "main": "../dist/common/test-helper.js",
+    "types": "../dist/common/test-helper.d.ts"
+}

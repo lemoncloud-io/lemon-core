@@ -16,23 +16,40 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, $U, _log, _inf, _err } from '../../engine';
 const NS = $U.NS('S3', 'blue');
-import { GetObjectCommandOutput, S3Client, _Object } from '@aws-sdk/client-s3';
 // eslint-disable-next-line prettier/prettier
-import { HeadObjectCommand, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, GetObjectTaggingCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
-// eslint-disable-next-line prettier/prettier
-import { PutObjectCommandInput, ListObjectsV2CommandInput } from '@aws-sdk/client-s3';
+import type { GetObjectCommandOutput, GetObjectTaggingCommandOutput, PutObjectCommandInput, ListObjectsV2CommandInput } from '@aws-sdk/client-s3';
 import path from 'path';
 import mime from 'mime-types';
-import { v4 } from 'uuid';
+import { randomUUID } from 'crypto'; //* v5 B11: `uuid` -> Node built-in (same v4 form).
 import { CoreServices } from '../core-services';
 import { GETERR } from '../../common/test-helper';
 import { Readable } from 'stream';
 import { awsConfig } from '../../tools';
+import { measure } from '../../lib/perf';
 /** ****************************************************************************************************************
  *  Core Types.
  ** ****************************************************************************************************************/
 export type Metadata = Record<string, string>;
-export type S3Object = _Object;
+/**
+ * type: `S3Object`
+ * - an object in `listObjects()` (local structural type = the fields of the SDK `_Object`; v5 B2-c).
+ */
+export interface S3Object {
+    Key?: string;
+    LastModified?: Date;
+    ETag?: string;
+    ChecksumAlgorithm?: string[];
+    ChecksumType?: string;
+    Size?: number;
+    StorageClass?: string;
+    Owner?: { DisplayName?: string; ID?: string };
+    RestoreStatus?: { IsRestoreInProgress?: boolean; RestoreExpiryDate?: Date };
+}
+
+/**
+ * the S3 client as this service uses it (local structural type, no SDK type in `.d.ts`; v5 B2-c).
+ */
+type S3ClientLike = { send: (command: any) => Promise<any> };
 
 export interface TagSet {
     [key: string]: string;
@@ -154,11 +171,28 @@ const environ = (target: string, defEnvName: string, defEnvValue: string) => {
 };
 
 /**
- * get aws client for S3
+ * `@aws-sdk/client-s3`, required on the first use (not at import; v5 B2-c, K6).
  */
-const instance = () => {
-    const cfg = awsConfig($engine, region());
-    return new S3Client(cfg); // SQS Instance. shared one???
+let $s3: typeof import('@aws-sdk/client-s3');
+// memoized sync loader (the first call prints one `PERF` line).
+const loadS3 = (): typeof import('@aws-sdk/client-s3') =>
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    ($s3 ??= measure(_inf, $U.NS('PERF', 'cyan'), 'lazy-load @aws-sdk/client-s3', () => require('@aws-sdk/client-s3')));
+
+/** clients cached per region (v5 B2-c: was a new client on every call). */
+const _s3: Record<string, S3ClientLike> = {};
+
+/**
+ * get aws client for S3 (sync; one client per region, `PERF > client S3` once per region)
+ */
+const instance = (): S3ClientLike => {
+    const $region = region();
+    if (!_s3[$region]) {
+        const cfg = awsConfig($engine, $region);
+        const { S3Client } = loadS3();
+        _s3[$region] = measure(_inf, $U.NS('PERF', 'cyan'), 'client S3', () => new S3Client(cfg));
+    }
+    return _s3[$region];
 };
 
 /**
@@ -190,10 +224,10 @@ export class AWSS3Service implements CoreS3Service {
     public bucket = (target?: string): string => environ(target, AWSS3Service.ENV_S3_NAME, AWSS3Service.DEF_S3_BUCKET);
 
     /**
-     * get S3Client instance
+     * get S3Client instance (sync; cached per region)
      * @return S3Client
      */
-    protected instance(): S3Client {
+    protected instance(): S3ClientLike {
         return instance();
     }
 
@@ -212,6 +246,7 @@ export class AWSS3Service implements CoreS3Service {
         // call s3.headObject.
         const s3 = this.instance();
         try {
+            const { HeadObjectCommand } = loadS3(); // command class from the lazy-loaded package.
             const data = await s3.send(new HeadObjectCommand(params));
             _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
             // const sample = {
@@ -280,6 +315,7 @@ export class AWSS3Service implements CoreS3Service {
         // call s3.upload()
         const s3 = this.instance();
         try {
+            const { PutObjectCommand } = loadS3(); // command class from the lazy-loaded package.
             const data = await s3.send(new PutObjectCommand(params));
             delete (data as any).key; // NOTE: remove undeclared property 'key' returned from aws-sdk
             const location = `https://${params.Bucket}.s3.${region()}.amazonaws.com/${params.Key}`;
@@ -315,6 +351,7 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.getObject.
         const s3 = this.instance();
         try {
+            const { GetObjectCommand } = loadS3(); // command class from the lazy-loaded package.
             const data = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
             const { ContentType, ContentLength, Body, ETag, Metadata, TagCount } = data;
@@ -343,6 +380,7 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.getObject.
         const s3 = this.instance();
         try {
+            const { GetObjectCommand } = loadS3(); // command class from the lazy-loaded package.
             const data: GetObjectCommandOutput = await s3.send(new GetObjectCommand(params));
             _log(NS, '> data.type =', typeof data);
             const buffer =
@@ -368,7 +406,8 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.getObjectTagging.
         const s3 = this.instance();
         try {
-            const data = await s3.send(new GetObjectTaggingCommand(params));
+            const { GetObjectTaggingCommand } = loadS3(); // command class from the lazy-loaded package.
+            const data: GetObjectTaggingCommandOutput = await s3.send(new GetObjectTaggingCommand(params));
             _log(NS, `> data =`, $U.json(data));
             return data?.TagSet?.reduce<TagSet>((tagSet, tag) => {
                 const { Key, Value } = tag;
@@ -395,6 +434,7 @@ export class AWSS3Service implements CoreS3Service {
         //* call s3.deleteObject.
         const s3 = this.instance();
         try {
+            const { DeleteObjectCommand } = loadS3(); // command class from the lazy-loaded package.
             const data = await s3.send(new DeleteObjectCommand(params));
             _log(NS, '> data =', $U.json(data));
         } catch (e) {
@@ -446,6 +486,7 @@ export class AWSS3Service implements CoreS3Service {
             KeyCount: 0,
         };
         try {
+            const { ListObjectsV2Command } = loadS3(); // command class from the lazy-loaded package.
             const data = await s3.send(new ListObjectsV2Command(params));
             //INFO! - minimize log output....
             _log(NS, '> data =', $U.json({ ...data, Contents: undefined }));
@@ -573,7 +614,7 @@ class S3PutObjectRequestBuilder {
         //  - get extension from content-type or use 'json'
         if (!Key) {
             const ext = (this.ContentType && mime.extension(this.ContentType)) || 'json';
-            Key = `${v4()}.${ext}`;
+            Key = `${randomUUID()}.${ext}`;
         }
         // generate content-type if not specified
         if (!ContentType) ContentType = this.getContentType(Key);

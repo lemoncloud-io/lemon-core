@@ -10,22 +10,24 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import _ from 'lodash';
+import { isEmpty, omitBy } from './lang';
 import $async from 'async';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 // const AWSUtil = require('aws-sdk/lib/util');
 
+//* drop null, undefined, empty array and empty string attributes.
 export const omitNulls = (data: any) => {
-    return _.omitBy(data, function (value) {
+    return omitBy(data, function (value: any) {
         return (
-            _.isNull(value) ||
-            _.isUndefined(value) ||
-            (_.isArray(value) && _.isEmpty(value)) ||
-            (_.isString(value) && _.isEmpty(value))
+            value === null ||
+            value === undefined ||
+            (Array.isArray(value) && isEmpty(value)) ||
+            (typeof value === 'string' && isEmpty(value))
         );
     });
 };
 
+//* merge paged responses into one result (items, counts, capacity, last key).
 export const mergeResults = (responses: any, tableName: string) => {
     const result = {
         Items: [] as any[],
@@ -37,32 +39,28 @@ export const mergeResults = (responses: any, tableName: string) => {
         ScannedCount: 0,
     };
 
-    const merged = _.reduce(
-        responses,
-        (memo: any, resp: any) => {
-            if (!resp) {
-                return memo;
-            }
-
-            memo.Count += resp.Count || 0;
-            memo.ScannedCount += resp.ScannedCount || 0;
-
-            if (resp.ConsumedCapacity) {
-                memo.ConsumedCapacity.CapacityUnits += resp.ConsumedCapacity.CapacityUnits || 0;
-            }
-
-            if (resp.Items) {
-                memo.Items = memo.Items.concat(resp.Items);
-            }
-
-            if (resp.LastEvaluatedKey) {
-                memo.LastEvaluatedKey = resp.LastEvaluatedKey;
-            }
-
+    const merged = (responses ?? []).reduce((memo: any, resp: any) => {
+        if (!resp) {
             return memo;
-        },
-        result,
-    );
+        }
+
+        memo.Count += resp.Count || 0;
+        memo.ScannedCount += resp.ScannedCount || 0;
+
+        if (resp.ConsumedCapacity) {
+            memo.ConsumedCapacity.CapacityUnits += resp.ConsumedCapacity.CapacityUnits || 0;
+        }
+
+        if (resp.Items) {
+            memo.Items = memo.Items.concat(resp.Items);
+        }
+
+        if (resp.LastEvaluatedKey) {
+            memo.LastEvaluatedKey = resp.LastEvaluatedKey;
+        }
+
+        return memo;
+    }, result);
 
     if (merged.ConsumedCapacity.CapacityUnits === 0) {
         delete merged.ConsumedCapacity;
@@ -108,8 +106,11 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
         });
     };
 
-    const testFunc = function () {
-        return (self.options.loadAll && lastEvaluatedKey) || retry;
+    //* v5 B22: `async@3` calls the test as `test(...args, cb)` and waits for `cb` (a returned boolean is ignored).
+    const testFunc = function (...args: any[]) {
+        const check = args[args.length - 1];
+        const again = !!((self.options.loadAll && lastEvaluatedKey) || retry);
+        return check(null, again);
     };
 
     const resulsFunc = function (err: any) {
@@ -123,8 +124,9 @@ export const paginatedRequest = (self: any, runRequestFunc: any, callback: any) 
     $async.doWhilst(doFunc, testFunc, resulsFunc);
 };
 
+//* copy the params without the hash and range key attributes.
 export const omitPrimaryKeys = function (schema: any, params: any) {
-    return _.omit(params, schema.hashKey, schema.rangeKey);
+    return omitBy(params, (_value: any, key: string) => key === schema.hashKey || key === schema.rangeKey);
 };
 
 export const strToBin = function (value: any): Buffer {

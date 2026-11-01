@@ -1,0 +1,1 @@
+{"version":3,"file":"mapped.cjs","sources":["original-error.ts"],"sourcesContent":["// Original source fixture\n\nexport const lambda = () => {\n    const value = 1;\n    throw new Error('mapped fixture');\n};\n"],"names":[],"mappings":"AAEA;AACA;AACA;AACA"}

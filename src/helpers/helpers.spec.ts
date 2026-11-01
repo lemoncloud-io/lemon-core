@@ -8,7 +8,7 @@
  * @copyright (C) 2020 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import { loadProfile } from '../environ';
 import { $U } from '../engine';
 import { loadJsonSync } from '../tools/';
@@ -59,7 +59,22 @@ export const instance = async (type: 'dummy' = 'dummy') => {
 };
 
 //! main test body.
+//* v5 B5: env names toggled by the local-mode tests — restored after each test.
+const $envB5: { [key: string]: string } = {
+    LOCAL_MODE: process.env.LOCAL_MODE,
+    LOCAL_ACCOUNT: process.env.LOCAL_ACCOUNT,
+    AWS_LAMBDA_FUNCTION_NAME: process.env.AWS_LAMBDA_FUNCTION_NAME,
+};
+
 describe('utils', () => {
+    //* v5 B5: restore the toggled env (delete if it was unset).
+    afterEach(() => {
+        Object.entries($envB5).forEach(([key, val]) => {
+            if (val === undefined) delete process.env[key];
+            else process.env[key] = val;
+        });
+    });
+
     const PROFILE = loadProfile(process); // override process.env.
     PROFILE && console.info(`! PROFILE =`, PROFILE);
 
@@ -132,6 +147,12 @@ describe('utils', () => {
         expect2(() => $T.SS([])).toEqual([]);
         expect2(() => $T.SS(' a ')).toEqual(['a']);
         expect2(() => $T.SS([' a '])).toEqual(['a']);
+        //* v5 B3: one `$T` (32 members) with the L2 `S2`/`SS` (no `delim`, no `def`, items collapsed) and `US`.
+        expect2(() => Object.keys($T).length).toEqual(32);
+        expect2(() => ($T.S2 as any)('a b  c', '', '-')).toEqual('a b c');
+        expect2(() => ($T.SS as any)(null, ['x'])).toEqual([]);
+        expect2(() => $T.SS([' a  b '])).toEqual(['a b']);
+        expect2(() => $T.US(['a', 'b', 'a'])).toEqual(['a', 'b']);
         expect2(() => $T.P(' a<b>b<em c=d>e</b>ㅋ ㅋ ^"}[&$%#*')).toEqual('a b e ㅋ ㅋ');
 
         expect2(() => $T.N('1.234')).toEqual(1);
@@ -638,10 +659,21 @@ MyError: yes error of me3
         expect2(() => getIdentityId($context.unsigned)).toBeNull();
         expect2(() => getIdentityId(null)).toEqual();
         expect2(() => getIdentityId({})).toEqual();
+        //* v5 B5: `domain: 'localhost'` is inert without local mode (flipped from v4 `LOCAL_ACCOUNT`).
+        delete process.env.LOCAL_MODE;
+        expect2(() => getIdentityId({ domain: 'localhost' })).toEqual();
+        expect2(() => isUserAuthorized({ ...$context.unsigned, domain: 'localhost', identity: {} })).toBe(false);
+        //* v5 B5: local mode is `LOCAL_MODE=1` (off Lambda), then `LOCAL_ACCOUNT` applies.
+        process.env.LOCAL_MODE = '1';
+        delete process.env.AWS_LAMBDA_FUNCTION_NAME;
         expect2(() => getIdentityId({ domain: 'localhost' })).toEqual(LOCAL_ACCOUNT);
+        expect2(() => getIdentityId({})).toEqual(LOCAL_ACCOUNT);
 
         expect2(() => isUserAuthorized($context.signed)).toBe(true);
+        expect2(() => isUserAuthorized({ ...$context.unsigned })).toBe(true);
+        delete process.env.LOCAL_MODE;
         expect2(() => isUserAuthorized($context.unsigned)).toBe(false);
+        process.env.LOCAL_MODE = '1';
 
         expect2(() => isUserAuthorized({ ...$context.signed, domain: 'localhost', identity: {} })).toBe(true);
         expect2(() => isUserAuthorized({ ...$context.unsigned, domain: 'localhost', identity: {} })).toBe(true);
