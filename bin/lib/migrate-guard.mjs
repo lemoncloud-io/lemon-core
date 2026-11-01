@@ -14,16 +14,20 @@
 import * as nodeFs from 'node:fs/promises';
 import * as nodeNet from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { ORG_DEFAULTS } from './org-defaults.mjs';
 import { MigrationError } from './migrate-core.mjs';
-import { redact, stripControl, isSensitiveKey } from './common.mjs';
+import { redact, stripControl, isSensitiveKey, SENSITIVE_KEY_PARTS } from './common.mjs';
 
 // the doc that error texts point to.
 export const DOC_REF = 'docs/v5/B30-migration-guard.md';
 
-// the env key of the install file path (used when no path is passed).
+// the env key of the install file path (an absolute path; else the default path below).
 export const INSTALL_ENV = 'LEMON_MIGRATION_GUARD_INSTALL';
+
+//* v5 B30 r2: the default install file path, relative to the home dir (`~/.lemon-core/migration-guard.install.json`).
+export const DEFAULT_INSTALL = Object.freeze(['.lemon-core', 'migration-guard.install.json']);
 
 // the env key that, when set, must equal the root of the install file.
 export const STATE_DIR_ENV = 'MIGRATION_STATE_DIR';
@@ -46,7 +50,15 @@ export const BLOCKED_REASONS = Object.freeze([
     'registry-invalid',
     'not-registered',
     'identity-mismatch',
+    'run-unresolved',
 ]);
+
+//* v5 B30 r2: the run-state enums of a registry entry (B27 classes / run states plus `none` for no run state).
+export const RUN_STATES = Object.freeze(['completed', 'resolved-observed-diff', 'unresolved', 'none']);
+// the `reconcile` class of the last check of the target (B27 `CLASSES`).
+export const CLASSES = Object.freeze(['verified-no-op', 'reconcile-required', 'blocked']);
+// the baseline the class was computed against.
+export const BASELINE_KINDS = Object.freeze(['run-receipt', 'first-observation', 'reviewed-rebaseline']);
 
 // path segments of the usual file-sync apps (best effort: a path check cannot see every sync app).
 const SYNC_SEGMENTS = Object.freeze([
@@ -59,6 +71,7 @@ const SYNC_SEGMENTS = Object.freeze([
     'Box',
     'Nextcloud',
     'Sync',
+    'CloudStorage',
 ]);
 
 // mount prefixes of removable / network volumes.
@@ -85,7 +98,8 @@ const SHA_RE = /^[0-9a-f]{64}$/;
 const ACCOUNT_RE = /^\d{12}$/;
 const REGION_RE = /^[a-z]{2}-[a-z]+-\d$/;
 const MACHINE_RE = /^[A-Za-z0-9._-]{1,64}$/;
-const TOKEN_RE = /^[a-z][a-z0-9-]{0,63}$/;
+// a decision reference: URL / id characters only, no blank, stored byte for byte.
+const DECISION_REF_RE = /^[A-Za-z0-9._:/#@?=&%+~-]+$/;
 const REQUEST_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 const CODE_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 // a journal file name (`<UTC stamp>-<operation id>.json`) and a temp file of an atomic write.
@@ -124,6 +138,7 @@ const io = deps => ({
     fs: deps?.fs ?? nodeFs,
     net: deps?.net ?? nodeNet,
     now: deps?.now ?? (() => new Date()),
+    homedir: deps?.homedir ?? os.homedir,
     targets: deps?.targets ?? ORG_DEFAULTS.migration.targets,
 });
 
@@ -132,12 +147,21 @@ const io = deps => ({
  * ARNs, access keys, keyed secrets, tokens, URLs), every word holding a secret-like fragment hidden, 200 characters.
  */
 export const scrub = (text, max = TEXT_MAX) => {
-    const s = redact(stripControl(`${text}`)).replace(/[A-Za-z0-9_.-]+/g, w => (isSensitiveKey(w) ? '<redacted>' : w));
+    // v5 B30 r2: URL-encoded ARNs and dashed account ids first, then `redact()`.
+    const pre = stripControl(`${text}`)
+        .replace(/arn%3Aaws[^\s]*/gi, '<arn>')
+        .replace(/\d{4}-\d{4}-\d{4}/g, '<acct>');
+    const s = redact(pre).replace(/[A-Za-z0-9_.-]+/g, w => (isSensitiveKey(w) ? '<redacted>' : w));
     return [...s].slice(0, max).join('');
 };
 
-/** the run-state reference of a private path: its sha256 hex (the path itself is never stored). */
-export const runStateRefOf = privatePath => hash(path.resolve(`${privatePath}`));
+/** the run-state reference of a private absolute path: its sha256 hex (the path itself is never stored). */
+export const runStateRefOf = privatePath => {
+    // v5 B30 r2: an absolute path only (a relative one would depend on the cwd).
+    if (typeof privatePath !== 'string' || !path.isAbsolute(privatePath))
+        fail('INVALID_INPUT', 'A run-state reference needs an absolute path.');
+    return hash(path.normalize(privatePath));
+};
 
 //* ---- A. target classification ----
 
@@ -195,13 +219,14 @@ export function classifyTarget(input, deps = {}) {
  */
 export function unsupportedVolume(root) {
     if (NETWORK_PREFIXES.some(p => `${root}`.startsWith(p))) return true;
-    // a segment equal to a sync name, or the name followed by a non-alphanumeric suffix (`Dropbox (Personal)`).
+    // a segment equal to a sync name, or the name followed by a non-alphanumeric suffix (`Dropbox (Personal)`);
+    //  v5 B30 r2: case-insensitive.
+    const names = SYNC_SEGMENTS.map(n => n.toLowerCase());
     return `${root}`
         .split('/')
+        .map(seg => seg.toLowerCase())
         .some(seg =>
-            SYNC_SEGMENTS.some(
-                name => seg === name || (seg.startsWith(name) && /^[^A-Za-z0-9]/.test(seg.slice(name.length))),
-            ),
+            names.some(name => seg === name || (seg.startsWith(name) && /^[^a-z0-9]/.test(seg.slice(name.length)))),
         );
 }
 
@@ -220,14 +245,30 @@ function checkRootPath(root) {
 }
 
 /**
- * read and check the install file (outside the root; path passed or `LEMON_MIGRATION_GUARD_INSTALL`), without
- * touching the root. Schema `{ schemaVersion: 1, root, port, machineId, localVolume: { confirmedBy, at } }`.
+ * the install file path: `LEMON_MIGRATION_GUARD_INSTALL` (absolute only), else the default fixed path under the home
+ * dir. There is no argument: the root and port come from this one file, whose place the operator decides.
  */
-export async function readInstallConfig({ installFile, env = process.env, deps } = {}) {
+export function installPath({ env = process.env, deps } = {}) {
+    const fromEnv = env?.[INSTALL_ENV];
+    // a set env must be an absolute path (a relative one would depend on the cwd).
+    if (fromEnv !== undefined) {
+        if (typeof fromEnv !== 'string' || !path.isAbsolute(fromEnv))
+            fail('INSTALL_INVALID', `${INSTALL_ENV} must be an absolute path.`);
+        return fromEnv;
+    }
+    const home = io(deps).homedir();
+    if (typeof home !== 'string' || !path.isAbsolute(home))
+        fail('INSTALL_INVALID', 'No home directory for the default guard install file.');
+    return path.join(home, ...DEFAULT_INSTALL);
+}
+
+/**
+ * read and check the install file (outside the root; `installPath`), without touching the root.
+ * Schema `{ schemaVersion: 1, root, port, machineId, localVolume: { confirmedBy, at } }`.
+ */
+export async function readInstallConfig({ env = process.env, deps } = {}) {
     const { fs } = io(deps);
-    const file = installFile ?? env?.[INSTALL_ENV];
-    if (typeof file !== 'string' || !file)
-        fail('INSTALL_INVALID', `No guard install file: pass its path or set ${INSTALL_ENV}.`);
+    const file = installPath({ env, deps });
     let raw;
     // read + parse (a missing or unreadable file is an invalid installation).
     try {
@@ -292,8 +333,8 @@ const sameInstall = (marker, config) =>
  * `ROOT_INVALID`), an existing directory with an `install.json` (`ROOT_MISSING`) whose schemaVersion, root, port and
  * machineId all equal the install file (`ROOT_MISMATCH`). Returns `{ root, port, machineId, localVolume }` (frozen).
  */
-export async function loadInstall({ installFile, env = process.env, deps } = {}) {
-    const config = await readInstallConfig({ installFile, env, deps });
+export async function loadInstall({ env = process.env, deps } = {}) {
+    const config = await readInstallConfig({ env, deps });
     const { fs } = io(deps);
     const st = await fs.lstat(config.root).catch(() => null);
     if (!st) fail('ROOT_MISSING', 'The guard root does not exist.');
@@ -322,7 +363,13 @@ function installOf(install) {
 
 // fsync a directory after a rename (some file systems refuse a directory fsync; then the rename stands alone).
 async function syncDir(fs, dir) {
-    const handle = await fs.open(dir, 'r');
+    let handle;
+    // v5 B30 r2: an open failure is a known error (no raw fs message, no path).
+    try {
+        handle = await fs.open(dir, 'r');
+    } catch {
+        fail('STATE_WRITE_FAILED', 'Could not write the guard state.');
+    }
     try {
         await handle.sync();
     } catch {
@@ -378,10 +425,15 @@ export async function initializeRoot(install, deps = {}) {
         if (e?.code !== 'EEXIST') fail('ROOT_INVALID', 'Could not create the guard root.');
     }
     if (!created) fail('ROOT_EXISTS', 'The guard root exists already; it is never initialized twice.');
-    await fs.chmod(root, 0o700);
     const journal = path.join(root, ROOT_FILES.journal);
-    await fs.mkdir(journal, { mode: 0o700 });
-    await fs.chmod(journal, 0o700);
+    // v5 B30 r2: modes and the journal dir; a raw fs error becomes STATE_WRITE_FAILED (no path in the message).
+    try {
+        await fs.chmod(root, 0o700);
+        await fs.mkdir(journal, { mode: 0o700 });
+        await fs.chmod(journal, 0o700);
+    } catch {
+        fail('STATE_WRITE_FAILED', 'Could not write the guard state.');
+    }
     await writeAtomic(fs, path.join(root, ROOT_FILES.registry), { schemaVersion: 1, machineId, entries: {} });
     const initializedAt = now().toISOString();
     // the marker is written last: a half-made root has no install.json and stays refused.
@@ -446,6 +498,10 @@ export async function acquireHostLock({ port, holder, deps } = {}) {
 
 //* ---- D. registry ----
 
+// v5 B30 r2: the three run-state fields of an entry are in their enums.
+const runStateOk = e =>
+    CLASSES.includes(e?.class) && RUN_STATES.includes(e?.runState) && BASELINE_KINDS.includes(e?.baselineKind);
+
 // one registry entry (history items have no history of their own); the key must name its account/region/target.
 function validEntry(key, e, nested = false) {
     const keys = ['identity', 'account', 'region', 'runStateRef', 'class', 'runState', 'baselineKind', 'registeredAt'];
@@ -460,7 +516,7 @@ function validEntry(key, e, nested = false) {
         REGION_RE.test(e.region) &&
         typeof e.runStateRef === 'string' &&
         SHA_RE.test(e.runStateRef) &&
-        ['class', 'runState', 'baselineKind'].every(k => typeof e[k] === 'string' && TOKEN_RE.test(e[k])) &&
+        runStateOk(e) &&
         isIso(e.registeredAt) &&
         key === keyOf(e.account, e.region, id.stage, id.project) &&
         (e.history === undefined || (Array.isArray(e.history) && e.history.every(h => validEntry(key, h, true))))
@@ -496,7 +552,8 @@ export async function readRegistry(install, deps = {}) {
  * register (or update) a reviewed target of this installation under `<account>/<region>/<stage>/<project>`; an
  * overwritten entry is kept in `history[]`. `account` / `region` are the expected values of the private config
  * (never a profile name); `runStateRef` is a sha256 digest (`runStateRefOf`), never a path. Registration is neither
- * a write approval nor a migration success. Taken under the host lock; atomic write, 0600.
+ * a write approval nor a migration success. Taken under the host lock; atomic write, 0600. Allowed while the journal
+ * is unresolved (a control record, not a write of the target).
  */
 export async function registerTarget(install, entry, deps = {}) {
     const inst = installOf(install);
@@ -511,7 +568,7 @@ export async function registerTarget(install, entry, deps = {}) {
         !REGION_RE.test(entry.region) ||
         typeof entry.runStateRef !== 'string' ||
         !SHA_RE.test(entry.runStateRef) ||
-        !['class', 'runState', 'baselineKind'].every(k => typeof entry[k] === 'string' && TOKEN_RE.test(entry[k]))
+        !runStateOk(entry)
     )
         fail('INVALID_INPUT', 'Invalid registry entry.');
     const classified = classifyTarget(entry.identity, deps);
@@ -549,6 +606,21 @@ export async function registerTarget(install, entry, deps = {}) {
 
 //* ---- E. journal ----
 
+//* v5 B30 r2: a decision `{ ref, digest }`: `ref` stored byte for byte, so it may not look like a secret.
+const decisionRefOk = ref =>
+    typeof ref === 'string' &&
+    ref.length >= 1 &&
+    ref.length <= TEXT_MAX &&
+    DECISION_REF_RE.test(ref) &&
+    !/\d{12}/.test(ref) &&
+    !/\d{4}-\d{4}-\d{4}/.test(ref) &&
+    !/(?:AKIA|ASIA)[0-9A-Z]{16}/.test(ref) &&
+    !/arn(?::|%3a)aws/i.test(ref) &&
+    !SENSITIVE_KEY_PARTS.some(p => ref.toLowerCase().includes(p));
+// the decision object: exact keys, a valid ref and the sha256 hex of the decision text the caller keeps.
+const decisionOk = d =>
+    exactKeys(d, ['ref', 'digest']) && decisionRefOk(d.ref) && typeof d.digest === 'string' && SHA_RE.test(d.digest);
+
 // one journal record (schema check; the file name must carry its operation id).
 function validJournal(name, rec) {
     const m = JOURNAL_NAME_RE.exec(name);
@@ -578,8 +650,8 @@ function validJournal(name, rec) {
                 typeof rec.error.code === 'string' &&
                 typeof rec.error.message === 'string')) &&
         (rec.resolution === undefined ||
-            (exactKeys(rec.resolution, ['decisionRef', 'at']) &&
-                typeof rec.resolution.decisionRef === 'string' &&
+            (exactKeys(rec.resolution, ['decision', 'at']) &&
+                decisionOk(rec.resolution.decision) &&
                 isIso(rec.resolution.at)))
     );
 }
@@ -632,16 +704,21 @@ export async function operationState(install, deps = {}) {
 }
 
 /**
- * record an owner decision on an `inflight` / `unknown` operation: adds `resolution: { decisionRef, at }` to its
- * file (every original field kept as is). `decisionRef` (1..200 characters, not blank) points to the decision; a
- * reason text alone does not resolve. Only files with a `resolution` count as idle. This records a cooperative
- * procedure; it is not a security boundary and proves nothing about the target. Taken under the host lock.
+ * record an owner decision on an `inflight` / `unknown` operation: adds `resolution: { decision: { ref, digest }, at }`
+ * to its file (every original field kept as is). `ref` (1..200 of `[A-Za-z0-9._:/#@?=&%+~-]`, e.g. a review comment
+ * URL) points to the decision and is stored byte for byte, so a ref with a 12-digit number, an ARN or a secret-like
+ * word is refused, not scrubbed; `digest` is the sha256 hex of the decision text the caller keeps. A reason text
+ * alone does not resolve. Only files with a `resolution` count as idle. This records a cooperative procedure; it is
+ * not a security boundary and proves nothing about the target. Taken under the host lock.
  */
-export async function resolveOperation(install, operationId, { decisionRef, deps } = {}) {
+export async function resolveOperation(install, operationId, { decision, deps } = {}) {
     const inst = installOf(install);
     if (typeof operationId !== 'string' || !UUID_RE.test(operationId)) fail('INVALID_INPUT', 'Invalid operation id.');
-    if (!isText(decisionRef))
-        fail('INVALID_INPUT', 'A decision reference (1..200 characters, not blank) is required to resolve.');
+    if (!decisionOk(decision))
+        fail(
+            'INVALID_INPUT',
+            'A decision { ref, digest } is required: ref of 1..200 reference characters without an account, ARN or secret word, digest sha256 hex.',
+        );
     const { fs, now } = io(deps);
     const lock = await acquireHostLock({ port: inst.port, holder: 'resolve-operation', deps });
     try {
@@ -655,9 +732,9 @@ export async function resolveOperation(install, operationId, { decisionRef, deps
         if (rec.state === 'completed')
             fail('OPERATION_NOT_UNRESOLVED', 'Only an inflight or unknown operation is resolved.');
         if (rec.resolution) fail('OPERATION_RESOLVED', 'The operation is resolved already.');
-        const resolution = { decisionRef: scrub(decisionRef), at: now().toISOString() };
+        const resolution = { decision: { ref: decision.ref, digest: decision.digest }, at: now().toISOString() };
         await writeAtomic(fs, path.join(dir, names[0]), { ...rec, resolution });
-        return Object.freeze({ operationId, state: rec.state, resolution: Object.freeze(resolution) });
+        return Object.freeze({ operationId, state: rec.state, resolution: Object.freeze({ ...resolution }) });
     } finally {
         await lock.release();
     }
@@ -706,9 +783,9 @@ function errorCodeOf(e) {
 }
 
 // the installation, or the blocked reason of an install failure.
-async function installOrReason({ install, env, deps }) {
+async function installOrReason({ env, deps }) {
     try {
-        return { inst: await loadInstall({ installFile: install, env, deps }) };
+        return { inst: await loadInstall({ env, deps }) };
     } catch (e) {
         if (INSTALL_FAILURES.has(e?.code)) return { reason: reasonOf(e.code) };
         throw e;
@@ -741,6 +818,11 @@ async function preflight(inst, identity, want, deps) {
         entry.region !== want.region
     )
         return 'identity-mismatch';
+    //* v5 B30 r2: the recorded run state must be settled (an unresolved run or an open reconcile blocks).
+    if (entry.runState === 'unresolved' || entry.class === 'blocked' || entry.class === 'reconcile-required')
+        return 'run-unresolved';
+    // no run state is accepted only with a first-observation baseline.
+    if (entry.runState === 'none' && entry.baselineKind !== 'first-observation') return 'run-unresolved';
     return null;
 }
 
@@ -751,21 +833,15 @@ async function preflight(inst, identity, want, deps) {
  *    `root-unsupported-volume`) and the adapter is not called;
  * 3. `acquireHostLock` — `LOCK_BUSY` is `blocked: 'busy'`;
  * 4. under the lock, `operationState` — not idle is `blocked: 'journal-unresolved'` (no write, no retry, no repair);
- * 5. the registry entry — none `blocked: 'not-registered'`, other stack/account/region `blocked: 'identity-mismatch'`;
+ * 5. the registry entry — none `blocked: 'not-registered'`, other stack/account/region `blocked: 'identity-mismatch'`,
+ *    an unsettled run state `blocked: 'run-unresolved'`;
  * 6. journal `inflight` (fsync) → `adapter.write({ identity, operationId, signal })` → `completed`; a throw (or an
- *    invalid result) is recorded `unknown` (scrubbed message, 200 characters) and `WRITE_UNKNOWN` is thrown.
- * `install` is the install file path (else `LEMON_MIGRATION_GUARD_INSTALL`). The lock is released in all cases.
+ *    invalid result) is recorded `unknown` (scrubbed message, 200 characters) and `WRITE_UNKNOWN` is thrown; when the
+ *    journal itself cannot be written after the call, `WRITE_UNKNOWN` carries `stateWriteFailed: true` and the file
+ *    stays `inflight`.
+ * The install file is found by `installPath` (env or default path). The lock is released in all cases.
  */
-export async function guardedWrite({
-    input,
-    expected,
-    install,
-    env = process.env,
-    adapter,
-    holder,
-    signal,
-    deps,
-} = {}) {
+export async function guardedWrite({ input, expected, env = process.env, adapter, holder, signal, deps } = {}) {
     const classified = classifyTarget(input, deps);
     // N14: a general deploy keeps its own path; nothing of the guard is read or opened.
     if (classified.applicability === 'not-applicable')
@@ -780,7 +856,7 @@ export async function guardedWrite({
     const who = holderOf(holder);
     const { identity } = classified;
     const blocked = reason => ({ applicability: 'applicable', status: 'blocked', reason, identity });
-    const { inst, reason } = await installOrReason({ install, env, deps });
+    const { inst, reason } = await installOrReason({ env, deps });
     if (reason) return blocked(reason);
     let lock;
     try {
@@ -807,16 +883,31 @@ export async function guardedWrite({
         };
         // the inflight record is on disk before the adapter is called.
         await writeAtomic(fs, file, record);
-        // an unknown end: recorded, then one error without the adapter's text.
-        const unknown = async error => {
-            await writeAtomic(fs, file, { ...record, state: 'unknown', endedAt: now().toISOString(), error });
+        // the one error of an unknown end (never the adapter's text); `stateWriteFailed` when the journal failed too.
+        const unknownError = stateWriteFailed => {
             const err = new MigrationError(
                 'WRITE_UNKNOWN',
-                'The write did not complete; the journal records it as unknown until it is resolved.',
+                stateWriteFailed
+                    ? 'The write ended and its journal record could not be written; the operation stays inflight.'
+                    : 'The write did not complete; the journal records it as unknown until it is resolved.',
                 { unknown: true },
             );
             err.operationId = operationId;
-            throw err;
+            if (stateWriteFailed) err.stateWriteFailed = true;
+            return err;
+        };
+        // v5 B30 r2: a journal write after the adapter call that fails leaves the file inflight (WRITE_UNKNOWN).
+        const writeEnd = async value => {
+            try {
+                await writeAtomic(fs, file, value);
+            } catch {
+                throw unknownError(true);
+            }
+        };
+        // an unknown end: recorded, then one error without the adapter's text.
+        const unknown = async error => {
+            await writeEnd({ ...record, state: 'unknown', endedAt: now().toISOString(), error });
+            throw unknownError(false);
         };
         let result;
         try {
@@ -828,7 +919,7 @@ export async function guardedWrite({
         if (!done)
             await unknown({ code: 'ADAPTER_RESULT_INVALID', message: 'The adapter returned an invalid result.' });
         // completed: the same file is replaced atomically.
-        await writeAtomic(fs, file, { ...record, ...done, state: 'completed', endedAt: now().toISOString() });
+        await writeEnd({ ...record, ...done, state: 'completed', endedAt: now().toISOString() });
         return { applicability: 'applicable', status: 'completed', operationId, identity };
     } finally {
         await lock.release();
@@ -840,14 +931,14 @@ export async function guardedWrite({
  * any write → `{ applicability: 'applicable', status: 'ready' | 'blocked', reason?, identity }`, or
  * `{ applicability: 'not-applicable', reason: 'outside-registry' }` with no state I/O at all.
  */
-export async function guardStatus(input, expected, { install, env = process.env, deps } = {}) {
+export async function guardStatus(input, expected, { env = process.env, deps } = {}) {
     const classified = classifyTarget(input, deps);
     if (classified.applicability === 'not-applicable')
         return { applicability: 'not-applicable', reason: classified.reason };
     const want = expectedOf(expected);
     const { identity } = classified;
     const blocked = reason => ({ applicability: 'applicable', status: 'blocked', reason, identity });
-    const { inst, reason } = await installOrReason({ install, env, deps });
+    const { inst, reason } = await installOrReason({ env, deps });
     if (reason) return blocked(reason);
     const why = await preflight(inst, identity, want, deps);
     return why ? blocked(why) : { applicability: 'applicable', status: 'ready', identity };
