@@ -15,37 +15,75 @@ import { sha256 } from './pack-zip.mjs';
 import { ORG_DEFAULTS } from './org-defaults.mjs';
 //* v5 B34 (D-2): tool error text is scrubbed with the guard's `scrub()` (accounts, ARNs, `arn%3A`, secret words).
 import { scrub } from './migrate-guard.mjs';
+//* v5 B34 r2 (S3): control characters are stripped before the path and account passes.
+import { stripControl } from './common.mjs';
 
 //* v5 B34 (D-1): the wait before each throttle retry of an idempotent tool — 2 s, 4 s, 8 s, 16 s (four retries at most).
 export const THROTTLE_RETRY_DELAYS_MS = Object.freeze([2000, 4000, 8000, 16000]);
 //* v5 B34 (D-2): the cap of a tool error message in the receipt step and the stderr line, in characters.
 export const TOOL_ERROR_MESSAGE_MAX = 300;
-//* v5 B34 (D-1): an idempotent tool is an `ensure-` / `resolve-` action (not begin, end, presign, subscribe, deploy-stage).
-export const isRetryableTool = tool => typeof tool === 'string' && /\.(?:ensure|resolve)-[a-z0-9-]+@\d+$/.test(tool);
-// v5 B34 (D-1): throttle words of a tool error (`Too Many Requests`, `TooManyRequestsException`, `Throttling`, `Rate exceeded`).
-const THROTTLE_RE = /too\s*many\s*requests|throttl|rate exceeded/i;
+//* v5 B34 r2 (N4): the POST tools this runner calls that read before they write on the server (or only read).
+export const RETRYABLE_TOOLS = Object.freeze([
+    `${ORG_DEFAULTS.deploy.toolNamespace}.resolve-names@1`,
+    `${ORG_DEFAULTS.deploy.toolNamespace}.resolve-policy@1`,
+    `${ORG_DEFAULTS.deploy.toolNamespace}.ensure-role@1`,
+    'aws.dynamodb.ensure-table@1',
+    'aws.sqs.ensure-queue@1',
+    'aws.sns.ensure-topic@1',
+    'aws.logs.ensure-log-group@1',
+    'aws.lambda.ensure-function@1',
+    'aws.lambda.ensure-event-source-mapping@1',
+    'aws.events.ensure-schedule@1',
+    'aws.apigateway.ensure-rest-api@1',
+    'aws.apigateway.ensure-route@1',
+]);
+//* v5 B34 (D-1): an idempotent tool is one of `RETRYABLE_TOOLS` (not begin, end, presign, subscribe, deploy-stage).
+export const isRetryableTool = tool => RETRYABLE_TOOLS.includes(tool);
+// v5 B34 r2 (N3): throttle words — `Too Many Requests` / `TooManyRequests…`, `Rate exceeded`, `throttled` / `Throttling…`.
+const THROTTLE_RE = /too\s*many\s*requests|rate exceeded|\bthrottl(?:ed|ing)(?:exception)?\b/i;
+// v5 B34 r2 (N3): a 429 given as a number or a (trimmed) string.
+const is429 = v => v === 429 || (typeof v === 'string' && v.trim() === '429');
 //* v5 B34 (D-1): true when a tool error object means control-plane throttling (message, code, or an HTTP 429 status).
 export const isThrottleError = e => {
     if (!isObject(e)) return false;
     // a 429 status field under one of the usual names.
-    if ([e.statusCode, e.httpStatusCode, e.status, e.http].some(v => v === 429 || v === '429')) return true;
-    // a code `429` or a throttle word in the code.
-    if (typeof e.code === 'string' && (e.code.trim() === '429' || THROTTLE_RE.test(e.code))) return true;
+    if ([e.statusCode, e.httpStatusCode, e.status, e.http].some(is429)) return true;
+    // a code `429` (number or string) or a throttle word in the code.
+    if (is429(e.code) || (typeof e.code === 'string' && THROTTLE_RE.test(e.code))) return true;
     // a throttle word or an `HTTP 429` / `status 429` in the message.
     return (
         typeof e.message === 'string' &&
         (THROTTLE_RE.test(e.message) || /\b(?:HTTP|status)\s*:?\s*429\b/i.test(e.message))
     );
 };
-// v5 B34 (D-2): absolute local paths `scrub()` keeps — system / home / temp roots, `~/`, `file://`, a Windows drive.
-const LOCAL_PATH_RE =
-    /file:\/\/\S+|~\/\S*|(?<![\w.%:/-])\/(?:Users|home|private|tmp|var|opt|root|Volumes|mnt|usr|etc|srv|workspace|data)\/\S*|\b[A-Za-z]:\\\S*/g;
-//* v5 B34 (D-2): a tool error message as the receipt and stderr keep it — paths hidden, `scrub()`, one line, 300 characters.
-export const toolErrorText = text =>
-    scrub(`${text}`.replace(LOCAL_PATH_RE, '<path>').replace(/\s+/g, ' ').trim(), TOOL_ERROR_MESSAGE_MAX);
+// v5 B34 r2 (S3): roots of local absolute paths that `scrub()` keeps.
+const PATH_ROOTS = 'Users|home|private|tmp|var|opt|root|Volumes|mnt|usr|etc|srv|workspace|data';
+// v5 B34 r2 (S3/N1): `file://`, `~/` and `~user/`, a root after anything but a letter or digit (`:` / `_` included),
+// a Windows drive with `\` or `/`.
+const LOCAL_PATH_RE = new RegExp(
+    `file://\\S+|~[A-Za-z0-9_.-]*/\\S*|(?<![A-Za-z0-9])/(?:${PATH_ROOTS})/\\S*|\\b[A-Za-z]:[\\\\/]\\S*`,
+    'g',
+);
+// v5 B34 r2 (N1): the same roots percent-encoded (`%2FUsers%2F…`), any case.
+const ENCODED_PATH_RE = new RegExp(`%2F(?:${PATH_ROOTS})%2F\\S*`, 'gi');
+//* v5 B34 (D-2): a tool error message as the receipt and stderr keep it — one line, 300 characters, nothing private.
+export const toolErrorText = text => {
+    // r2 (S3): control characters first, so `/Us\0ers` or an ANSI escape cannot split a path or a number.
+    const plain = stripControl(`${text}`)
+        // r2 (N1): any 12-digit run not inside a longer number (`user_123456789012`, `x123456789012y`).
+        .replace(/(?<!\d)\d{12}(?!\d)/g, '<acct>')
+        // r2 (N1): ARNs URL-encoded once or more (`arn%3A…`, `arn%253A…`).
+        .replace(/arn%(?:25)*3Aaws\S*/gi, '<arn>')
+        .replace(ENCODED_PATH_RE, '<path>')
+        .replace(LOCAL_PATH_RE, '<path>');
+    // then the guard's `scrub()` (ARNs, keys, tokens, URLs, secret words) on one line.
+    return scrub(plain.replace(/\s+/g, ' ').trim(), TOOL_ERROR_MESSAGE_MAX);
+};
 //* v5 B34 (D-2): a tool error code kept only when it is still a short identifier after `scrub()` (else dropped).
 const toolErrorCodeOf = code => {
     if (typeof code !== 'string' && !Number.isSafeInteger(code)) return undefined;
+    // r2 (N1): a code holding 12 consecutive digits is dropped whole.
+    if (/\d{12}/.test(`${code}`)) return undefined;
     const s = scrub(`${code}`.trim(), 64);
     return /^[A-Za-z0-9_.:-]{1,64}$/.test(s) ? s : undefined;
 };
@@ -61,6 +99,12 @@ const stepToolError = (step, error) => {
     if (error?.errorMessage) step.errorMessage = error.errorMessage;
     if (error?.toolErrorCode) step.toolErrorCode = error.toolErrorCode;
 };
+//* v5 B34 r2 (N5): the default wait — ended by the run's abort signal, so it never keeps the process alive.
+const abortableDelay = (ms, signal) =>
+    delay(ms, undefined, signal ? { signal } : {}).catch(e => {
+        // an aborted wait just ends; the caller's `check()` reports the interruption.
+        if (e?.name !== 'AbortError') throw e;
+    });
 
 //* v5 B19: the deploy-service pins (tool namespace, policy profile, abort reason) come from `org-defaults.mjs`.
 const DEPLOY = ORG_DEFAULTS.deploy;
@@ -254,7 +298,8 @@ export async function runDeployment(
         receiptDirectory = '.artifacts/deploy',
         signal,
         now = Date.now,
-        sleep = ms => delay(ms),
+        //* v5 B34 r2 (N5): `signal` is read here, so an abort ends the default wait.
+        sleep = ms => abortableDelay(ms, signal),
         receiptFactory = createReceipt,
     } = {},
 ) {
@@ -325,9 +370,13 @@ export async function runDeployment(
             startedAt: new Date(now()).toISOString(),
         };
         if (reuse) {
-            // the previous attempt's outcome is replaced; durationMs spans every attempt and wait.
+            // the previous attempt's outcome moves to `previous*` (r2 S2); durationMs spans every attempt and wait.
             step.status = 'in-flight';
-            for (const k of ['durationMs', 'errorCode', 'errorMessage', 'toolErrorCode']) delete step[k];
+            step.previousErrorCode = step.errorCode;
+            if (step.errorMessage) step.previousErrorMessage = step.errorMessage;
+            else delete step.previousErrorMessage;
+            for (const k of ['durationMs', 'errorCode', 'errorMessage', 'toolErrorCode', 'nextAttemptAt'])
+                delete step[k];
             step.attempts = (step.attempts ?? 1) + 1;
             step.retried = 'throttle';
         } else {
@@ -372,6 +421,12 @@ export async function runDeployment(
         // the wait plus one full request must end inside the round deadline / lease (a known failure is kept known).
         return now() + wait + c.requestTimeoutMs <= deadline ? wait : undefined;
     };
+    //* v5 B34 r2 (N2/S1): a planned retry that will not run leaves no `nextAttemptAt` (nor `retried` before a retry).
+    const dropPlannedRetry = async step => {
+        delete step.nextAttemptAt;
+        if (!step.attempts) delete step.retried;
+        await receipt.save();
+    };
     const call = async (name, tool, input, { method = 'POST', resource } = {}) => {
         let polled = 0;
         //* v5 B34 (D-1): POST attempts of this step, and the step a throttle retry reuses.
@@ -406,8 +461,17 @@ export async function runDeployment(
                 //* v5 B34 (D-1): a throttled idempotent tool is called again with the same input after the backoff.
                 const wait = throttleWait(method, tool, error, attempts);
                 if (wait === undefined) throw error;
+                // r2 (N2): the wait is readable in the receipt (a kill mid-wait shows the planned next attempt).
+                got.step.retried = 'throttle';
+                got.step.nextAttemptAt = new Date(now() + wait).toISOString();
+                await receipt.save();
                 await pause(wait);
-                check();
+                // r2 (S1): an abort stays INTERRUPTED; a request that no longer fits keeps the known failure.
+                if (signal?.aborted || now() + c.requestTimeoutMs > deadline) {
+                    await dropPlannedRetry(got.step);
+                    if (signal?.aborted) check();
+                    throw error;
+                }
                 retryStep = got.step;
                 continue;
             }

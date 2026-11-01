@@ -6,7 +6,7 @@
 //* v5 B19: ported from lemon-templates-api `bin/lib/deploy.test.mjs` (node:test -> vitest; every case kept).
 import { test, onTestFinished, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, stat, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHmac, createHash } from 'node:crypto';
@@ -21,6 +21,7 @@ import {
     toolErrorText,
     toolErrorFields,
     THROTTLE_RETRY_DELAYS_MS,
+    RETRYABLE_TOOLS,
 } from './deploy-runner.mjs';
 import { createDeployClient } from './deploy-client.mjs';
 import { main, parseDeployArgs } from '../lemon-lambda-deploy.mjs';
@@ -1049,6 +1050,11 @@ test('B34 isThrottleError reads message, code and a 429 status; other failures a
         { status: '429' },
         { code: '429' },
         { message: 'failed with HTTP 429' },
+        // r2 (N3): a numeric code, trimmed status strings, the `http` field.
+        { code: 429 },
+        { status: ' 429 ' },
+        { statusCode: '429\n' },
+        { http: 429 },
     ])
         assert.equal(isThrottleError(e), true, JSON.stringify(e));
     for (const e of [
@@ -1061,6 +1067,9 @@ test('B34 isThrottleError reads message, code and a 429 status; other failures a
         { message: 'took 429 ms' },
         { code: 'InvalidParameterValueException' },
         { statusCode: 400 },
+        // r2 (N3): `throttle` as a setting name is not throttling.
+        { message: 'Invalid throttle burst limit' },
+        { code: 428 },
     ])
         assert.equal(isThrottleError(e), false, JSON.stringify(e));
 });
@@ -1082,8 +1091,15 @@ test('B34 isRetryableTool is true only for ensure- / resolve- tools', () => {
         'aws.apigateway.deploy-stage@1',
         's3:PutObject',
         undefined,
+        // r2 (N4): an ensure- / resolve- name outside the reviewed list is not retried.
+        'foo.ensure-x@1',
+        'lemon.deploy.ensure-other@1',
+        'aws.apigateway.resolve-anything@1',
     ])
         assert.equal(isRetryableTool(tool), false, String(tool));
+    // r2 (N4): the list is frozen and holds exactly the twelve read-before-write tools the runner calls.
+    assert.ok(Object.isFrozen(RETRYABLE_TOOLS));
+    assert.equal(new Set(RETRYABLE_TOOLS).size, 12);
 });
 test('B34 a throttled ensure-route is retried with the same input after 2 s, 4 s and the round completes', async t => {
     const f = await fixture(t, 'bootstrap');
@@ -1116,7 +1132,10 @@ test('B34 a throttled ensure-route is retried with the same input after 2 s, 4 s
     assert.equal(steps[0].status, 'succeeded');
     assert.equal(steps[0].attempts, 3);
     assert.equal(steps[0].retried, 'throttle');
-    for (const k of ['errorCode', 'errorMessage', 'toolErrorCode']) assert.equal(steps[0][k], undefined, k);
+    for (const k of ['errorCode', 'errorMessage', 'toolErrorCode', 'nextAttemptAt'])
+        assert.equal(steps[0][k], undefined, k);
+    // r2 (S2): the previous attempt's outcome stays readable.
+    assert.deepEqual([steps[0].previousErrorCode, steps[0].previousErrorMessage], ['TOOL_FAILED', 'Too Many Requests']);
     // steps without a retry carry no new field (receipt shape unchanged).
     for (const s of receipt.steps.filter(s => s.name !== 'route-2')) {
         assert.equal(s.attempts, undefined, s.name);
@@ -1303,4 +1322,148 @@ test('B34 the tool error reaches the receipt step and the CLI stderr line, scrub
     }
     // the abort reason sent to the server is unchanged.
     assert.equal(client.calls.at(-1).input.reason, 'templates-cli:TOOL_FAILED');
+});
+
+//* ---- v5 B34 r2: review should-fixes (S1–S3) and notes (N1–N5) ----
+
+// the receipt file of the only run under a receipt directory.
+const onlyReceipt = async dir => {
+    const [run] = (await readdir(dir)).filter(n => n.startsWith('run-'));
+    return JSON.parse(await readFile(path.join(dir, run, 'receipt.json'), 'utf8'));
+};
+// a clock that the injected sleep can move forward (`jump(ms)`).
+const movableClock = () => {
+    let offset = 0;
+    return { now: () => Date.now() + offset, jump: ms => (offset += ms) };
+};
+
+test('B34 r2 (S1) a wait that ends past the deadline keeps TOOL_FAILED known (not DEADLINE_UNKNOWN)', async t => {
+    const f = await fixture(t),
+        client = fakeClient(f.deployment, {
+            hook: r => (r.tool === 'aws.lambda.ensure-function@1' ? failedTool(r.tool, TOO_MANY) : undefined),
+        });
+    const clock = movableClock();
+    // the clock jumps 40 minutes during the backoff: the 20-minute round deadline is gone.
+    const { error, receipt } = await failedRun(f, client, 'TOOL_FAILED', {
+        now: clock.now,
+        sleep: async () => clock.jump(40 * 60_000),
+    });
+    assert.equal(error.exitCode, 1);
+    assert.equal(error.unknown, false);
+    assert.equal(receipt.status, 'failed');
+    assert.equal(client.calls.filter(x => x.tool === 'aws.lambda.ensure-function@1').length, 1);
+    // past the deadline the abort is skipped, as for any known failure there (unchanged rule).
+    assert.equal(receipt.roundStatus, undefined);
+    const step = receipt.steps.find(s => s.name === 'lambda-code');
+    assert.deepEqual(
+        [step.errorCode, step.retried, step.nextAttemptAt, step.attempts],
+        ['TOOL_FAILED', undefined, undefined, undefined],
+    );
+});
+test('B34 r2 (S1) a wait that leaves no room for one request keeps TOOL_FAILED and aborts the round', async t => {
+    const f = await fixture(t),
+        client = fakeClient(f.deployment, {
+            hook: r => (r.tool === 'aws.lambda.ensure-function@1' ? failedTool(r.tool, TOO_MANY) : undefined),
+        });
+    const clock = movableClock();
+    // 19 min 50 s: still before the deadline, but less than requestTimeoutMs (35 s) is left.
+    const { error, receipt } = await failedRun(f, client, 'TOOL_FAILED', {
+        now: clock.now,
+        sleep: async () => clock.jump(20 * 60_000 - 10_000),
+    });
+    assert.equal(error.exitCode, 1);
+    assert.equal(receipt.roundStatus, 'aborted');
+    assert.equal(client.calls.filter(x => x.tool === 'aws.lambda.ensure-function@1').length, 1);
+    assert.equal(client.calls.at(-1).input.reason, 'templates-cli:TOOL_FAILED');
+});
+test('B34 r2 (S2) a retry whose attempt ends unknown keeps the previous outcome on the step', async t => {
+    const f = await fixture(t);
+    let n = 0;
+    const client = fakeClient(f.deployment, {
+        hook: r => {
+            if (r.tool !== 'aws.lambda.ensure-function@1') return undefined;
+            // first a tool 429, then an API Gateway 504 of the deploy service (no tool result).
+            return n++ === 0 ? failedTool(r.tool, TOO_MANY) : { http: 504, result: { message: 'Endpoint timed out' } };
+        },
+    });
+    const { error, receipt } = await failedRun(f, client, 'RESPONSE_UNKNOWN');
+    assert.equal(error.exitCode, 3);
+    assert.equal(receipt.status, 'unknown');
+    // unknown: no abort is sent (the lease is held until it expires).
+    assert.ok(!client.calls.some(x => x.tool === 'lemon.deploy.end@1'));
+    const step = receipt.steps.find(s => s.name === 'lambda-code');
+    assert.deepEqual(
+        [step.status, step.errorCode, step.attempts, step.retried, step.previousErrorCode, step.previousErrorMessage],
+        ['unknown', 'RESPONSE_UNKNOWN', 2, 'throttle', 'TOOL_FAILED', 'Too Many Requests'],
+    );
+});
+test('B34 r2 (N2) the receipt shows the planned retry during the wait and clears it when the attempt starts', async t => {
+    const f = await fixture(t);
+    let n = 0;
+    const client = fakeClient(f.deployment, {
+        hook: r => (r.tool === 'aws.lambda.ensure-function@1' && n++ === 0 ? failedTool(r.tool, TOO_MANY) : undefined),
+    });
+    let during;
+    const result = await execute(f, client, {
+        sleep: async ms => {
+            if (ms === THROTTLE_RETRY_DELAYS_MS[0]) during = await onlyReceipt(f.receiptDirectory);
+        },
+    });
+    const mid = during.steps.find(s => s.name === 'lambda-code');
+    assert.deepEqual(
+        [mid.status, mid.errorCode, mid.retried, mid.attempts],
+        ['failed', 'TOOL_FAILED', 'throttle', undefined],
+    );
+    assert.ok(Number.isFinite(Date.parse(mid.nextAttemptAt)));
+    assert.ok(Date.parse(mid.nextAttemptAt) >= Date.parse(mid.startedAt) + THROTTLE_RETRY_DELAYS_MS[0]);
+    const done = JSON.parse(await readFile(result.receipt, 'utf8')).steps.find(s => s.name === 'lambda-code');
+    assert.deepEqual(
+        [done.status, done.attempts, done.retried, done.nextAttemptAt, done.previousErrorCode],
+        ['succeeded', 2, 'throttle', undefined, 'TOOL_FAILED'],
+    );
+});
+test('B34 r2 (N5) the default wait ends on abort and leaves no timer behind', async t => {
+    const f = await fixture(t),
+        controller = new AbortController(),
+        client = fakeClient(f.deployment, {
+            hook: r => (r.tool === 'aws.lambda.ensure-function@1' ? failedTool(r.tool, TOO_MANY) : undefined),
+        });
+    const timers = () => process.getActiveResourcesInfo().filter(x => x === 'Timeout').length;
+    const before = timers();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 30);
+    // `sleep: undefined` selects the default wait (2 s backoff) of `runDeployment`.
+    const { error } = await failedRun(f, client, 'INTERRUPTED', { sleep: undefined, signal: controller.signal });
+    assert.equal(error.exitCode, 3);
+    assert.ok(Date.now() - started < 1500);
+    await wait(0);
+    assert.ok(timers() <= before, `timers ${timers()} > ${before}`);
+});
+test('B34 r2 (S3/N1) toolErrorText hides every reviewer path and 12-digit form', () => {
+    for (const input of [
+        '/Us\0ers/alice/proj/x.js',
+        '/\x1b[0mUsers/alice/proj',
+        'ENOENT:/Users/alice/x',
+        'C:/Users/x',
+        'C:\\Users\\alice\\x',
+        '~alice/.aws/credentials',
+        '~/.aws/credentials',
+        '%2FUsers%2Falice',
+        '%2fhome%2falice%2fx',
+        'path_/Users/x',
+        'user_123456789012',
+        'x123456789012y',
+        'arn%253Aaws%253Aiam%253A%253A123456789012',
+        'arn%3Aaws%3Aiam%3A%3A123456789012%3Arole',
+    ]) {
+        const out = toolErrorText(input);
+        assert.ok(!/\d{12}/.test(out), `${JSON.stringify(input)} -> ${out}`);
+        assert.ok(!/alice|Users|\.aws|home/i.test(out), `${JSON.stringify(input)} -> ${out}`);
+    }
+    assert.equal(toolErrorText('ENOENT:/Users/alice/x'), 'ENOENT:<path>');
+    assert.equal(toolErrorText('path_/Users/x'), 'path_<path>');
+    assert.equal(toolErrorText('x123456789012y'), 'x<acct>y');
+    // a code holding 12 consecutive digits is dropped whole.
+    assert.deepEqual(toolErrorFields({ code: 'user_123456789012' }), {});
+    assert.deepEqual(toolErrorFields({ code: 'Throttling' }), { toolErrorCode: 'Throttling' });
 });
