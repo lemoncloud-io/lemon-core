@@ -831,3 +831,33 @@ test('sealed env: a reviewed target with process.env reads only the sealed insta
     );
     assert.deepEqual([reads, homes, run.calls.length], [[sealed], [], 0]);
 });
+
+// why: v5 B34 (D-2) — the tool's scrubbed error message / code of a failed step reach the deploy-dev stderr line too.
+test('deploy-dev (B34): a TOOL_FAILED error with a tool message prints errorMessage / toolErrorCode', async t => {
+    const d = await devFixture(t);
+    const g = await guardFixture({ account: d.config.account, region: d.config.region });
+    const error = new DeployError(
+        'TOOL_FAILED',
+        'Tool failed or verification failed; see the server deployment record.',
+    );
+    Object.assign(error, { exitCode: 1, errorMessage: 'Too Many Requests', toolErrorCode: 'TooManyRequestsException' });
+    const run = fakeRun(() => {
+        throw error;
+    });
+    const first = io();
+    assert.equal(
+        await devMain([...d.args, '--apply'], { ...first, guardEnv: g.env, run, clientFactory: fakeClients() }),
+        1,
+    );
+    const line = JSON.parse(first.err[0]);
+    assert.deepEqual(
+        [line.status, line.code, line.message, line.errorMessage, line.toolErrorCode],
+        [
+            'failed',
+            'TOOL_FAILED',
+            'Tool failed or verification failed; see the server deployment record.',
+            'Too Many Requests',
+            'TooManyRequestsException',
+        ],
+    );
+});

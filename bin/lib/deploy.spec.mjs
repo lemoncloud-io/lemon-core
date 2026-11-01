@@ -14,7 +14,14 @@ import { createRequire } from 'node:module';
 import { setTimeout as wait } from 'node:timers/promises';
 import { writeZip, sha256 } from './pack-zip.mjs';
 import { loadDeployment, validateConfig, deploymentPlan, DeployError } from './deploy-plan.mjs';
-import { runDeployment } from './deploy-runner.mjs';
+import {
+    runDeployment,
+    isThrottleError,
+    isRetryableTool,
+    toolErrorText,
+    toolErrorFields,
+    THROTTLE_RETRY_DELAYS_MS,
+} from './deploy-runner.mjs';
 import { createDeployClient } from './deploy-client.mjs';
 import { main, parseDeployArgs } from '../lemon-lambda-deploy.mjs';
 //* v5 B31: the templates config is a reviewed target, so its apply cases run with a guard installation.
@@ -1019,3 +1026,281 @@ test.skipIf(process.platform === 'win32')(
         for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
     },
 );
+
+//* ---- v5 B34: throttle retry of idempotent tools (D-1) and the tool's error text in receipt / stderr (D-2) ----
+
+// a `status: failed` tool response with the given tool error object (HTTP 200, not verified).
+const failedTool = (tool, error) => ({
+    http: 200,
+    result: { tool: tool.split('@')[0], version: '1', status: 'failed', verified: false, error },
+});
+// the API Gateway control-plane throttle answer observed on 2026-11-01 (`ensure-route`).
+const TOO_MANY = { message: 'Too Many Requests' };
+
+test('B34 isThrottleError reads message, code and a 429 status; other failures are not throttling', () => {
+    for (const e of [
+        TOO_MANY,
+        { message: 'TooManyRequestsException: Too Many Requests' },
+        { code: 'TooManyRequestsException' },
+        { code: 'ThrottlingException', message: 'x' },
+        { message: 'Rate exceeded' },
+        { message: 'request throttled' },
+        { statusCode: 429 },
+        { status: '429' },
+        { code: '429' },
+        { message: 'failed with HTTP 429' },
+    ])
+        assert.equal(isThrottleError(e), true, JSON.stringify(e));
+    for (const e of [
+        undefined,
+        null,
+        'Too Many Requests',
+        {},
+        { message: 'The role defined for the function cannot be assumed by Lambda.' },
+        { message: 'Invalid handler' },
+        { message: 'took 429 ms' },
+        { code: 'InvalidParameterValueException' },
+        { statusCode: 400 },
+    ])
+        assert.equal(isThrottleError(e), false, JSON.stringify(e));
+});
+test('B34 isRetryableTool is true only for ensure- / resolve- tools', () => {
+    for (const tool of [
+        'lemon.deploy.resolve-names@1',
+        'lemon.deploy.resolve-policy@1',
+        'lemon.deploy.ensure-role@1',
+        'aws.apigateway.ensure-route@1',
+        'aws.lambda.ensure-function@1',
+        'aws.lambda.ensure-event-source-mapping@1',
+    ])
+        assert.equal(isRetryableTool(tool), true, tool);
+    for (const tool of [
+        'lemon.deploy.begin@1',
+        'lemon.deploy.end@1',
+        'aws.s3.presign-put@1',
+        'aws.sns.subscribe@1',
+        'aws.apigateway.deploy-stage@1',
+        's3:PutObject',
+        undefined,
+    ])
+        assert.equal(isRetryableTool(tool), false, String(tool));
+});
+test('B34 a throttled ensure-route is retried with the same input after 2 s, 4 s and the round completes', async t => {
+    const f = await fixture(t, 'bootstrap');
+    let throttled = 0;
+    const client = fakeClient(f.deployment, {
+        readHook: () => null,
+        hook: r =>
+            r.tool === 'aws.apigateway.ensure-route@1' && r.input.path === '/hello' && throttled++ < 2
+                ? failedTool(r.tool, TOO_MANY)
+                : undefined,
+    });
+    const sleeps = [];
+    const result = await execute(f, client, { sleep: async ms => sleeps.push(ms) });
+    assert.equal(result.status, 'completed');
+    // three identical requests for the throttled route, one for every other route.
+    const hello = client.calls.filter(x => x.tool === 'aws.apigateway.ensure-route@1' && x.input.path === '/hello');
+    assert.equal(hello.length, 3);
+    assert.deepEqual(hello[1].input, hello[0].input);
+    assert.deepEqual(hello[2].input, hello[0].input);
+    assert.equal(client.calls.filter(x => x.tool === 'aws.apigateway.ensure-route@1').length, 20);
+    // the backoff waits, between the route pacing waits (1500 ms).
+    assert.deepEqual(
+        sleeps.filter(ms => ms !== f.deployment.config.routeDelayMs),
+        THROTTLE_RETRY_DELAYS_MS.slice(0, 2),
+    );
+    // one receipt step for the route: attempts 3, retried throttle, and no leftover failure fields.
+    const receipt = JSON.parse(await readFile(result.receipt, 'utf8'));
+    const steps = receipt.steps.filter(s => s.name === 'route-2');
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].status, 'succeeded');
+    assert.equal(steps[0].attempts, 3);
+    assert.equal(steps[0].retried, 'throttle');
+    for (const k of ['errorCode', 'errorMessage', 'toolErrorCode']) assert.equal(steps[0][k], undefined, k);
+    // steps without a retry carry no new field (receipt shape unchanged).
+    for (const s of receipt.steps.filter(s => s.name !== 'route-2')) {
+        assert.equal(s.attempts, undefined, s.name);
+        assert.equal(s.retried, undefined, s.name);
+    }
+    assert.deepEqual(
+        receipt.steps.map(s => s.index),
+        receipt.steps.map((_, i) => i + 1),
+    );
+});
+test('B34 a throttle that outlasts four retries fails TOOL_FAILED with attempts 5 and the tool message', async t => {
+    const f = await fixture(t),
+        client = fakeClient(f.deployment, {
+            hook: r =>
+                r.tool === 'aws.lambda.ensure-function@1' && r.input.component === 'backend'
+                    ? failedTool(r.tool, { ...TOO_MANY, code: 'TooManyRequestsException' })
+                    : undefined,
+        });
+    const sleeps = [];
+    const { error, receipt } = await failedRun(f, client, 'TOOL_FAILED', { sleep: async ms => sleeps.push(ms) });
+    assert.equal(error.exitCode, 1);
+    assert.deepEqual(sleeps, [...THROTTLE_RETRY_DELAYS_MS]);
+    const backend = client.calls.filter(
+        x => x.tool === 'aws.lambda.ensure-function@1' && x.input.component === 'backend',
+    );
+    assert.equal(backend.length, 5);
+    const step = receipt.steps.find(s => s.name === 'backend-code');
+    assert.deepEqual(
+        [step.status, step.errorCode, step.attempts, step.retried, step.errorMessage, step.toolErrorCode],
+        ['failed', 'TOOL_FAILED', 5, 'throttle', 'Too Many Requests', 'TooManyRequestsException'],
+    );
+    assert.equal(receipt.steps.filter(s => s.name === 'backend-code').length, 1);
+    // the round is still aborted with the same reason.
+    assert.equal(receipt.roundStatus, 'aborted');
+    assert.equal(client.calls.at(-1).input.reason, 'templates-cli:TOOL_FAILED');
+});
+test('B34 a throttled non-idempotent tool and a non-throttle failure are not retried', async t => {
+    // presign is not an ensure / resolve tool: one call, as before.
+    const f = await fixture(t),
+        client = fakeClient(f.deployment, {
+            hook: r => (r.tool === 'aws.s3.presign-put@1' ? failedTool(r.tool, TOO_MANY) : undefined),
+        });
+    const sleeps = [];
+    const { receipt } = await failedRun(f, client, 'TOOL_FAILED', { sleep: async ms => sleeps.push(ms) });
+    assert.equal(client.calls.filter(x => x.tool === 'aws.s3.presign-put@1').length, 1);
+    assert.deepEqual(sleeps, []);
+    const presign = receipt.steps.find(s => s.name === 'presign');
+    assert.equal(presign.attempts, undefined);
+    assert.equal(presign.errorMessage, 'Too Many Requests');
+    // an ensure tool with another failure: one call, failure fields kept, no retry fields.
+    const g = await fixture(t),
+        other = fakeClient(g.deployment, {
+            hook: r =>
+                r.tool === 'aws.lambda.ensure-function@1'
+                    ? failedTool(r.tool, { message: 'Invalid handler', code: 'InvalidParameterValueException' })
+                    : undefined,
+        });
+    const second = await failedRun(g, other, 'TOOL_FAILED', { sleep: async ms => sleeps.push(ms) });
+    assert.equal(other.calls.filter(x => x.tool === 'aws.lambda.ensure-function@1').length, 1);
+    assert.deepEqual(sleeps, []);
+    const step = second.receipt.steps.find(s => s.name === 'lambda-code');
+    assert.deepEqual(
+        [step.errorMessage, step.toolErrorCode, step.attempts, step.retried],
+        ['Invalid handler', 'InvalidParameterValueException', undefined, undefined],
+    );
+});
+test('B34 no retry when the backoff and one request do not fit before the lease deadline', async t => {
+    const f = await fixture(t),
+        client = fakeClient(f.deployment, {
+            hook: r => {
+                // a 90 s lease: deadline = lease - 60 s = 30 s, less than 2 s + requestTimeoutMs (35 s).
+                if (r.tool === 'lemon.deploy.begin@1')
+                    return good(r.tool, {
+                        deployId: 'dpl_test',
+                        expiresAt: new Date(Date.now() + 90_000).toISOString(),
+                        revision: 1,
+                        takeover: false,
+                    });
+                if (r.tool === 'aws.lambda.ensure-function@1') return failedTool(r.tool, TOO_MANY);
+            },
+        });
+    const sleeps = [];
+    const { receipt } = await failedRun(f, client, 'TOOL_FAILED', { sleep: async ms => sleeps.push(ms) });
+    assert.equal(client.calls.filter(x => x.tool === 'aws.lambda.ensure-function@1').length, 1);
+    assert.deepEqual(sleeps, []);
+    assert.equal(receipt.steps.find(s => s.name === 'lambda-code').attempts, undefined);
+    assert.equal(receipt.roundStatus, 'aborted');
+});
+test('B34 an abort during the backoff stops before the next request (INTERRUPTED)', async t => {
+    const f = await fixture(t),
+        controller = new AbortController(),
+        client = fakeClient(f.deployment, {
+            hook: r => (r.tool === 'aws.lambda.ensure-function@1' ? failedTool(r.tool, TOO_MANY) : undefined),
+        });
+    // the injected wait never ends by itself; the abort ends it.
+    const sleep = () => {
+        setTimeout(() => controller.abort(), 5);
+        return new Promise(() => {});
+    };
+    const { error, receipt } = await failedRun(f, client, 'INTERRUPTED', { sleep, signal: controller.signal });
+    assert.equal(error.exitCode, 3);
+    assert.equal(client.calls.filter(x => x.tool === 'aws.lambda.ensure-function@1').length, 1);
+    assert.equal(receipt.steps.find(s => s.name === 'lambda-code').errorCode, 'TOOL_FAILED');
+});
+test('B34 a throttled status lookup (GET) is not retried and keeps POLL_UNKNOWN with the tool message', async t => {
+    const f = await fixture(t, 'bootstrap'),
+        client = fakeClient(f.deployment, {
+            readHook: () => null,
+            asyncMappings: true,
+            hook: r => (r.method === 'GET' ? failedTool(r.tool, TOO_MANY) : undefined),
+        });
+    const { receipt } = await failedRun(f, client, 'POLL_UNKNOWN');
+    assert.equal(client.calls.filter(x => x.method === 'GET').length, 1);
+    const step = receipt.steps.find(s => s.errorCode === 'POLL_UNKNOWN');
+    assert.deepEqual([step.status, step.errorMessage, step.attempts], ['unknown', 'Too Many Requests', undefined]);
+});
+test('B34 toolErrorText hides accounts, ARNs, encoded ARNs, paths and secret words, one line, 300 characters', () => {
+    const canary = '987654321098';
+    const text = toolErrorText(
+        `KMS Exception: InvalidArnException\nARN does not refer to a valid principal: arn:aws:sts::${canary}:assumed-role/r/f ` +
+            `acct ${canary} enc arn%3Aaws%3Aiam%3A%3A${canary} at /Users/someone/work/x.js and /var/task/index.js ` +
+            `file:///tmp/a ~/b/c C:\\Users\\x token-abc secret-env-sentinel`,
+    );
+    assert.ok(!text.includes(canary), text);
+    assert.ok(!/\d{12}/.test(text), text);
+    assert.ok(!text.includes('arn:aws'), text);
+    assert.ok(!/arn%3A/i.test(text), text);
+    for (const p of ['/Users/', '/var/task', 'file://', '~/b', 'C:\\', 'secret-env-sentinel', 'token-abc'])
+        assert.ok(!text.includes(p), `${p} in ${text}`);
+    assert.ok(!text.includes('\n'));
+    assert.match(text, /^KMS Exception: InvalidArnException ARN does not refer to a valid principal: <arn>/);
+    assert.equal(toolErrorText('x'.repeat(1000)).length, 300);
+    // API routes are not local paths and stay readable.
+    assert.equal(toolErrorText('Too Many Requests on /hello/{id}'), 'Too Many Requests on /hello/{id}');
+    // a code that is no longer a short identifier after scrubbing is dropped; an empty message is absent.
+    assert.deepEqual(toolErrorFields({ code: canary, message: '  ' }), {});
+    assert.deepEqual(toolErrorFields({ code: 'Bad Code!', message: 'm' }), { errorMessage: 'm' });
+    assert.deepEqual(toolErrorFields(undefined), {});
+});
+test('B34 the tool error reaches the receipt step and the CLI stderr line, scrubbed and cut to 300', async t => {
+    const f = await fixture(t);
+    const canary = '987654321098';
+    const message =
+        `Lambda was unable to configure access to your environment variables because the KMS key is invalid for CreateGrant. ` +
+        `KMS Message: ARN does not refer to a valid principal: arn:aws:sts::${canary}:assumed-role/role/fn ` +
+        `(${canary}, arn%3Aaws%3Asts%3A%3A${canary}, /Users/someone/x) secret-env-sentinel ` +
+        'y'.repeat(400);
+    let stderr;
+    const client = fakeClient(f.deployment, {
+        hook: r =>
+            r.tool === 'aws.lambda.ensure-function@1'
+                ? failedTool(r.tool, { message, code: 'InvalidParameterValueException' })
+                : undefined,
+    });
+    const exit = await main(
+        ['--config', f.configFile, '--artifact', f.root, '--receipt-dir', f.receiptDirectory, '--apply'],
+        {
+            stdout: assert.fail,
+            stderr: s => {
+                stderr = JSON.parse(s);
+            },
+            clientFactory: async () => client,
+            guardEnv: (await guardFixture({ account: f.config.account, region: f.config.region })).env,
+        },
+    );
+    assert.equal(exit, 1);
+    assert.deepEqual(
+        [stderr.status, stderr.code, stderr.toolErrorCode],
+        ['failed', 'TOOL_FAILED', 'InvalidParameterValueException'],
+    );
+    // the fixed message is unchanged; the tool's text is a separate field.
+    assert.equal(stderr.message, 'Tool failed or verification failed; see the server deployment record.');
+    assert.match(stderr.errorMessage, /^Lambda was unable to configure access .* KMS key is invalid for CreateGrant/);
+    assert.equal(stderr.errorMessage.length, 300);
+    const raw = await readFile(stderr.receipt, 'utf8');
+    const step = JSON.parse(raw).steps.find(s => s.name === 'lambda-code');
+    assert.equal(step.errorMessage, stderr.errorMessage);
+    assert.equal(step.toolErrorCode, 'InvalidParameterValueException');
+    for (const out of [raw, JSON.stringify(stderr)]) {
+        assert.ok(!out.includes(canary));
+        assert.ok(!/arn%3A/i.test(out));
+        assert.ok(!out.includes('/Users/someone'));
+        assert.ok(!out.includes('secret-env-sentinel'));
+    }
+    // the abort reason sent to the server is unchanged.
+    assert.equal(client.calls.at(-1).input.reason, 'templates-cli:TOOL_FAILED');
+});
