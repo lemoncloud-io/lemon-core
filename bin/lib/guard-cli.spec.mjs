@@ -2,7 +2,8 @@
  * `bin/lib/guard-cli.spec.mjs` (lemon-core)
  * - offline tests of the B31 `lemon-lambda-guard` commands (`bin/lib/guard-cli.mjs`): init (normal, refused twice,
  *   input errors, rollback), register (normal, enum / path / target refusals), status, resolve (normal,
- *   `INVALID_INPUT`, unknown operation) and help.
+ *   `INVALID_INPUT`, unknown operation) and help; r2: `status` lists unresolved operations, `init` order and
+ *   round trip, masked account.
  * - run: `npm test` (vitest `bin/**\/*.spec.mjs`). Temp dirs under `os.tmpdir()`, free loopback ports; no AWS, no network.
  */
 //* v5 B31: new spec of the guard CLI.
@@ -197,7 +198,7 @@ test('register adds a reviewed target from a migration config; status turns from
         { ...r.json.entry, registeredAt: '<t>' },
         {
             identity: { project: TEMPLATES.project, stage: 'dev', stack: TEMPLATES.stack },
-            account: ACCOUNT,
+            account: '****0123',
             region: REGION,
             runStateRef: runStateRefOf(runRef),
             class: 'verified-no-op',
@@ -206,8 +207,9 @@ test('register adds a reviewed target from a migration config; status turns from
             registeredAt: '<t>',
         },
     );
-    // the run-state path itself is never stored or printed.
+    // the run-state path itself is never stored or printed; r2 (N4): the account is printed masked only.
     assert.ok(!r.out[0].includes(runRef));
+    assert.ok(!r.out[0].includes(ACCOUNT));
     const registry = await readRegistry(g.install);
     assert.deepEqual(Object.keys(registry.entries), [`${ACCOUNT}/${REGION}/dev/${TEMPLATES.project}`]);
     const ready = await cli(['status', '--config', f.configFile], { env: g.env });
@@ -332,4 +334,105 @@ test('register / resolve without an installation fail with INSTALL_INVALID (exit
         assert.deepEqual([r.code, r.error.code], [1, 'INSTALL_INVALID']);
         assert.ok(!r.err[0].includes(f.root));
     }
+});
+
+//* ---- v5 B31 r2 ----
+
+// a journal file of `rec` (name `<stamp>-<id>.json`) in the root of an installation.
+const journalFile = (root, id, stamp = '20261101T000000000Z') => path.join(root, 'journal', `${stamp}-${id}.json`);
+
+// why: S1 — a blocked status names the operation ids `resolve` takes; that id resolved, the target is ready again.
+test('status of journal-unresolved lists the inflight operation; resolve with that id makes it ready', async () => {
+    const base = await guardTemp();
+    const g = await guardFixture({ account: ACCOUNT, region: REGION });
+    const configFile = await deployConfig(base, TEMPLATES.project);
+    const id = '0f0e0d0c-0b0a-4908-8706-050403020100';
+    // a left-over inflight record (a writer killed between inflight and completed); its holder holds a canary.
+    const rec = {
+        schemaVersion: 1,
+        operationId: id,
+        identity: { project: TEMPLATES.project, stage: 'dev', stack: TEMPLATES.stack },
+        holder: `session ${ACCOUNT}`,
+        startedAt: '2026-11-01T00:00:00.000Z',
+        state: 'inflight',
+        requestIds: [],
+    };
+    await writeFile(journalFile(g.root, id), JSON.stringify(rec), { mode: 0o600 });
+    const before = await readFile(journalFile(g.root, id), 'utf8');
+    const blocked = await cli(['status', '--config', configFile], { env: g.env });
+    assert.equal(blocked.code, 1);
+    assert.equal(blocked.json.reason, 'journal-unresolved');
+    assert.deepEqual(blocked.json.operations, [
+        { operationId: id, holder: blocked.json.operations[0].holder, state: 'inflight', startedAt: rec.startedAt },
+    ]);
+    // the stored holder is scrubbed on output; no account and no root path in the line; the file is not changed.
+    assert.ok(!blocked.out[0].includes(ACCOUNT) && !blocked.out[0].includes(g.root));
+    assert.equal(await readFile(journalFile(g.root, id), 'utf8'), before);
+    const op = blocked.json.operations[0].operationId;
+    const r = await cli(['resolve', '--operation', op, '--ref', 'D1@8f6396aa', '--digest', sha('decision')], {
+        env: g.env,
+    });
+    assert.deepEqual([r.code, r.json.state], [0, 'inflight']);
+    const ready = await cli(['status', '--config', configFile], { env: g.env });
+    assert.deepEqual([ready.code, ready.json.status, Object.hasOwn(ready.json, 'operations')], [0, 'ready', false]);
+});
+
+// why: S1 — a damaged entry is listed by its file name only (no path), with the id its name carries.
+test('status lists a damaged journal entry as state damaged with its name only', async () => {
+    const base = await guardTemp();
+    const g = await guardFixture({ account: ACCOUNT, region: REGION });
+    const configFile = await deployConfig(base, TEMPLATES.project);
+    const id = '1f0e0d0c-0b0a-4908-8706-050403020100';
+    await writeFile(journalFile(g.root, id, '20261101T000000001Z'), '{', { mode: 0o600 });
+    await writeFile(path.join(g.root, 'journal', 'stray.txt'), 'x', { mode: 0o600 });
+    const r = await cli(['status', '--config', configFile], { env: g.env });
+    assert.deepEqual([r.code, r.json.reason], [1, 'journal-unresolved']);
+    assert.deepEqual(r.json.operations, [
+        { state: 'damaged', name: `20261101T000000001Z-${id}.json`, operationId: id },
+        { state: 'damaged', name: 'stray.txt' },
+    ]);
+    assert.ok(!r.out[0].includes(g.root));
+    // a damaged record cannot be resolved (B30 rule); it needs a manual review.
+    const res = await cli(['resolve', '--operation', id, '--ref', 'D1@8f6396aa', '--digest', sha('x')], { env: g.env });
+    assert.deepEqual([res.code, res.error.code], [1, 'JOURNAL_INVALID']);
+});
+
+// why: N3 — inputs are checked before any file: a name blank after scrub and a synced root are exit 2, no file.
+test('init refuses a control-character-only name and a synced or mounted root before writing anything', async () => {
+    const base = await guardTemp();
+    const installFile = path.join(base, 'home', 'install.json');
+    const env = { [INSTALL_ENV]: installFile };
+    const port = String(await freePort());
+    const name = await cli(['init', '--root', path.join(base, 'r'), '--port', port, '--confirmed-by', '\u0001\u0002'], {
+        env,
+    });
+    assert.deepEqual([name.code, name.error.code], [2, 'INVALID_ARGS']);
+    for (const [root, code] of [
+        [path.join(base, 'Dropbox', 'root'), 'ROOT_UNSUPPORTED_VOLUME'],
+        ['/Volumes/usb/root', 'ROOT_UNSUPPORTED_VOLUME'],
+        [`${base}/a/../root`, 'ROOT_INVALID'],
+    ]) {
+        const r = await cli(['init', '--root', root, '--port', port, '--confirmed-by', 'x'], { env });
+        assert.deepEqual([r.code, r.error.code], [2, code], root);
+        assert.ok(!r.err[0].includes(base));
+    }
+    // nothing was written: no install file, no install dir, no root.
+    assert.deepEqual(await readdir(base), []);
+});
+
+// why: N2 / N3 — the install file and a root made by this call are rolled back when the round trip fails.
+test('init rolls back the install file and the new root when the installation does not load back', async () => {
+    const base = await guardTemp();
+    const installFile = path.join(base, 'install.json');
+    const root = path.join(base, 'root');
+    // a state-dir env that differs from the new root: the guard refuses to load it (ROOT_MISMATCH).
+    const env = { [INSTALL_ENV]: installFile, MIGRATION_STATE_DIR: path.join(base, 'other') };
+    const r = await cli(['init', '--root', root, '--port', String(await freePort()), '--confirmed-by', 'x'], { env });
+    assert.deepEqual([r.code, r.error.code], [1, 'ROOT_MISMATCH']);
+    assert.deepEqual(await readdir(base), []);
+    // without that env the same init succeeds (the rollback left nothing behind).
+    const ok = await cli(['init', '--root', root, '--port', String(await freePort()), '--confirmed-by', 'x'], {
+        env: { [INSTALL_ENV]: installFile },
+    });
+    assert.equal(ok.code, 0, ok.err.join());
 });

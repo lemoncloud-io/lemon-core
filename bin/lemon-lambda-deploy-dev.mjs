@@ -12,7 +12,7 @@ import { runDevRelease, DeployError } from './lib/dev-release.mjs';
 import { MigrationError, TARGETS } from './lib/migrate-core.mjs';
 import { isMain } from './lib/is-main.mjs';
 //* v5 B31: the blocked report and the journal fields of a guarded write.
-import { blockedReport, guardErrorFields } from './lib/migrate-guard.mjs';
+import { blockedReport, guardErrorFields, unknownFailure } from './lib/migrate-guard.mjs';
 
 export function parseDevArgs(argv) {
     const forwarded = [];
@@ -50,7 +50,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
         const known = error instanceof DeployError || error instanceof MigrationError;
         stderr(
             JSON.stringify({
-                status: known && error.unknown ? 'unknown' : 'failed',
+                //* v5 B31 r2 (N7): a journal failure (`stateWriteFailed`) is unknown whatever the error.
+                status: unknownFailure(error, known) ? 'unknown' : 'failed',
                 code: known ? error.code : 'PREPARATION_FAILED',
                 message: known ? error.message : 'Could not prepare dev deployment; raw errors are not logged.',
                 ...(known && error.receipt ? { receipt: error.receipt } : {}),

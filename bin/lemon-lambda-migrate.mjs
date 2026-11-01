@@ -22,7 +22,14 @@ import {
     executionPrecheck,
 } from './lib/migrate-core.mjs';
 //* v5 B31: the six phases with `--execute` run under the migration guard (the LOCK / owner files stay as they are).
-import { planGuard, runGuarded, blockedReport, guardErrorFields } from './lib/migrate-guard.mjs';
+import {
+    planGuard,
+    runGuarded,
+    blockedReport,
+    guardErrorFields,
+    unknownFailure,
+    migrationJournalOf,
+} from './lib/migrate-guard.mjs';
 
 export function parseMigrationArgs(argv) {
     const result = {};
@@ -100,6 +107,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
             holder: `lemon-lambda-migrate:${options.phase}`,
             signal,
             run: () => executeMigration(config, options.phase, { ...options, signal }, deps),
+            //* v5 B31 r2 (N6): the journal keeps the phase's deploy id and the run receipt digest (best effort).
+            journalOf: result => migrationJournalOf(result),
         });
         stdout(JSON.stringify(guard ? { ...result, guard } : result, null, 2));
         return 0;
@@ -112,7 +121,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
         const known = error instanceof MigrationError;
         stderr(
             JSON.stringify({
-                status: known && error.unknown ? 'unknown' : 'failed',
+                //* v5 B31 r2 (N7): a journal failure (`stateWriteFailed`) is unknown whatever the error.
+                status: unknownFailure(error, known) ? 'unknown' : 'failed',
                 code: known ? error.code : 'PREPARATION_FAILED',
                 message: known ? error.message : 'Could not prepare migration; raw errors are not logged.',
                 ...(known && error.receipt ? { receipt: error.receipt } : {}),

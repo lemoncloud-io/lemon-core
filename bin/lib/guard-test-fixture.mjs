@@ -19,13 +19,27 @@ export async function guardTemp(prefix = 'lemon-guard-fixture-') {
     return dir;
 }
 
-// a free loopback port: listen on 0, read the port, close.
-export async function freePort() {
+// listen on `port` of loopback (0 = any) and close again; resolves the port, or null when it is busy.
+async function probePort(port) {
     const server = net.createServer();
-    await new Promise(resolve => server.listen({ host: '127.0.0.1', port: 0 }, resolve));
-    const { port } = server.address();
+    const ok = await new Promise(resolve => {
+        server.once('error', () => resolve(false));
+        server.listen({ host: '127.0.0.1', port }, () => resolve(true));
+    });
+    if (!ok) return null;
+    const bound = server.address().port;
     await new Promise(resolve => server.close(resolve));
-    return port;
+    return bound;
+}
+
+// a free loopback port: listen on 0, read the port, close, then check it once more by its number.
+//  v5 B31 r2 (N9): when another process took it in between (busy), one more candidate is tried.
+export async function freePort() {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const port = await probePort(0);
+        if (port !== null && (await probePort(port)) === port) return port;
+    }
+    throw new Error('no free loopback port after one retry');
 }
 
 /**
@@ -78,16 +92,23 @@ export async function missingGuardEnv() {
 /**
  * a CLI stdout line (JSON, 2 spaces) without its B31 `guard` field, as the CLI printed it before B31; the guard field
  * is appended last, so the rest of the bytes must be unchanged.
+ * v5 B31 r2 (N5): the tail block `,\n  "guard": {...}` is cut from the original text (no re-serialization), so every
+ * other byte is compared as printed.
  */
 export const withoutGuard = text => {
-    let value;
-    // a line that is not a JSON object is returned as is.
+    const marker = ',\n  "guard": ';
+    const at = typeof text === 'string' ? text.lastIndexOf(marker) : -1;
+    // no top-level guard key at the end of an object: the line is returned as is.
+    if (at < 0 || !text.endsWith('\n}')) return text;
+    const block = text.slice(at + marker.length, -2);
+    // the cut block must be one JSON object (the guard value), and what stays must still be one JSON object.
     try {
-        value = JSON.parse(text);
+        const value = JSON.parse(block);
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) return text;
+        const rest = text.slice(0, at) + '\n}';
+        JSON.parse(rest);
+        return rest;
     } catch {
         return text;
     }
-    if (value === null || typeof value !== 'object' || !Object.hasOwn(value, 'guard')) return text;
-    const { guard, ...rest } = value;
-    return JSON.stringify(rest, null, 2);
 };

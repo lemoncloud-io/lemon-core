@@ -12,7 +12,7 @@ import { ORG_DEFAULTS } from './lib/org-defaults.mjs';
 import { isMain } from './lib/is-main.mjs';
 //* v5 B31: the migration guard of the reviewed targets (a target outside the registry keeps this path unchanged).
 import { MigrationError } from './lib/migrate-core.mjs';
-import { planGuard, runGuarded, blockedReport, guardErrorFields } from './lib/migrate-guard.mjs';
+import { planGuard, runGuarded, blockedReport, guardErrorFields, unknownFailure } from './lib/migrate-guard.mjs';
 
 export function parseDeployArgs(argv) {
     const options = {};
@@ -102,7 +102,8 @@ export async function main(
         const known = error instanceof DeployError || error instanceof MigrationError;
         stderr(
             JSON.stringify({
-                status: known && error.unknown ? 'unknown' : 'failed',
+                //* v5 B31 r2 (N7): a journal failure (`stateWriteFailed`) is unknown whatever the error.
+                status: unknownFailure(error, known) ? 'unknown' : 'failed',
                 code: known ? error.code : 'UNEXPECTED_ERROR',
                 message: known
                     ? error.message

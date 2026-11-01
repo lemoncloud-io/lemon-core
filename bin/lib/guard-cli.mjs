@@ -3,8 +3,8 @@
  * - the `lemon-lambda-guard` commands over the B30 migration guard library (`migrate-guard.mjs`):
  *   `init` (install file + root), `register` (a reviewed target of a config), `status` (read-only), `resolve`
  *   (an owner decision on an unresolved operation).
- * - exit codes: 0 success, 1 blocked or failed, 2 input error. Errors are one stderr JSON line `{ status, code,
- *   message }` with a scrubbed fixed message (no path, no account).
+ * - exit codes: 0 success, 1 blocked or failed, 2 input error (including the `init` root path rules). Errors are
+ *   one stderr JSON line `{ status, code, message }` with a scrubbed fixed message (no path, no account).
  * - every effect is injectable for tests (`env`, `guardDeps`, `hostname`, `now`); no AWS call, no network but the
  *   guard's loopback listen.
  * - see `docs/v5/B31-guard-writers.md`.
@@ -29,6 +29,9 @@ import {
     resolveOperation,
     runStateRefOf,
     scrub,
+    checkGuardRoot,
+    maskAccount,
+    unresolvedOperations,
 } from './migrate-guard.mjs';
 
 // the doc of the commands.
@@ -107,7 +110,8 @@ async function readTargetConfig(file, fs = nodeFs) {
     };
 }
 
-// `init`: write the install file (0600, never overwritten), then set up its root once.
+// `init`: check every input first, write the install file (0600, never overwritten), set up its root once, then
+//  read the installation back; any failure after the install file rolls back what this call made.
 async function init(options, { env, guardDeps, hostname, now }) {
     const fs = guardDeps?.fs ?? nodeFs;
     const { root, confirmedBy } = options;
@@ -115,8 +119,17 @@ async function init(options, { env, guardDeps, hostname, now }) {
     const port = Number(options.port);
     if (port < 1024 || port > 65535) invalid('INVALID_ARGS', 'The port must be an integer in 1024..65535.');
     if (!path.isAbsolute(root)) invalid('INVALID_ARGS', 'The root must be an absolute path.');
-    if (confirmedBy.length > 200 || !confirmedBy.trim())
+    //* v5 B31 r2 (N3): the stored name is the scrubbed one, so the scrubbed text must not be blank.
+    const confirmed = scrub(confirmedBy);
+    if (confirmedBy.length > 200 || !confirmed.trim())
         invalid('INVALID_ARGS', 'The confirmation name must have 1..200 characters.');
+    //* v5 B31 r2 (N3): the B30 root path rules before any file is written (exit 2, same code).
+    try {
+        checkGuardRoot(root);
+    } catch (e) {
+        e.exitCode = 2;
+        throw e;
+    }
     const installFile = installPath({ env, deps: guardDeps });
     // the install file lives outside the root (the guard refuses it otherwise).
     if (installFile === root || installFile.startsWith(root + path.sep))
@@ -127,8 +140,10 @@ async function init(options, { env, guardDeps, hostname, now }) {
         port,
         // a stable, non-identifying machine id: the first 16 hex of sha256(hostname).
         machineId: createHash('sha256').update(`${hostname()}`).digest('hex').slice(0, 16),
-        localVolume: { confirmedBy: scrub(confirmedBy), at: now().toISOString() },
+        localVolume: { confirmedBy: confirmed, at: now().toISOString() },
     };
+    //* v5 B31 r2 (N2): a root that did not exist before this call is removed again on a rollback.
+    const rootExisted = Boolean(await fs.lstat(root).catch(() => null));
     // `wx`: an existing install file is refused, never overwritten.
     try {
         await fs.mkdir(path.dirname(installFile), { recursive: true, mode: 0o700 });
@@ -138,12 +153,15 @@ async function init(options, { env, guardDeps, hostname, now }) {
             invalid('INSTALL_EXISTS', 'A guard install file exists already; it is never overwritten.');
         invalid('STATE_WRITE_FAILED', 'Could not write the guard install file.');
     }
-    // the root is created once; when that fails the new install file is removed again (nothing half-made stays).
+    // the root is created once and read back; on any failure the new install file (and a new root) are removed.
     try {
         await fs.chmod(installFile, 0o600);
         await initializeRoot(install, guardDeps);
+        //* v5 B31 r2 (N3): the round trip — the guard must load the installation just written.
+        await loadInstall({ env, deps: guardDeps });
     } catch (e) {
         await fs.unlink(installFile).catch(() => {});
+        if (!rootExisted) await fs.rm?.(root, { recursive: true, force: true }).catch(() => {});
         throw e;
     }
     return { code: 0, out: { status: 'initialized', installFile, root, port } };
@@ -173,13 +191,21 @@ async function register(options, { env, guardDeps }) {
     };
     const install = await loadInstall({ env, deps: guardDeps });
     const { replaced, registeredAt } = await registerTarget(install, entry, guardDeps);
-    return { code: 0, out: { status: 'registered', replaced, entry: { ...entry, registeredAt } } };
+    //* v5 B31 r2 (N4): the account is printed masked (`****` + last 4).
+    const printed = { ...entry, account: maskAccount(entry.account), registeredAt };
+    return { code: 0, out: { status: 'registered', replaced, entry: printed } };
 }
 
-// `status`: the read-only guard status of a config's target (exit 1 when blocked).
+// `status`: the read-only guard status of a config's target (exit 1 when blocked); an unresolved journal also lists
+//  its operations (`unresolvedOperations`: id, holder, state, start; damaged entries by name), still without a lock.
 async function status(options, { env, guardDeps }) {
     const { input, expected } = await readTargetConfig(options.configFile);
     const out = await guardStatus(input, expected, { env, deps: guardDeps });
+    //* v5 B31 r2 (S1): the ids that `resolve --operation` takes.
+    if (out.status === 'blocked' && out.reason === 'journal-unresolved') {
+        const install = await loadInstall({ env, deps: guardDeps });
+        out.operations = await unresolvedOperations(install, guardDeps);
+    }
     return { code: out.status === 'blocked' ? 1 : 0, out };
 }
 
@@ -221,6 +247,8 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
                 message: known ? scrub(error.message) : 'The guard command failed; raw errors are not logged.',
             }),
         );
+        //* v5 B31 r2: an error may carry its own exit code (the `init` root path rules are input errors, exit 2).
+        if (known && error.exitCode === 2) return 2;
         return known && INPUT_CODES.has(error.code) ? 2 : 1;
     }
 }

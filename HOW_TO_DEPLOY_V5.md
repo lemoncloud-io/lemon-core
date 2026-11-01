@@ -57,19 +57,22 @@ phases with `--execute` write a **reviewed target** only through the migration g
 `docs/v5/B30-migration-guard.md`): one guarded write at a time per installation, and a journal that blocks further
 writes after an unfinished or unknown one until an owner decision is recorded. Any other deploy target keeps its
 exact output and does no guard I/O. A reviewed target's plan shows a `guard` summary (`ready` or `blocked` with a
-reason); a blocked write stops with `{"status":"blocked","code":"GUARD_BLOCKED","reason":"…"}` (exit 1) before any
-credential, receipt or network access.
+reason); a blocked write stops with `{"status":"blocked","code":"GUARD_BLOCKED","reason":"…"}` (exit 1) without
+opening the deploy receipt, the credentials or the network (deploy-dev's `--migration-receipt` is a read-only input
+check made before the guard).
 
-| Command                                                                                                         | What it does                                                                           |
-| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `lemon-lambda-guard init --root <root> --port <port> --confirmed-by <name>`                                     | once per machine: install file (0600, never overwritten) and a new guard root          |
-| `lemon-lambda-guard register --config <config> --run-state <…> --class <…> --baseline-kind <…> --run-ref <dir>` | registers a reviewed target with the expected account / region of its config           |
-| `lemon-lambda-guard status --config <config>`                                                                   | read-only: `ready`, `blocked` with a reason, or `not-applicable` (exit 1 when blocked) |
-| `lemon-lambda-guard resolve --operation <id> --ref <decision ref> --digest <sha256>`                            | records the owner decision on an unresolved operation; it does not repeat the write    |
+| Command                                                                                                         | What it does                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lemon-lambda-guard init --root <root> --port <port> --confirmed-by <name>`                                     | once per machine: install file (0600, never overwritten) and a new guard root                                             |
+| `lemon-lambda-guard register --config <config> --run-state <…> --class <…> --baseline-kind <…> --run-ref <dir>` | registers a reviewed target with the expected account / region of its config                                              |
+| `lemon-lambda-guard status --config <config>`                                                                   | read-only: `ready`, `blocked` with a reason (and the unresolved operation ids), or `not-applicable` (exit 1 when blocked) |
+| `lemon-lambda-guard resolve --operation <id> --ref <decision ref> --digest <sha256>`                            | records the owner decision on an unresolved operation; it does not repeat the write                                       |
 
 -   Order: `init` → `register` the three dev targets → `status` → write as before; the result carries
-    `guard.operationId`. Recovery after an `unknown` (or failed) write: check the target, record the decision,
-    `resolve`. Details and exit codes: `docs/v5/B31-guard-writers.md`.
+    `guard.operationId`. Recovery after an `unknown` (or failed) write: `status` lists the operation, check the
+    target, record the decision, `resolve`. A failure that ends before any AWS effect (for example a phase out of
+    order) blocks the same way; only flag and argument errors are refused before the guard. Details and exit codes:
+    `docs/v5/B31-guard-writers.md`.
 -   The root must be on a local volume that is not synced (`--confirmed-by` records who checked it); the port is
     reserved for the guard.
 

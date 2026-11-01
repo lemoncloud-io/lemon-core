@@ -970,11 +970,74 @@ export const blockedReport = error => ({
     message: GUARD_BLOCKED_MESSAGE,
 });
 
-/** the guard fields a writer adds to its failure report (none for a write that never reached the journal). */
-export const guardErrorFields = error => ({
-    ...(typeof error?.operationId === 'string' ? { operationId: error.operationId } : {}),
-    ...(error?.stateWriteFailed === true ? { stateWriteFailed: true } : {}),
-});
+//* v5 B31 r2: the one fixed recovery sentence of a write left unresolved in the journal (no value, no path).
+export const GUARD_RECOVERY =
+    'Run lemon-lambda-guard status --config <config> to list the unresolved operation, then lemon-lambda-guard resolve --operation <operationId> --ref <decision ref> --digest <sha256> after an owner review.';
+
+/**
+ * the guard fields a writer adds to its failure report (none for a write that never reached the journal):
+ * `operationId`, `stateWriteFailed?`, `guard: { operationId, journal }` and the fixed `recovery` sentence. `journal` is
+ * `unknown` (the record says so) or `uncertain` when the journal itself could not be written (`stateWriteFailed`).
+ */
+export const guardErrorFields = error => {
+    // v5 B31 r2: no operation id → the write never reached the journal; nothing to add.
+    if (typeof error?.operationId !== 'string') return {};
+    const uncertain = error.stateWriteFailed === true;
+    return {
+        operationId: error.operationId,
+        ...(uncertain ? { stateWriteFailed: true } : {}),
+        guard: { operationId: error.operationId, journal: uncertain ? 'uncertain' : 'unknown' },
+        recovery: GUARD_RECOVERY,
+    };
+};
+
+//* v5 B31 r2: a failure line is `unknown` when the error says so (known) or the journal failed (any error).
+export const unknownFailure = (error, known) => (known && Boolean(error?.unknown)) || error?.stateWriteFailed === true;
+
+//* v5 B31 r2: an account id as a CLI prints it (`****` + the last 4 digits).
+export const maskAccount = account => `****${`${account}`.slice(-4)}`;
+
+//* v5 B31 r2: the B30 root path rules (absolute, normalized, not synced / mounted) for `lemon-lambda-guard init`.
+export const checkGuardRoot = root => checkRootPath(root);
+
+/**
+ * the unresolved operations of an installation, read-only and without the lock (for `lemon-lambda-guard status`):
+ * `[{ operationId, holder, state: 'inflight' | 'unknown', startedAt }]` in name (time) order; a damaged entry or a
+ * file outside the name rule is `{ state: 'damaged', name, operationId? }` (the file name only, no path; a name
+ * outside the journal rule is scrubbed);
+ * a missing or odd `journal/` is one `{ state: 'damaged', name: 'journal' }`. Same reading rules as `operationState`.
+ */
+export async function unresolvedOperations(install, deps = {}) {
+    const { root } = installOf(install);
+    const { fs } = io(deps);
+    const dir = path.join(root, ROOT_FILES.journal);
+    const damagedDir = [{ state: 'damaged', name: ROOT_FILES.journal }];
+    // the journal dir must be a plain directory (as in `operationState`).
+    const st = await fs.lstat(dir).catch(() => null);
+    if (!st || st.isSymbolicLink() || !st.isDirectory()) return damagedDir;
+    const names = await fs.readdir(dir).catch(() => null);
+    if (!names) return damagedDir;
+    const list = [];
+    // each entry in name order: temp files skipped, damaged ones by name, settled ones left out.
+    for (const name of [...names].sort()) {
+        if (TMP_NAME_RE.test(name)) continue;
+        const rec = await readJournalFile(fs, dir, name);
+        if (!rec) {
+            const id = JOURNAL_NAME_RE.exec(name)?.[2];
+            // a name of the journal rule (stamp + uuid) is kept whole; any other name is scrubbed.
+            list.push({ state: 'damaged', name: id ? name : scrub(name, 128), ...(id ? { operationId: id } : {}) });
+            continue;
+        }
+        if (rec.resolution || rec.state === 'completed') continue;
+        list.push({
+            operationId: rec.operationId,
+            holder: scrub(rec.holder),
+            state: rec.state,
+            startedAt: rec.startedAt,
+        });
+    }
+    return list;
+}
 
 /**
  * the guard summary of a dry-run plan: `undefined` outside the registry (classification only, no state I/O), else
@@ -997,26 +1060,63 @@ const writeResultOf = result =>
         : undefined;
 
 /**
+ * v5 B31 r2 (N6): the journal result of a completed migration phase, from its run receipt `{ payload, sha256 }`:
+ * the deploy id of the phase's own step as a request id and the receipt's sha256 as `receiptDigest`. Best effort:
+ * an unreadable receipt or odd values give `undefined` (the phase stays completed; the journal just carries less).
+ */
+export async function migrationJournalOf(result, deps = {}) {
+    if (typeof result?.receipt !== 'string') return undefined;
+    let envelope;
+    // the receipt was just written by the phase; any read or parse failure only drops the extra fields.
+    try {
+        envelope = JSON.parse(await io(deps).fs.readFile(result.receipt, 'utf8'));
+    } catch {
+        return undefined;
+    }
+    const step = Array.isArray(envelope?.payload?.steps) ? envelope.payload.steps.at(-1) : undefined;
+    const id = step?.phase === result.phase ? step?.deployId : undefined;
+    const out = {
+        ...(typeof id === 'string' && REQUEST_ID_RE.test(id) ? { requestIds: [id] } : {}),
+        ...(typeof envelope?.sha256 === 'string' && SHA_RE.test(envelope.sha256)
+            ? { receiptDigest: envelope.sha256 }
+            : {}),
+    };
+    return Object.keys(out).length ? out : undefined;
+}
+
+/**
  * run a writer's existing write function `run()` under the guard (`guardedWrite`, holder = the tool name):
  * - outside the registry: `run()` as passthrough, `{ result }` (no guard field, no state I/O);
- * - blocked: throws `guardBlockedError(reason)` before `run()` (no receipt, credential, network or lock file);
+ * - blocked: throws `guardBlockedError(reason)` before `run()` (no deploy receipt, credential, network or lock file);
  * - completed: `{ result, guard: { operationId, journal: 'completed' } }`;
  * - `run()` threw: its own error is re-thrown with `operationId` (the journal records it `unknown`); with
- *   `stateWriteFailed` it is also made unknown (exit 3);
+ *   `stateWriteFailed` it is also made unknown (exit 3); a thrown primitive is wrapped in an `Error` first;
+ * - `journalOf(result)` (optional, async) gives the journal form of a completed result (default: its `deployId`);
  * - `run()` returned but the journal could not be written: `WRITE_UNKNOWN` (exit 3) with `operationId`,
  *   `stateWriteFailed` and the result's `receipt` / `deployId`.
  */
-export async function runGuarded({ input, expected, holder, run, env = process.env, deps, signal } = {}) {
+export async function runGuarded({ input, expected, holder, run, journalOf, env = process.env, deps, signal } = {}) {
     let outcome;
     // the write keeps its own result or error for the report; the guard sees only the journal form.
     const write = async () => {
         try {
             outcome = { result: await run() };
-        } catch (error) {
+        } catch (thrown) {
+            //* v5 B31 r2 (N7): a thrown primitive becomes an Error, so the operation id can be attached to it.
+            const error =
+                (thrown !== null && typeof thrown === 'object') || typeof thrown === 'function'
+                    ? thrown
+                    : new Error(scrub(String(thrown)));
             outcome = { error };
             throw error;
         }
-        return writeResultOf(outcome.result);
+        //* v5 B31 r2 (N6): a writer may give its own journal form (best effort; a failure there keeps the write done).
+        if (typeof journalOf !== 'function') return writeResultOf(outcome.result);
+        try {
+            return await journalOf(outcome.result);
+        } catch {
+            return undefined;
+        }
     };
     let guarded;
     try {

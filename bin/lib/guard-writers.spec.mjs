@@ -5,6 +5,8 @@
  * - per writer: (a) outside the registry — output as before, no guard state I/O; (b) no installation — blocked
  *   `install-invalid`, write not called; (c) installed + registered — write called once, `guard.operationId`,
  *   journal `completed`; (d) an unresolved journal — blocked `journal-unresolved`; (e) dry-run — `guard` summary.
+ * - r2: the failure line's `guard` / `recovery` fields, a pre-effect migrate failure (`SEQUENCE_INVALID`), unknown
+ *   status of any `stateWriteFailed` error, thrown primitives, the migrate journal request ids and the sealed env.
  * - run: `npm test` (vitest `bin/**\/*.spec.mjs`). Temp dirs under `os.tmpdir()`, free loopback ports, stubbed
  *   runners / clients / children; no AWS, no network.
  */
@@ -17,7 +19,15 @@ import path from 'node:path';
 import { writeZip, sha256 } from './pack-zip.mjs';
 import { DeployError, loadDeployment, deploymentPlan } from './deploy-plan.mjs';
 import { MigrationError, TARGETS, migrationPlan, validateMigrationConfig } from './migrate-core.mjs';
-import { GUARD_BLOCKED_MESSAGE, operationState, runGuarded } from './migrate-guard.mjs';
+import os from 'node:os';
+import {
+    GUARD_BLOCKED_MESSAGE,
+    GUARD_RECOVERY,
+    INSTALL_ENV,
+    operationState,
+    runGuarded,
+    guardStatus,
+} from './migrate-guard.mjs';
 import { fixture as migrationFixture } from './migrate-test-fixture.mjs';
 import { guardFixture, missingGuardEnv, guardTemp } from './guard-test-fixture.mjs';
 import { main as deployMain } from '../lemon-lambda-deploy.mjs';
@@ -241,6 +251,8 @@ test('deploy (d): an unknown write leaves journal-unresolved; the next apply is 
         message: 'Known safe failure',
         receipt: '/receipts/r.json',
         operationId: line.operationId,
+        guard: { operationId: line.operationId, journal: 'unknown' },
+        recovery: GUARD_RECOVERY,
     });
     assert.equal((await journal(g.root))[0].state, 'unknown');
     const second = io();
@@ -311,6 +323,11 @@ test('deploy: a journal write failing after the runner is WRITE_UNKNOWN with sta
         ['unknown', 'WRITE_UNKNOWN', true, '/receipts/r.json', 'dpl_test'],
     );
     assert.match(line1.operationId, UUID_RE);
+    // r2: the journal state is uncertain (the end record may not be durable); same recovery sentence.
+    assert.deepEqual(
+        [line1.guard, line1.recovery],
+        [{ operationId: line1.operationId, journal: 'uncertain' }, GUARD_RECOVERY],
+    );
     assert.deepEqual(ok.out, []);
     // the runner failed (known failure), the unknown record failed too: unknown, exit 3.
     const g2 = await guardFixture({ account: ACCOUNT, region: REGION });
@@ -463,6 +480,10 @@ test('deploy-dev (d): a failed write records the journal unknown; the next apply
     const line = JSON.parse(first.err[0]);
     assert.deepEqual([line.status, line.code], ['failed', 'TOOL_FAILED']);
     assert.match(line.operationId, UUID_RE);
+    assert.deepEqual(
+        [line.guard, line.recovery],
+        [{ operationId: line.operationId, journal: 'unknown' }, GUARD_RECOVERY],
+    );
     assert.equal(await operationState(g.install), 'unknown');
     const second = io();
     assert.equal(
@@ -584,6 +605,10 @@ test('migrate (d): a failed canonical phase leaves journal-unresolved; the next 
     const line = JSON.parse(first.err[0]);
     assert.deepEqual([line.status, line.code], ['unknown', 'PHASE_FAILED']);
     assert.match(line.operationId, UUID_RE);
+    assert.deepEqual(
+        [line.guard, line.recovery],
+        [{ operationId: line.operationId, journal: 'unknown' }, GUARD_RECOVERY],
+    );
     const calls = f.calls.length;
     const second = io();
     assert.equal(await migrateMain(phaseArgs(f, 'plan'), { ...f.deps, ...second, guardEnv: g.env }), 1);
@@ -657,4 +682,152 @@ test('runGuarded: outside the registry returns the run result; guard input error
         { code: 'INVALID_INPUT' },
     );
     assert.equal(calls, 1);
+});
+
+//* ---- v5 B31 r2 ----
+
+// why: S2 — a migrate failure before any AWS effect (phase out of order) still leaves the journal unknown and blocks.
+test('migrate: SEQUENCE_INVALID before any effect reports guard.journal unknown and blocks the next write', async t => {
+    const f = await migrationFixture(t);
+    const g = await guardFixture({ account: f.config.account, region: f.config.region });
+    const first = io();
+    // retain before plan: the phase order check fails inside the write, before the run dir, STS or the child.
+    assert.equal(await migrateMain(phaseArgs(f, 'retain'), { ...f.deps, ...first, guardEnv: g.env }), 1);
+    const line = JSON.parse(first.err[0]);
+    assert.deepEqual([line.status, line.code], ['failed', 'SEQUENCE_INVALID']);
+    assert.match(line.operationId, UUID_RE);
+    assert.deepEqual(line.guard, { operationId: line.operationId, journal: 'unknown' });
+    assert.equal(line.recovery, GUARD_RECOVERY);
+    assert.deepEqual(f.calls, []);
+    const [rec] = await journal(g.root);
+    assert.deepEqual([rec.operationId, rec.state, rec.error.code], [line.operationId, 'unknown', 'SEQUENCE_INVALID']);
+    // the next guarded write of the installation (even the right phase) is journal-unresolved.
+    const second = io();
+    assert.equal(await migrateMain(phaseArgs(f, 'plan'), { ...f.deps, ...second, guardEnv: g.env }), 1);
+    assert.deepEqual(
+        second.err.map(s => JSON.parse(s)),
+        [blockedLine('journal-unresolved')],
+    );
+    assert.deepEqual(f.calls, []);
+});
+
+// why: N7 (1) — a journal failure makes the line unknown / exit 3 even for an error that is not a known one.
+test('deploy: an unexpected error with stateWriteFailed is status unknown, exit 3', async () => {
+    const d = await deployFixture();
+    const g = await guardFixture({ account: ACCOUNT, region: REGION });
+    let renames = 0;
+    const fs = {
+        ...nodeFs,
+        rename: async (a, b) => {
+            if (++renames === 2) throw Object.assign(new Error('injected'), { code: 'EIO' });
+            return nodeFs.rename(a, b);
+        },
+    };
+    const r = io();
+    const run = fakeRun(() => {
+        throw new TypeError('raw failure text');
+    });
+    const code = await deployMain([...d.args, '--apply'], {
+        ...r,
+        guardEnv: g.env,
+        guardDeps: { fs },
+        run,
+        clientFactory: fakeClients(),
+    });
+    assert.equal(code, 3);
+    const line = JSON.parse(r.err[0]);
+    assert.deepEqual(
+        [line.status, line.code, line.stateWriteFailed, line.guard.journal],
+        ['unknown', 'UNEXPECTED_ERROR', true, 'uncertain'],
+    );
+    assert.ok(!r.err[0].includes('raw failure text'));
+});
+
+// why: N7 (2) — a thrown primitive is wrapped in an Error that carries the operation id.
+test('runGuarded: a thrown primitive becomes an Error with the operation id; the journal records it unknown', async () => {
+    const g = await guardFixture({ account: ACCOUNT, region: REGION });
+    const error = await runGuarded({
+        input: { project: TEMPLATES.project, stage: 'dev' },
+        expected: { account: ACCOUNT, region: REGION },
+        holder: 'spec',
+        env: g.env,
+        run: async () => {
+            throw 'plain text';
+        },
+    }).catch(e => e);
+    assert.ok(error instanceof Error);
+    assert.match(error.operationId, UUID_RE);
+    const [rec] = await journal(g.root);
+    assert.deepEqual([rec.operationId, rec.state], [error.operationId, 'unknown']);
+    // through a writer: the generic line plus the guard fields.
+    const d = await deployFixture();
+    const g2 = await guardFixture({ account: ACCOUNT, region: REGION });
+    const r = io();
+    const run = fakeRun(() => {
+        throw 42;
+    });
+    assert.equal(
+        await deployMain([...d.args, '--apply'], { ...r, guardEnv: g2.env, run, clientFactory: fakeClients() }),
+        1,
+    );
+    const line = JSON.parse(r.err[0]);
+    assert.deepEqual([line.status, line.code, line.guard.journal], ['failed', 'UNEXPECTED_ERROR', 'unknown']);
+    assert.match(line.operationId, UUID_RE);
+});
+
+// why: N6 — the migrate journal keeps the phase's deploy id and the run receipt digest.
+test('migrate: the journal of a completed phase carries its deploy id and the run receipt digest', async t => {
+    const f = await migrationFixture(t);
+    const g = await guardFixture({ account: f.config.account, region: f.config.region });
+    for (const phase of ['plan', 'retain', 'remove', 'tag', 'apply']) {
+        const r = io();
+        assert.equal(await migrateMain(phaseArgs(f, phase), { ...f.deps, ...r, guardEnv: g.env }), 0, r.err.join());
+    }
+    const records = await journal(g.root);
+    const receipt = JSON.parse(await readFile(path.join(f.run, f.target.receiptFile), 'utf8'));
+    assert.deepEqual(
+        records.map(x => [x.holder.split(':')[1], x.state, x.requestIds]),
+        [
+            ['plan', 'completed', []],
+            ['retain', 'completed', []],
+            ['remove', 'completed', []],
+            ['tag', 'completed', []],
+            ['apply', 'completed', ['dpl_mabc1234_abcdef']],
+        ],
+    );
+    // every record has a receipt digest; the last one is the digest of the receipt as it stands now.
+    assert.ok(records.every(x => /^[0-9a-f]{64}$/.test(x.receiptDigest)));
+    assert.equal(records.at(-1).receiptDigest, receipt.sha256);
+});
+
+// why: S3 — with no guardEnv the guard reads the sealed install path of the test setup, never the home dir.
+test('sealed env: a reviewed target with process.env reads only the sealed install path, not ~/.lemon-core', async () => {
+    const sealed = process.env[INSTALL_ENV];
+    assert.ok(path.isAbsolute(sealed) && sealed.startsWith(os.tmpdir()));
+    assert.equal(await nodeFs.stat(sealed).catch(() => null), null);
+    const reads = [];
+    const homes = [];
+    const fs = { ...nodeFs, readFile: async (file, ...rest) => (reads.push(file), nodeFs.readFile(file, ...rest)) };
+    const deps = { fs, homedir: () => (homes.push('homedir'), os.homedir()) };
+    const status = await guardStatus(
+        { project: TEMPLATES.project, stage: 'dev' },
+        { account: ACCOUNT, region: REGION },
+        { deps },
+    );
+    assert.deepEqual([status.status, status.reason], ['blocked', 'install-invalid']);
+    assert.deepEqual([reads, homes], [[sealed], []]);
+    // a writer without guardEnv takes the same sealed path (blocked before the runner).
+    const d = await deployFixture();
+    const run = fakeRun();
+    const r = io();
+    reads.length = 0;
+    assert.equal(
+        await deployMain([...d.args, '--apply'], { ...r, guardDeps: deps, run, clientFactory: fakeClients() }),
+        1,
+    );
+    assert.deepEqual(
+        r.err.map(x => JSON.parse(x)),
+        [blockedLine('install-invalid')],
+    );
+    assert.deepEqual([reads, homes, run.calls.length], [[sealed], [], 0]);
 });
