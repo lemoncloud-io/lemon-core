@@ -20,6 +20,7 @@ The word "migrate" in `lemon-lambda-migrate` means the deployment track: it move
 | `lambda:deploy:dev`           | `lemon-lambda-deploy-dev` | the guarded dev release of a migrated dev target                                                        | `docs/v5/B19-bin-deploy.md`        |
 | `lambda:migrate`              | `lemon-lambda-migrate`    | one guarded phase of a reviewed stack migration                                                         | `docs/v5/B24-migration-targets.md` |
 | `lambda:env`                  | `lemon-lambda-env`        | builds the Lambda environment from the env file and compares it with the deployed functions (read-only) | `docs/v5/B26-lambda-env.md`        |
+| (none; `npx`)                 | `lemon-lambda-guard`      | the migration guard of this machine: install, register a reviewed target, status, resolve               | `docs/v5/B31-guard-writers.md`     |
 
 -   `lemon-lambda-migrate` and `lemon-lambda-deploy-dev` accept only a reviewed target: the project, stack and revision must match one entry of `bin/lib/org-defaults.mjs` `migration.targets` (since B24: `lemon-templates-api` dev and `lemon-hello-api` dev; B28 adds `eureka-hello-api` dev, migrated 2026-11-01). A new service is added by a reviewed lemon-core change and release; it cannot be configured.
 -   Do not use `lemon-lambda-deploy` `bootstrap` mode for a migrated service (lemon-hello-api, and eureka-hello-api even though its table follows the lemon naming rule): use `lemon-lambda-migrate`, then `lemon-lambda-deploy-dev` in `code` mode (`docs/v5/B24-migration-targets.md`).
@@ -49,8 +50,34 @@ For a stack that the phases already moved, `lemon-lambda-migrate` has three foll
     a newer `--discover` inventory. It never creates the run dir. Such a baseline proves nothing about the state at
     migration time (`notProven`).
 
+## Migration guard (in preparation)
+
+Since B31, `lemon-lambda-deploy --apply`, `lemon-lambda-deploy-dev --apply` and the six `lemon-lambda-migrate`
+phases with `--execute` write a **reviewed target** only through the migration guard (B30 library,
+`docs/v5/B30-migration-guard.md`): one guarded write at a time per installation, and a journal that blocks further
+writes after an unfinished or unknown one until an owner decision is recorded. Any other deploy target keeps its
+exact output and does no guard I/O. A reviewed target's plan shows a `guard` summary (`ready` or `blocked` with a
+reason); a blocked write stops with `{"status":"blocked","code":"GUARD_BLOCKED","reason":"…"}` (exit 1) without
+opening the deploy receipt, the credentials or the network (deploy-dev's `--migration-receipt` is a read-only input
+check made before the guard).
+
+| Command                                                                                                         | What it does                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `lemon-lambda-guard init --root <root> --port <port> --confirmed-by <name>`                                     | once per machine: install file (0600, never overwritten) and a new guard root                                             |
+| `lemon-lambda-guard register --config <config> --run-state <…> --class <…> --baseline-kind <…> --run-ref <dir>` | registers a reviewed target with the expected account / region of its config                                              |
+| `lemon-lambda-guard status --config <config>`                                                                   | read-only: `ready`, `blocked` with a reason (and the unresolved operation ids), or `not-applicable` (exit 1 when blocked) |
+| `lemon-lambda-guard resolve --operation <id> --ref <decision ref> --digest <sha256>`                            | records the owner decision on an unresolved operation; it does not repeat the write                                       |
+
+-   Order: `init` → `register` the three dev targets → `status` → write as before; the result carries
+    `guard.operationId`. Recovery after an `unknown` (or failed) write: `status` lists the operation, check the
+    target, record the decision, `resolve`. A failure that ends before any AWS effect (for example a phase out of
+    order) blocks the same way; only flag and argument errors are refused before the guard. Details and exit codes:
+    `docs/v5/B31-guard-writers.md`.
+-   The root must be on a local volume that is not synced (`--confirmed-by` records who checked it); the port is
+    reserved for the guard.
+
 ## Where it stands
 
 -   The dev stages of lemon-templates-api and lemon-hello-api were moved to the deploy service as early runs of this track. Their prod stages were not moved.
--   The B30 migration guard (`docs/v5/B30-migration-guard.md`, one guarded write at a time per installation for the reviewed targets) is a library only; it is not connected to the deploy or migrate writers yet.
+-   The B30 migration guard (`docs/v5/B30-migration-guard.md`, one guarded write at a time per installation for the reviewed targets) is connected to the deploy, deploy-dev and migrate writers since B31 (`docs/v5/B31-guard-writers.md`); each machine that writes a reviewed target needs `lemon-lambda-guard init` and `register` first.
 -   Open items before the track is ready: sending the environment with a deploy (B26 P1), removing keys (B26 P2), prod stages, and onboarding more services.

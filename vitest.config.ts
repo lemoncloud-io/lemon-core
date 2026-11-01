@@ -11,6 +11,8 @@ export default defineConfig({
         // v5 B10-5: `bin/**/*.spec.mjs` covers the `lemon-fields-types` CLI (plain ESM, no transform needed).
         include: ['src/**/*.spec.ts', 'bin/**/*.spec.mjs'],
         fileParallelism: false,
+        // v5 B31 r2: every spec runs with a sealed migration guard install path (never the real `~/.lemon-core`).
+        setupFiles: ['bin/lib/guard-test-seal.mjs'],
         clearMocks: true,
         coverage: {
             enabled: true,

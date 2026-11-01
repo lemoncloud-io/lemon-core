@@ -30,6 +30,8 @@ import { plannedFunctionNames, loadDeployment } from './deploy-plan.mjs';
 import { writeZip, sha256 } from './pack-zip.mjs';
 import { main as migrateMain } from '../lemon-lambda-migrate.mjs';
 import { main as devMain } from '../lemon-lambda-deploy-dev.mjs';
+//* v5 B31: the compat lock compares the pre-B31 CLI plan bytes (no guard installation, `guard` field left out).
+import { missingGuardEnv, withoutGuard } from './guard-test-fixture.mjs';
 
 //* v5 B24: the full-phase fixture runs six phases per case.
 vi.setConfig({ testTimeout: 60_000 });
@@ -94,12 +96,15 @@ test('B24 compat: templates offline plan output is byte-identical', async t => {
     const f = await fixture(t);
     const out = [];
     await writeFile(f.configFile, JSON.stringify({ ...TEMPLATES_FULL }));
+    // v5 B31: no guard installation (hermetic); the plan's `guard` summary is left out of the captured bytes.
+    const guardEnv = await missingGuardEnv();
     for (const phase of PHASES)
         assert.equal(
             await migrateMain([phase, '--config', f.configFile], {
                 validateRepository: async () => '/fixture/canonical',
-                stdout: s => out.push(s.replaceAll(process.execPath, '<node>')),
+                stdout: s => out.push(withoutGuard(s).replaceAll(process.execPath, '<node>')),
                 stderr: assert.fail,
+                guardEnv,
             }),
             0,
         );

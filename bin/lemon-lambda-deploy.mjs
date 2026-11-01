@@ -10,6 +10,9 @@ import { DeployError, loadDeployment, deploymentPlan } from './lib/deploy-plan.m
 import { runDeployment } from './lib/deploy-runner.mjs';
 import { ORG_DEFAULTS } from './lib/org-defaults.mjs';
 import { isMain } from './lib/is-main.mjs';
+//* v5 B31: the migration guard of the reviewed targets (a target outside the registry keeps this path unchanged).
+import { MigrationError } from './lib/migrate-core.mjs';
+import { planGuard, runGuarded, blockedReport, guardErrorFields, unknownFailure } from './lib/migrate-guard.mjs';
 
 export function parseDeployArgs(argv) {
     const options = {};
@@ -39,7 +42,17 @@ export function parseDeployArgs(argv) {
 }
 export async function main(
     argv = process.argv.slice(2),
-    { stdout = console.log, stderr = console.error, clientFactory, signal } = {},
+    //* v5 B31: `guardEnv` / `guardDeps` reach the guard only, `run` replaces the deployment runner (tests); defaults
+    //  are `process.env`, the node modules and `runDeployment` (as in `lemon-lambda-deploy-dev`).
+    {
+        stdout = console.log,
+        stderr = console.error,
+        clientFactory,
+        signal,
+        guardEnv = process.env,
+        guardDeps,
+        run = runDeployment,
+    } = {},
 ) {
     let options;
     try {
@@ -51,26 +64,54 @@ export async function main(
             return 0;
         }
         const deployment = await loadDeployment(options);
+        //* v5 B31: the guard sees the validated config only (D-1): target project/stage, expected account/region.
+        const c = deployment.config;
+        const guardArgs = {
+            input: { project: c.project, stage: c.stage },
+            expected: { account: c.account, region: c.region },
+            env: guardEnv,
+            deps: guardDeps,
+        };
         if (!options.apply) {
-            stdout(JSON.stringify(deploymentPlan(deployment), null, 2));
+            //* v5 B31: a reviewed target's plan carries the read-only guard summary; any other plan is unchanged.
+            const guard = await planGuard(guardArgs.input, guardArgs.expected, guardArgs);
+            const plan = deploymentPlan(deployment);
+            stdout(JSON.stringify(guard ? { ...plan, guard } : plan, null, 2));
             return 0;
         }
-        const create = clientFactory ?? (await import('./lib/deploy-client.mjs')).createDeployClient;
-        const client = await create(deployment.config);
-        const result = await runDeployment(deployment, { client, receiptDirectory: options.receiptDirectory, signal });
-        stdout(JSON.stringify(result, null, 2));
+        //* v5 B31: the guard runs first; the client (credentials) and the receipt come only inside the write.
+        const { result, guard } = await runGuarded({
+            ...guardArgs,
+            holder: 'lemon-lambda-deploy',
+            signal,
+            run: async () => {
+                const create = clientFactory ?? (await import('./lib/deploy-client.mjs')).createDeployClient;
+                const client = await create(c);
+                return run(deployment, { client, receiptDirectory: options.receiptDirectory, signal });
+            },
+        });
+        stdout(JSON.stringify(guard ? { ...result, guard } : result, null, 2));
         return 0;
     } catch (error) {
-        const known = error instanceof DeployError;
+        //* v5 B31: a blocked guarded write has its own one-line report (exit 1).
+        if (error?.code === 'GUARD_BLOCKED' && error.guardReason) {
+            stderr(JSON.stringify(blockedReport(error)));
+            return 1;
+        }
+        //* v5 B31: guard errors are known errors too (fixed messages without values).
+        const known = error instanceof DeployError || error instanceof MigrationError;
         stderr(
             JSON.stringify({
-                status: known && error.unknown ? 'unknown' : 'failed',
+                //* v5 B31 r2 (N7): a journal failure (`stateWriteFailed`) is unknown whatever the error.
+                status: unknownFailure(error, known) ? 'unknown' : 'failed',
                 code: known ? error.code : 'UNEXPECTED_ERROR',
                 message: known
                     ? error.message
                     : 'Could not prepare or execute deployment; no raw error details are logged.',
                 ...(error.receipt ? { receipt: error.receipt } : {}),
                 ...(error.deployId ? { deployId: error.deployId } : {}),
+                //* v5 B31: the journal operation of a guarded write that did not complete.
+                ...guardErrorFields(error),
             }),
         );
         return error.exitCode ?? (known && ['INVALID_INPUT', 'INVALID_ARGS'].includes(error.code) ? 2 : 1);

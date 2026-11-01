@@ -453,19 +453,26 @@ export async function verifyMigrationReceipt(file, deployConfig) {
         fail('SNAPSHOT_CHANGED', 'Migration snapshot files changed after verification.');
     return { status: 'verified', fingerprint: receipt.fingerprint, receipt: path.resolve(file) };
 }
-export async function executeMigration(c, phase, options = {}, deps = {}) {
+//* v5 B31: the input-only refusals of an execution (no file, lock, credential or network), shared with the guarded
+//  CLI path so a flag or placeholder error is refused before the migration guard opens a journal record.
+export function executionPrecheck(c, phase, options = {}) {
     if (process.platform === 'win32')
         fail('UNSUPPORTED_PLATFORM', 'Execution requires macOS/Linux process-group cleanup.');
     //* v5 B24: every state name below comes from the matched registry entry.
     const target = migrationTarget(c);
-    const RECEIPT = target.receiptFile,
-        OWNER = target.ownerFile,
-        LOCK = target.lockFile;
     rejectPlaceholders(c);
     if (phase === 'plan' && !options.allowSensitiveBackup)
         fail('BACKUP_CONSENT_REQUIRED', 'plan --execute requires --allow-sensitive-backup.');
     if (phase === 'remove' && options.confirmStack !== c.stack)
         fail('STACK_CONFIRMATION_REQUIRED', `remove --execute requires --confirm-stack ${target.stack}.`);
+    return target;
+}
+export async function executeMigration(c, phase, options = {}, deps = {}) {
+    //* v5 B31: same checks in the same order as before, moved to `executionPrecheck`.
+    const target = executionPrecheck(c, phase, options);
+    const RECEIPT = target.receiptFile,
+        OWNER = target.ownerFile,
+        LOCK = target.lockFile;
     const root = await (deps.validateRepository ?? validateRepository)(c);
     c = { ...c, migrationRepo: root };
     const run = path.join(root, MIGRATION.runsDir, target.stack),

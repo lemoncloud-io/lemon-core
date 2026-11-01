@@ -16,6 +16,8 @@ import { fixture } from './migrate-test-fixture.mjs';
 import { TARGETS, PHASES, executeMigration, verifyMigrationReceipt, validateMigrationConfig } from './migrate-core.mjs';
 import { READS, STALE_AFTER_MS, KINDS, verifyDiff, awsFailure, envCategories } from './migrate-inspect.mjs';
 import { main as migrateMain } from '../lemon-lambda-migrate.mjs';
+//* v5 B31: the compat locks run the guarded CLI and compare the pre-B31 bytes (the `guard` field left out).
+import { guardFixture, missingGuardEnv, withoutGuard } from './guard-test-fixture.mjs';
 
 //* v5 B27: the full-phase cases run six phases per target.
 vi.setConfig({ testTimeout: 60_000 });
@@ -78,12 +80,15 @@ async function cliPlanText(t, target) {
     const f = await fixture(t, { target });
     await writeFile(f.configFile, JSON.stringify(fullConfig(target)));
     const lines = [];
+    // v5 B31: no guard installation (hermetic); the B31 `guard` summary is left out of the captured bytes.
+    const guardEnv = await missingGuardEnv();
     for (const phase of PHASES) {
         const { code, out, err } = await cli([phase, '--config', f.configFile], {
             validateRepository: async () => '/fixture/canonical',
+            guardEnv,
         });
         assert.deepEqual([code, err], [0, []]);
-        lines.push(...out.map(s => mask(s, f.root)));
+        lines.push(...out.map(s => mask(withoutGuard(s), f.root)));
     }
     return lines.join('\n');
 }
@@ -91,6 +96,8 @@ async function cliPlanText(t, target) {
 async function cliExecuteText(t, target) {
     const f = await fixture(t, { target });
     const lines = [];
+    // v5 B31: a registered guard installation; the B31 `guard` field is left out of the captured bytes.
+    const { env: guardEnv } = await guardFixture({ account: f.config.account, region: f.config.region });
     for (const phase of PHASES) {
         const extra =
             phase === 'plan'
@@ -98,10 +105,13 @@ async function cliExecuteText(t, target) {
                 : phase === 'remove'
                 ? ['--confirm-stack', target.stack]
                 : [];
-        const { code, out, err } = await cli([phase, '--config', f.configFile, '--execute', ...extra], f.deps);
+        const { code, out, err } = await cli([phase, '--config', f.configFile, '--execute', ...extra], {
+            ...f.deps,
+            guardEnv,
+        });
         assert.deepEqual([code, err], [0, []]);
         // the elapsed time is the only volatile value of the result.
-        lines.push(...out.map(s => mask(s, f.root).replace(/"elapsedMs": [0-9.e+-]+/, '"elapsedMs": 0')));
+        lines.push(...out.map(s => mask(withoutGuard(s), f.root).replace(/"elapsedMs": [0-9.e+-]+/, '"elapsedMs": 0')));
     }
     const envelope = JSON.parse(await readFile(path.join(f.run, target.receiptFile), 'utf8'));
     const p = envelope.payload;

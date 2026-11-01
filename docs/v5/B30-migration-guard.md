@@ -7,6 +7,10 @@ version bump. This is P2-a of the deployment-migration tool plan: the common exe
 only**: no deploy or migrate writer calls it yet, and no CLI command or flag was added. Connecting the writers
 (`lemon-lambda-migrate`, `lemon-lambda-deploy`, `lemon-lambda-deploy-dev`) is left to the next per-service changes.
 
+> **v5 B31:** the three writers are connected and the `lemon-lambda-guard` command is added
+> (`docs/v5/B31-guard-writers.md`). The table below shows the B31 state; the rest of this document is the library
+> contract, unchanged.
+
 ## Why
 
 The deploy and migration tools of a reviewed target can run from several sessions and several checkouts on one
@@ -39,19 +43,20 @@ flowchart LR
 
 ### Commands and the guard
 
-| Command                                                                               | Guard             | Why                                             |
-| ------------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------- |
-| `lemon-lambda-deploy` (apply)                                                         | planned (next PR) | writes the target; **not connected in this PR** |
-| `lemon-lambda-deploy-dev` (apply)                                                     | planned (next PR) | writes the target; **not connected in this PR** |
-| `lemon-lambda-migrate` six phases with `--execute`                                    | planned (next PR) | writes the target; **not connected in this PR** |
-| `lemon-lambda-migrate inspect \| reconcile \| resolve \| adopt-baseline`              | outside           | read-only, or a local attestation               |
-| `lemon-lambda-pack`                                                                   | outside           | local artifact                                  |
-| `lemon-lambda-env build \| diff`                                                      | outside           | local artifact / read-only                      |
-| `lemon-lambda-local`, `lemon-lambda-invoke`, `lemon-lambda-logs`, `lemon-lambda-perf` | outside           | local run, app calls or reads, no deploy write  |
+| Command                                                                               | Guard         | Why                                                               |
+| ------------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------- |
+| `lemon-lambda-deploy` (apply)                                                         | applied (B31) | writes the target; a target outside the registry is `passthrough` |
+| `lemon-lambda-deploy-dev` (apply)                                                     | applied (B31) | writes the target                                                 |
+| `lemon-lambda-migrate` six phases with `--execute`                                    | applied (B31) | writes the target (the run LOCK / owner files stay as they are)   |
+| the three above without `--apply` / `--execute` (plan)                                | status (B31)  | read-only `guardStatus` summary in the plan of a reviewed target  |
+| `lemon-lambda-migrate inspect \| reconcile \| resolve \| adopt-baseline`              | outside       | read-only, or a local attestation                                 |
+| `lemon-lambda-pack`                                                                   | outside       | local artifact                                                    |
+| `lemon-lambda-env build \| diff`                                                      | outside       | local artifact / read-only                                        |
+| `lemon-lambda-local`, `lemon-lambda-invoke`, `lemon-lambda-logs`, `lemon-lambda-perf` | outside       | local run, app calls or reads, no deploy write                    |
 
-"Planned" means the command calls `guardedWrite` only after its per-service PR; in B30 every command above behaves
-exactly as before. The writer PR passes the values that passed the `deploy-plan` validation to `classifyTarget`
-(never raw input).
+"Applied (B31)" means the command calls `guardedWrite` (through `runGuarded`) with the values that passed its
+existing validation (never raw input); in B30 every command above behaved exactly as before. See
+`docs/v5/B31-guard-writers.md`.
 
 ## API
 
@@ -231,7 +236,8 @@ A file outside the name rule in `journal/` (for example `.DS_Store`) makes the s
     result of the unknown operation.
 -   `guardStatus` reads without the lock: its answer can change before a later `guardedWrite`, which checks again
     under the lock.
--   Not yet connected: no writer calls the guard in B30, no AWS read is made, the registry is filled by callers.
+-   Not connected in B30: no writer called the guard, no AWS read is made, the registry is filled by callers. B31
+    connects the writers and fills the registry through `lemon-lambda-guard register`.
 
 ## Tests
 
