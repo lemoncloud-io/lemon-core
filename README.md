@@ -209,6 +209,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B19-bin-deploy.md](docs/v5/B19-bin-deploy.md) | B19: `lemon-lambda-pack` / `-local` / `-deploy` / `-deploy-dev` / `-migrate` (from templates-api `bin/`) |
 | [B20-local-gateway.md](docs/v5/B20-local-gateway.md) | B20: `lemon-devkit` removed — `loadEnviron`/`loadProfile` in lemon-core, `buildExpress` as a local API Gateway (`serverless.yml` routes, `{proxy+}`, binary bodies); B21: no `express` (a built-in app for local extension routes) |
 | [B22-pinned-behaviours.md](docs/v5/B22-pinned-behaviours.md) | B22: the B18 pinned behaviours — dynamo `paginatedRequest()` callback, OS2 429 retry on page 1, `$source` with a projection, `OS2Instance.search()` `indexName`, legacy `$protocol()` `param`/`body` fixed; `loadFromFile()` naming documented |
+| [B39-public-rows.md](docs/v5/B39-public-rows.md) | B39: public rows (`sid` set, `uid` empty) and guest callers, policy key `public`, session-off admin order (D105) |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |

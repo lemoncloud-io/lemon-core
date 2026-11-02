@@ -2,6 +2,8 @@
 
 Status: implemented 2026-10-30 on `feat/v5-b13-access-policy` (base `v5` @ `90da90ed`). Decision D67, design SPEC § 14 (vault). User-facing changes: `HOW_TO_UPGRADE_V5.md` § 11.7. Builds on the `sid`-less record rule of B5 (`docs/v5/B5-trust-boundary.md` § 5).
 
+> **→ B39 (2026-11-02, D105).** Public rows (`sid` set, `uid` empty) and guest callers (empty `roles` or `uid`) changed the rows marked "→ B39" below; the rest of this page holds. See `docs/v5/B39-public-rows.md`.
+
 ## Why
 
 With the session on, the built-in CRUD handlers protected rows by site only: any role holder of the same `sid` could read every row of that site, and an empty `uid` matched an empty `uid`. B13 makes the default safe, close to the request: list the caller's site, read and write only the caller's own rows, admin does everything, everything else is refused. Services override it in code (three levels, below).
@@ -25,8 +27,10 @@ With the session on, the built-in CRUD handlers protected rows by site only: any
 | SITE same sid, other uid | ✔ own site pinned T-12 | ✘ 403 T-13 | ✔ (own row) T-09 | ✘ 403 T-14 | ✘ 403 T-15 |
 | OTHER other sid | ✔ own site only (`?sid=` ignored) T-16 | ✘ 403 T-17 | ✔ (own row) T-09 | ✘ 403 T-18 | ✘ 403 T-19 |
 | NOUID session `uid` empty (incl. `#…`) | ✘ 403 T-20 | ✘ 403 T-20 | ✘ 403 T-20 | ✘ 403 T-20 | ✘ 403 T-20 |
+| → B39 | a guest: read of a public row in reach (`public`, default same `sid`) ✔; the rest 403. No `.uid` throw in `getCurrentSession` with the session on (kept with the session off) | | | | |
 | NOSID session `sid` empty (offsite `#`) | ✘ 403 T-21 (was: an unfiltered list) | ✘ 403 T-21 | ✘ 403 T-21 | ✘ 403 T-21 | ✘ 403 T-21 |
 | GUEST `roles` empty | ✘ 403 T-22 | ✘ 403 T-22 | ✘ 403 T-22 | ✘ 403 T-22 | ✘ 403 T-22 |
+| → B39 | a guest as NOUID: read of a public row in reach ✔, the rest 403 | | | | |
 | NOSESS no session (Lambda) | ✘ `403 IDENTITY-TOKEN` T-23 | ✘ T-23 | ✘ T-23 | ✘ T-23 | ✘ T-23 |
 
 Special rows (non-admin caller):
@@ -34,6 +38,7 @@ Special rows (non-admin caller):
 | Row `M` | read · update · delete | Note |
 | --- | --- | --- |
 | empty `uid` (created with the session off, or by an offsite token) | ✘ 403 T-24 | `owner` never matches an empty `uid`. Admin only |
+| → B39: empty `uid` with a `sid` = a public row | read ✔ in reach (`public: 'site'` default); update/delete 403 under every scope (admin only); left out of every non-admin list | `public: 'none'` restores the row above |
 | no `sid` (legacy) | `SID_LEGACY_ACCESS=admin` (default) ✘ T-25 · `open` ✔ (v4 rule, every role holder) T-26 · `deny`: update/delete 403 **before** the admin check (as in B5), read as `admin` T-27 | The B5 rule now covers read too (read was open) |
 | a `sid`-less row in a list | not matched by the session `sid` pin (no change) | `open` does not change the list pin |
 
@@ -47,6 +52,7 @@ Bulk and override cases:
 | controller `policy` | `{ read: 'site' }` restores the site-wide read; `{ list: 'owner' }` lists own rows | T-33 |
 | `accessPolicy()` override | the type default; the controller `policy` wins over it | T-34 |
 | session off | the B5 § 6.4 rules, unchanged; `policy` and the pin are not used | T-35 |
+| → B39 session off | `hasAdminRole()` before the session (an IAM SigV4 caller passes); an empty caller `uid` never updates/deletes; the `.uid` throw stays | B39 T-13, T-14 |
 | local mode | admin for all, no pin (unchanged) | T-36 |
 
 ## Old → new

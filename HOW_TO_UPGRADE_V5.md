@@ -735,6 +735,15 @@ With the session on (`useSession` of the controller, env `USE_SESSION` for a dir
 * **Cross-cloud.** An identity with `cid` (cloud-id = the caller's account number) different from the receiver's own `context.accountId` is cross-cloud; an empty `cid` is the same cloud. `policy.cross`: `'accept'` (default, same rules), `'identity'` (never internal admin), `'deny'` (403 after the admin role). The `TRACE` line gets ` cross=1` (never the account number).
 * **`getCurrentSession()` under `internal`.** A relayed identity (no `userAgent`) is now the session when `channel === 'internal'` (not in local mode, not with `useSession: false`), so a relayed user is no longer `403 IDENTITY-TOKEN` and `create` stamps its `sid`/`uid`.
 
+**B39 (public rows, guest callers).** Decision D105. Rules, spec ids and the changed assertions: `docs/v5/B39-public-rows.md`.
+
+* **What changes by default (session on).** A row with a `sid` and an empty `uid` is **public**. A **guest** (a session with empty `roles` or an empty `uid`, incl. `#…`) may only `read` a public row of its own site; list, create, update and delete stay 403. A member reads public rows of its site too (was 403). Public rows are **left out of every non-admin list** (all views, `must exists(uid)` in the search body, `attribute_exists(uid) AND NOT attribute_type(uid, NULL)` in the scan fallback); update/delete of a public row is admin only under every scope. A DoU guest token (`roles: ['guest']` with its own `uid`) is a member, not a B39 guest. A `sid`-less row is not public (`SID_LEGACY_ACCESS` as before).
+* **`getCurrentSession({ throwable })`** with the session on no longer throws `403 IDENTITY-TOKEN - .uid (user-id) is required!`; it returns the session with `uid: ''` (or `null` for `#…`) and `canDo` decides. With `useSession: false` the `.uid` throw stays. The `.identity`, `check x-lemon-identity` and `.sid` throws stay.
+* **Policy key `public`** (8th key, type `AccessPublic`): `'site'` (default) · `'any'` (public rows of every site) · `'none'` (B13: admin only).
+* **Session off (`useSession: false`)**, owner-adopted revision of "session off unchanged". `hasAdminRole()` now runs before the session, as with the session on, so an IAM SigV4 caller is admin on `doGet`/`doPost`/`doPut`/`doDelete` too (was `403 IDENTITY-TOKEN`). An empty caller `uid` still gets `403 IDENTITY-TOKEN - .uid (user-id) is required!` on the single-row handlers, and never updates or deletes in bulk (was: `''` matched `''`). List, read and create keep the § 6.4 rule.
+* **Opt out in one line:** `{ useSession: true, policy: { public: 'none' } }` in the controller options (or `public: 'none'` in `accessPolicy()`).
+* `view=admin` (and every admin-like caller) keeps the public rows in the list.
+
 ### 11.8 `$U.ts()` / `$U.dt()` use timeZone 9 by default
 
 | Input | v4 | v5 |
