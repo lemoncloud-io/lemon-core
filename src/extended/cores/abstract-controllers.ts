@@ -32,6 +32,7 @@
  * @date        2026-10-28 v5 B4: `fields/admin` self-check uses the shared `checkFieldsAdmin()`.
  * @date        2026-10-30 v5 B13: handlers pass `{ useSession, policy }` to `canDo`, `doList` checks `list`, bulk in 2 phases.
  * @date        2026-10-30 v5 B15: `doList` reads `?view=` (`resolveListView()`, ceiling `policy.list`), internal admin.
+ * @date        2026-11-02 v5 B39: `doList` drops the public rows for a non-admin caller (`excludePublic`, D105 e).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -400,8 +401,13 @@ export abstract class AbstractCRUDController<
             });
             _log(this.logNS, `>> $param =`, $U.json($param));
 
+            //* v5 B39: a non-admin list never shows the public rows, any view (D105 e); admin-like and session off keep them.
+            const excludePublic = useSession && !$prxy.isAdminLike({ policy });
+
             //* search from manager.
-            const $res = await this.manager.list($page, $param);
+            const $res = excludePublic
+                ? await this.manager.list($page, $param, { excludePublic })
+                : await this.manager.list($page, $param);
 
             //* for internal test, list can be `SearchBody`
             const list = Array.isArray($res.list) ? $res.list.map(model => this.modelAsView(model)) : $res.list;

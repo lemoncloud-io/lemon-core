@@ -41,6 +41,7 @@
  * @date        2026-10-28 v5 B4: `CORE_FIELDS = fieldsOf(CoreModel)`; manager `fields` may be a model class.
  * @date        2026-10-30 v5 B13: default data-access policy (`AccessPolicy`, `canDo` scopes, `list` pin by scope).
  * @date        2026-10-30 v5 B15: policy keys `internal`/`cross`, cross-cloud `cid`, internal admin, internal session.
+ * @date        2026-11-02 v5 B39: public rows (`sid` ✓, `uid` empty) and guest callers, policy key `public` (D105).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
@@ -143,21 +144,32 @@ export type AccessInternal = 'admin' | 'identity';
 export type AccessCross = 'accept' | 'identity' | 'deny';
 
 /**
+ * type: `AccessPublic`
+ * - v5 B39: who may read a public row (`sid` set, `uid` empty) besides admin (D105, SPEC § 39.1 f).
+ * - `site` (default): callers of the same `sid`. `any`: every caller with a session site. `none`: admin only (B13).
+ */
+export type AccessPublic = 'site' | 'any' | 'none';
+
+/**
  * type: `AccessPolicy`
  * - v5 B13: the scope of each CRUD action.
  * - v5 B15: + `internal` and `cross`, one per policy (caller state, not per action).
+ * - v5 B39: + `public` (optional in the type, `site` in the merged policy).
  */
 export type AccessPolicy = Record<CanDoActionType, AccessScope> & {
     /** v5 B15: protocol (`internal`) callers - `admin` (default) or `identity` */
     internal: AccessInternal;
     /** v5 B15: cross-cloud callers - `accept` (default), `identity` or `deny` */
     cross: AccessCross;
+    /** v5 B39: public rows - `site` (default), `any` or `none` */
+    public?: AccessPublic;
 };
 
 /**
  * v5 B13: the core default policy - list in the caller's site, the other four on own rows only.
  * - override per type with `MyManagerProxy.accessPolicy()`, per controller with `options.policy`.
  * - v5 B15: protocol callers are admin, cross-cloud callers are accepted.
+ * - v5 B39: public rows are read in the caller's site.
  */
 export const DEFAULT_ACCESS_POLICY: Readonly<AccessPolicy> = Object.freeze({
     list: 'site',
@@ -167,6 +179,7 @@ export const DEFAULT_ACCESS_POLICY: Readonly<AccessPolicy> = Object.freeze({
     delete: 'owner',
     internal: 'admin', //* v5 B15
     cross: 'accept', //* v5 B15
+    public: 'site', //* v5 B39
 });
 
 //* v5 B15: the known values of the two caller-state keys (an unknown value is refused).
@@ -462,7 +475,14 @@ export abstract class MyCoreManager<
     public buildQuery<T extends Model>(
         param: PaginateParam,
         model?: SearchParam<T>,
-        options?: { errScope?: string; hidden?: boolean | number; aggregation?: string; aggrLimit?: number },
+        options?: {
+            errScope?: string;
+            hidden?: boolean | number;
+            aggregation?: string;
+            aggrLimit?: number;
+            /** (optional) v5 B39: drop the public rows (`uid` not indexed) - non-admin lists */
+            excludePublic?: boolean;
+        },
     ): SearchBody {
         const errScope = options?.errScope ?? `buildQuery(${this.type})`;
         if (typeof param?.limit !== 'number') throw new Error(`.limit(number) is required - ${errScope}`);
@@ -519,6 +539,10 @@ export abstract class MyCoreManager<
             } else {
                 this.addQueryTerm(body, 'must_not', { term: { hidden: 1 } });
             }
+        }
+        //* v5 B39: drop the public rows - a stored `''`/`null` uid is DynamoDB `NULL`, not indexed by the OS sync (D105 e).
+        if (options?.excludePublic) {
+            this.addQueryTerm(body, 'must', { exists: { field: 'uid' } });
         }
 
         // 1-2. filter by attributes.
@@ -620,13 +644,24 @@ export abstract class MyCoreManager<
      * build filter for scan.
      * @returns DynamoScanFilter
      */
-    public buildScanFilter(params?: SearchParam<Model>): DynamoScanFilter {
+    public buildScanFilter(
+        params?: SearchParam<Model>,
+        options?: {
+            /** (optional) v5 B39: drop the public rows (`uid` absent or `NULL`) - the scan twin of `buildQuery()` */
+            excludePublic?: boolean;
+        },
+    ): DynamoScanFilter {
         const filter: DynamoScanFilter = [
             { key: 'ns', comparator: '=', value: this.parent.NS },
             { key: 'type', comparator: '=', value: this.type },
             { not: { key: 'stereo', operator: 'begins_with', value: '#' } },
             { key: 'deletedAt', comparator: '=', value: 0 },
         ];
+        //* v5 B39: `attribute_exists(uid) AND NOT attribute_type(uid, NULL)` - a stored `''` is DynamoDB `NULL` (D105 e).
+        if (options?.excludePublic) {
+            filter.push({ key: 'uid', exists: true });
+            filter.push({ not: { key: 'uid', attrType: 'NULL' } });
+        }
 
         // filter by params
         if (params) {
@@ -736,14 +771,22 @@ export abstract class MyCoreManager<
     public async list<R = { key: string; count: number }>(
         $page: PaginateParam,
         $param?: SearchParam<Model>,
-        options?: { hidden?: boolean | number; aggregation?: string },
+        options?: {
+            hidden?: boolean | number;
+            aggregation?: string;
+            /** (optional) v5 B39: drop the public rows (search body and scan filter) */
+            excludePublic?: boolean;
+        },
     ): Promise<ListResult<Model, R>> {
         _log(this.logNS, `list(${$page?.limit ?? ''}, ${$page?.page ?? ''})..`);
         const aggregation = options?.aggregation ?? 'stereo'; // default aggregation
 
         //* use dynamo-scan if no search configuration.
         if (!this.parent.hasSearchEngine()) {
-            const filter = this.buildScanFilter($param);
+            //* v5 B39: the second argument only when excluding (the call is unchanged otherwise).
+            const filter = options?.excludePublic
+                ? this.buildScanFilter($param, { excludePublic: true })
+                : this.buildScanFilter($param);
             return this.doScan($page, filter);
         }
 
@@ -1146,7 +1189,8 @@ export class MyCoreProxy<
                 throw new Error(`${eCode} - .identity (IdentityToken) is required - context:${$U.json(context)}`);
             if ($sess?.sid === undefined) throw new Error(`${eCode} - ${err}`);
             if (!$sess?.sid) throw new Error(`${eCode} - .sid (site-id) is required!`);
-            if (!$sess?.uid) throw new Error(`${eCode} - .uid (user-id) is required!`);
+            //* v5 B39 j: session on → canDo decides (guest); session off → unchanged (D105 h: read/create as before)
+            if (!$sess?.uid && useSession === false) throw new Error(`${eCode} - .uid (user-id) is required!`);
         }
 
         //* normalize for the internal.
@@ -1492,13 +1536,19 @@ export class MyManagerProxy<
             const S = { sid: $T.S2(session?.sid), uid: $T.S2(session?.uid), gid: $T.S2(session?.gid) };
             const _deny = (name: string) =>
                 new Error(`403 NOT ALLOWED - list[${scope}] needs session .${name} @${errScope}`);
+            //* v5 B39: a guest never lists (defence in depth, `doList` refuses it by `canDo('list')` first; D105 c).
+            const _guest = () => {
+                if (this.isGuestSession(session)) throw _deny(S.uid ? 'roles' : 'uid');
+            };
             if (scope === 'any') {
+                _guest();
                 //* `any`: no pin, `?sid=` and `?uid=` as given (`0` = the session value).
                 if (_has('sid')) $param['sid'] = _val('sid') === '0' ? session?.sid : _val('sid');
                 if (_has('uid')) $param['uid'] = _val('uid') === '0' ? session?.uid : _val('uid');
             } else if (scope === 'site' || scope === 'owner' || scope === 'group') {
                 //* every pinned scope needs the session site; an empty one lists nothing (was: no filter).
                 if (!S.sid) throw _deny('sid');
+                _guest();
                 $param['sid'] = S.sid;
                 if (scope === 'owner') {
                     //* `owner`: own rows only, `?uid=` is overridden.
@@ -1608,7 +1658,7 @@ export class MyManagerProxy<
 
     /**
      * v5 B13: the effective policy - core default, then `accessPolicy()`, then `policy` (undefined values skipped).
-     * - v5 B15: the 7 keys (5 scopes + `internal`, `cross`); a partial `policy` overrides only its keys.
+     * - v5 B15: the 7 keys (5 scopes + `internal`, `cross`); a partial `policy` overrides only its keys. v5 B39: + `public`.
      *
      * @param policy (optional) scopes from the caller (ex: controller `options.policy`)
      * @returns the merged policy
@@ -1621,6 +1671,56 @@ export class MyManagerProxy<
                 return M;
             }, {});
         return { ...DEFAULT_ACCESS_POLICY, ..._defined(this.accessPolicy()), ..._defined(policy) };
+    }
+
+    /**
+     * v5 B39: true if the session is a guest (D105 a) - no `roles`, or an empty `uid` (absent, `''`, `#…` → `null`).
+     * - a DoU guest (`roles: ['guest']` with its own `uid`) is a member, not a B39 guest.
+     *
+     * @param session the (normalized) session of `getCurrentSession()`
+     * @returns boolean
+     */
+    public isGuestSession(session?: IdentityToken | null): boolean {
+        //* a raw `#…` uid is empty too (the same rule as the `getCurrentSession()` normalization).
+        const uid = $T.S2(session?.uid);
+        return !(session?.roles?.length > 0) || !uid || uid.startsWith('#');
+    }
+
+    /**
+     * v5 B39: true if the row is public (D105 b) - a non-empty `sid` and an empty `uid` (absent, `''`, `null`).
+     * - a `sid`-less row is not public (`SID_LEGACY_ACCESS` decides, D47).
+     *
+     * @param model the stored row
+     * @returns boolean
+     */
+    public isPublicModel(model?: { sid?: string; uid?: string } | null): boolean {
+        return !!$T.S2(model?.sid) && !$T.S2(model?.uid);
+    }
+
+    /**
+     * v5 B39: true if a public row is in the reach of the caller per the policy key `public` (D105 f).
+     * - `any`: every caller. `site`: the same non-empty `sid`. `none` (or an unknown value): nobody (admin only).
+     *
+     * @param mode the policy `public` (default `site`)
+     * @param session the caller session
+     * @param model the public row
+     * @returns boolean
+     */
+    public isPublicVisible(
+        mode: AccessPublic | undefined,
+        session: { sid?: string } | null,
+        model: { sid?: string } | null,
+    ): boolean {
+        const S = $T.S2(session?.sid);
+        const M = $T.S2(model?.sid);
+        switch (mode ?? 'site') {
+            case 'any':
+                return true;
+            case 'site':
+                return !!S && S === M;
+            default:
+                return false;
+        }
     }
 
     /**
@@ -1640,6 +1740,7 @@ export class MyManagerProxy<
      * Check if the current user can perform the specified action on the given model.
      * - override this method to implement custom logic (an override runs before this default).
      * - v5 B13: with the session on, the effective `AccessPolicy` decides (SPEC § 14.2); with it off, § 6.4 as before.
+     * - v5 B39: + guest callers and public rows (D105, `docs/v5/B39-public-rows.md`).
      *
      * @param action The action to check.
      * @param model The model to check against. (`undefined` for `list` = the caller check only)
@@ -1668,7 +1769,7 @@ export class MyManagerProxy<
         const hasModel = model !== undefined && model !== null;
         const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid), gid: $T.S2(model?.gid) };
         const legacy = $U.sidLegacyAccess();
-        //* v5 B15: the merged policy (7 keys); an unknown `internal`/`cross` value never allows (SPEC § 15.3).
+        //* v5 B15: the merged policy (7 keys, B39: 8); an unknown `internal`/`cross` value never allows (SPEC § 15.3).
         const policy = this.effectivePolicy(options?.policy);
         if (!isKnownCallerPolicy(policy)) return _deny();
 
@@ -1687,13 +1788,27 @@ export class MyManagerProxy<
         const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
         if (!$sess) return _deny();
 
-        //* v5 B13 (4): caller state - a role holder with a site and a user (T-20, T-21, T-22).
+        //* v5 B13 (4): caller state - an empty site never passes (T-21; B39 g: before the guest check).
         const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid), gid: $T.S2($sess?.gid) };
-        const hasRole = $sess?.roles?.length > 0 ? true : false; // guest if empty.
-        if (!hasRole || !S.uid || !S.sid) return _deny();
+        if (!S.sid) return _deny();
+
+        //* v5 B39 (8): a guest (no roles, or an empty uid) reads the public rows in reach only (D105 a, c, f).
+        const isPublic = hasModel && this.isPublicModel(model);
+        if (this.isGuestSession($sess)) {
+            const canRead = _act === 'read' && isPublic && this.isPublicVisible(policy.public, S, M);
+            return canRead ? true : _deny();
+        }
 
         //* v5 B13 (6): `list` without a model = the caller check only; the rows are pinned by `packSearchParam()`.
         if (_act === 'list' && !hasModel) return true;
+
+        //* v5 B39 (10): a public row and a member (D105 d, f) - `public: 'none'` skips this (B13 rules).
+        if (isPublic && policy.public !== 'none') {
+            //* read in reach → allow; out of reach → the scope compare below (it may still allow, ex: `read: 'any'`).
+            if (_act === 'read' && this.isPublicVisible(policy.public, S, M)) return true;
+            //* update/delete of a public row → admin only, whatever the action scope.
+            if (_act === 'update' || _act === 'delete') return _deny();
+        }
 
         //* v5 B13 (5): the scope of this action against the row.
         const scope = policy[_act];
@@ -1719,6 +1834,7 @@ export class MyManagerProxy<
     /**
      * the `canDo()` rules with the session off (v5 § 6.4, unchanged by B13).
      * - `list`/`read`/`create`: same `sid` or a `sid`-less row; `update`/`delete`: same `sid` and `uid`.
+     * - v5 B39 (D105 h, h′): admin before the session (as `canDo`); an empty caller `uid` never updates/deletes.
      *
      * @param _act the validated action
      * @param model the model to check against
@@ -1733,11 +1849,7 @@ export class MyManagerProxy<
         const { errScope, throwable, context } = options;
         const useSession = false;
 
-        // no session but required.
-        const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
-
-        // session & model information.
-        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid) };
+        // model information.
         const M = { sid: $T.S2(model?.sid), uid: $T.S2(model?.uid) };
         //* v5: access mode for update/delete of a `sid`-less record, env `SID_LEGACY_ACCESS` (B5 § 6.4).
         const legacy = $U.sidLegacyAccess();
@@ -1749,10 +1861,15 @@ export class MyManagerProxy<
             return false;
         }
 
-        // admin can do anything.
-        const isAdmin = this.proxy.hasAdminRole(null, { errScope, context });
+        //* v5 B39 (h′): admin can do anything - checked before the session, as `canDo` (an IAM SigV4 caller passes).
+        if (this.proxy.hasAdminRole(null, { errScope, context })) return true;
+
+        // no session but required.
+        const $sess = this.proxy.getCurrentSession({ throwable, useSession, context });
+
+        // session information.
+        const S = { sid: $T.S2($sess?.sid), uid: $T.S2($sess?.uid) };
         const hasRole = $sess?.roles?.length > 0 ? true : false; // guest if empty.
-        if (isAdmin) return true;
 
         // check action.
         if (hasRole) {
@@ -1772,7 +1889,8 @@ export class MyManagerProxy<
                         if (legacy === 'open') return true;
                         break;
                     }
-                    if (S.sid === M.sid && S.uid === M.uid) return true;
+                    //* v5 B39 (h): an empty caller `uid` never matches (was: empty matched empty, G8).
+                    if (S.uid && S.sid === M.sid && S.uid === M.uid) return true;
                     break;
                 default:
                     throw new Error(`400 INVALID - action[${_act}] is invalid @${errScope}`);

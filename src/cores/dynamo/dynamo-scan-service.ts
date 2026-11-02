@@ -68,12 +68,22 @@ function isStringCondition(c: Condition): c is StringCondition {
     return 'operator' in c;
 }
 
+// AttrTypeCondition - the stored type of a field is {attrType} (`attribute_type`) - v5 B39
+interface AttrTypeCondition {
+    key: string;
+    attrType: 'S' | 'SS' | 'N' | 'NS' | 'B' | 'BS' | 'BOOL' | 'NULL' | 'L' | 'M';
+}
+//NOTE - v5 B39: type guard of `AttrTypeCondition`.
+function isAttrTypeCondition(c: Condition): c is AttrTypeCondition {
+    return 'attrType' in c;
+}
+
 /**
  * interface: DynamoScanFilter
  * - for joining multiple conditions with logical AND -> Array
  * - for joining multiple conditions with logical OR -> { or: Array }
  */
-type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition;
+type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition | AttrTypeCondition;
 export type DynamoScanFilter = (Condition | { not: Condition }) | DynamoScanFilter[] | { or: DynamoScanFilter[] };
 
 /**
@@ -223,6 +233,10 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
                     } else if (isStringCondition(cond)) {
                         const [name, value] = [asAttrName(cond.key), asAttrValue(cond.key, cond.value)];
                         return `${cond.operator}(${name}, ${value})`;
+                    } else if (isAttrTypeCondition(cond)) {
+                        //* v5 B39: `attribute_type(#k, :k0)`, the type name as a string value (DocumentClient → `{ S }`).
+                        const [name, value] = [asAttrName(cond.key), asAttrValue(cond.key, cond.attrType)];
+                        return `attribute_type(${name}, ${value})`;
                     }
                 }
             };
