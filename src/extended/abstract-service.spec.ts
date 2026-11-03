@@ -1548,3 +1548,34 @@ describe('#207 getMulti follow-up 2', () => {
         }
     });
 });
+
+//* #207 follow-up 2b: two late Copilot items on #278, ported from develop (85d11b08).
+describe('#207 getMulti follow-up 2b', () => {
+    //* the same profile load as the main describe.
+    loadProfile(process);
+
+    it('an id named like an Object.prototype member is still reported', async () => {
+        const { $test } = instance().service;
+        await $test.storage.delete('toString').catch(() => {});
+        //* `toString` is absent -> a failure entry; a plain `{}` map would hide it via `'toString' in $map`.
+        const $map = await $test.getMulti$(['toString'], 'id', { throwable: false });
+        //* read via a string variable, so TS uses the index signature (not `Object.prototype.toString`).
+        const key: string = 'toString';
+        expect2(() => Object.keys($map)).toEqual(['toString']);
+        expect2(() => ($map[key] as GetMultiFailure).error).toEqual('404 NOT FOUND - test:toString');
+        //* the map has no prototype at all.
+        expect2(() => Object.getPrototypeOf($map)).toEqual(null);
+    });
+
+    it('a `number | GetMultiOptions` variable is accepted by getMulti$()', async () => {
+        const { $test } = instance().service;
+        await $test.save('A', { name: 'AAA', test: 1 });
+        //* a function keeps the declared union (an initializer would narrow `opts` to `number`).
+        const asOptions = (n: number): number | GetMultiOptions => n;
+        const opts = asOptions(2);
+        //* type level (checked by tsc): the union variable picks the union-map overload.
+        const m = await $test.getMulti$(['A'], 'id', opts);
+        const union: SameType<typeof m, { [id: string]: TestModel | GetMultiFailure }> = true;
+        expect2(() => [Object.keys(m), union]).toEqual([['A'], true]);
+    });
+});
