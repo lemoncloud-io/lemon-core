@@ -12,6 +12,8 @@ import {
     componentsOf,
     functionShapesOf,
     hasWebsocket,
+    //* v5 T47-12: the REST endpoint type used without a `restApi` block.
+    REST_ENDPOINT_TYPE_DEFAULT,
 } from './deploy-plan.mjs';
 import { createReceipt } from './deploy-receipt.mjs';
 import { sha256 } from './pack-zip.mjs';
@@ -824,7 +826,8 @@ export async function runDeployment(
             const api = await call('rest-api', 'aws.apigateway.ensure-rest-api@1', {
                 project: c.project,
                 name: names.restApiName,
-                endpointType: 'REGIONAL',
+                //* v5 T47-12: the configured endpoint type (an adopted EDGE API stays EDGE), else `REGIONAL`.
+                endpointType: c.restApi?.endpointType ?? REST_ENDPOINT_TYPE_DEFAULT,
                 tags,
             });
             identifier(api.restApiId, 'REST API id', /^[a-z0-9]{1,32}$/);

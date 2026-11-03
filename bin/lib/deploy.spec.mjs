@@ -1503,6 +1503,19 @@ async function runSnapshot(d, root) {
 }
 //* v5 B47: sha256 of a string (snapshot digests).
 const digest = s => createHash('sha256').update(s).digest('hex');
+//* v5 B47: the snapshot digests of the example configs captured before B47 (also locked by T47-12).
+const PRE_B47_DIGESTS = {
+    bootstrap: {
+        plan: '5bd7a584f5ad7dc7007a909b2526a3a83e273fb31fab99d1ff5e98ab77048cd4',
+        calls: '105fb4f473049a4ab6797d0e8398e1e64779b5014a79b4b51344f61a61e75bb0',
+        receipt: 'bb1b3737d5df74e8486aa85e564368825550a83aaf788aa11eed7a734ca3fa04',
+    },
+    code: {
+        plan: 'ff0506043b0ab784735b61748970e79189a44af67b920369460b6bcc7198da4c',
+        calls: '4cd36644b7863955df8edb5cd5f322b36cf4ab023f04914bc788f1802d3d69b7',
+        receipt: '2444e34eab5c0a06ef9cf4ca1d342168311aebc6e65a4390ecccf11f21e158a1',
+    },
+};
 test('B47 a config without websocket keeps plan, tool calls and receipt byte-identical (pre-B47 snapshot)', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'templates-deploy-b47-'));
     onTestFinished(() => rm(root, { recursive: true, force: true }));
@@ -1520,18 +1533,7 @@ test('B47 a config without websocket keeps plan, tool calls and receipt byte-ide
         };
     }
     // digests captured from `origin/develop` 770f33f0 (before B47) with this same harness.
-    assert.deepEqual(out, {
-        bootstrap: {
-            plan: '5bd7a584f5ad7dc7007a909b2526a3a83e273fb31fab99d1ff5e98ab77048cd4',
-            calls: '105fb4f473049a4ab6797d0e8398e1e64779b5014a79b4b51344f61a61e75bb0',
-            receipt: 'bb1b3737d5df74e8486aa85e564368825550a83aaf788aa11eed7a734ca3fa04',
-        },
-        code: {
-            plan: 'ff0506043b0ab784735b61748970e79189a44af67b920369460b6bcc7198da4c',
-            calls: '4cd36644b7863955df8edb5cd5f322b36cf4ab023f04914bc788f1802d3d69b7',
-            receipt: '2444e34eab5c0a06ef9cf4ca1d342168311aebc6e65a4390ecccf11f21e158a1',
-        },
-    });
+    assert.deepEqual(out, PRE_B47_DIGESTS);
     // the same, readable: no websocket key anywhere, the pre-B47 step list and two functions.
     const p = deploymentPlan(syntheticDeployment({ ...structuredClone(example), environmentFile: 'env.json' }));
     assert.ok(!JSON.stringify(p).includes('websocket'));
@@ -1923,4 +1925,106 @@ test('B47 a websocket policy whose connection statement or other statements diff
         assert.ok(error);
         assert.ok(!client.calls.some(x => x.tool === 'lemon.deploy.ensure-role@1'));
     }
+});
+
+//* ---- v5 T47-12: REST API endpoint type (`restApi.endpointType`) — adopted sls APIs are EDGE ----
+//* v5 T47-12: the example configs of the B47 snapshot, optionally with a `restApi` block.
+const restApiConfigs = restApi => [
+    ['bootstrap', { ...structuredClone(example), environmentFile: 'env.json', ...(restApi ? { restApi } : {}) }],
+    ['code', { ...codeConfig(), ...(restApi ? { restApi } : {}) }],
+];
+//* v5 T47-12: the plan / calls / receipt digests (and the raw snapshot) of each mode for one `restApi` value.
+async function restApiSnapshots(root, restApi) {
+    const out = {};
+    for (const [mode, raw] of restApiConfigs(restApi)) {
+        const d = syntheticDeployment(raw);
+        const snap = await runSnapshot(d, path.join(root, `${mode}-${restApi?.endpointType ?? 'none'}`));
+        out[mode] = {
+            plan: digest(JSON.stringify(deploymentPlan(d), null, 2)),
+            calls: digest(snap.calls),
+            receipt: digest(snap.receipt),
+            snap,
+        };
+    }
+    return out;
+}
+//* v5 T47-12: the `ensure-rest-api@1` inputs of a snapshot's calls.
+const restApiInputs = snap =>
+    JSON.parse(snap.calls)
+        .filter(r => r.tool === 'aws.apigateway.ensure-rest-api@1')
+        .map(r => r.input);
+test('T47-12 no restApi keeps plan, tool calls and receipt byte-identical; explicit REGIONAL keeps calls and receipt', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'templates-deploy-t4712-'));
+    onTestFinished(() => rm(root, { recursive: true, force: true }));
+    const none = await restApiSnapshots(root);
+    // the three digests of each mode (the raw snapshot left out).
+    const strip = o =>
+        Object.fromEntries(
+            Object.entries(o).map(([m, d]) => [m, { plan: d.plan, calls: d.calls, receipt: d.receipt }]),
+        );
+    // (a) the pre-B47 digests (`origin/develop` 770f33f0), so also the 5.0.26 bytes: no key, nothing changes.
+    assert.deepEqual(strip(none), PRE_B47_DIGESTS);
+    const noneInputs = restApiInputs(none.bootstrap.snap);
+    assert.equal(noneInputs.length, 1);
+    assert.equal(noneInputs[0].endpointType, 'REGIONAL');
+    assert.ok(!JSON.stringify(deploymentPlan(syntheticDeployment(restApiConfigs()[0][1]))).includes('restApi'));
+    // `REGIONAL` written out: the same calls; the receipt differs only by the plan it embeds (which names the block).
+    const regional = await restApiSnapshots(root, { endpointType: 'REGIONAL' });
+    const withoutPlan = snap => {
+        const receipt = JSON.parse(snap.receipt);
+        delete receipt.plan;
+        return receipt;
+    };
+    for (const mode of ['bootstrap', 'code']) {
+        assert.equal(regional[mode].calls, none[mode].calls, mode);
+        assert.deepEqual(withoutPlan(regional[mode].snap), withoutPlan(none[mode].snap), mode);
+    }
+    assert.deepEqual(JSON.parse(regional.bootstrap.snap.receipt).plan.configuration.restApi, {
+        endpointType: 'REGIONAL',
+    });
+    // code mode never calls the REST API tool, so its plan and receipt are unchanged too.
+    assert.equal(regional.code.plan, none.code.plan);
+    assert.equal(regional.code.receipt, none.code.receipt);
+    assert.notEqual(regional.bootstrap.plan, none.bootstrap.plan);
+});
+test('T47-12 restApi.endpointType EDGE reaches the plan and the ensure-rest-api input; code mode ignores it', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'templates-deploy-t4712-'));
+    onTestFinished(() => rm(root, { recursive: true, force: true }));
+    const none = await restApiSnapshots(root);
+    const edge = await restApiSnapshots(root, { endpointType: 'EDGE' });
+    // (b) the one REST API call carries `EDGE`; every other call is the same as without the block.
+    const [input] = restApiInputs(edge.bootstrap.snap);
+    assert.equal(input.endpointType, 'EDGE');
+    assert.deepEqual({ ...input, endpointType: 'REGIONAL' }, restApiInputs(none.bootstrap.snap)[0]);
+    const others = snap => JSON.parse(snap.calls).filter(r => r.tool !== 'aws.apigateway.ensure-rest-api@1');
+    assert.deepEqual(others(edge.bootstrap.snap), others(none.bootstrap.snap));
+    // the plan: `configuration.restApi` and the REST step name the type.
+    const p = deploymentPlan(syntheticDeployment(restApiConfigs({ endpointType: 'EDGE' })[0][1]));
+    assert.deepEqual(p.configuration.restApi, { endpointType: 'EDGE' });
+    assert.ok(p.steps.includes('REST API (EDGE) / 18 sequential routes / stage probe'));
+    // code mode: plan, calls and receipt as without the block (no REST API tool).
+    for (const k of ['plan', 'calls', 'receipt']) assert.equal(edge.code[k], none.code[k], k);
+    assert.deepEqual(restApiInputs(edge.code.snap), []);
+    // PRIVATE is passed the same way.
+    const priv = validateConfig({ ...restApiConfigs()[0][1], restApi: { endpointType: 'PRIVATE' } });
+    assert.deepEqual(priv.restApi, { endpointType: 'PRIVATE' });
+});
+test('T47-12 a malformed restApi block is INVALID_INPUT in both modes', () => {
+    for (const restApi of [
+        null,
+        'EDGE',
+        [],
+        {},
+        { endpointType: 'edge' },
+        { endpointType: '' },
+        { endpointType: 'GLOBAL' },
+        { endpointType: ['EDGE'] },
+        { endpointType: 'EDGE', policy: '*' },
+    ])
+        for (const [mode, raw] of restApiConfigs())
+            assert.throws(
+                () => validateConfig({ ...raw, restApi }),
+                { code: 'INVALID_INPUT', message: /restApi/ },
+                `${mode} ${JSON.stringify(restApi)}`,
+            );
 });
