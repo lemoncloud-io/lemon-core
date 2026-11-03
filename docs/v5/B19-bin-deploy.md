@@ -116,7 +116,7 @@ Config (JSON, placeholders):
 `routes` (path / `httpMethod` / `authorizationType` `NONE`|`AWS_IAM` / `cors`; a public `GET /` is required) and
 may set `policy` (`kmsKeyArn`, `kmsDecryptKeyArn`, `kmsEncryptKeyArn`, `identityPoolId`, `bucket`, `snsPushEndpoints`). Optional in
 both modes: `expect` (exact expected `GET /` payload), `requestTimeoutMs`, `pollIntervalMs`, `maxPolls`,
-`routeDelayMs`. Unknown keys are rejected.
+`routeDelayMs`, `websocket` (§ WebSocket API), `restApi` (§ REST API endpoint type). Unknown keys are rejected.
 
 Safety model:
 
@@ -174,6 +174,29 @@ before (spec-locked).
     every route key, `probe.timeoutMs`; a `$connect` handshake only, no echo message).
 -   The API and route tools are throttle-retried (B34); the stage tool is not (like `deploy-stage@1`). The receipt
     gains `websocket: { apiId, wssUrl, stageName }` and the third function.
+
+### REST API endpoint type (T47-12)
+
+Bootstrap calls `aws.apigateway.ensure-rest-api@1` with `endpointType: "REGIONAL"`. A REST API that Serverless
+created is `EDGE` by default, and the deploy service refuses a type change with
+`409 CONFLICT - endpointType mismatch; existing REST API left unchanged`. So a service adopted into deploy-service
+ownership with an `EDGE` API sets the optional top-level key `restApi`:
+
+```json
+{
+    "restApi": { "endpointType": "EDGE" }
+}
+```
+
+-   `endpointType`: `REGIONAL` | `EDGE` | `PRIVATE`, required inside the block. Unknown keys and other values are
+    `INVALID_INPUT` (both modes). Read the live type first (`aws apigateway get-rest-api --rest-api-id <id>`,
+    `endpointConfiguration.types`); the deploy service still refuses a mismatch.
+-   Bootstrap: the value goes to the `ensure-rest-api@1` input, the plan's `configuration.restApi` and the REST step
+    text (`REST API (EDGE) / …`). Nothing else changes.
+-   Code mode: accepted and ignored (code mode does not call the REST API tool); plan, calls and receipt are unchanged.
+-   Without the block, the plan, the tool calls and the receipt are byte-identical to before (spec-locked by the
+    pre-B47 snapshot digests). With `"REGIONAL"` written out, the tool calls are the same and the receipt differs only
+    by the plan it embeds.
 
 ## `lemon-lambda-deploy-dev`
 

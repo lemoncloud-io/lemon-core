@@ -77,6 +77,8 @@ export function validateConfig(raw) {
             'routeDelayMs',
             //* v5 B47: the optional WebSocket API block (third function `socket`).
             'websocket',
+            //* v5 T47-12: the optional REST API block (`endpointType`; absent = `REGIONAL`).
+            'restApi',
         ],
         'config keys',
     );
@@ -140,6 +142,8 @@ export function validateConfig(raw) {
         if (k === 'bucket') token(v, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'policy.bucket');
         if (k === 'snsPushEndpoints' && typeof v !== 'boolean') invalid('policy.snsPushEndpoints');
     }
+    //* v5 T47-12: both modes take the block (code mode never calls the REST API tool, so it is unused there).
+    if (c.restApi !== undefined) c.restApi = validateRestApi(c.restApi);
     if (c.mode === 'bootstrap') {
         if (typeof c.environmentFile !== 'string' || !c.environmentFile) invalid('environmentFile');
         if (typeof c.deletionProtection !== 'boolean') invalid('deletionProtection');
@@ -207,6 +211,15 @@ export function validateConfig(raw) {
     //* v5 B47: code mode takes `true` or the same block; only its presence matters (the third function must exist).
     else if (c.websocket !== undefined && c.websocket !== true) c.websocket = validateWebsocket(c.websocket);
     return c;
+}
+//* v5 T47-12: the REST API endpoint types of `ensure-rest-api@1`, and the one used without a `restApi` block.
+export const REST_ENDPOINT_TYPES = Object.freeze(['REGIONAL', 'EDGE', 'PRIVATE']);
+export const REST_ENDPOINT_TYPE_DEFAULT = 'REGIONAL';
+//* v5 T47-12: the `restApi` block — `endpointType` is required inside it (an adopted sls API is usually `EDGE`).
+export function validateRestApi(raw) {
+    keysOnly(raw, ['endpointType'], 'restApi');
+    if (!REST_ENDPOINT_TYPES.includes(raw.endpointType)) invalid('restApi.endpointType');
+    return { endpointType: raw.endpointType };
 }
 //* v5 B47: the default route selection expression of a WebSocket API (the sls `websocketApiRouteSelectionExpression`).
 export const WEBSOCKET_ROUTE_SELECTION = '$request.body.action';
@@ -348,6 +361,8 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
     const source = a.source ?? {};
     //* v5 B47: the WebSocket parts of a bootstrap plan (empty for a config without `websocket`).
     const ws = c.mode === 'bootstrap' && hasWebsocket(c) ? c.websocket : undefined;
+    //* v5 T47-12: the REST step names a configured endpoint type (the step text is unchanged without it).
+    const restType = c.restApi ? ` (${c.restApi.endpointType})` : '';
     const components = componentsOf(c);
     const n = components.length;
     return {
@@ -421,6 +436,8 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                       routes: c.routes,
                       //* v5 B47: the resolved WebSocket block (defaults filled in).
                       ...(ws ? { websocket: ws } : {}),
+                      //* v5 T47-12: the REST API block only when configured (absent = `REGIONAL`, plan unchanged).
+                      ...(c.restApi ? { restApi: c.restApi } : {}),
                   },
               }
             : {
@@ -445,7 +462,7 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                       `functions ×${n} + verification`,
                       'SNS / DynamoDB stream / SQS mappings',
                       'disabled schedule',
-                      `REST API / ${c.routes.length} sequential routes / stage probe`,
+                      `REST API${restType} / ${c.routes.length} sequential routes / stage probe`,
                       ...(ws ? [`WebSocket ${ws.routes.length} sequential routes / stage probe`] : []),
                   ]
                 : [`existing functions ×${n} code + verification`]),
