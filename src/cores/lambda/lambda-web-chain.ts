@@ -107,14 +107,15 @@ export const parentKeyIn = (parentType: string, fields: string[]): string | null
 
 /**
  * the param key of a child id (SPEC § 3.2-4): singular in a fixed order, then camelCase + `Id`.
- * - `ies`→`y`, `ses`/`xes`/`zes`/`ches`/`shes` → drop `es`, `s` → drop `s`, else as is.
- * - `rooms`→`roomId`, `categories`→`categoryId`, `boxes`→`boxId`, `site-users`→`siteUserId`, `download`→`downloadId`.
+ * - `ies`→`y`, `sses`/`xes`/`ches`/`shes` → drop `es`, `s` → drop `s`, else as is.
+ * - known misses (`buses`→`buseId`, `statuses`→`statuseId`, `caches`→`cachId`): read the first piece of `param.$sub`.
+ * - `rooms`→`roomId`, `houses`→`houseId`, `categories`→`categoryId`, `boxes`→`boxId`, `site-users`→`siteUserId`, `download`→`downloadId`.
  */
 export const childKeyOf = (child: string): string => {
     const t = `${child || ''}`;
     const one = t.endsWith('ies')
         ? `${t.slice(0, -3)}y`
-        : /(ses|xes|zes|ches|shes)$/.test(t)
+        : /(sses|xes|ches|shes)$/.test(t)
         ? t.slice(0, -2)
         : t.endsWith('s')
         ? t.slice(0, -1)

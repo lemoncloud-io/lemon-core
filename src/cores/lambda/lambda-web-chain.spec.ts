@@ -450,6 +450,8 @@ describe('child id', () => {
         expect2(() => childKeyOf('rooms')).toEqual('roomId');
         expect2(() => childKeyOf('download')).toEqual('downloadId');
         expect2(() => childKeyOf('addresses')).toEqual('addressId');
+        expect2(() => childKeyOf('houses')).toEqual('houseId');
+        expect2(() => childKeyOf('sizes')).toEqual('sizeId');
     });
 
     it('R-40 GET houses A rooms (no piece after the child)', async () => {
