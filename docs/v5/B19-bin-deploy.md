@@ -114,7 +114,7 @@ Config (JSON, placeholders):
 
 `mode: "bootstrap"` also needs `environmentFile` (sibling JSON of string values), `deletionProtection` (boolean),
 `routes` (path / `httpMethod` / `authorizationType` `NONE`|`AWS_IAM` / `cors`; a public `GET /` is required) and
-may set `policy` (`kmsKeyArn`, `kmsDecryptKeyArn`, `kmsEncryptKeyArn`, `identityPoolId`, `bucket`). Optional in
+may set `policy` (`kmsKeyArn`, `kmsDecryptKeyArn`, `kmsEncryptKeyArn`, `identityPoolId`, `bucket`, `snsPushEndpoints`). Optional in
 both modes: `expect` (exact expected `GET /` payload), `requestTimeoutMs`, `pollIntervalMs`, `maxPolls`,
 `routeDelayMs`. Unknown keys are rejected.
 

@@ -126,12 +126,17 @@ export function validateConfig(raw) {
     if (c.expect !== undefined && (typeof c.expect !== 'string' || !c.expect.trim() || c.expect.length > 32768))
         invalid('expect');
     c.policy ??= {};
-    keysOnly(c.policy, ['kmsKeyArn', 'kmsDecryptKeyArn', 'kmsEncryptKeyArn', 'identityPoolId', 'bucket'], 'policy');
+    keysOnly(
+        c.policy,
+        ['kmsKeyArn', 'kmsDecryptKeyArn', 'kmsEncryptKeyArn', 'identityPoolId', 'bucket', 'snsPushEndpoints'],
+        'policy',
+    );
     for (const [k, v] of Object.entries(c.policy)) {
         if (k.endsWith('Arn'))
             token(v, new RegExp(`^arn:aws:kms:${c.region}:${c.account}:key/[a-zA-Z0-9-]+$`), `policy.${k}`);
         if (k === 'identityPoolId') token(v, new RegExp(`^${c.region}:[a-f0-9-]{36}$`), 'policy.identityPoolId');
         if (k === 'bucket') token(v, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'policy.bucket');
+        if (k === 'snsPushEndpoints' && typeof v !== 'boolean') invalid('policy.snsPushEndpoints');
     }
     if (c.mode === 'bootstrap') {
         if (typeof c.environmentFile !== 'string' || !c.environmentFile) invalid('environmentFile');
