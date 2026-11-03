@@ -1056,6 +1056,76 @@ Details: `docs/v5/B20-local-gateway.md`.
 
 ---
 
+## 21. Proxy routes
+
+The web handler now resolves nested `{proxy+}` paths such as `/houses/A/rooms/304`, and `LambdaWEBHandler.addPrefix()` replaces the hand-written prefix `decode()` overrides. Nothing changes for a path that already works.
+
+Patterns (the routes themselves are deploy config, see [HOW_TO_DEPLOY_V5.md](HOW_TO_DEPLOY_V5.md); lemon-core only decodes):
+
+| Pattern | Use | Code side |
+| --- | --- | --- |
+| `/{type}` + `/{type}/{proxy+}` | default, `/houses/A/rooms/304` | automatic (§ 21.1) |
+| `/public` + `/public/{proxy+}` | public | `addPrefix('public', [...])` |
+| `/_api_` + `/_api_/{proxy+}` | open API, API key | `addPrefix('_api_', [...], { identity })` |
+| `/_key_` + `/_key_/{proxy+}` | open API key management | `addPrefix('_key_', [...])` |
+
+### 21.1 Naming rule and resolution
+
+A child CRUD controller is reached under its parent when its model `FIELDS` has `<parent singular>Id`. Candidates from the parent type, first one present in `FIELDS` wins: strip `s`, `ies` → `y`, strip `es`, as is; then camelCase + `Id` (`houses` → `houseId`, `categories` → `categoryId`, `boxes` → `boxId`, `site-users` → `siteUserId`). No candidate in `FIELDS` means no relation: 404.
+
+Order for `/houses/A/rooms/304/beds`:
+
+1. Existing `decode(mode, id, cmd)` first (existing handlers and `getHousesRooms` stop here).
+2. Then the rest is read as `(type, id)` pairs. At every level an existing method wins (`getRoomsBeds`, `postRoomsCheckIn`); otherwise a next piece that is a registered CRUD controller with the parent key goes down to the child.
+3. Fallback: the first segment is a parent method, the rest goes to `param.$sub` (a string, never re-decoded). A `$sub` sent by the client is always dropped.
+4. Not found anywhere: 404.
+
+The mode is never changed. An id-less `GET /houses/A/rooms` goes to the child's `doGet('')`. To serve a list, the service's `doGet` returns `doList`.
+
+### 21.2 What lemon-core checks, and what the service does
+
+Before the handler runs (`src/cores/lambda/lambda-web-chain.ts`):
+
+| Case | Result |
+| --- | --- |
+| Empty, `.`, `..` or `$…` segment, including a trailing `/` or `//` | `400 INVALID PATH` |
+| Query parent key differs from the path (`/houses/A/rooms?houseId=B`) | `400 CONFLICT` |
+| First parent (if CRUD) is missing or soft-deleted | `404 NOT FOUND` |
+| Child is missing, soft-deleted, or its parent key is not the path parent | `404 NOT FOUND` |
+| `POST` with no target id (`''` or `'0'`), `body[parentKey]` absent, `null` or `''` | filled with the path value (a different value is `400 CONFLICT`) |
+| Query parent key equals the path | `param[parentKey]` is set to the path value |
+
+The service still does the rest: parent-only access (blocking `/rooms/304` as a direct route), permissions of the parent, and the permission on the new parent when a `PUT` body moves a child.
+
+### 21.3 `addPrefix()`
+
+```ts
+$web.addPrefix('public', [houses, rooms]);
+$web.addPrefix('_api_', [houses, rooms], { identity: async ctx => apiKeyIdentity(ctx) });
+$web.addPrefix('_key_', [apikeys]);
+```
+
+* Opt-in only. Nothing is opened until you call it, and only the listed controllers are reachable under the prefix. A duplicate prefix throws.
+* An existing `_handlers[type]` controller of the same name wins, so `PublicAPIController`, `OpenAPIV2Controller` and `_keys` keep working.
+* Moving an old prefix `decode()` override: remove it, list the controllers it forwarded to in `addPrefix()`, and move its identity swap to `identity`.
+* `identity(context)` replaces `context.identity` before the handler. Its error propagates unchanged (the 403 message is yours).
+* Decoders still see the original `event.path`, with the prefix.
+* Unknown types answer `404`, and invalid segments `400`, before `identity` runs.
+
+### 21.4 Behavior changes for existing routes
+
+1. A direct route with a target id and a query key that is a registered parent key answers `404` when the target does not belong to it, in any mode. This includes routes with a cmd, alias ids (`/users/me?teamId=T`) and an empty value (`?houseId=`). It was `200` before.
+2. A list filters by `?<parentKey>=` only if the service transformer maps that key.
+3. Some `{cmd+}` paths that were `404` now reach a parent method through the fallback (`param.$sub`).
+4. A trailing `/` or `//` on a chained path changes from `404` to `400`.
+5. `GET /public/<type>` stays `GET` (4.x made it `LIST`); a list needs `doGet` to return `doList`.
+
+Unchanged: `/{type}/{id}/{cmd}`, nested parent handlers, `decode()` overrides, `{id+}`, `_keys`, lemon-model types, relay format. Deploy lemon-core first; services follow when they need a new path. Roll back by returning to 5.0.23, together with any service that uses a new path.
+
+Details: `lemoncloud-io/knowledge` `projects/lemon-core-v5/routes/SPEC.md`.
+
+---
+
 ## At-a-Glance Checklist
 
 - [ ] Node.js 24 (`.nvmrc`, local runtime)
@@ -1112,3 +1182,4 @@ Details: `docs/v5/B20-local-gateway.md`.
 - [ ] Session tokens from `encodeIdentityJWT()` expire after 30 min unless `JWT_TOKEN_TTL_SEC` (30 min ~ 24 h) or `exp` says otherwise; clients refresh (§ 18)
 - [ ] Copied `bin/` Lambda tools replaced by the `lemon-*` commands in your `package.json` scripts; optional AWS SDK peers installed for the tools you use (§ 19)
 - [ ] `lemon-devkit` and `express` removed from `devDependencies` (no `express` needed since 5.0.15, B21); `serverless.yml` routes and `binaryMediaTypes` checked for local runs; scripts that expected 404 for unknown paths expect 403 (§ 20)
+- [ ] Prefix `decode()` overrides moved to `addPrefix()`; child controllers have `<parent>Id` in `FIELDS`; a `?<parentKey>=` that differs from the target on a direct route now answers 404 (§ 21)
