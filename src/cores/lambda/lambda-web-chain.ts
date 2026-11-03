@@ -61,6 +61,10 @@ export const nextOf = (
     return null;
 };
 
+/** the handler of `type` (own key only: `__proto__`, `valueOf` → undefined). */
+export const handlerOf = (handlers: WebHandlers, type: string): NextDecoder | CoreWEBController | undefined =>
+    Object.prototype.hasOwnProperty.call(handlers, type) ? handlers[type] : undefined;
+
 /** `param` without the client `$sub` (a copy only when it has one). */
 export const dropSub = <T>(param: T): T => {
     if (!param || typeof param != 'object' || !('$sub' in param)) return param;
@@ -120,7 +124,7 @@ export const checkLink = async (link: ChainLink): Promise<void> => {
  * - returns `next` as is if the target has no `manager`, or `id` is `''`/`'0'`. no retrieve without a parent key.
  */
 export const guardQuery = (handlers: WebHandlers, type: string, id: string, next: NextHandler): NextHandler => {
-    const manager = next && id && id !== '0' ? managerOf(handlers[type]) : null;
+    const manager = next && id && id !== '0' ? managerOf(handlerOf(handlers, type)) : null;
     if (!manager) return next;
     return async (_id, param, body, context) => {
         const query: any = param || {};
@@ -156,17 +160,34 @@ const walk = (
     segs: string[],
     links: ChainLink[],
 ): Found | null => {
-    const decoder = handlers[type];
+    const decoder = handlerOf(handlers, type);
     const own = links.length ? nextOf(decoder, mode, id, segs.join('/')) : null;
     if (own) return { next: own, id, links };
     if (!segs.length) return null;
     const [child, childId = '', ...rest] = segs;
-    const manager = managerOf(handlers[child]);
+    const manager = managerOf(handlerOf(handlers, child));
     const key = manager && parentKeyIn(type, manager.FIELDS);
     const link: ChainLink = key ? { key, parent: type, parentId: id, type: child, id: childId, manager } : null;
     if (link) return walk(handlers, mode, child, childId, rest, [...links, link]);
     const sub = segs.length > 1 ? nextOf(decoder, mode, id, child) : null;
     return sub ? { next: sub, id, links, sub: segs.slice(1).join('/') } : null;
+};
+
+/** a plain object (not an array, `Buffer`, string ...). */
+const isPlain = (v: any): boolean => Object.prototype.toString.call(v) === '[object Object]';
+
+/** fill the parent key in one body (`null`/`''` counts as missing). throws `400 CONFLICT`. */
+const fillOne = (body: any, last: ChainLink): any => {
+    const value = body ? body[last.key] : undefined;
+    if (value !== undefined && value !== null && value !== '' && `${value}` !== last.parentId)
+        throw new Error(`400 CONFLICT - .${last.key} (${value}) != path (${last.parentId})`);
+    return { ...(body || {}), [last.key]: last.parentId };
+};
+
+/** POST of a new one: an object (or none) is filled, each object of an array too; others pass as is. */
+const fillBody = (body: any, last: ChainLink): any => {
+    if (body === undefined || body === null || isPlain(body)) return fillOne(body, last);
+    return Array.isArray(body) ? body.map(b => (isPlain(b) ? fillOne(b, last) : b)) : body;
 };
 
 /**
@@ -184,7 +205,7 @@ const guarded =
             throw new Error(`400 CONFLICT - .${conflict.key} (${query[conflict.key]}) != path (${conflict.parentId})`);
         //* the first parent exists (if CRUD).
         const first = links[0];
-        const root = first && managerOf(handlers[first.parent]);
+        const root = first && managerOf(handlerOf(handlers, first.parent));
         if (root && !(await modelOf(root, first.parentId)))
             throw new Error(`404 NOT FOUND - ${first.parent}/${first.parentId}`);
         //* each child belongs to its parent (no target id, or POST `0`, is a new one).
@@ -194,11 +215,8 @@ const guarded =
             if (link === last && (link.id === '' || creating)) continue;
             await checkLink(link);
         }
-        //* POST of a new one: fill the parent key in body (`null`/`''` counts as missing).
-        const value = last && creating && body ? body[last.key] : undefined;
-        if (last && creating && value !== undefined && value !== null && value !== '' && `${value}` !== last.parentId)
-            throw new Error(`400 CONFLICT - .${last.key} (${value}) != path (${last.parentId})`);
-        const $body = last && creating ? { ...(body || {}), [last.key]: last.parentId } : body;
+        //* POST of a new one: fill the parent key in body.
+        const $body = last && creating ? fillBody(body, last) : body;
         const $param = links.reduce((P, l) => ({ ...P, [l.key]: l.parentId }), {
             ...query,
             ...(found.sub !== undefined ? { $sub: found.sub } : {}),
@@ -217,7 +235,7 @@ export const resolveChain = (
     id: string,
     cmd: string,
 ): NextHandler | null => {
-    if (!handlers[type]) return null;
+    if (!handlerOf(handlers, type)) return null;
     const segs = `${cmd || ''}`.split('/');
     const bad = [id, ...segs].some(s => !s || s === '.' || s === '..' || s.startsWith('$'));
     if (bad) throw new Error(`400 INVALID PATH - /${type}/${id}/${cmd}`);
@@ -237,7 +255,7 @@ export const resolveNext = (
     cmd: string,
     path?: string,
 ): NextHandler | null => {
-    const first = nextOf(handlers[type], mode, id, cmd, path);
+    const first = nextOf(handlerOf(handlers, type), mode, id, cmd, path);
     //* a direct route: the query parent key must match the target.
     if (first) return guardQuery(handlers, type, id, first);
     return cmd ? resolveChain(handlers, mode, type, id, cmd) : null;

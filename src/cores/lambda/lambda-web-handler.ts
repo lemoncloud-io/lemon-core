@@ -63,7 +63,7 @@ import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
 import { measureAsync, PerfTrace } from '../../lib/perf';
 import { asWebPath, isTextualType, bodyLength } from '../../lib/web-body';
-import { dropSub, resolveNext, WebHandlers } from './lambda-web-chain';
+import { dropSub, handlerOf, resolveNext, WebHandlers } from './lambda-web-chain';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
@@ -578,7 +578,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
             }
             //* use decoder() to find target, then the nested path (`/houses/A/rooms/304`) if `cmd` remains.
             return resolveNext(this._handlers, MODE, TYPE, ID, CMD, PATH);
-        })(this._handlers[TYPE]);
+        })(handlerOf(this._handlers, TYPE));
 
         //* if no next, then report error.
         if (!next || typeof next != 'function') {
