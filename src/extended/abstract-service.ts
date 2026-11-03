@@ -14,6 +14,7 @@
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
  * @date        2026-11-03 #207: getMulti() options, null for a missing id (backport of 5.0.25).
  * @date        2026-11-03 #207 follow-up (Copilot on #276): outcome tracked apart from the model error, original error rethrown, GetMultiFailure, idName keys, bounded errNoti report with context.
+ * @date        2026-11-03 #207 follow-up 2b (develop 85d11b08·#278): union overload accepts `number | GetMultiOptions`, null-prototype map.
  * @date        2026-11-03 #207 follow-up 2 (Copilot on #278): model wins on a key collision, overload for GetMultiOptions variables, sync throw recorded, report ids truncated.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
@@ -298,8 +299,8 @@ export abstract class CoreManager<
     ): Promise<{ [id: string]: Model }>;
     public async getMulti$(
         idList: string[],
-        idName: string,
-        options: GetMultiOptions,
+        idName?: string,
+        options?: number | GetMultiOptions,
     ): Promise<{ [id: string]: Model | GetMultiFailure }>;
     public async getMulti$(
         idList: string[],
@@ -310,7 +311,11 @@ export abstract class CoreManager<
         const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
         const { models, failures } = await this.readMulti(idList, opts);
         //* #207: the models keep the `idName` key; a failure is keyed by the input id.
-        const $map: { [id: string]: Model | GetMultiFailure } = $T.asMap([...models.values()], idName);
+        //* #207: a null-prototype map, so `id in $map` matches entries only (not `toString`, `constructor`, …).
+        const $map: { [id: string]: Model | GetMultiFailure } = Object.assign(
+            Object.create(null),
+            $T.asMap([...models.values()], idName),
+        );
         failures.forEach((e, id) => {
             //* #207: a model wins on a key collision (custom `idName`); the failure is still in the report.
             if (id in $map) {
@@ -1522,7 +1527,11 @@ const $X = {
                 _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
 
                 // eslint-disable-next-line prettier/prettier
-                const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+                const query_string = _isNa($param)
+                    ? ''
+                    : typeof $param == 'object'
+                    ? queryString.stringify($param)
+                    : `${$param}`;
                 const url =
                     endpoint +
                     (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
