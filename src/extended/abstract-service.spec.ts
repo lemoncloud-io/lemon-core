@@ -5,6 +5,7 @@
  *
  * @author      Steve <steve@lemoncloud.io>
  * @date        2022-03-31 optimize test-spec
+ * @date        2026-11-03 #207: `getMulti()` options and `null` for a missing id (backport of 5.0.25).
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -14,6 +15,8 @@ import { keys } from 'ts-transformer-keys';
 import { CoreModel, NextContext, SearchBody } from '../cores/';
 import { _it, expect2, GETERR } from '../common/test-helper';
 import { $U, _log } from '../engine';
+//* #207: spy on the defining module — the `../engine` barrel re-exports via a non-configurable getter.
+import * as $engine from '../engine/engine';
 import {
     $ES6,
     _ES6,
@@ -193,11 +196,10 @@ describe('abstract-service', () => {
         expect2(await $test.find('1')).toEqual(null);
         expect2(await $test.exists('1')).toEqual(false);
         expect2(await $test.findByKey('1')).toEqual(null);
-        expect2(await $test.getMulti(['1', '1']).catch(GETERR)).toEqual(
-            '404 NOT FOUND - test:1 (S:0/1) - parallel(10/1)',
-        );
+        //* #207: a missing id is `null` in `getMulti()`.
+        expect2(await $test.getMulti(['1', '1']).catch(GETERR)).toEqual([null, null]);
         expect2(await $test.getMulti$(['1', '1']).catch(GETERR)).toEqual(
-            '404 NOT FOUND - test:1 (S:0/1) - parallel(10/1)',
+            '404 NOT FOUND - test:1 (S:0/1) - getMulti$(test)',
         );
     });
 
@@ -1240,5 +1242,81 @@ describe('abstract-service', () => {
         const cleanupStorage = proxyCleanup.tests.storage;
 
         for (const id of testIds) await cleanupStorage.delete(id).catch(() => {});
+    });
+});
+
+//* #207: options of the batch get (`getMulti()` / `getMulti$()`).
+describe('#207 getMulti options', () => {
+    //* the same profile load as the main describe.
+    loadProfile(process);
+
+    //* build the manager with model `A` saved (and `B` absent).
+    const prepare = async () => {
+        const { service } = instance();
+        const { $test } = service;
+        await $test.storage.delete('B').catch(() => {});
+        const $A = await $test.save('A', { name: 'AAA', test: 1 });
+        return { $test, $A };
+    };
+
+    it('mixed ids: null for a missing id, in the input order', async () => {
+        const { $test } = await prepare();
+        const list = await $test.getMulti(['A', 'B', 'A']);
+        expect2(() => list.length).toEqual(3);
+        expect2(() => list.map(N => N?.id ?? null)).toEqual(['A', null, 'A']);
+    });
+
+    it('numeric argument is the size (kept for compatibility)', async () => {
+        const { $test } = await prepare();
+        const list = await $test.getMulti(['A', 'B'], 1);
+        expect2(() => list.map(N => N?.id ?? null)).toEqual(['A', null]);
+    });
+
+    it('{ throwable: true } throws the my_parallel error', async () => {
+        const { $test } = await prepare();
+        expect2(await $test.getMulti(['B'], { throwable: true }).catch(GETERR)).toEqual(
+            '404 NOT FOUND - test:B (S:0/1) - getMulti$(test)',
+        );
+    });
+
+    it('a non-404 error is thrown (the find() rule)', async () => {
+        const { $test } = await prepare();
+        const org = $test.retrieve.bind($test);
+        //* reject only `B` with a non-404 error.
+        const spy = jest
+            .spyOn($test, 'retrieve')
+            .mockImplementation((id: string) =>
+                id === 'B' ? Promise.reject(new Error('500 BOOM - test:B')) : org(id),
+            );
+        try {
+            const msg = await $test.getMulti(['A', 'B']).catch(GETERR);
+            expect2(() => `${msg}`.startsWith('500 BOOM')).toEqual(true);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('getMulti$() with { throwable: false } keeps the map shape', async () => {
+        const { $test, $A } = await prepare();
+        expect2(await $test.getMulti$(['A', 'B'], 'id', { throwable: false })).toEqual({
+            A: { ...$A },
+            B: { id: 'B', error: '404 NOT FOUND - test:B' },
+        });
+    });
+
+    it('errNoti reports the failed items once', async () => {
+        const { $test } = await prepare();
+        const spy = jest.spyOn($engine, 'doReportError').mockResolvedValue('mid-207');
+        try {
+            //* errNoti absent -> not reported.
+            expect2(await $test.getMulti(['A', 'B']).then(L => L.length)).toEqual(2);
+            expect2(() => spy.mock.calls.length).toEqual(0);
+            //* errNoti -> one report for the failed items.
+            expect2(await $test.getMulti(['A', 'B', 'B'], { errNoti: true }).then(L => L.length)).toEqual(3);
+            expect2(() => spy.mock.calls.length).toEqual(1);
+            expect2(() => GETERR(spy.mock.calls[0][0])).toEqual('getMulti$(test) failed: 1/2 items');
+        } finally {
+            spy.mockRestore();
+        }
     });
 });
