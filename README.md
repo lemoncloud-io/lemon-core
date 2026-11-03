@@ -243,11 +243,12 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [B34-deploy-resilience.md](docs/v5/B34-deploy-resilience.md) | B34: deploy resilience, throttle retry and the tool's error text |
 | [B39-public-rows.md](docs/v5/B39-public-rows.md) | B39: public rows (`sid` set, `uid` empty) and guest callers, policy key `public`, session-off admin order (D105) |
 | [ddb-inc-sharing.md](docs/v5/ddb-inc-sharing.md) | `inc()` cache race and shared dummy storage (§ 17) |
+| [getmulti-options.md](docs/v5/getmulti-options.md) | #207: `getMulti()` options (`size`, `throwable`, `errNoti`), `null` for a missing id (§ 11.11) |
 | [security-key-rotation.md](docs/v5/security-key-rotation.md) | Dual sign keys, signature nonce and value-based log screening (§ 18) |
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |
-| [CHANGELOG.md](CHANGELOG.md) | B19–B39 bundle entries (shipped in 5.0.13–5.0.24), one row per 5.0.13–5.0.24 bump commit, 5.0.5–5.0.12 entries, the version history table (5.0.12 → 1.2.12, moved from this README), then 1.2.0 and older (2019) |
+| [CHANGELOG.md](CHANGELOG.md) | Unreleased (#207), B19–B39 bundle entries (shipped in 5.0.13–5.0.24), one row per 5.0.13–5.0.24 bump commit, 5.0.5–5.0.12 entries, the version history table (5.0.12 → 1.2.12, moved from this README), then 1.2.0 and older (2019) |
 | External (planned) | DevOps runbooks for the lemon-* services (deploy, migration guard, agent operations) are planned for `lemoncloud-io/2nd-brain`; not published yet. |
 
 ## Contribution

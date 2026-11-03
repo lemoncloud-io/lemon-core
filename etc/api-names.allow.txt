@@ -55,3 +55,5 @@
 +AccessCross
 # B39: policy key `public` of the public rows (`AccessPublic`; docs/v5/B39-public-rows.md)
 +AccessPublic
+# #207: options of the batch get `getMulti()` / `getMulti$()` (docs/v5/getmulti-options.md)
++GetMultiOptions
