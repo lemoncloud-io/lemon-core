@@ -22,6 +22,7 @@ import {
     toolErrorFields,
     THROTTLE_RETRY_DELAYS_MS,
     RETRYABLE_TOOLS,
+    abortReasonPrefix,
 } from './deploy-runner.mjs';
 import { createDeployClient } from './deploy-client.mjs';
 import { main, parseDeployArgs } from '../lemon-lambda-deploy.mjs';
@@ -1466,4 +1467,60 @@ test('B34 r2 (S3/N1) toolErrorText hides every reviewer path and 12-digit form',
     // a code holding 12 consecutive digits is dropped whole.
     assert.deepEqual(toolErrorFields({ code: 'user_123456789012' }), {});
     assert.deepEqual(toolErrorFields({ code: 'Throttling' }), { toolErrorCode: 'Throttling' });
+});
+//* an unknown failure leaves the round open; once its lease expires the NEXT begin inherits it
+//* (`takeover:true`). That run must close its own round (known failure) so the run after it starts clean —
+//* otherwise every run re-opens a round and leaves it open: the takeover loop.
+test('takeover is a known TAKEOVER_RECONCILE that aborts its own round, so the next run is clean', async t => {
+    const f = await fixture(t);
+    //* a stateful lease: one open round at most; `expire()` stands for the 1800 s TTL passing between runs.
+    const lease = { open: null, expired: false, seq: 0 };
+    const expire = () => (lease.expired = true);
+    let failEnsure = false;
+    const client = fakeClient(f.deployment, {
+        hook: r => {
+            if (r.tool === 'lemon.deploy.begin@1') {
+                if (lease.open && !lease.expired) return { http: 409, result: { error: '409 LOCKED' } };
+                const takeover = !!lease.open;
+                lease.open = `dpl_${++lease.seq}`;
+                lease.expired = false;
+                return good(r.tool, {
+                    deployId: lease.open,
+                    expiresAt: new Date(Date.now() + 1800000).toISOString(),
+                    revision: lease.seq,
+                    takeover,
+                });
+            }
+            if (r.tool === 'lemon.deploy.end@1' && r.input.deployId === lease.open) lease.open = null;
+            if (r.tool === 'aws.lambda.ensure-function@1' && failEnsure) throw new Error('network down');
+        },
+    });
+    const begins = () => client.calls.filter(x => x.tool === 'lemon.deploy.begin@1').length;
+    const ends = () => client.calls.filter(x => x.tool === 'lemon.deploy.end@1');
+
+    //* ① a network error mid-round → unknown (exit 3), no abort: round 1 stays open.
+    failEnsure = true;
+    const first = await failedRun(f, client);
+    assert.equal(first.error.exitCode, 3);
+    assert.equal(lease.open, 'dpl_1');
+    failEnsure = false;
+    expire();
+
+    //* ② the next run inherits it → KNOWN failure, exit 1, and its OWN round is closed `aborted`.
+    const second = await failedRun(f, client, 'TAKEOVER_RECONCILE');
+    assert.equal(second.error.exitCode, 1);
+    assert.equal(second.receipt.roundStatus, 'aborted');
+    assert.deepEqual(ends().at(-1).input, {
+        deployId: 'dpl_2',
+        status: 'aborted',
+        reason: `${abortReasonPrefix(f.config.project)}:TAKEOVER_RECONCILE`,
+    });
+    assert.equal(lease.open, null);
+    expire();
+
+    //* ③ the third run starts clean (takeover:false) and completes — the loop is broken.
+    const third = await execute(f, client);
+    assert.equal(third.status, 'completed');
+    assert.equal(begins(), 3);
+    assert.equal(lease.open, null);
 });

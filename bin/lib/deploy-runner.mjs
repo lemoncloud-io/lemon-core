@@ -558,8 +558,10 @@ export async function runDeployment(
         deadline = Math.min(deadline, Date.parse(begun.expiresAt) - 60000);
         state.leaseExpiresAt = new Date(Date.parse(begun.expiresAt)).toISOString();
         await receipt.save();
+        //* KNOWN, not unknown — nothing was written yet, so the catch closes THIS round `aborted`. Left open
+        //* (unknown), its lease would expire and the next run would inherit it again: the takeover loop.
         if (begun.takeover !== false)
-            fail('TAKEOVER_UNKNOWN', 'An unfinished previous round needs reconciliation before deployment.', true);
+            fail('TAKEOVER_RECONCILE', 'An unfinished previous round needs reconciliation before deployment.');
         const key = `${c.keyPrefix}/${a.sha256}.zip`;
         const presignInput = {
             bucket: c.artifactBucket,

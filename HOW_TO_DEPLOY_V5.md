@@ -96,7 +96,8 @@ Since B34 (`docs/v5/B34-deploy-resilience.md`), `lemon-lambda-deploy` / `lemon-l
     time, no pacing is a guarantee.
 -   Limits: retries multiply control-plane reads and spend lease time, and the writer's 4 retries sit on top of the
     deploy service's own 1 s retry. A retried attempt that ends unknown (transport 429 / 504, timeout) makes the run
-    unknown: no abort, the lease is held until it expires, and the next run stops with `TAKEOVER_UNKNOWN`.
+    unknown: no abort, the lease is held until it expires, and the next run stops with `TAKEOVER_RECONCILE`
+    (exit 1) after closing its own round `aborted`, so the run after that starts clean.
 
 ## Where it stands
 

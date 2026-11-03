@@ -114,7 +114,8 @@ A failed step and its stderr line:
     (`TooManyRequestsException` in `src/lib/apigateway.ts`), so one route can cost up to ten API Gateway calls.
 -   A retried attempt that ends **unknown** (a transport 429 / 504 of the deploy service's API, a request timeout, a
     lost connection) makes the run unknown, as any unknown answer does: no abort is sent, the lease stays held until
-    it expires, and the next run stops with `TAKEOVER_UNKNOWN` until the round is reconciled. The step keeps the
+    it expires, and the next run stops with `TAKEOVER_RECONCILE` (a known failure: it aborts its own
+    round, so the run after it starts clean). The step keeps the
     earlier throttle as `previousErrorCode`.
 -   The throttle words include `throttling`; an unrelated message such as an API Gateway usage-plan setting error
     that says "throttling" would be retried too. It costs only the backoff (the same failure comes back) and is
