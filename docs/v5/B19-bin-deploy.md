@@ -135,6 +135,46 @@ Safety model:
 -   Output: plan or result JSON on stdout; one JSON error line on stderr (`status`, `code`, `message`, `receipt`,
     `deployId`). Exit `0` done, `1` failed, `2` invalid input/arguments, `3` unknown outcome (inspect the receipt).
 
+### WebSocket API (B47)
+
+A service with a WebSocket API (the sls `socket` function with `websocket` events, e.g. the sockets services) adds the
+optional top-level key `websocket`. Without it, the plan, the tool calls and the receipt are byte-identical to
+before (spec-locked).
+
+```json
+{
+    "websocket": {
+        "routeSelectionExpression": "$request.body.action",
+        "routes": [
+            { "routeKey": "$connect", "authorizationType": "NONE" },
+            { "routeKey": "$disconnect", "authorizationType": "NONE" },
+            { "routeKey": "$default", "authorizationType": "NONE" },
+            { "routeKey": "echo", "authorizationType": "NONE" }
+        ],
+        "probeTimeoutMs": 10000
+    }
+}
+```
+
+-   Bootstrap: `routes` 1–50, unique `routeKey` (`$connect` / `$disconnect` / `$default` or a custom
+    `[A-Za-z0-9_.:-]{1,128}`), `authorizationType` `NONE`|`AWS_IAM`|`CUSTOM` (`authorizerId` exactly for `CUSTOM`),
+    optional `timeoutInMillis` 50–29000. `routeSelectionExpression` defaults to `$request.body.action`
+    (`$request.body.<path>`), `probeTimeoutMs` to 10000 (1000–15000). Unknown keys are rejected.
+-   Code mode: `"websocket": true` (or the same block); only its presence matters.
+-   **Third function.** The components become `lambda`, `backend`, `socket` (`<project>-<stage>-socket`, 512 MB /
+    300 s, same handler, artifact and merged environment), with a log group each. Code mode updates all three
+    (`socket-code`); a missing `socket` function is `FUNCTION_MISSING` before begin.
+-   **Order (bootstrap).** `resolve-names` also resolves `socket` and must return `websocketApiName`
+    (`NAMES_MISSING` before begin otherwise). After the ZIP upload and **before** `ensure-role`:
+    `aws.apigatewayv2.ensure-websocket-api@1` (`websocket-api`), then `resolve-policy` again with `websocketApiId`
+    (`websocket-policy`; it must equal the first policy plus one `OwnWebsocketConnections` statement —
+    `execute-api:ManageConnections` on `<apiId>/<stage>/*/@connections/*`), so the one `ensure-role` call carries it.
+    After the REST stage: `ensure-websocket-route@1` per route to the `socket` function (`websocket-route-<n>`,
+    `routeDelayMs` apart), then `deploy-websocket-stage@1` (`websocket-stage`: stage = config stage, `expectRoutes` =
+    every route key, `probe.timeoutMs`; a `$connect` handshake only, no echo message).
+-   The API and route tools are throttle-retried (B34); the stage tool is not (like `deploy-stage@1`). The receipt
+    gains `websocket: { apiId, wssUrl, stageName }` and the third function.
+
 ## `lemon-lambda-deploy-dev`
 
 ```text
@@ -172,6 +212,11 @@ Safety model:
     (no inherited AWS keys, `GIT_*`, `NODE_OPTIONS`); private state (0700/0600, owner tag, lock file) and snapshot
     hashes are checked before and after each phase. Each phase writes an integrity-checked receipt.
 -   Exit `0` done, `1` failed, `2` invalid input / missing confirmation, `3` unknown outcome (manual review).
+-   B47: `retain` / `tag` keep tables, queues, topics, log groups and the REST API only, so `remove` would delete a
+    WebSocket API (`AWS::ApiGatewayV2::*`). Where the tool sees a live stack's resources (`inspect --execute`, the
+    owner lookup of each retained resource), such a resource stops the command as `blocked` /
+    `WEBSOCKET_UNSUPPORTED` before any record is written, until the deploy service retains them. The phases do not
+    read the stack's resource list themselves; a WebSocket stack is outside the reviewed targets (B24).
 -   B27: `lemon-lambda-migrate <inspect|reconcile|resolve>` is the read-only follow-up for an already migrated stack
     (inventory, offline comparison with the run baseline, local attestation of an unknown verify DIFF); the phases
     and their outputs above are unchanged. See `docs/v5/B27-migrate-inspect.md`.

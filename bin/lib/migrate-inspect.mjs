@@ -32,6 +32,8 @@ import {
     privateEntry,
     noSymlinkChain,
     validateOwned,
+    //* v5 B47: the WebSocket API guard (stack resources of a live owner stack).
+    assertNoWebsocketResources,
 } from './migrate-core.mjs';
 
 // the migration pins (run-state dir of the checkout).
@@ -363,8 +365,11 @@ async function observeCfOwner(read, c, physicalId) {
         const s = await read('cloudformation:DescribeStacks', ['--stack-name', id]);
         if (s.state !== 'value') return errorOf(s);
         const status = s.value?.Stacks?.[0]?.StackStatus;
-        if (status !== 'DELETE_COMPLETE')
+        if (status !== 'DELETE_COMPLETE') {
+            //* v5 B47: the live owner stack's resources are the inventory; a WebSocket API there stops the command.
+            assertNoWebsocketResources((r.value?.StackResources ?? []).filter(x => x?.StackId === id));
             return fieldOf(s, 'stack', { stackStatus: typeof status === 'string' ? status : 'unknown' });
+        }
         trace = 'DELETE_COMPLETE';
     }
     return fieldOf(r, 'none', trace ? { trace } : {});
@@ -2560,7 +2565,8 @@ export async function inspectionMain(argv, deps = {}) {
         stderr(
             publicText(
                 {
-                    status: 'failed',
+                    //* v5 B47: a guard stop (`WEBSOCKET_UNSUPPORTED`) is `blocked`, every other error `failed`.
+                    status: known && error.blocked ? 'blocked' : 'failed',
                     code: known ? error.code : 'PREPARATION_FAILED',
                     message: known ? error.message : 'Could not complete the command; raw errors are not logged.',
                 },

@@ -75,6 +75,8 @@ export function validateConfig(raw) {
             'pollIntervalMs',
             'maxPolls',
             'routeDelayMs',
+            //* v5 B47: the optional WebSocket API block (third function `socket`).
+            'websocket',
         ],
         'config keys',
     );
@@ -193,6 +195,8 @@ export function validateConfig(raw) {
         }
         if (!c.routes.some(r => r.path === '/' && r.httpMethod === 'GET' && r.authorizationType === 'NONE'))
             invalid('public GET / route');
+        //* v5 B47: bootstrap takes the full block (absent = no WebSocket API, the config is unchanged).
+        if (c.websocket !== undefined) c.websocket = validateWebsocket(c.websocket);
     } else if (
         c.environmentFile !== undefined ||
         c.deletionProtection !== undefined ||
@@ -200,7 +204,52 @@ export function validateConfig(raw) {
         Object.keys(c.policy).length
     )
         invalid('bootstrap-only config in code mode');
+    //* v5 B47: code mode takes `true` or the same block; only its presence matters (the third function must exist).
+    else if (c.websocket !== undefined && c.websocket !== true) c.websocket = validateWebsocket(c.websocket);
     return c;
+}
+//* v5 B47: the default route selection expression of a WebSocket API (the sls `websocketApiRouteSelectionExpression`).
+export const WEBSOCKET_ROUTE_SELECTION = '$request.body.action';
+//* v5 B47: the default `$connect` handshake budget of the stage probe, in ms (the stage tool's default).
+export const WEBSOCKET_PROBE_TIMEOUT_MS = 10000;
+//* v5 B47: the `websocket` block, resolved with its defaults — the rules of the deploy service WebSocket tools.
+export function validateWebsocket(raw) {
+    keysOnly(raw, ['routeSelectionExpression', 'routes', 'probeTimeoutMs'], 'websocket');
+    const ws = {
+        routeSelectionExpression: raw.routeSelectionExpression ?? WEBSOCKET_ROUTE_SELECTION,
+        routes: raw.routes,
+        probeTimeoutMs: raw.probeTimeoutMs ?? WEBSOCKET_PROBE_TIMEOUT_MS,
+    };
+    // the ensure-websocket-api rule: `$request.body.<path>` (optionally `${...}`).
+    token(ws.routeSelectionExpression, /^\$\{?request\.body\.[A-Za-z0-9_.]+\}?$/, 'websocket.routeSelectionExpression');
+    if (!Number.isInteger(ws.probeTimeoutMs) || ws.probeTimeoutMs < 1000 || ws.probeTimeoutMs > 15000)
+        invalid('websocket.probeTimeoutMs');
+    // 1–50 routes (the stage tool's `expectRoutes` maximum), each routeKey once.
+    if (!Array.isArray(ws.routes) || !ws.routes.length || ws.routes.length > 50) invalid('websocket.routes');
+    const seen = new Set();
+    ws.routes = ws.routes.map(r => {
+        keysOnly(r, ['routeKey', 'authorizationType', 'authorizerId', 'timeoutInMillis'], 'websocket route');
+        // a reserved key, or a custom key that does not start with `$` (the ensure-websocket-route rule).
+        if (
+            typeof r.routeKey !== 'string' ||
+            !(/^\$(?:connect|disconnect|default)$/.test(r.routeKey) || /^[A-Za-z0-9_.:-]{1,128}$/.test(r.routeKey))
+        )
+            invalid('websocket route.routeKey');
+        if (seen.has(r.routeKey)) invalid('duplicate websocket route');
+        seen.add(r.routeKey);
+        if (!['NONE', 'AWS_IAM', 'CUSTOM'].includes(r.authorizationType)) invalid('websocket route.authorizationType');
+        // an authorizer id exactly when the route is CUSTOM.
+        if ((r.authorizationType === 'CUSTOM') !== (r.authorizerId !== undefined))
+            invalid('websocket route.authorizerId');
+        if (r.authorizerId !== undefined) token(r.authorizerId, /^[A-Za-z0-9]{1,64}$/, 'websocket route.authorizerId');
+        if (
+            r.timeoutInMillis !== undefined &&
+            (!Number.isInteger(r.timeoutInMillis) || r.timeoutInMillis < 50 || r.timeoutInMillis > 29000)
+        )
+            invalid('websocket route.timeoutInMillis');
+        return { ...r };
+    });
+    return ws;
 }
 export async function loadDeployment({ configFile, artifact }) {
     const config = validateConfig(await readJson(configFile, 'config JSON'));
@@ -277,9 +326,18 @@ export const FUNCTION_SHAPES = Object.freeze([
     { memorySize: 512, timeout: 30 },
     { memorySize: 512, timeout: 300 },
 ]);
+//* v5 B47: the shape of the third function `socket` (the sls `socket` function: 512 MB / 300 s).
+export const SOCKET_FUNCTION_SHAPE = Object.freeze({ memorySize: 512, timeout: 300 });
+//* v5 B47: true when the config has a WebSocket API (`websocket` block, or `true` in code mode).
+export const hasWebsocket = c => c.websocket !== undefined;
+//* v5 B47: the components of a deployment, in call order — `socket` only with `websocket`.
+export const componentsOf = c => (hasWebsocket(c) ? ['lambda', 'backend', 'socket'] : ['lambda', 'backend']);
+//* v5 B47: the function shapes in the order of `componentsOf` (`FUNCTION_SHAPES` itself for a two-function config).
+export const functionShapesOf = c => (hasWebsocket(c) ? [...FUNCTION_SHAPES, SOCKET_FUNCTION_SHAPE] : FUNCTION_SHAPES);
 //* v5 B24: the two functions a deployment targets — the deploy service's sls rule `<project>-<stage>-<component>`.
+//  v5 B47: plus `socket` when the config has `websocket` (same rule).
 export const plannedFunctionNames = c =>
-    Object.freeze({ lambda: `${c.project}-${c.stage}-lambda`, backend: `${c.project}-${c.stage}-backend` });
+    Object.freeze(Object.fromEntries(componentsOf(c).map(k => [k, `${c.project}-${c.stage}-${k}`])));
 export const LOG_RETENTION_DAYS = 14;
 export const SCHEDULE = Object.freeze({
     scheduleExpression: 'cron(0/1 * * * ? *)',
@@ -288,6 +346,10 @@ export const SCHEDULE = Object.freeze({
 });
 export function deploymentPlan({ config: c, environment, artifact: a }) {
     const source = a.source ?? {};
+    //* v5 B47: the WebSocket parts of a bootstrap plan (empty for a config without `websocket`).
+    const ws = c.mode === 'bootstrap' && hasWebsocket(c) ? c.websocket : undefined;
+    const components = componentsOf(c);
+    const n = components.length;
     return {
         schemaVersion: 1,
         mode: c.mode,
@@ -334,6 +396,8 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                       )
                           ? '/hello/0'
                           : null,
+                      //* v5 B47: the WebSocket stage probe — the `$connect` handshake and every route present.
+                      ...(ws ? { websocketProbe: { handshake: 'open', expectRoutes: ws.routes.length } } : {}),
                   }
                 : {}),
         },
@@ -343,8 +407,9 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                       policy: { profile: DEPLOY.policyProfile, ...c.policy },
                       table: { ...TABLE_SHAPE, deletionProtection: c.deletionProtection },
                       queue: { attributes: QUEUE_ATTRIBUTES },
-                      functions: FUNCTION_SHAPES.map((shape, i) => ({
-                          component: i ? 'backend' : 'lambda',
+                      //* v5 B47: one entry per component (`socket` third with `websocket`).
+                      functions: functionShapesOf(c).map((shape, i) => ({
+                          component: components[i],
                           runtime: 'nodejs24.x',
                           architecture: 'x86_64',
                           handler: a.handler,
@@ -354,6 +419,8 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                       logRetentionDays: LOG_RETENTION_DAYS,
                       schedule: { ...SCHEDULE, input: { cron: { name: '1MIN', stage: c.stage } } },
                       routes: c.routes,
+                      //* v5 B47: the resolved WebSocket block (defaults filled in).
+                      ...(ws ? { websocket: ws } : {}),
                   },
               }
             : {
@@ -363,22 +430,25 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                   },
               }),
         steps: [
-            'resolve-names (lemon / sls / backend)',
+            //* v5 B47: the socket name is resolved too with `websocket`.
+            `resolve-names (lemon / sls / backend${hasWebsocket(c) ? ' / socket' : ''})`,
             'resolve-policy + account/region cross-check',
             `read Lambda configuration/tags (${c.mode === 'code' ? 'must exist' : 'absence allowed'})`,
             'deploy.begin',
             'presign-put → conditional ZIP PUT',
             ...(c.mode === 'bootstrap'
                 ? [
-                      'ensure-role',
+                      //* v5 B47: the WebSocket API comes first so the one role carries `OwnWebsocketConnections`.
+                      ws ? 'WebSocket API → resolve-policy(websocketApiId) → ensure-role' : 'ensure-role',
                       'table / queue / topic',
-                      'log groups ×2',
-                      'functions ×2 + verification',
+                      `log groups ×${n}`,
+                      `functions ×${n} + verification`,
                       'SNS / DynamoDB stream / SQS mappings',
                       'disabled schedule',
                       `REST API / ${c.routes.length} sequential routes / stage probe`,
+                      ...(ws ? [`WebSocket ${ws.routes.length} sequential routes / stage probe`] : []),
                   ]
-                : ['existing functions ×2 code + verification']),
+                : [`existing functions ×${n} code + verification`]),
             'deploy.end',
         ],
         limitations: [
@@ -389,6 +459,8 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
             ...(c.expect === undefined
                 ? ['Function invoke-ok does not prove an application HTTP 200; no exact expected payload supplied.']
                 : []),
+            //* v5 B47: the WebSocket probe is a handshake only (an echo needs the service's own action).
+            ...(ws ? ['WebSocket stage probe proves the $connect handshake only; no message round trip is sent.'] : []),
         ],
     };
 }

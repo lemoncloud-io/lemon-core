@@ -30,6 +30,23 @@ export class MigrationError extends Error {
 const fail = (code, message, unknown = false) => {
     throw new MigrationError(code, message, { unknown });
 };
+//* v5 B47: the CloudFormation type prefix of WebSocket API resources (Api, Stage, Route, Integration, Deployment).
+export const WEBSOCKET_TYPE_PREFIX = 'AWS::ApiGatewayV2::';
+//* v5 B47: true when a stack resource list (`StackResources[]` / `StackResourceSummaries[]`) holds a WebSocket resource.
+export const hasWebsocketResources = list =>
+    Array.isArray(list) &&
+    list.some(x => typeof x?.ResourceType === 'string' && x.ResourceType.startsWith(WEBSOCKET_TYPE_PREFIX));
+//* v5 B47: stop as `blocked` before any write — retain/tag keep tables, queues, topics, log groups and the REST API
+//  only, so `remove` would delete a WebSocket API (and its id) with the stack.
+export function assertNoWebsocketResources(list) {
+    if (!hasWebsocketResources(list)) return;
+    const error = new MigrationError(
+        'WEBSOCKET_UNSUPPORTED',
+        'The stack has WebSocket API resources (AWS::ApiGatewayV2::*); retain/tag do not cover WebSocket APIs yet (deploy service increment pending). Nothing was written.',
+    );
+    error.blocked = true;
+    throw error;
+}
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 //* v5 B24: the registry entry whose project/stage/stack all equal the config's, else undefined.
 export const findTarget = c => (object(c) ? TARGETS.find(t => IDENTITY.every(k => c[k] === t[k])) : undefined);
