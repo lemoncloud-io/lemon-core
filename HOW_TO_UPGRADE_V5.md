@@ -774,6 +774,16 @@ It has no authorization. Gate it in your own code or move to `AbstractCRUDContro
 * `callback/proxy.ts` claims the `admin` role in its outgoing context instead of `domain: 'localhost'`.
 * `MockModelManager`, `TestModelManager`, `CallbackModelManager` pass `{ enableSync: true }`.
 
+### 11.11 `getMulti()` returns `null` for a missing id (#207)
+
+Before (4.1.1 – 5.0.24): `getMulti(['A', 'B'])` threw `404 NOT FOUND - …:B (S:1/2) - parallel(10/2)` when `B` was missing.
+After: it returns `[modelA, null]`, in the order and length of the input. Any error other than `404 NOT FOUND` is still thrown.
+
+* Options (`GetMultiOptions`): `size`, `throwable` (`getMulti()` default `false`), `errNoti` (one `doReportError()` with the failed items). A number is still the size: `getMulti(ids, 100)`.
+* Keep the old throw with `getMulti(ids, { throwable: true })`.
+* `getMulti$()` is unchanged by default (throws, env `MY_PARALLEL_THROW`); `{ throwable: false }` gives `{ id, error }` entries. The error scope is now `getMulti$(<type>)` instead of `parallel(<size>/<count>)`.
+* Details: `docs/v5/getmulti-options.md`.
+
 ## 12. Services that carry a `src/cores/` copy (B6)
 
 This section is for a service that pins lemon-core `^4.x` and carries a `src/cores/` copy (11 files, about 6.3k lines; the 2026 template generation). The full per-repo procedure, with counts per repo: `docs/v5/B6-dou-migration.md`.
@@ -1091,6 +1101,7 @@ Details: `docs/v5/B20-local-gateway.md`.
 - [ ] Same-site reads of other users' rows are intended? Add `policy: { read: 'site' }` or a `canDo` override; offsite sessions no longer list (§ 11.7, B13)
 - [ ] `$U.ts()`/`$U.dt()` callers that expected UTC pass `0` (§ 11.8)
 - [ ] No new use of `GeneralAPIController` (§ 11.9)
+- [ ] Callers of `getMulti()` that caught the 404 error check for `null` gaps, or pass `{ throwable: true }` (§ 11.11)
 - [ ] `src/cores/` copy removed, or every removed search name inside it replaced (§ 12)
 - [ ] `require('lemon-core/dist/exec-cli')` branch deleted from `src/index.ts` (§ 12)
 - [ ] Every `MyCoreManager` subclass that relied on the copy's default passes `{ enableSync: true }` (§ 12, § 11.6)

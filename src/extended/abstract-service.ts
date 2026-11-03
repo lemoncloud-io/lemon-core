@@ -14,6 +14,7 @@
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
  * @date        2026-10-27 v5 B2-b: `OS2Synchronizer`/`AbstractOS2Instance`; the L1 search instance, its factory and proxy are removed.
  * @date        2026-10-28 v5 B4: `CoreManager` `fields` may be a model class.
+ * @date        2026-11-03 #207: getMulti() options, null for a missing id.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
@@ -41,7 +42,7 @@ import $cores, {
     StorageService,
     TypedStorageService,
 } from '../cores/';
-import { $U, _log } from '../engine/';
+import { $U, _log, _err, doReportError } from '../engine/';
 //* v5 B4: manager `fields` may be a model class.
 import { ModelClass } from '../cores/storage/model-fields';
 import { GETERR, NUL404, onlyDefined } from '../common/test-helper';
@@ -168,6 +169,19 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
 }
 
 /**
+ * options of the batch get (#207)
+ * - used by `CoreManager.getMulti()` and `CoreManager.getMulti$()`.
+ */
+export interface GetMultiOptions {
+    /** size of parallel execution (default: env `MY_PARALLEL_SIZE`, 10) */
+    size?: number;
+    /** throw if any item fails. `getMulti$()` default: env `MY_PARALLEL_THROW` (true); `getMulti()` default: false */
+    throwable?: boolean;
+    /** report the failed items once via `doReportError()` (default: false), same meaning as in `ManagerProxy.mget()` */
+    errNoti?: boolean;
+}
+
+/**
  * class: `CoreManager`
  * - shared core manager for all model
  *
@@ -226,39 +240,73 @@ export abstract class CoreManager<
      * batch get models
      * - retrieve multi models per each id
      * - must be matched with idList in sequence order.
+     * - a missing id (`404 NOT FOUND`) is `null`, any other error is thrown (the `find()` rule).
      *
      * @param idList list of id
-     * @param parrallel (optional) in parrallel size
-     *
-     * TODO [Steve] support `options` parameter for `throwable` and `errNoti` in batch get. @260608
+     * @param options (optional) options of the batch get, or a number = size (`parrallel`, kept for compatibility)
      */
-    public async getMulti(idList: string[], parrallel?: number): Promise<(Model | null)[]> {
-        const $map = await this.getMulti$(idList, 'id', parrallel);
-        return idList.map(id => $map[id] ?? null).map(N => (N?.error?.startsWith('404 NOT FOUND') ? null : N));
+    public async getMulti(idList: string[], options?: number | GetMultiOptions): Promise<(Model | null)[]> {
+        //* #207: `throwable` is false by default, so a missing id becomes `null` (not an error).
+        const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
+        const $map = await this.getMulti$(idList, 'id', { ...opts, throwable: opts.throwable ?? false });
+        const list = idList.map(id => $map[id] ?? null);
+        //* #207: collected entries — throw the first non-404 error, `null` for the 404 ones.
+        if (opts.throwable !== true) {
+            const failed = list.find(N => N?.error && !`${N.error}`.startsWith('404 NOT FOUND'));
+            if (failed) throw new Error(failed.error);
+        }
+        return list.map(N => (N?.error && `${N.error}`.startsWith('404 NOT FOUND') ? null : N));
     }
 
     /**
      * batch get models in map by idName
+     * - throws on the first failed id by default (env `MY_PARALLEL_THROW`).
+     * - with `{ throwable: false }` a failed id is an entry `{ id, error }` in the map.
      *
-     * TODO [Steve] support `options` parameter for `throwable` and `errNoti` in batch get. @260608
+     * @param idList list of id
+     * @param idName (optional) the key of the map (default `id`)
+     * @param options (optional) options of the batch get, or a number = size (`parrallel`, kept for compatibility)
      */
     public async getMulti$(
         idList: string[],
         idName: string = 'id',
-        parrallel?: number,
+        options?: number | GetMultiOptions,
     ): Promise<{ [id: string]: Model }> {
+        const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
+        const errScope = `getMulti$(${this.type})`;
         // 1. find items in unique
         const ids = idList.reduce<string[]>((L, id) => {
             if (id && !L.includes(id)) L.push(id);
             return L;
         }, []);
         // 2. find from storage.
+        //* #207: `throwable: undefined` falls through to the `my_parallel()` default (`MY_PARALLEL_THROW`).
         const list = await my_parrallel(
             ids.map(id => ({ id })),
             N => this.retrieve(N.id),
-            parrallel,
+            { size: opts.size, throwable: opts.throwable, errScope },
         );
-        // 3. convert to map
+        // 3. report the failed items once (#207: the payload shape of `reportBatchError()` in `proxy-storage-service.ts`).
+        const failed = list.filter(N => N?.error);
+        if (opts.errNoti && failed.length > 0) {
+            const MAX_ERR_LEN = 255;
+            const error = new Error(`${errScope} failed: ${failed.length}/${list.length} items`);
+            const data = {
+                dt: $U.dt(),
+                total_count: list.length,
+                failed_count: failed.length,
+                success_count: list.length - failed.length,
+                failed_items: failed.map(N => ({
+                    id: N?.id ?? 'unknown',
+                    error: `${N.error}`.substring(0, MAX_ERR_LEN),
+                })),
+            };
+            //* a failed report never fails the batch get.
+            await doReportError(error, undefined, null, data).catch(e =>
+                _err(NS, `! failed to report ${errScope}:`, e),
+            );
+        }
+        // 4. convert to map
         return $T.asMap(list, idName);
     }
 

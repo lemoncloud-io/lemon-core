@@ -222,9 +222,8 @@ describe('abstract-services', () => {
         expect2(await $test.find('A')).toEqual(null);
         expect2(await $test.exists('A')).toEqual(false);
         expect2(await $test.findByKey('A')).toEqual(null);
-        expect2(await $test.getMulti(['A', 'A']).catch(GETERR)).toEqual(
-            '404 NOT FOUND - test:A (S:0/1) - parallel(10/1)',
-        );
+        //* #207: a missing id is `null` in `getMulti()`.
+        expect2(await $test.getMulti(['A', 'A']).catch(GETERR)).toEqual([null, null]);
 
         const $A = await $test.save('A', { name: 'AAA', test: 1 });
         expect2(() => $A, 'id').toEqual({ id: 'A' });

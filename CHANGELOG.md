@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## Unreleased
+
+* **#207 `getMulti()` options** (`docs/v5/getmulti-options.md`, `HOW_TO_UPGRADE_V5.md` § 11.11): `CoreManager.getMulti(idList, options?)` returns `null` for a missing id again (`throwable` default `false`; any non-404 error is thrown); `getMulti$(idList, idName?, options?)` keeps its default throw (`MY_PARALLEL_THROW`), error scope `getMulti$(<type>)`. New type `GetMultiOptions` `{ size, throwable, errNoti }`; a number is still the size; `errNoti` sends one `doReportError()` with the failed items. `my_parallel()` JSDoc of `throwable` corrected (default true). ([#207](https://github.com/lemoncloud-io/lemon-core/issues/207))
+
 ## 5.x bundles B19–B39 (shipped in 5.0.13–5.0.24, not split per version)
 
 ### Features

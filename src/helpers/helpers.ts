@@ -790,7 +790,7 @@ export const my_parallel = async <
         | {
               /** size of parallel execution (default 10) */
               size?: number;
-              /** throw error if any item fails (default: false) */
+              /** throw error if any item fails (default: true — env MY_PARALLEL_THROW, set 0 to collect errors instead) */
               throwable?: boolean;
               /** error scope for context tracking */
               errScope?: string;
