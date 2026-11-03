@@ -67,7 +67,7 @@ const setup = () => {
         param: any = {},
         body: any = null,
     ): Promise<any> => web.handleProtocol({ mode, type, id, cmd, param, body, context: {} } as any);
-    return { web, call, houses, rooms };
+    return { web, call, houses, rooms, users };
 };
 
 //* the error code part (`404 NOT FOUND`, `400 CONFLICT`, ...), or 'OK'.
@@ -461,6 +461,30 @@ describe('child id', () => {
             id: 'A',
             param: {},
         });
+    });
+
+    it('R-41 child key equal to an ancestor key: another id is 400 CONFLICT', async () => {
+        const { call, rooms, users } = setup();
+        //* users 9 is a chain parent of rooms (rooms FIELDS has `userId`); record every retrieve.
+        const seen: string[] = [];
+        const record = (type: string, m: any) => {
+            const get = m.retrieve;
+            m.retrieve = (id: string) => (seen.push(`${type}/${id}`), get(id));
+        };
+        record('users', users.manager);
+        record('rooms', rooms.manager);
+        rooms.getRoomsUsers = rooms.rec('getRoomsUsers');
+        await expect2(() => call('GET', 'users', '9', 'rooms/304/users/10').catch(e => `${e.message}`)).toEqual(
+            '400 CONFLICT - .userId (9) != path (10)',
+        );
+        //* the 400 is before any retrieve (no users/10 either).
+        expect2(() => seen).toEqual([]);
+        await expect2(() => call('GET', 'users', '9', 'rooms/304/users/9'), 'via,id,param').toEqual({
+            via: 'rooms.getRoomsUsers',
+            id: '304',
+            param: { userId: '9', $sub: '9' },
+        });
+        expect2(() => seen).toEqual(['users/9', 'rooms/304']);
     });
 });
 

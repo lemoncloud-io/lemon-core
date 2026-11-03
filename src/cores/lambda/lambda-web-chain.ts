@@ -137,6 +137,15 @@ export const withChildId = (child: string, rest: string[], param: any): any => {
     return { ...(param || {}), [key]: rest[0], $sub: rest.join('/') };
 };
 
+/**
+ * the ancestor link whose key is the child key of a parent method, with another id (SPEC § 3.3 S41), or undefined.
+ * - `/users/9/rooms/304/users/10` with `getRoomsUsers`: `userId` cannot be both `9` and `10`. the same id passes.
+ */
+export const childClash = (child: string, rest: string[], links: ChainLink[]): ChainLink | undefined => {
+    const key = childKeyOf(child);
+    return links.find(l => l.key === key && l.parentId !== rest[0]);
+};
+
 /** the model of `id`, or null if missing (404) or deleted. other errors propagate. */
 const modelOf = (manager: ChainManager, id: string): Promise<any> =>
     manager
@@ -244,6 +253,10 @@ const guarded =
             throw new Error(`400 CONFLICT - .${conflict.key} (${query[conflict.key]}) != path (${conflict.parentId})`);
         //* a parent method: the query child key must equal the path (before any retrieve).
         const $query = found.child ? withChildId(found.child, found.rest, query) : query;
+        //* a parent method: the child key must not be an ancestor key with another id (before any retrieve).
+        const clash =
+            found.child && found.rest && found.rest.length ? childClash(found.child, found.rest, links) : null;
+        if (clash) throw new Error(`400 CONFLICT - .${clash.key} (${clash.parentId}) != path (${found.rest[0]})`);
         //* the first parent exists (if CRUD).
         const first = links[0];
         const root = first && managerOf(handlerOf(handlers, first.parent));
