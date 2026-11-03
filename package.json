@@ -1,7 +1,7 @@
 {
   "name": "lemon-core",
   "version": "5.0.24",
-  "description": "Lemon Serverless Micro-Service Platform",
+  "description": "TypeScript bootloader for serverless micro-services on AWS Lambda — one function, many event sources (API Gateway, ALB, SNS, SQS, cron, DynamoDB stream), engine modules, signed inter-service protocol.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -256,7 +256,20 @@
   "keywords": [
     "lemoncloud",
     "lemon-core",
-    "serverless"
+    "serverless",
+    "aws-lambda",
+    "aws-lambda-node",
+    "typescript",
+    "nodejs",
+    "dynamodb",
+    "opensearch",
+    "aws-sns",
+    "aws-sqs",
+    "api-gateway",
+    "microservices",
+    "microservices-architecture",
+    "event-driven",
+    "aws-sdk-v3"
   ],
   "bugs": {
     "url": "https://github.com/lemoncloud-io/lemon-core/issues"

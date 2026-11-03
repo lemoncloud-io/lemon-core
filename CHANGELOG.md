@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## Unreleased (5.x)
+## 5.x bundles B19–B39 (shipped in 5.0.13–5.0.24, not split per version)
 
 ### Features
 
@@ -47,6 +47,25 @@ All notable changes to this project will be documented in this file. See [standa
 * `lemon-devkit` removed from devDependencies (B20): lemon-core no longer loads it.
 * `express` added as an optional peer (`^4.21.2 || ^5.0.0`) and a devDependency (`^4.22.3`), for `buildExpress()` (B20).
 * `express` removed again (B21): no optional peer, no `peerDependenciesMeta` entry, no devDependency; the lock drops 53 packages. Services remove `express` from their `devDependencies`.
+
+## 5.0.13–5.0.24 (package.json bump commits)
+
+One row per `version` bump commit on `develop` (tags exist for 5.0.22–5.0.24). The entries are not split per version yet; see the B19–B39 section above and `git log`.
+
+| Version   | Commit date | Commit     | Description (commit subject)
+|--         |--          |--          |--
+| 5.0.24    | 2026-11-03 | `01f89188` | v5.0.24 sns push
+| 5.0.23    | 2026-11-02 | `a1e33f63` | v5.0.23 deploy resilience
+| 5.0.22    | 2026-11-01 | `e3424d45` | v5.0.22 deploy resilience
+| 5.0.21    | 2026-11-01 | `5c371dbe` | v5.0.21 guard the writers
+| 5.0.20    | 2026-11-01 | `13b6ca93` | v5.0.20 migration gaurd
+| 5.0.19    | 2026-11-01 | `4726bfd9` | v5.0.19 released
+| 5.0.18    | 2026-11-01 | `e5b7534e` | v5.0.18
+| 5.0.17    | 2026-11-01 | `68b05490` | v5.0.17 released
+| 5.0.16    | 2026-10-31 | `16d38a92` | v5.0.16 released
+| 5.0.15    | 2026-10-31 | `5cb89260` | v5.0.15 released
+| 5.0.14    | 2026-10-31 | `d12b1ece` | v5.0.14 released
+| 5.0.13    | 2026-10-30 | `352f0d36` | v5.0.13 released
 
 ## 5.0.12 (2026-10-30)
 
@@ -148,6 +167,105 @@ All notable changes to this project will be documented in this file. See [standa
 
 * B10: `getHelloArn()` takes a 12-digit account only, own Lambda account first; circular-safe stringify on the error report path; secret header values masked in logs; `PROTOCOL_VERIFY=enforce` runbook and masked decrypted config values in the init log; CLI `lemon-fields-types` (`HOW_TO_UPGRADE_V5.md` § 13.1–§ 13.5).
 * `LOCAL_TRANSPORT=mock` opt-in local transport for protocol calls (§ 11.3.1).
+
+## Version history (from README, up to 5.0.12)
+
+The `VERSION INFO` table of `README.md`, moved here unchanged.
+
+| Version   | Description
+|--         |--
+| 5.0.12    | B18: tests 87 files / 1136 (lines 70 % → 96 %), vitest `4.1.12`, lemon-devkit `^0.2.3` (no `request`) — `npm audit` 0 (devDependencies only).
+| 5.0.11    | B17: lemon-model `5.0.4` exact pin (TS2411 fix for strict consumers of `lemon-core/model`), repo hygiene (`.travis.yml`·typedoc workflow removed, CONTRIBUTING `v5` flow).
+| 5.0.10    | B16-b resolution shims `model/`·`testing/` for `moduleResolution: node` and Jest 27 (§ 16).
+| 5.0.9     | B16 sub-path `lemon-core/model` (`export * from 'lemon-model'`), lemon-model pinned exact `5.0.2` (D73).
+| 5.0.8     | B15 security follow-up (§ 11.7, § 15.2); lemon-model `^5.0.2`.
+| 5.0.7     | Re-publish of 5.0.6 (same source).
+| 5.0.6     | B13 default data-access policy of `AbstractCRUDController` (§ 11.7); B14 `context.channel`, signed relay `x-lemon-relay`, `TRACE` line, `x-protocol-context` deprecated (§ 15); README rewritten as the v5 entry point; lemon-model `^5.0.1`.
+| 5.0.5     | B10: `getHelloArn()` account (§ 13.1), circular-safe reports (§ 13.2), masked header logs (§ 13.3), enforce runbook + masked config log (§ 13.4), `lemon-fields-types` (§ 13.5); `LOCAL_TRANSPORT=mock` opt-in (§ 11.3.1).
+| 5.0.4     | `context.source` carries the first request path; `npm audit --omit=dev` 0 (`qs`, `randomUUID()`, AWS SDK `^3.1159.0`).
+| 5.0.3     | KMS `Decrypt` via SigV4 + Node `https`, without `@aws-sdk/client-kms` on the boot path.
+| 5.0.2     | per-request `PERF` lines (`request`, `handle`).
+| 5.0.1     | `GET /<type>/fields/admin` + `checkFieldsAdmin()`; env `DEFAULT_TIME_ZONE`, `DATE_ONLY_CLOCK`, `SID_LEGACY_ACCESS`.
+| 5.0.0     | Node 24, ESM entry + `exports`, AWS SDK optional peers, OpenSearch client, `@field()`, signed protocol calls.
+| 4.3.0     | embed cores template layer as extended/cores
+| 4.2.6     | optimized `$protocol.execute()` to support async lambda invocation.
+| 4.2.5     | optimized `isBase64Encoded` to support apigwBinary. (from `4.1.17`)
+| 4.2.4     | optimized `doReportError` to ignore in local dev. (from `4.1.16`)
+| 4.2.3     | optimized `ManagerProxy.inc()` w/ `string[]` parameters.
+| 4.2.2     | optimized `StorageService.increment()` w/ `string[]` parameters.
+| 4.2.1     | optimized `storage-service` w/ `dummy` service (+ audit fix).
+| 4.2.0     | optimized `node@24.15.0` w/o `ttypescript` + `jest`.
+| 4.1.12    | optimized `synchronizer` w/o `elastic` config.
+| 4.1.12    | optimized `@aws-sdk` w/ version `3.971.0`.
+| 4.1.11    | optimized `proxy.mget` w/ `error-reporting` option.
+| 4.1.9     | optimized `proxy.mget` w/ `getaddrinfo` error.
+| 4.1.5     | optimized `saveAllUpdates` w/ failed model as cause.
+| 4.1.2     | optimized `asErrorPayload` w/ env[`MY_PARALLEL_THROW`].
+| 4.1.0     | optimized `DynamoService.mreadItem()` along with `lemon-model@1.1.1`
+| 4.0.8     | optimized `findKMSService()` w/ shared pool storage.
+| 4.0.7     | optimized `verifyJWT()` w/ more detail error.
+| 4.0.6     | optimized `loadProfile()` as sync call.
+| 4.0.5     | improve `$protocol` w/ `lambda` invoke.
+| 4.0.0     | optimized with `nodejs22`.
+| 3.2.16    | improve `ALBHandler` to support `elb` event.
+| 3.2.15    | improve `NextContext` to support `referer` and `origin` header.
+| 3.2.13    | improve `createSigV4Proxy()` to support the sig-v4 request to AWS.
+| 3.2.12    | improve `buildResponse()` to determin content-type of html.
+| 3.2.11    | updated `elastic6-service` to support `SearchProxy`.
+| 3.2.10    | updated `elastic6-service` to fix `400 ILLEGAL ARGUMENT` (script parsing).
+| 3.2.9     | improve `elastic6-service` w/ latest open-search.
+| 3.2.8     | updated `ttypescript^1.5.15`, and optimized.
+| 3.2.7     | cleanup log message in `AWSS3Service`, and optimized.
+| 3.2.6     | improve `listObjects()` in `AWSS3Service` w/ prefix.
+| 3.2.5     | improve `doReportError` in `lambda-web-handler`.
+| 3.2.4     | updated with `lemon-model@1.0.2`.
+| 3.2.3     | support `ES7.10`, and improve sync to elastic.
+| 3.2.1     | improve `getIdentityId()` w/ `env:LOCAL_ACCOUNT`.
+| 3.2.0     | upgrade all packages, and clear `audit fix`.
+| 3.1.2     | refactoring with `lemon-model@1.0.0` for shared types.
+| 3.1.1     | support `ManagerProxy`, `AbstractProxy` and `$ES6`. (`x-lemon-identity` as WebToken)
+| 3.1.0     | upgrade `typescript^4.6.2`, and optimized.
+| 3.0.2     | support `helpers` like `$T`.
+| 3.0.0     | improve search-client with `@elastic/elasticsearch@7.12` to support AWS `OpenSearch 1.1` (compartible with `ES6.2`).
+| 2.2.20    | improve an extra feature from `aws-s3-service` to 'lemon-images-api'
+| 2.2.19    | improve search filtering feature for `ES6 autocomplete search`.
+| 2.2.18    | support `$U.jwt(passcode).encode(...)` w/ `npm`.
+| 2.2.16    | hot-fix `utf8 encoding of json` in `AWS.S3`.
+| 2.2.15    | hot-fix `Cannot read property 'setIndex' of null` in `Dynamo`.
+| 2.2.14    | support `CacheService`, and support appending entry into list in `Dynamo`.
+| 2.2.13    | improve `LambdaWEBHandler` to support custom web-response including headers.
+| 2.2.12    | improve `AWSS3Service` to use pure JS image library because of AWS compatibility issue.
+| 2.2.11    | improve `AWSS3Service` by adding handy method and metadata+tag handling
+| 2.2.10    | improve `Access-Control-Allow-Origin` w/ `Access-Control-Allow-Credentials: true`.
+| 2.2.9     | support `content-type:application/x-www-form-urlencoded` form data.
+| 2.2.6     | improve `search`, and support `cookie` in NextContext.
+| 2.2.5     | support `Access-Control-Allow-Headers` for CORS.
+| 2.2.3     | support `x-lemon-language` header in identity.
+| 2.2.0     | support `AbstractManager` for the template of model managers.
+| 2.1.17    | support `filter()` in DynamoStream.
+| 2.1.16    | improve `lock()` w/ 404 error, and `.aggregations` in QueryResult.
+| 2.1.14    | support `hash` param for `MocksAPIService`.
+| 2.1.13    | support `HttpStorage`, `$U.crypto2`, and `/favicon.ico`.
+| 2.1.12    | support `userAgent` in NextContext.
+| 2.1.11    | improve `syncToElastic6`, and `DynamoScanService`.
+| 2.1.10    | support `loadProfile()`, and lookup-id style.
+| 2.1.8     | improve `express` of request-context.
+| 2.1.7     | improve `TypedStorageService` w/ `save()`.
+| 2.1.5     | support `GeneralAPIController` along w/ `UniqueFieldManager`.
+| 2.1.3     | support `asNextIdentityAccess()` for access identity.
+| 2.1.2     | support `ProxyStorageService` for shared common storage.
+| 2.1.1     | support `enqueue()` with delayed-seconds.
+| 2.1.0     | support `ProtocolService` for inter communication of micro-services.
+| 2.0.10    | support to display the current name/version by `GET /`.
+| 2.0.9     | improve `Elastic6Service` + `Elastic6QueryService`.
+| 2.0.8     | improve `APIService` w/ mocks data.
+| 2.0.7     | improve `StorageService` along w/ dummy-storage-service.
+| 2.0.6     | support `CoreWEBController`, and `lambda.cores.web.addController(...)`
+| 2.0.5     | support `APIService`, and fix `engine.initialize()`
+| 2.0.3     | support `StorageService` along with `DynamoStorageService`
+| 2.0.0     | improve `lemon-engine`, and support `typescript` fully.
+| 1.2.15    | improve `doReportError` with error message
+| 1.2.12    | support `doReportMetric()` for saving metric data.
 
 ## [1.2.0](https://github.com/lemoncloud-io/lemon-core/compare/v1.1.2...v1.2.0) (2019-08-16)
 
