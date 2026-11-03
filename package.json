@@ -91,6 +91,9 @@
     "!plato": "----- analysis code complexity -----",
     "plato": "plato -r -d complexity dist"
   },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
   "husky": {
     "hooks": {
       "!pre-commit": "lint-staged"
