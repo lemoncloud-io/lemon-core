@@ -5,6 +5,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B10-3: secret header values in logs)
  * @date        2026-10-30 key rotation: value-based screening (`registerSecret()`, `screenLogArgs()`).
+ * @date        2026-11-03 copilot review (#227): JSON-escaped secrets, Error props·`cause`·`errors`.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -144,6 +145,58 @@ describe('log-mask', () => {
             expect(args.join(' ')).not.toContain(SECRET);
             //* the original object is not changed.
             expect(obj.k).toEqual(SECRET);
+        });
+
+        //* copilot review (#227): a secret with a quote, a backslash and a newline is masked in its JSON-escaped form too.
+        it('should mask the JSON-escaped form of a secret', () => {
+            const secret = 'pa"ss\\wo\nrd!!';
+            const escaped = JSON.stringify(secret).slice(1, -1);
+            const mask = `[masked:${secret.length}]`;
+            expect(escaped).not.toEqual(secret);
+            registerSecret(secret);
+            // object arg: stringified, so the secret appears escaped.
+            const args1: any[] = [{ password: secret }];
+            expect(screenLogArgs(args1)).toBe(true);
+            expect(args1[0]).not.toContain(secret);
+            expect(args1[0]).not.toContain(escaped);
+            expect(args1[0]).toContain(mask);
+            expect(args1[0]).toEqual(`{"password":"${mask}"}`);
+            // string arg already in JSON form (ex: `$U.json(...)`).
+            const args2: any[] = [JSON.stringify({ password: secret })];
+            expect(screenLogArgs(args2)).toBe(true);
+            expect(args2[0]).not.toContain(secret);
+            expect(args2[0]).not.toContain(escaped);
+            expect(args2[0]).toContain(mask);
+            // plain-text arg with the raw secret is still masked.
+            const args3: any[] = [`pw=${secret} end`];
+            expect(screenLogArgs(args3)).toBe(true);
+            expect(args3[0]).toEqual(`pw=${mask} end`);
+        });
+
+        //* copilot review (#227): an Error whose `cause`, own prop or `errors` holds a secret is masked.
+        it('should mask a secret in Error cause, own props and AggregateError.errors', () => {
+            registerSecret(SECRET);
+            const mask = `[masked:${SECRET.length}]`;
+            // (a) `cause`.
+            const e1 = new (Error as any)('harmless', { cause: SECRET });
+            // (b) own prop.
+            const e2: any = new Error('harmless');
+            e2.code = SECRET;
+            // (c) `AggregateError.errors`.
+            const e3 = new AggregateError([new Error(SECRET)], 'harmless');
+            for (const err of [e1, e2, e3]) {
+                const args: any[] = [err];
+                expect(screenLogArgs(args)).toBe(true);
+                expect(typeof args[0]).toEqual('string');
+                expect(args[0]).not.toContain(SECRET);
+                expect(args[0]).toContain(mask);
+                expect(args[0]).toContain('harmless');
+            }
+            // a harmless Error is kept as is.
+            const ok = new Error('harmless');
+            const args: any[] = [ok];
+            expect(screenLogArgs(args)).toBe(false);
+            expect(args[0]).toBe(ok);
         });
 
         //* non-strings and values shorter than 8 are ignored.

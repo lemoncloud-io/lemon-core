@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-27 initial version (v5 B2-a: drop `lodash`)
+ * @date        2026-11-03 copilot review (#227): `merge()` skips `__proto__` keys (prototype pollution).
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -35,6 +36,8 @@ export const merge = <T = any>(target: any, ...sources: any[]): T => {
         // skip missing sources (ex: an absent `ExpressionAttributeNames`).
         if (source === null || source === undefined) return;
         Object.keys(source).forEach(key => {
+            // skip `__proto__` (an own key of a JSON-parsed value): `target['__proto__']` would reach `Object.prototype`.
+            if (key === '__proto__') return;
             const val = source[key];
             if (val === undefined) return;
             // plain object: merge into the existing plain object, or into a new one.

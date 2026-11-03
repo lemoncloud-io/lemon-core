@@ -4,6 +4,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-27 initial version (v5 B2-a)
+ * @date        2026-11-03 copilot review (#227): `merge()` `__proto__` regression.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -82,6 +83,29 @@ describe('dynamo tools lang', () => {
         expect(out.list[1]).not.toBe(list[1]);
         expect(out.set).toBe(set);
         expect(out.bin).toBe(bin);
+    });
+
+    // copilot review (#227): a JSON-parsed `__proto__` key (nested or top-level) never reaches `Object.prototype`.
+    it('should skip __proto__ keys from JSON-parsed sources', () => {
+        try {
+            const nested = JSON.parse('{"a":{"__proto__":{"polluted":1},"b":2}}');
+            const out = merge<any>({}, nested);
+            expect(({} as any).polluted).toBeUndefined();
+            expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'polluted')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(out.a, '__proto__')).toBe(false);
+            expect(out.a.b).toBe(2);
+            // top-level case: the source itself has an own `__proto__` key.
+            const top = JSON.parse('{"__proto__":{"polluted":1},"c":3}');
+            const out2 = merge<any>({}, top);
+            expect(({} as any).polluted).toBeUndefined();
+            expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'polluted')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(out2, '__proto__')).toBe(false);
+            expect(Object.getPrototypeOf(out2)).toBe(Object.prototype);
+            expect(out2.c).toBe(3);
+        } finally {
+            // clean up in case of a regression, so other tests are not affected.
+            delete (Object.prototype as any).polluted;
+        }
     });
 
     // map values with the key, and drop entries by predicate.
