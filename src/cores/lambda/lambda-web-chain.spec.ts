@@ -315,3 +315,89 @@ describe('lambda-web-chain', () => {
         expect2(() => calls).toEqual([]);
     });
 });
+
+describe('prefix', () => {
+    //* the prefix controllers: `houses`, `rooms` (and `boards` registered on the default route only).
+    const prefixed = () => {
+        const S = setup();
+        const houses = fake('houses', ['id', 'name'], { A: { id: 'A' }, B: { id: 'B' } });
+        const rooms = fake('rooms', ['id', 'houseId'], { 304: { id: '304', houseId: 'A' } });
+        S.web.addPrefix('public', [houses, rooms]);
+        return { ...S, houses, rooms };
+    };
+
+    it('R-16 GET public houses A', async () => {
+        const { call } = prefixed();
+        await expect2(() => call('GET', 'public', 'houses', 'A'), 'via,id').toEqual({ via: 'houses.doGet', id: 'A' });
+    });
+
+    it('R-17 GET public houses (mode kept)', async () => {
+        const { call } = prefixed();
+        await expect2(() => call('GET', 'public', 'houses', ''), 'via,id').toEqual({ via: 'houses.doGet', id: '' });
+    });
+
+    it('R-18 GET public houses A/rooms/304', async () => {
+        const { call } = prefixed();
+        await expect2(() => call('GET', 'public', 'houses', 'A/rooms/304'), 'via,id,param').toEqual({
+            via: 'rooms.doGet',
+            id: '304',
+            param: { houseId: 'A' },
+        });
+        await expect2(() => codeOf(call('GET', 'public', 'houses', 'B/rooms/304'))).toEqual('404 NOT FOUND');
+    });
+
+    it('R-18b type not in the prefix list', async () => {
+        const { call } = prefixed();
+        await expect2(() => codeOf(call('GET', 'public', 'boards', '1'))).toEqual('404 NOT FOUND');
+        await expect2(() => codeOf(call('GET', 'nope', 'houses', 'A'))).toEqual('404 NOT FOUND');
+    });
+
+    it('R-19 identity replaces context.identity', async () => {
+        const { web } = setup();
+        const rooms = fake('rooms', ['id'], {});
+        rooms.doGet = async (id: string, _p: any, _b: any, c: any) => ({ id, identity: c.identity, sid: c.sid });
+        web.addPrefix('_api_', [rooms], { identity: async () => ({ sid: 'S' }) });
+        const context: any = { sid: 'X', identity: { sid: 'old' } };
+        const param: any = { mode: 'GET', type: '_api_', id: 'rooms', cmd: '304', param: {}, body: null, context };
+        await expect2(() => web.handleProtocol(param)).toEqual({ id: '304', identity: { sid: 'S' }, sid: 'X' });
+        expect2(() => context.identity).toEqual({ sid: 'old' });
+        //* the identity error propagates as is.
+        web.addPrefix('_bad_', [rooms], { identity: async () => Promise.reject(new Error('403 FORBIDDEN - no key')) });
+        await expect2(() => web.handleProtocol({ ...param, type: '_bad_' })).toEqual('403 FORBIDDEN - no key');
+    });
+
+    it('R-20 duplicated prefix', async () => {
+        const { web, houses } = prefixed();
+        expect2(() => web.addPrefix('public', [houses])).toEqual('@prefix[public] is duplicated!');
+    });
+
+    it('R-21 GET _key_ apikeys K1', async () => {
+        const { web, call } = setup();
+        web.addPrefix('_key_', [fake('apikeys', ['id'], {})]);
+        await expect2(() => call('GET', '_key_', 'apikeys', 'K1'), 'via,id').toEqual({
+            via: 'apikeys.doGet',
+            id: 'K1',
+        });
+    });
+
+    it('R-22 POST public houses A', async () => {
+        const { call } = prefixed();
+        await expect2(() => call('POST', 'public', 'houses', 'A', {}, { x: 1 }), 'via,id').toEqual({
+            via: 'houses.doPost',
+            id: 'A',
+        });
+    });
+
+    it('R-25 registered type wins over the prefix', async () => {
+        const { web, call } = setup();
+        web.addController(fake('_keys', [], {}));
+        web.addController(fake('public', [], {}));
+        web.addPrefix('public', [fake('houses', ['id'], {})]);
+        web.addPrefix('_key_', [fake('apikeys', ['id'], {})]);
+        await expect2(() => call('GET', 'public', 'houses', ''), 'via,id').toEqual({
+            via: 'public.doGet',
+            id: 'houses',
+        });
+        await expect2(() => call('GET', '_keys', 'K1', ''), 'via,id').toEqual({ via: '_keys.doGet', id: 'K1' });
+    });
+});

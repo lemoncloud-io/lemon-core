@@ -224,3 +224,21 @@ export const resolveChain = (
     const found = walk(handlers, mode, type, id, segs, []);
     return found ? guarded(handlers, mode, found) : null;
 };
+
+/**
+ * the target of `(type, id, cmd)` in `handlers` (SPEC § 3.2): the decoder first (with the query guard), then the chain.
+ * - used by the default route and by a prefix (with its own `handlers`). null → 404.
+ */
+export const resolveNext = (
+    handlers: WebHandlers,
+    mode: NextMode,
+    type: string,
+    id: string,
+    cmd: string,
+    path?: string,
+): NextHandler | null => {
+    const first = nextOf(handlers[type], mode, id, cmd, path);
+    //* a direct route: the query parent key must match the target.
+    if (first) return guardQuery(handlers, type, id, first);
+    return cmd ? resolveChain(handlers, mode, type, id, cmd) : null;
+};

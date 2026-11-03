@@ -63,7 +63,7 @@ import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
 import { measureAsync, PerfTrace } from '../../lib/perf';
 import { asWebPath, isTextualType, bodyLength } from '../../lib/web-body';
-import { dropSub, guardQuery, nextOf, resolveChain } from './lambda-web-chain';
+import { dropSub, resolveNext, WebHandlers } from './lambda-web-chain';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
@@ -416,6 +416,11 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
 
     //* handlers map.
     private _handlers: { [key: string]: NextDecoder | CoreWEBController } = {};
+    //* prefix routes (`/public`, `/_api_`, `/_key_`) → their own handlers (SPEC § 3.4).
+    private _prefixes = new Map<
+        string,
+        { handlers: WebHandlers; identity?: (context: NextContext) => Promise<NextIdentity> }
+    >();
 
     /**
      * default constructor w/ registering self.
@@ -453,6 +458,25 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const type = controller.type();
         _log(NS, `> web-controller[${type}] =`, controller.hello());
         this._handlers[type] = controller;
+    }
+
+    /**
+     * route `/<prefix>/<type>/<id>/<cmd>` to the given controllers only (SPEC § 3.4).
+     * - a registered `type` of the same name wins (the prefix is used only when `_handlers[prefix]` is missing).
+     * - `identity` replaces `context.identity` before the handler (its error propagates as is).
+     *
+     * @param prefix        the first path piece, like `public`
+     * @param controllers   the controllers opened under the prefix (by `type()`)
+     */
+    public addPrefix(
+        prefix: string,
+        controllers: CoreWEBController[],
+        options?: { identity?: (context: NextContext) => Promise<NextIdentity> },
+    ): void {
+        if (typeof prefix !== 'string') throw new Error(`@prefix (string) is required!`);
+        if (this._prefixes.has(prefix)) throw new Error(`@prefix[${prefix}] is duplicated!`);
+        const handlers: WebHandlers = Object.fromEntries((controllers || []).map(c => [c.type(), c]));
+        this._prefixes.set(prefix, { handlers, identity: options?.identity });
     }
 
     /**
@@ -543,11 +567,17 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 };
             }
 
+            //* a prefix (only if no handler of `TYPE`): shift by one, then resolve within its controllers (mode kept).
+            const prefix = decoder ? null : this._prefixes.get(TYPE);
+            if (prefix) {
+                const [id = '', ...rest] = CMD.split('/');
+                const found = resolveNext(prefix.handlers, MODE, ID, id, rest.join('/'), PATH);
+                const { identity } = prefix;
+                if (!found) return null;
+                return async (_i, p, b, c) => found(id, p, b, identity ? { ...c, identity: await identity(c) } : c);
+            }
             //* use decoder() to find target, then the nested path (`/houses/A/rooms/304`) if `cmd` remains.
-            const first = nextOf(decoder, MODE, ID, CMD, PATH);
-            //* a direct route: the query parent key must match the target.
-            if (first) return guardQuery(this._handlers, TYPE, ID, first);
-            return CMD ? resolveChain(this._handlers, MODE, TYPE, ID, CMD) : null;
+            return resolveNext(this._handlers, MODE, TYPE, ID, CMD, PATH);
         })(this._handlers[TYPE]);
 
         //* if no next, then report error.
