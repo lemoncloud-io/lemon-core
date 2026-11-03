@@ -1081,6 +1081,7 @@ test('B34 isRetryableTool is true only for ensure- / resolve- tools', () => {
         'aws.apigateway.ensure-route@1',
         'aws.lambda.ensure-function@1',
         'aws.lambda.ensure-event-source-mapping@1',
+        'aws.apigateway.ensure-usage-plan@1',
     ])
         assert.equal(isRetryableTool(tool), true, tool);
     for (const tool of [
@@ -1097,9 +1098,9 @@ test('B34 isRetryableTool is true only for ensure- / resolve- tools', () => {
         'aws.apigateway.resolve-anything@1',
     ])
         assert.equal(isRetryableTool(tool), false, String(tool));
-    // r2 (N4): the list is frozen and holds exactly the twelve read-before-write tools the runner calls.
+    // r2 (N4): the list is frozen and holds exactly the read-before-write tools the runner calls (+ ensure-usage-plan = 13).
     assert.ok(Object.isFrozen(RETRYABLE_TOOLS));
-    assert.equal(new Set(RETRYABLE_TOOLS).size, 12);
+    assert.equal(new Set(RETRYABLE_TOOLS).size, 13);
 });
 test('B34 a throttled ensure-route is retried with the same input after 2 s, 4 s and the round completes', async t => {
     const f = await fixture(t, 'bootstrap');
@@ -1466,4 +1467,136 @@ test('B34 r2 (S3/N1) toolErrorText hides every reviewer path and 12-digit form',
     // a code holding 12 consecutive digits is dropped whole.
     assert.deepEqual(toolErrorFields({ code: 'user_123456789012' }), {});
     assert.deepEqual(toolErrorFields({ code: 'Throttling' }), { toolErrorCode: 'Throttling' });
+});
+//* optional bootstrap writer fields — functions.* / queue.visibilityTimeout / policy.objectScopes /
+//* policy.extraStatements / routes[].apiKeyRequired / usagePlan. All optional: omitted = byte-identical plan.
+const keyedRoute = {
+    path: '/_api_/{cmd+}',
+    httpMethod: 'GET',
+    authorizationType: 'NONE',
+    apiKeyRequired: true,
+    cors: { origin: '*', headers: ['Content-Type', 'X-Api-Key'], credentials: false },
+};
+const fieldsPatch = () => ({
+    functions: { backend: { timeout: 900 } },
+    queue: { visibilityTimeout: '900' },
+    policy: {
+        objectScopes: [{ bucket: 'example-bucket', prefix: 'products/', actions: ['get', 'put'] }],
+        extraStatements: [
+            {
+                Sid: 'ExtraSecrets',
+                Effect: 'Allow',
+                Action: ['secretsmanager:GetSecretValue'],
+                Resource: 'arn:aws:secretsmanager:ap-northeast-2:123456789012:secret:agt-*',
+            },
+        ],
+    },
+    routes: [...structuredClone(example.routes), keyedRoute],
+    usagePlan: { keyIds: ['key0000001'] },
+});
+test('omitted writer fields leave the plan byte-identical; given, they show up in configuration', async t => {
+    const plain = deploymentPlan((await fixture(t, 'bootstrap')).deployment);
+    assert.deepEqual(
+        plain.configuration.functions.map(f => [f.memorySize, f.timeout]),
+        [
+            [512, 30],
+            [512, 300],
+        ],
+    );
+    assert.equal(plain.configuration.queue.attributes.VisibilityTimeout, '300');
+    assert.equal(plain.configuration.usagePlan, undefined);
+    const p = deploymentPlan((await fixture(t, 'bootstrap', fieldsPatch())).deployment);
+    assert.deepEqual(
+        p.configuration.functions.map(f => [f.memorySize, f.timeout]),
+        [
+            [512, 30],
+            [512, 900],
+        ],
+    );
+    assert.equal(p.configuration.queue.attributes.VisibilityTimeout, '900');
+    assert.deepEqual(p.configuration.usagePlan, { keyIds: ['key0000001'] });
+    assert.equal(p.configuration.policy.objectScopes.length, 1);
+    assert.equal(p.configuration.policy.extraStatements.length, 1);
+    assert.ok(p.steps.includes('usage plan + api keys'));
+});
+test('shape rules: timeout/memory bounds, queue >= backend timeout, keyed route <-> usagePlan, code mode refuses', async t => {
+    const bad = async patch =>
+        assert.throws(() => validateConfig({ ...structuredClone(example), environmentFile: 'env.json', ...patch }), {
+            code: 'INVALID_INPUT',
+        });
+    await bad({ functions: { backend: { timeout: 901 } }, queue: { visibilityTimeout: '901' } });
+    await bad({ functions: { lambda: { memorySize: 2048 } } });
+    await bad({ functions: { backend: { cpu: 1 } } });
+    //* raising the backend timeout alone would make AWS refuse the SQS mapping mid-round — refused here instead.
+    await bad({ functions: { backend: { timeout: 900 } } });
+    await bad({ queue: { visibilityTimeout: '100' } });
+    await bad({ queue: { visibilityTimeout: 900 } });
+    await bad({ routes: [...structuredClone(example.routes), keyedRoute] });
+    await bad({ usagePlan: {} });
+    await bad({ ...fieldsPatch(), usagePlan: { keyIds: ['BAD'] } });
+    await bad({ policy: { objectScopes: [{ bucket: 'example-bucket', actions: ['delete'] }] } });
+    await bad({ policy: { objectScopes: [{ bucket: 'example-bucket', prefix: '../x', actions: ['get'] }] } });
+    await bad({
+        policy: { extraStatements: [{ Effect: 'Allow', Action: 's3:GetObject', Resource: '*', Condition: {} }] },
+    });
+    assert.throws(() => validateConfig({ ...codeConfig(), functions: { backend: { timeout: 60 } } }), {
+        code: 'INVALID_INPUT',
+    });
+    assert.equal(
+        validateConfig({ ...structuredClone(example), environmentFile: 'env.json', ...fieldsPatch() }).queue
+            .visibilityTimeout,
+        '900',
+    );
+});
+test('runner: objectScopes go to resolve-policy, extraStatements to ensure-role only, plan after stage', async t => {
+    const f = await fixture(t, 'bootstrap', fieldsPatch());
+    const client = fakeClient(f.deployment, {
+        readHook: () => null,
+        hook: (r, { names }) =>
+            r.tool === 'lemon.deploy.resolve-names@1' && r.input.convention !== 'sls'
+                ? good(r.tool, { ...names, usagePlanName: 'lemon-templates-plan-dev' })
+                : r.tool === 'aws.apigateway.ensure-usage-plan@1'
+                ? good(r.tool, {
+                      usagePlanId: 'plan123',
+                      apiStages: ['api123:dev'],
+                      keyIds: r.input.keyIds,
+                      created: true,
+                  })
+                : undefined,
+    });
+    const result = await execute(f, client);
+    assert.equal(result.status, 'completed');
+    const find = tool => client.calls.filter(x => x.tool === tool);
+    const policyIn = find('lemon.deploy.resolve-policy@1')[0].input;
+    assert.deepEqual(policyIn.objectScopes, fieldsPatch().policy.objectScopes);
+    assert.equal(policyIn.extraStatements, undefined);
+    assert.deepEqual(find('lemon.deploy.ensure-role@1')[0].input.statements.at(-1).Sid, 'ExtraSecrets');
+    assert.equal(find('aws.sqs.ensure-queue@1')[0].input.attributes.VisibilityTimeout, '900');
+    assert.equal(find('aws.lambda.ensure-function@1')[1].input.timeout, 900);
+    assert.equal(find('aws.apigateway.ensure-route@1').at(-1).input.apiKeyRequired, true);
+    const tools = client.calls.map(x => x.tool);
+    assert.ok(tools.indexOf('aws.apigateway.ensure-usage-plan@1') > tools.indexOf('aws.apigateway.deploy-stage@1'));
+    assert.deepEqual(find('aws.apigateway.ensure-usage-plan@1')[0].input, {
+        name: 'lemon-templates-plan-dev',
+        restApiId: 'api123',
+        stage: 'dev',
+        keyIds: ['key0000001'],
+    });
+});
+test('runner refuses before begin: foreign-account extraStatement, or no usagePlanName from an old service', async t => {
+    const foreign = fieldsPatch();
+    foreign.policy.extraStatements[0].Resource = 'arn:aws:secretsmanager:ap-northeast-2:999999999999:secret:x';
+    const deny = fieldsPatch();
+    deny.policy.extraStatements[0].Effect = 'Deny';
+    for (const patch of [foreign, deny]) {
+        const f1 = await fixture(t, 'bootstrap', patch);
+        const c1 = fakeClient(f1.deployment, { readHook: () => null });
+        await failedRun(f1, c1, 'TARGET_MISMATCH');
+        assert.ok(!c1.calls.some(x => x.tool === 'lemon.deploy.begin@1'));
+    }
+    const f2 = await fixture(t, 'bootstrap', fieldsPatch());
+    const c2 = fakeClient(f2.deployment, { readHook: () => null });
+    const { error } = await failedRun(f2, c2, 'TARGET_MISMATCH');
+    assert.equal(error.exitCode, 1);
+    assert.ok(!c2.calls.some(x => x.tool === 'lemon.deploy.begin@1'));
 });

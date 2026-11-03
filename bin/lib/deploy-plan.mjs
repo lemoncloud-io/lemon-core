@@ -29,6 +29,7 @@ export async function readJson(file, field = 'JSON file') {
         invalid(field);
     }
 }
+const BUCKET_RE = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const token = (value, re, field) => {
     if (typeof value !== 'string' || !re.test(value)) invalid(field);
     return value;
@@ -70,6 +71,9 @@ export function validateConfig(raw) {
             'policy',
             'routes',
             'deletionProtection',
+            'functions',
+            'queue',
+            'usagePlan',
             'expect',
             'requestTimeoutMs',
             'pollIntervalMs',
@@ -104,7 +108,7 @@ export function validateConfig(raw) {
         invalid('endpoint');
     c.endpoint = u.href.replace(/\/$/, '');
     if (c.profile !== undefined) token(c.profile, /^[A-Za-z0-9_.@-]{1,128}$/, 'profile');
-    token(c.artifactBucket, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'artifactBucket');
+    token(c.artifactBucket, BUCKET_RE, 'artifactBucket');
     if (
         c.artifactBucket.includes('..') ||
         c.artifactBucket.includes('.-') ||
@@ -126,20 +130,60 @@ export function validateConfig(raw) {
     if (c.expect !== undefined && (typeof c.expect !== 'string' || !c.expect.trim() || c.expect.length > 32768))
         invalid('expect');
     c.policy ??= {};
-    keysOnly(c.policy, ['kmsKeyArn', 'kmsDecryptKeyArn', 'kmsEncryptKeyArn', 'identityPoolId', 'bucket'], 'policy');
+    keysOnly(
+        c.policy,
+        [
+            'kmsKeyArn',
+            'kmsDecryptKeyArn',
+            'kmsEncryptKeyArn',
+            'identityPoolId',
+            'bucket',
+            'objectScopes',
+            'extraStatements',
+        ],
+        'policy',
+    );
     for (const [k, v] of Object.entries(c.policy)) {
         if (k.endsWith('Arn'))
             token(v, new RegExp(`^arn:aws:kms:${c.region}:${c.account}:key/[a-zA-Z0-9-]+$`), `policy.${k}`);
         if (k === 'identityPoolId') token(v, new RegExp(`^${c.region}:[a-f0-9-]{36}$`), 'policy.identityPoolId');
-        if (k === 'bucket') token(v, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'policy.bucket');
+        if (k === 'bucket') token(v, BUCKET_RE, 'policy.bucket');
     }
+    //* the fixed keys above + two custom paths. The real ceiling is the deploy service (tool +
+    //* boundary); here only the SHAPE is checked, and `extraStatements` region/account is `assertPolicy`'s.
+    if (c.policy.objectScopes !== undefined) validateObjectScopes(c.policy.objectScopes);
+    if (c.policy.extraStatements !== undefined) validateStatements(c.policy.extraStatements);
+    if (c.functions !== undefined) {
+        keysOnly(c.functions, ['lambda', 'backend'], 'functions');
+        for (const [k, f] of Object.entries(c.functions)) {
+            keysOnly(f, ['timeout', 'memorySize'], `functions.${k}`);
+            if (f.timeout !== undefined && !(Number.isInteger(f.timeout) && f.timeout >= 1 && f.timeout <= 900))
+                invalid(`functions.${k}.timeout`);
+            if (
+                f.memorySize !== undefined &&
+                !(Number.isInteger(f.memorySize) && f.memorySize >= 128 && f.memorySize <= 1024)
+            )
+                invalid(`functions.${k}.memorySize`);
+        }
+    }
+    if (c.queue !== undefined) {
+        keysOnly(c.queue, ['visibilityTimeout'], 'queue');
+        if (Number(token(c.queue.visibilityTimeout, /^\d{1,5}$/, 'queue.visibilityTimeout')) > 43200)
+            invalid('queue.visibilityTimeout');
+    }
+    //* AWS refuses an SQS mapping whose queue visibility is below the backend timeout — checked on the
+    //* EFFECTIVE values, so raising `functions.backend.timeout` alone fails here, not mid-round.
+    if (Number(queueAttributes(c).VisibilityTimeout) < functionShapes(c)[1].timeout)
+        invalid('queue.visibilityTimeout (must be >= functions.backend.timeout)');
     if (c.mode === 'bootstrap') {
         if (typeof c.environmentFile !== 'string' || !c.environmentFile) invalid('environmentFile');
         if (typeof c.deletionProtection !== 'boolean') invalid('deletionProtection');
         if (!Array.isArray(c.routes) || !c.routes.length || c.routes.length > 100) invalid('routes');
         const seen = new Set();
         for (const r of c.routes) {
-            keysOnly(r, ['path', 'httpMethod', 'authorizationType', 'cors'], 'route');
+            keysOnly(r, ['path', 'httpMethod', 'authorizationType', 'cors', 'apiKeyRequired'], 'route');
+            if (r.apiKeyRequired !== undefined && typeof r.apiKeyRequired !== 'boolean')
+                invalid('route.apiKeyRequired');
             if (typeof r.path !== 'string' || !r.path.startsWith('/')) invalid('route.path');
             const segments = r.path === '/' ? [] : r.path.slice(1).split('/');
             if (
@@ -188,15 +232,72 @@ export function validateConfig(raw) {
         }
         if (!c.routes.some(r => r.path === '/' && r.httpMethod === 'GET' && r.authorizationType === 'NONE'))
             invalid('public GET / route');
+        //* an api-key route without a usage plan can never be called, and a plan without one is pointless.
+        const keyed = c.routes.some(r => r.apiKeyRequired === true);
+        if (keyed !== (c.usagePlan !== undefined))
+            invalid('usagePlan (required exactly when a route is apiKeyRequired)');
+        if (c.usagePlan !== undefined) validateUsagePlan(c.usagePlan);
     } else if (
         c.environmentFile !== undefined ||
         c.deletionProtection !== undefined ||
         c.routes !== undefined ||
+        c.functions !== undefined ||
+        c.queue !== undefined ||
+        c.usagePlan !== undefined ||
         Object.keys(c.policy).length
     )
         invalid('bootstrap-only config in code mode');
     return c;
 }
+const validateObjectScopes = scopes => {
+    if (!Array.isArray(scopes) || !scopes.length || scopes.length > 10) invalid('policy.objectScopes');
+    for (const s of scopes) {
+        keysOnly(s, ['bucket', 'prefix', 'actions'], 'policy.objectScopes[]');
+        token(s.bucket, BUCKET_RE, 'policy.objectScopes[].bucket');
+        if (
+            s.prefix !== undefined &&
+            token(s.prefix, /^[A-Za-z0-9!_.*'()/-]{1,512}$/, 'policy.objectScopes[].prefix').includes('..')
+        )
+            invalid('policy.objectScopes[].prefix');
+        const a = s.actions;
+        if (!Array.isArray(a) || !a.length || a.some(x => !['get', 'put'].includes(x)) || new Set(a).size !== a.length)
+            invalid('policy.objectScopes[].actions');
+    }
+};
+const validateStatements = statements => {
+    if (!Array.isArray(statements) || !statements.length || statements.length > 20) invalid('policy.extraStatements');
+    for (const S of statements) {
+        //* the same four keys `lemon.deploy.ensure-role@1` accepts; Deny/Condition/NotAction are out.
+        //* Effect + Resource account/region: the runner's `assertPolicy` (before begin) checks every statement.
+        keysOnly(S, ['Sid', 'Effect', 'Action', 'Resource'], 'policy.extraStatements[]');
+        if (S.Sid !== undefined) token(S.Sid, /^[A-Za-z0-9]{1,128}$/, 'policy.extraStatements[].Sid');
+        const actions = typeof S.Action === 'string' ? [S.Action] : S.Action;
+        if (!Array.isArray(actions) || !actions.length || actions.some(a => !/^[a-z0-9-]+:[A-Za-z*]+$/.test(a)))
+            invalid('policy.extraStatements[].Action');
+    }
+};
+const validateUsagePlan = u => {
+    keysOnly(u, ['name', 'keyIds', 'throttle', 'quota'], 'usagePlan');
+    if (u.name !== undefined) token(u.name, /^[A-Za-z0-9_-]{1,128}$/, 'usagePlan.name');
+    if (
+        u.keyIds !== undefined &&
+        (!Array.isArray(u.keyIds) ||
+            u.keyIds.length > 50 ||
+            u.keyIds.some(id => typeof id !== 'string' || !/^[a-z0-9]{10}$/.test(id)) ||
+            new Set(u.keyIds).size !== u.keyIds.length)
+    )
+        invalid('usagePlan.keyIds');
+    if (u.throttle !== undefined) {
+        keysOnly(u.throttle, ['rateLimit', 'burstLimit'], 'usagePlan.throttle');
+        if (!(u.throttle.rateLimit >= 0) || !Number.isInteger(u.throttle.burstLimit) || u.throttle.burstLimit < 0)
+            invalid('usagePlan.throttle');
+    }
+    if (u.quota !== undefined) {
+        keysOnly(u.quota, ['limit', 'period'], 'usagePlan.quota');
+        if (!Number.isInteger(u.quota.limit) || u.quota.limit < 1 || !['DAY', 'WEEK', 'MONTH'].includes(u.quota.period))
+            invalid('usagePlan.quota');
+    }
+};
 export async function loadDeployment({ configFile, artifact }) {
     const config = validateConfig(await readJson(configFile, 'config JSON'));
     let environment = {};
@@ -272,6 +373,12 @@ export const FUNCTION_SHAPES = Object.freeze([
     { memorySize: 512, timeout: 30 },
     { memorySize: 512, timeout: 300 },
 ]);
+//* the shapes this config deploys — `FUNCTION_SHAPES` unless `functions.<component>` overrides a field.
+export const functionShapes = c =>
+    FUNCTION_SHAPES.map((shape, i) => ({ ...shape, ...c.functions?.[i ? 'backend' : 'lambda'] }));
+//* the queue attributes — `QUEUE_ATTRIBUTES` unless `queue.visibilityTimeout` is set.
+export const queueAttributes = c =>
+    c.queue ? { ...QUEUE_ATTRIBUTES, VisibilityTimeout: c.queue.visibilityTimeout } : QUEUE_ATTRIBUTES;
 //* v5 B24: the two functions a deployment targets — the deploy service's sls rule `<project>-<stage>-<component>`.
 export const plannedFunctionNames = c =>
     Object.freeze({ lambda: `${c.project}-${c.stage}-lambda`, backend: `${c.project}-${c.stage}-backend` });
@@ -337,8 +444,8 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                   configuration: {
                       policy: { profile: DEPLOY.policyProfile, ...c.policy },
                       table: { ...TABLE_SHAPE, deletionProtection: c.deletionProtection },
-                      queue: { attributes: QUEUE_ATTRIBUTES },
-                      functions: FUNCTION_SHAPES.map((shape, i) => ({
+                      queue: { attributes: queueAttributes(c) },
+                      functions: functionShapes(c).map((shape, i) => ({
                           component: i ? 'backend' : 'lambda',
                           runtime: 'nodejs24.x',
                           architecture: 'x86_64',
@@ -349,6 +456,7 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                       logRetentionDays: LOG_RETENTION_DAYS,
                       schedule: { ...SCHEDULE, input: { cron: { name: '1MIN', stage: c.stage } } },
                       routes: c.routes,
+                      ...(c.usagePlan ? { usagePlan: c.usagePlan } : {}),
                   },
               }
             : {
@@ -372,6 +480,7 @@ export function deploymentPlan({ config: c, environment, artifact: a }) {
                       'SNS / DynamoDB stream / SQS mappings',
                       'disabled schedule',
                       `REST API / ${c.routes.length} sequential routes / stage probe`,
+                      ...(c.usagePlan ? ['usage plan + api keys'] : []),
                   ]
                 : ['existing functions ×2 code + verification']),
             'deploy.end',

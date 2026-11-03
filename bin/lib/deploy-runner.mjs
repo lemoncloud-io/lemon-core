@@ -3,9 +3,9 @@ import {
     DeployError,
     isObject,
     deploymentPlan,
-    QUEUE_ATTRIBUTES,
+    queueAttributes,
     TABLE_SHAPE,
-    FUNCTION_SHAPES,
+    functionShapes,
     LOG_RETENTION_DAYS,
     SCHEDULE,
     plannedFunctionNames,
@@ -36,6 +36,7 @@ export const RETRYABLE_TOOLS = Object.freeze([
     'aws.events.ensure-schedule@1',
     'aws.apigateway.ensure-rest-api@1',
     'aws.apigateway.ensure-route@1',
+    'aws.apigateway.ensure-usage-plan@1',
 ]);
 //* v5 B34 (D-1): an idempotent tool is one of `RETRYABLE_TOOLS` (not begin, end, presign, subscribe, deploy-stage).
 export const isRetryableTool = tool => RETRYABLE_TOOLS.includes(tool);
@@ -172,6 +173,7 @@ function safeOutput(tool, out, c) {
         topicName: /^[A-Za-z0-9_-]{1,128}$/,
         ruleName: /^[A-Za-z0-9_-]{1,128}$/,
         restApiName: /^[A-Za-z0-9_-]{1,128}$/,
+        usagePlanId: /^[a-z0-9]{1,32}$/,
     };
     if (tool === 'aws.s3.presign-put@1') return {};
     const result = {};
@@ -529,12 +531,19 @@ export async function runDeployment(
         const planned = plannedFunctionNames(c);
         if (fn.functionName !== planned.lambda || backend.functionName !== planned.backend)
             fail('TARGET_MISMATCH', 'Resolved function names differ from the planned targets.');
+        //* `extraStatements` is the writer's custom path — appended AFTER the derived ones, never sent to
+        //* resolve-policy; the ceiling is ensure-role's (per-project actions) and the boundary's.
+        const { extraStatements = [], ...policyInput } = c.policy;
         const policy = await call('policy', `${DEPLOY.toolNamespace}.resolve-policy@1`, {
             ...base,
             profile: DEPLOY.policyProfile,
-            ...c.policy,
+            ...policyInput,
         });
-        assertPolicy(policy.statements, c);
+        const statements = [...(policy.statements ?? []), ...extraStatements];
+        assertPolicy(statements, c);
+        //* the plan name comes from resolve-names unless the config names it — refuse before begin if neither.
+        if (c.usagePlan && !c.usagePlan.name && !/^[A-Za-z0-9_-]{1,128}$/.test(names.usagePlanName ?? ''))
+            fail('TARGET_MISMATCH', 'Deploy service derives no usagePlanName; upgrade it or set usagePlan.name.');
         const existing = [];
         for (const f of [fn, backend]) {
             const got = await record('function-preflight', 'lambda:GetFunctionConfiguration/ListTags', 'READ', s =>
@@ -631,7 +640,7 @@ export async function runDeployment(
         } else {
             const role = await call('role', `${DEPLOY.toolNamespace}.ensure-role@1`, {
                 ...base,
-                statements: policy.statements,
+                statements,
             });
             if (role.roleArn !== `arn:aws:iam::${c.account}:role/${names.roleName}`)
                 fail('TARGET_MISMATCH', 'Role ARN differs from resolved role/account.', true);
@@ -649,7 +658,7 @@ export async function runDeployment(
             const queue = await call('queue', 'aws.sqs.ensure-queue@1', {
                 project: c.project,
                 queueName: names.queueName,
-                attributes: QUEUE_ATTRIBUTES,
+                attributes: queueAttributes(c),
                 tags,
             });
             checkOwnArn(queue.queueArn, 'sqs', names.queueName);
@@ -681,7 +690,7 @@ export async function runDeployment(
                     role: role.roleArn,
                     handler: a.handler,
                     runtime: 'nodejs24.x',
-                    ...FUNCTION_SHAPES[i],
+                    ...functionShapes(c)[i],
                     environment,
                     environmentMode: 'merge',
                     ...verify,
@@ -747,6 +756,16 @@ export async function runDeployment(
                 expectPaths,
                 tags,
             });
+            if (c.usagePlan) {
+                const { name = names.usagePlanName, ...plan } = c.usagePlan;
+                const out = await call('usage-plan', 'aws.apigateway.ensure-usage-plan@1', {
+                    name,
+                    restApiId: api.restApiId,
+                    stage: c.stage,
+                    ...plan,
+                });
+                identifier(out.usagePlanId, 'usage plan id', /^[a-z0-9]{1,32}$/);
+            }
         }
         state.functions = functions.map(f => ({ functionArn: f.functionArn }));
         await receipt.save();

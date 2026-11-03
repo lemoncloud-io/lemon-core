@@ -115,7 +115,22 @@ Config (JSON, placeholders):
 `mode: "bootstrap"` also needs `environmentFile` (sibling JSON of string values), `deletionProtection` (boolean),
 `routes` (path / `httpMethod` / `authorizationType` `NONE`|`AWS_IAM` / `cors`; a public `GET /` is required) and
 may set `policy` (`kmsKeyArn`, `kmsDecryptKeyArn`, `kmsEncryptKeyArn`, `identityPoolId`, `bucket`). Optional in
-both modes: `expect` (exact expected `GET /` payload), `requestTimeoutMs`, `pollIntervalMs`, `maxPolls`,
+bootstrap only (omitted = the plan is unchanged):
+
+-   `functions.lambda` / `functions.backend`: `{ timeout?: 1~900, memorySize?: 128~1024 }` over the 512 MB / 30 s · 300 s
+    defaults.
+-   `queue.visibilityTimeout`: integer string `0`~`43200`. The effective value must be `>=` the backend timeout (AWS
+    refuses the SQS mapping otherwise), so raising `functions.backend.timeout` needs this too.
+-   `policy.objectScopes`: 1~10 `{ bucket, prefix?, actions: ("get"|"put")[] }`, sent to `resolve-policy` (needs the deploy
+    service with `objectScopes`).
+-   `policy.extraStatements`: 1~20 `{ Sid?, Effect: "Allow", Action, Resource }` appended after the derived statements
+    and checked for account/region before begin. The ceiling is the deploy service's (`ensure-role` per-project actions
+    and the boundary), not this file's.
+-   `routes[].apiKeyRequired` (boolean) and `usagePlan: { name?, keyIds?, throttle?, quota? }` — required together.
+    After the stage probe the runner calls `aws.apigateway.ensure-usage-plan@1` (name defaults to `resolve-names`
+    `usagePlanName`); existing API key ids only, no limits unless given.
+
+Optional in both modes: `expect` (exact expected `GET /` payload), `requestTimeoutMs`, `pollIntervalMs`, `maxPolls`,
 `routeDelayMs`. Unknown keys are rejected.
 
 Safety model:
