@@ -1058,9 +1058,9 @@ Details: `docs/v5/B20-local-gateway.md`.
 
 ## 21. Proxy routes
 
-The web handler now resolves nested `{proxy+}` paths such as `/houses/A/rooms/304`, and `LambdaWEBHandler.addPrefix()` replaces the hand-written prefix `decode()` overrides. Nothing changes for a path that already works.
+The web handler now resolves nested `{proxy+}` paths such as `/houses/A/rooms/304`, and `LambdaWEBHandler.addPrefix()` replaces the hand-written prefix `decode()` overrides. Paths that already work keep working, except the changes listed in § 21.4.
 
-Patterns (the routes themselves are deploy config, see [HOW_TO_DEPLOY_V5.md](HOW_TO_DEPLOY_V5.md); lemon-core only decodes):
+Patterns. The routes themselves are deploy config; lemon-core only decodes. The deploy-side guide, [HOW_TO_DEPLOY_V5.md](HOW_TO_DEPLOY_V5.md), is updated separately:
 
 | Pattern | Use | Code side |
 | --- | --- | --- |
@@ -1093,7 +1093,7 @@ Before the handler runs (`src/cores/lambda/lambda-web-chain.ts`):
 | First parent (if CRUD) is missing or soft-deleted | `404 NOT FOUND` |
 | Child is missing, soft-deleted, or its parent key is not the path parent | `404 NOT FOUND` |
 | `POST` with no target id (`''` or `'0'`), `body[parentKey]` absent, `null` or `''` | filled with the path value (a different value is `400 CONFLICT`) |
-| Query parent key equals the path | `param[parentKey]` is set to the path value |
+| Every chained call | `param[parentKey]` of each link is set from the path, whether or not the query had it (this is why a chained list is filtered) |
 
 The service still does the rest: parent-only access (blocking `/rooms/304` as a direct route), permissions of the parent, and the permission on the new parent when a `PUT` body moves a child.
 
@@ -1106,10 +1106,10 @@ $web.addPrefix('_key_', [apikeys]);
 ```
 
 * Opt-in only. Nothing is opened until you call it, and only the listed controllers are reachable under the prefix. A duplicate prefix throws.
-* An existing `_handlers[type]` controller of the same name wins, so `PublicAPIController`, `OpenAPIV2Controller` and `_keys` keep working.
+* An existing controller whose `type()` equals the prefix (`public`, `_api_`, `_keys`) wins, so `PublicAPIController`, `OpenAPIV2Controller` and `_keys` keep working.
 * Moving an old prefix `decode()` override: remove it, list the controllers it forwarded to in `addPrefix()`, and move its identity swap to `identity`.
 * `identity(context)` replaces `context.identity` before the handler. Its error propagates unchanged (the 403 message is yours).
-* Decoders still see the original `event.path`, with the prefix.
+* The first decoder still sees the original `event.path`, with the prefix. Decoders reached inside the chain get no `path`.
 * Unknown types answer `404`, and invalid segments `400`, before `identity` runs.
 
 ### 21.4 Behavior changes for existing routes
@@ -1120,7 +1120,7 @@ $web.addPrefix('_key_', [apikeys]);
 4. A trailing `/` or `//` on a chained path changes from `404` to `400`.
 5. `GET /public/<type>` stays `GET` (4.x made it `LIST`); a list needs `doGet` to return `doList`.
 
-Unchanged: `/{type}/{id}/{cmd}`, nested parent handlers, `decode()` overrides, `{id+}`, `_keys`, lemon-model types, relay format. Deploy lemon-core first; services follow when they need a new path. Roll back by returning to 5.0.23, together with any service that uses a new path.
+Unchanged (apart from § 21.4 item 1): `/{type}/{id}/{cmd}`, nested parent handlers, `decode()` overrides, `{id+}`, `_keys`, lemon-model types, relay format. Deploy lemon-core first; services follow when they need a new path. Roll back by returning to 5.0.23, together with any service that uses a new path.
 
 Details: `lemoncloud-io/knowledge` `projects/lemon-core-v5/routes/SPEC.md`.
 
