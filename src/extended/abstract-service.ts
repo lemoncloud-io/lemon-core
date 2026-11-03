@@ -303,8 +303,8 @@ export abstract class CoreManager<
     ): Promise<{ [id: string]: Model }>;
     public async getMulti$(
         idList: string[],
-        idName: string,
-        options: GetMultiOptions,
+        idName?: string,
+        options?: number | GetMultiOptions,
     ): Promise<{ [id: string]: Model | GetMultiFailure }>;
     public async getMulti$(
         idList: string[],
