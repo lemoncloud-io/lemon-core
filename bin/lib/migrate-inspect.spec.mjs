@@ -13,7 +13,16 @@ import { readFile, writeFile, readdir, mkdir, symlink, chmod, stat, lstat, copyF
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fixture } from './migrate-test-fixture.mjs';
-import { TARGETS, PHASES, executeMigration, verifyMigrationReceipt, validateMigrationConfig } from './migrate-core.mjs';
+import {
+    TARGETS,
+    PHASES,
+    executeMigration,
+    verifyMigrationReceipt,
+    validateMigrationConfig,
+    //* v5 B47: the WebSocket API guard.
+    hasWebsocketResources,
+    assertNoWebsocketResources,
+} from './migrate-core.mjs';
 import { READS, STALE_AFTER_MS, KINDS, verifyDiff, awsFailure, envCategories } from './migrate-inspect.mjs';
 import { main as migrateMain } from '../lemon-lambda-migrate.mjs';
 //* v5 B31: the compat locks run the guarded CLI and compare the pre-B31 bytes (the `guard` field left out).
@@ -392,7 +401,11 @@ function fakeAws(world, calls) {
                 const o = world.owners[id];
                 if (!o) throw awsError('ValidationError', 'DescribeStackResources', `Stack for ${id} does not exist`);
                 return ok({
-                    StackResources: [{ StackId: o, PhysicalResourceId: id, ResourceStatus: 'DELETE_SKIPPED' }],
+                    StackResources: [
+                        { StackId: o, PhysicalResourceId: id, ResourceStatus: 'DELETE_SKIPPED' },
+                        //* v5 B47: the other resources of the owner stack (`world.ownerResources[id]`, default none).
+                        ...(world.ownerResources?.[id] ?? []),
+                    ],
                 });
             }
             case 'lambda get-function-configuration': {
@@ -1886,4 +1899,61 @@ test('B27-b reconcile against the first observation; a later plan phase still st
         world: discoverWorld(f),
     });
     assert.deepEqual([refused.code, refused.error.code], [2, 'RUN_STATE_PRESENT']);
+});
+
+//* ---- v5 B47: WebSocket API guard (retain/tag do not cover AWS::ApiGatewayV2::*) ----
+
+test('B47 the WebSocket guard matches AWS::ApiGatewayV2::* resource types only', () => {
+    for (const type of ['Api', 'Stage', 'Route', 'Integration', 'Deployment'])
+        assert.equal(hasWebsocketResources([{ ResourceType: `AWS::ApiGatewayV2::${type}` }]), true, type);
+    for (const list of [
+        undefined,
+        null,
+        {},
+        [],
+        [{ ResourceType: 'AWS::ApiGateway::RestApi' }, { ResourceType: 'AWS::Lambda::Function' }, {}],
+        [{ ResourceType: 'Custom::ApiGatewayV2::Api' }],
+    ])
+        assert.equal(hasWebsocketResources(list), false, JSON.stringify(list));
+    assert.throws(
+        () => assertNoWebsocketResources([{ ResourceType: 'AWS::ApiGatewayV2::Api' }]),
+        e => e.code === 'WEBSOCKET_UNSUPPORTED' && e.blocked === true && /retain\/tag/.test(e.message),
+    );
+    assert.equal(assertNoWebsocketResources([{ ResourceType: 'AWS::ApiGateway::RestApi' }]), undefined);
+});
+test('B47 inspect --execute stops blocked with nothing written when a live owner stack has a WebSocket API', async t => {
+    const f = await migratedRun(t);
+    const world = await worldOf(f);
+    const stackId = n => `arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/${n}/0000-fixture`;
+    const sockets = stackId('sockets-stack');
+    // a retained table still listed by a live stack that also holds a WebSocket API.
+    world.owners[TABLE] = sockets;
+    world.stackStatuses = { [sockets]: 'UPDATE_COMPLETE' };
+    world.ownerResources = {
+        [TABLE]: [
+            { StackId: sockets, LogicalResourceId: 'WebsocketsApi', ResourceType: 'AWS::ApiGatewayV2::Api' },
+            {
+                StackId: sockets,
+                LogicalResourceId: 'WebsocketsDeploymentStage',
+                ResourceType: 'AWS::ApiGatewayV2::Stage',
+            },
+        ],
+    };
+    const r = await cmd(f, ['inspect', '--config', f.configFile, '--execute'], { world });
+    assert.equal(r.code, 1);
+    assert.deepEqual([r.error.status, r.error.code], ['blocked', 'WEBSOCKET_UNSUPPORTED']);
+    assert.match(r.error.message, /retain\/tag do not cover WebSocket APIs yet/);
+    // zero writes: no control record, no AWS write verb (`cmd` checks the protected files and the verbs).
+    assert.deepEqual(r.writes, []);
+    // the same stack once DELETE_COMPLETE (the API went with it) is a trace, not a stop.
+    world.stackStatuses = { [sockets]: 'DELETE_COMPLETE' };
+    const deleted = await inspected(f, world, [], { now: Date.now() + 5 });
+    assert.equal(deleted.code, 0);
+    assert.equal(deleted.inventory.tables[TABLE].fields.cfOwner.value, 'none');
+    // a live owner stack without ApiGatewayV2 resources keeps the B27 result (owner `stack`).
+    world.stackStatuses = { [sockets]: 'UPDATE_COMPLETE' };
+    world.ownerResources[TABLE] = [{ StackId: sockets, ResourceType: 'AWS::ApiGateway::RestApi' }];
+    const rest = await inspected(f, world, [], { now: Date.now() + 10 });
+    assert.equal(rest.code, 0);
+    assert.equal(rest.inventory.tables[TABLE].fields.cfOwner.value, 'stack');
 });

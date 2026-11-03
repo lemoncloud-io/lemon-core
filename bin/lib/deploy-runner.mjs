@@ -5,10 +5,13 @@ import {
     deploymentPlan,
     QUEUE_ATTRIBUTES,
     TABLE_SHAPE,
-    FUNCTION_SHAPES,
     LOG_RETENTION_DAYS,
     SCHEDULE,
     plannedFunctionNames,
+    //* v5 B47: the component list / shapes / WebSocket switch of a config.
+    componentsOf,
+    functionShapesOf,
+    hasWebsocket,
 } from './deploy-plan.mjs';
 import { createReceipt } from './deploy-receipt.mjs';
 import { sha256 } from './pack-zip.mjs';
@@ -36,6 +39,9 @@ export const RETRYABLE_TOOLS = Object.freeze([
     'aws.events.ensure-schedule@1',
     'aws.apigateway.ensure-rest-api@1',
     'aws.apigateway.ensure-route@1',
+    //* v5 B47: the WebSocket API and route tools read before they write too (the stage tool is not, like deploy-stage).
+    'aws.apigatewayv2.ensure-websocket-api@1',
+    'aws.apigatewayv2.ensure-websocket-route@1',
 ]);
 //* v5 B34 (D-1): an idempotent tool is one of `RETRYABLE_TOOLS` (not begin, end, presign, subscribe, deploy-stage).
 export const isRetryableTool = tool => RETRYABLE_TOOLS.includes(tool);
@@ -173,6 +179,22 @@ function safeOutput(tool, out, c) {
         ruleName: /^[A-Za-z0-9_-]{1,128}$/,
         restApiName: /^[A-Za-z0-9_-]{1,128}$/,
     };
+    //* v5 B47: the WebSocket output fields are kept only for a `websocket` config (other receipts stay byte-identical).
+    if (hasWebsocket(c))
+        Object.assign(rules, {
+            websocketApiName: /^[A-Za-z0-9_-]{1,128}$/,
+            apiId: /^[a-z0-9]{1,32}$/,
+            apiEndpoint: new RegExp(`^wss://[a-z0-9]{1,32}[.]execute-api[.]${c.region}[.]amazonaws[.]com$`),
+            routeId: /^[a-z0-9]{1,32}$/,
+            routeKey: /^(?:\$(?:connect|disconnect|default)|[A-Za-z0-9_.:-]{1,128})$/,
+            integrationId: /^[a-z0-9]{1,32}$/,
+            deploymentId: /^[a-z0-9]{1,32}$/,
+            stageName: /^[A-Za-z0-9_-]{1,128}$/,
+            wssUrl: new RegExp(
+                `^wss://[a-z0-9]{1,32}[.]execute-api[.]${c.region}[.]amazonaws[.]com/[A-Za-z0-9_-]{1,128}$`,
+            ),
+            handshake: /^(?:open|error|timeout)$/,
+        });
     if (tool === 'aws.s3.presign-put@1') return {};
     const result = {};
     for (const [key, re] of Object.entries(rules))
@@ -211,10 +233,39 @@ export function assertPolicy(statements, c) {
     if (!scoped.has('logs') || !scoped.has('sns'))
         fail('TARGET_MISMATCH', 'Policy lacks account/region evidence from own logs and SNS resources.');
 }
+//* v5 B47: the Sid / action of the statement `resolve-policy` adds for `websocketApiId`.
+export const WEBSOCKET_POLICY_SID = 'OwnWebsocketConnections';
+export const WEBSOCKET_POLICY_ACTION = 'execute-api:ManageConnections';
+//* v5 B47: the role statements with `websocketApiId` = the first policy's statements + one exact
+//  `OwnWebsocketConnections` (ManageConnections on this API's `@connections` in the configured stage), nothing else.
+export function assertWebsocketPolicy(statements, base, c, apiId) {
+    assertPolicy(statements, c);
+    const resource = `arn:aws:execute-api:${c.region}:${c.account}:${apiId}/${c.stage}/*/@connections/*`;
+    const extra = statements.filter(s => s.Sid === WEBSOCKET_POLICY_SID);
+    const actions = extra.length === 1 ? [extra[0].Action].flat() : [];
+    if (
+        extra.length !== 1 ||
+        actions.length !== 1 ||
+        actions[0] !== WEBSOCKET_POLICY_ACTION ||
+        [extra[0].Resource].flat().length !== 1 ||
+        [extra[0].Resource].flat()[0] !== resource
+    )
+        fail('TARGET_MISMATCH', 'WebSocket connection statement differs from the configured API/stage.', true);
+    // the other statements must be exactly the pre-begin policy (the extra input changes nothing else).
+    if (JSON.stringify(statements.filter(s => s !== extra[0])) !== JSON.stringify(base))
+        fail('TARGET_MISMATCH', 'WebSocket policy changed statements other than the connection statement.', true);
+}
 function assertFunction(found, name, deployment) {
     const c = deployment.config;
     if (!found) {
-        if (c.mode === 'code') fail('FUNCTION_MISSING', 'Code mode requires both existing managed functions.');
+        //* v5 B47: a `websocket` config needs its `socket` function too (the two-function message is unchanged).
+        if (c.mode === 'code')
+            fail(
+                'FUNCTION_MISSING',
+                hasWebsocket(c)
+                    ? 'Code mode requires all three existing managed functions (lambda, backend, socket).'
+                    : 'Code mode requires both existing managed functions.',
+            );
         return;
     }
     if (
@@ -525,10 +576,36 @@ export async function runDeployment(
         );
         if (fn.functionName === backend.functionName)
             fail('TARGET_MISMATCH', 'Backend and API must resolve to different functions.');
+        //* v5 B47: the third function `socket` of a `websocket` config, resolved by the same sls rule.
+        const socket = hasWebsocket(c)
+            ? assertNames(
+                  await call('socket-name', `${DEPLOY.toolNamespace}.resolve-names@1`, {
+                      ...base,
+                      convention: 'sls',
+                      component: 'socket',
+                  }),
+                  c,
+              )
+            : undefined;
+        //* v5 B47: the functions of this config in `componentsOf` order (lambda, backend[, socket]).
+        const targets = socket ? [fn, backend, socket] : [fn, backend];
+        const components = componentsOf(c);
         //* v5 B24: the resolved names must be the planned targets of this config, not any other function.
         const planned = plannedFunctionNames(c);
         if (fn.functionName !== planned.lambda || backend.functionName !== planned.backend)
             fail('TARGET_MISMATCH', 'Resolved function names differ from the planned targets.');
+        if (socket && socket.functionName !== planned.socket)
+            fail('TARGET_MISMATCH', 'Resolved function names differ from the planned targets.');
+        //* v5 B47: a bootstrap WebSocket API needs the deploy service's `websocketApiName` (older servers lack it).
+        if (
+            c.mode === 'bootstrap' &&
+            hasWebsocket(c) &&
+            (typeof names.websocketApiName !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(names.websocketApiName))
+        )
+            fail(
+                'NAMES_MISSING',
+                'resolve-names returned no websocketApiName; the deploy service lacks the WebSocket tools.',
+            );
         const policy = await call('policy', `${DEPLOY.toolNamespace}.resolve-policy@1`, {
             ...base,
             profile: DEPLOY.policyProfile,
@@ -536,7 +613,7 @@ export async function runDeployment(
         });
         assertPolicy(policy.statements, c);
         const existing = [];
-        for (const f of [fn, backend]) {
+        for (const f of targets) {
             const got = await record('function-preflight', 'lambda:GetFunctionConfiguration/ListTags', 'READ', s =>
                 client.readFunction(f.functionName, { signal: s }),
             );
@@ -616,10 +693,11 @@ export async function runDeployment(
         const verify = { verifyPayload, ...(c.expect === undefined ? {} : { expect: c.expect }) };
         const functions = [];
         if (c.mode === 'code') {
-            for (const [i, f] of [fn, backend].entries()) {
-                const out = await call(i ? 'backend-code' : 'lambda-code', 'aws.lambda.ensure-function@1', {
+            //* v5 B47: every configured function (`socket-code` third with `websocket`).
+            for (const [i, f] of targets.entries()) {
+                const out = await call(`${components[i]}-code`, 'aws.lambda.ensure-function@1', {
                     project: c.project,
-                    ...(i ? { component: 'backend' } : {}),
+                    ...(i ? { component: components[i] } : {}),
                     functionName: f.functionName,
                     code,
                     role: existing[i].role,
@@ -629,13 +707,36 @@ export async function runDeployment(
                 functions.push(out);
             }
         } else {
+            const tags = { 'deploy-project': names.short };
+            //* v5 B47: the WebSocket API first, then the policy with its `websocketApiId`, so the role converges once.
+            let statements = policy.statements;
+            let websocketApi;
+            if (hasWebsocket(c)) {
+                websocketApi = await call('websocket-api', 'aws.apigatewayv2.ensure-websocket-api@1', {
+                    project: c.project,
+                    apiName: names.websocketApiName,
+                    routeSelectionExpression: c.websocket.routeSelectionExpression,
+                    tags,
+                });
+                // the id rule of resolve-policy's `websocketApiId`, and the endpoint of that id in this region.
+                identifier(websocketApi.apiId, 'WebSocket API id', /^[a-z0-9]{6,16}$/);
+                if (websocketApi.apiEndpoint !== `wss://${websocketApi.apiId}.execute-api.${c.region}.amazonaws.com`)
+                    fail('TARGET_MISMATCH', 'WebSocket API endpoint differs from the configured region.', true);
+                const wsPolicy = await call('websocket-policy', `${DEPLOY.toolNamespace}.resolve-policy@1`, {
+                    ...base,
+                    profile: DEPLOY.policyProfile,
+                    ...c.policy,
+                    websocketApiId: websocketApi.apiId,
+                });
+                assertWebsocketPolicy(wsPolicy.statements, policy.statements, c, websocketApi.apiId);
+                statements = wsPolicy.statements;
+            }
             const role = await call('role', `${DEPLOY.toolNamespace}.ensure-role@1`, {
                 ...base,
-                statements: policy.statements,
+                statements,
             });
             if (role.roleArn !== `arn:aws:iam::${c.account}:role/${names.roleName}`)
                 fail('TARGET_MISMATCH', 'Role ARN differs from resolved role/account.', true);
-            const tags = { 'deploy-project': names.short };
             const table = await call('table', 'aws.dynamodb.ensure-table@1', {
                 project: c.project,
                 tableName: names.tableName,
@@ -657,10 +758,11 @@ export async function runDeployment(
                 fail('TARGET_MISMATCH', 'Queue URL differs from resolved target.', true);
             const topic = await call('topic', 'aws.sns.ensure-topic@1', { project: c.project, name: names.topicName });
             checkOwnArn(topic.topicArn, 'sns', names.topicName);
-            for (const [i, f] of [fn, backend].entries())
-                await call(i ? 'backend-log' : 'lambda-log', 'aws.logs.ensure-log-group@1', {
+            //* v5 B47: one log group per configured function (`socket-log` third).
+            for (const [i, f] of targets.entries())
+                await call(`${components[i]}-log`, 'aws.logs.ensure-log-group@1', {
                     project: c.project,
-                    ...(i ? { component: 'backend' } : {}),
+                    ...(i ? { component: components[i] } : {}),
                     logGroupName: f.logGroupName,
                     retentionInDays: LOG_RETENTION_DAYS,
                 });
@@ -672,16 +774,18 @@ export async function runDeployment(
                 MY_SQS_ENDPOINT: queue.queueUrl,
                 MY_SNS_ENDPOINT: topic.topicArn,
             };
-            for (const [i, f] of [fn, backend].entries()) {
-                const out = await call(i ? 'backend-function' : 'lambda-function', 'aws.lambda.ensure-function@1', {
+            //* v5 B47: every configured function (`socket-function` third, 512 MB / 300 s).
+            const shapes = functionShapesOf(c);
+            for (const [i, f] of targets.entries()) {
+                const out = await call(`${components[i]}-function`, 'aws.lambda.ensure-function@1', {
                     project: c.project,
-                    ...(i ? { component: 'backend' } : {}),
+                    ...(i ? { component: components[i] } : {}),
                     functionName: f.functionName,
                     code,
                     role: role.roleArn,
                     handler: a.handler,
                     runtime: 'nodejs24.x',
-                    ...FUNCTION_SHAPES[i],
+                    ...shapes[i],
                     environment,
                     environmentMode: 'merge',
                     ...verify,
@@ -689,7 +793,7 @@ export async function runDeployment(
                 checkOwnArn(out.functionArn, 'lambda', `function:${f.functionName}`);
                 functions.push(out);
             }
-            const [lambdaOut, backendOut] = functions;
+            const [lambdaOut, backendOut, socketOut] = functions;
             await call('sns-subscription', 'aws.sns.subscribe@1', {
                 topicArn: topic.topicArn,
                 functionArn: backendOut.functionArn,
@@ -747,6 +851,32 @@ export async function runDeployment(
                 expectPaths,
                 tags,
             });
+            //* v5 B47: the WebSocket routes to the socket function (paced like REST routes), then the stage probe.
+            if (websocketApi) {
+                const ws = c.websocket;
+                for (const [i, route] of ws.routes.entries()) {
+                    if (i) {
+                        await sleep(c.routeDelayMs);
+                        check();
+                    }
+                    await call(`websocket-route-${i + 1}`, 'aws.apigatewayv2.ensure-websocket-route@1', {
+                        apiId: websocketApi.apiId,
+                        ...route,
+                        functionArn: socketOut.functionArn,
+                    });
+                }
+                const stage = await call('websocket-stage', 'aws.apigatewayv2.deploy-websocket-stage@1', {
+                    apiId: websocketApi.apiId,
+                    stageName: c.stage,
+                    probe: { timeoutMs: ws.probeTimeoutMs },
+                    expectRoutes: ws.routes.map(r => r.routeKey),
+                    tags,
+                });
+                // the stage URL must be this API's endpoint + the configured stage.
+                if (stage.wssUrl !== `${websocketApi.apiEndpoint}/${c.stage}`)
+                    fail('TARGET_MISMATCH', 'WebSocket stage URL differs from the API endpoint/stage.', true);
+                state.websocket = { apiId: websocketApi.apiId, wssUrl: stage.wssUrl, stageName: c.stage };
+            }
         }
         state.functions = functions.map(f => ({ functionArn: f.functionArn }));
         await receipt.save();

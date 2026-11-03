@@ -1100,9 +1100,10 @@ test('B34 isRetryableTool is true only for ensure- / resolve- tools', () => {
         'aws.apigateway.resolve-anything@1',
     ])
         assert.equal(isRetryableTool(tool), false, String(tool));
-    // r2 (N4): the list is frozen and holds exactly the twelve read-before-write tools the runner calls.
+    // r2 (N4): the list is frozen and holds exactly the read-before-write tools the runner calls.
+    //* v5 B47: twelve + the WebSocket API / route tools = fourteen.
     assert.ok(Object.isFrozen(RETRYABLE_TOOLS));
-    assert.equal(new Set(RETRYABLE_TOOLS).size, 12);
+    assert.equal(new Set(RETRYABLE_TOOLS).size, 14);
 });
 test('B34 a throttled ensure-route is retried with the same input after 2 s, 4 s and the round completes', async t => {
     const f = await fixture(t, 'bootstrap');
@@ -1469,4 +1470,457 @@ test('B34 r2 (S3/N1) toolErrorText hides every reviewer path and 12-digit form',
     // a code holding 12 consecutive digits is dropped whole.
     assert.deepEqual(toolErrorFields({ code: 'user_123456789012' }), {});
     assert.deepEqual(toolErrorFields({ code: 'Throttling' }), { toolErrorCode: 'Throttling' });
+});
+
+//* v5 B47: a deterministic deployment (fixed ZIP bytes, no temp paths) of a config, for byte-level snapshots.
+function syntheticDeployment(raw) {
+    const bytes = Buffer.from('b47 synthetic zip bytes');
+    return {
+        config: validateConfig(raw),
+        environment: raw.mode === 'bootstrap' ? { NAME: 'templates', SECRET: 'secret-env-sentinel' } : {},
+        artifact: {
+            bytes,
+            sha256: sha256(bytes),
+            manifestSha256: 'b'.repeat(64),
+            fileCount: 1,
+            handler: 'handler.lambda',
+            source: { gitSha: 'a'.repeat(40), dirty: false },
+        },
+    };
+}
+//* v5 B47: the stable parts of a run — every client call (no signal) and the receipt without times / paths.
+async function runSnapshot(d, root) {
+    const client = fakeClient(d, d.config.mode === 'bootstrap' ? { readHook: () => null } : {});
+    const result = await runDeployment(d, { client, receiptDirectory: root, sleep: async () => {} });
+    const state = JSON.parse(await readFile(result.receipt, 'utf8'));
+    // the volatile fields: run times, lease time, step times (and the abort signal of a request).
+    const omit = (o, keys) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+    state.steps = state.steps.map(step => omit(step, ['startedAt', 'durationMs']));
+    return {
+        calls: JSON.stringify(client.calls.map(r => omit(r, ['signal']))),
+        receipt: JSON.stringify(omit(state, ['startedAt', 'finishedAt', 'durationMs', 'leaseExpiresAt'])),
+    };
+}
+//* v5 B47: sha256 of a string (snapshot digests).
+const digest = s => createHash('sha256').update(s).digest('hex');
+test('B47 a config without websocket keeps plan, tool calls and receipt byte-identical (pre-B47 snapshot)', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'templates-deploy-b47-'));
+    onTestFinished(() => rm(root, { recursive: true, force: true }));
+    const out = {};
+    for (const [mode, raw] of [
+        ['bootstrap', { ...structuredClone(example), environmentFile: 'env.json' }],
+        ['code', codeConfig()],
+    ]) {
+        const d = syntheticDeployment(raw);
+        const snap = await runSnapshot(d, path.join(root, mode));
+        out[mode] = {
+            plan: digest(JSON.stringify(deploymentPlan(d), null, 2)),
+            calls: digest(snap.calls),
+            receipt: digest(snap.receipt),
+        };
+    }
+    // digests captured from `origin/develop` 770f33f0 (before B47) with this same harness.
+    assert.deepEqual(out, {
+        bootstrap: {
+            plan: '5bd7a584f5ad7dc7007a909b2526a3a83e273fb31fab99d1ff5e98ab77048cd4',
+            calls: '105fb4f473049a4ab6797d0e8398e1e64779b5014a79b4b51344f61a61e75bb0',
+            receipt: 'bb1b3737d5df74e8486aa85e564368825550a83aaf788aa11eed7a734ca3fa04',
+        },
+        code: {
+            plan: 'ff0506043b0ab784735b61748970e79189a44af67b920369460b6bcc7198da4c',
+            calls: '4cd36644b7863955df8edb5cd5f322b36cf4ab023f04914bc788f1802d3d69b7',
+            receipt: '2444e34eab5c0a06ef9cf4ca1d342168311aebc6e65a4390ecccf11f21e158a1',
+        },
+    });
+    // the same, readable: no websocket key anywhere, the pre-B47 step list and two functions.
+    const p = deploymentPlan(syntheticDeployment({ ...structuredClone(example), environmentFile: 'env.json' }));
+    assert.ok(!JSON.stringify(p).includes('websocket'));
+    assert.deepEqual(p.steps, [
+        'resolve-names (lemon / sls / backend)',
+        'resolve-policy + account/region cross-check',
+        'read Lambda configuration/tags (absence allowed)',
+        'deploy.begin',
+        'presign-put → conditional ZIP PUT',
+        'ensure-role',
+        'table / queue / topic',
+        'log groups ×2',
+        'functions ×2 + verification',
+        'SNS / DynamoDB stream / SQS mappings',
+        'disabled schedule',
+        'REST API / 18 sequential routes / stage probe',
+        'deploy.end',
+    ]);
+    assert.deepEqual(
+        p.configuration.functions.map(f => [f.component, f.memorySize, f.timeout]),
+        [
+            ['lambda', 512, 30],
+            ['backend', 512, 300],
+        ],
+    );
+});
+
+//* ---- v5 B47: WebSocket API (`websocket` block, third function `socket`) — sample chatic-sockets-api dev ----
+
+//* v5 B47: the four sls WebSocket routes of the sockets services (no authorizer = NONE).
+const SOCKETS_WEBSOCKET = Object.freeze({
+    routes: ['$connect', '$disconnect', '$default', 'echo'].map(routeKey => ({ routeKey, authorizationType: 'NONE' })),
+});
+//* v5 B47: the config patch of the sample service.
+const SOCKETS = () => ({
+    project: 'chatic-sockets-api',
+    keyPrefix: 'chatic-sockets-api/dev',
+    websocket: structuredClone(SOCKETS_WEBSOCKET),
+});
+//* v5 B47: the API id the fake WebSocket tools return (the PoC 2 id shape, 10 lower-case characters).
+const WS_API_ID = 'ii8068qk89';
+//* v5 B47: the fake client plus the three WebSocket tools, `websocketApiName` and the `websocketApiId` policy.
+function websocketClient(d, { hook, names: namesPatch = {}, ...options } = {}) {
+    const c = d.config;
+    const endpoint = `wss://${WS_API_ID}.execute-api.${c.region}.amazonaws.com`;
+    return fakeClient(d, {
+        ...options,
+        hook: async (r, ctx) => {
+            const overridden = await hook?.(r, ctx);
+            if (overridden !== undefined) return overridden;
+            const i = r.input ?? {};
+            if (r.method === 'GET') return undefined;
+            switch (r.tool) {
+                case 'lemon.deploy.resolve-names@1': {
+                    const name =
+                        i.convention === 'sls'
+                            ? `${c.project}-${c.stage}-${i.component ?? 'lambda'}`
+                            : ctx.names.functionName;
+                    return good(r.tool, {
+                        ...ctx.names,
+                        websocketApiName: `${c.stage}-${c.project}-websockets`,
+                        ...namesPatch,
+                        functionName: name,
+                        logGroupName: `/aws/lambda/${name}`,
+                    });
+                }
+                case 'lemon.deploy.resolve-policy@1':
+                    if (!i.websocketApiId) return undefined;
+                    return good(r.tool, {
+                        statements: [
+                            {
+                                Sid: 'Logs',
+                                Effect: 'Allow',
+                                Action: ['logs:CreateLogStream'],
+                                Resource: ctx.arn('logs', 'log-group:/aws/lambda/lemon-templates-*'),
+                            },
+                            {
+                                Sid: 'SNS',
+                                Effect: 'Allow',
+                                Action: ['sns:Publish'],
+                                Resource: ctx.arn('sns', 'lemon-templates-*'),
+                            },
+                            {
+                                Sid: 'OwnWebsocketConnections',
+                                Effect: 'Allow',
+                                Action: ['execute-api:ManageConnections'],
+                                Resource: ctx.arn('execute-api', `${i.websocketApiId}/${c.stage}/*/@connections/*`),
+                            },
+                        ],
+                    });
+                case 'aws.apigatewayv2.ensure-websocket-api@1':
+                    return good(r.tool, {
+                        apiId: WS_API_ID,
+                        apiEndpoint: endpoint,
+                        routeSelectionExpression: i.routeSelectionExpression,
+                        created: true,
+                    });
+                case 'aws.apigatewayv2.ensure-websocket-route@1':
+                    return good(r.tool, {
+                        routeId: `r${ctx.calls.length}`,
+                        routeKey: i.routeKey,
+                        integrationId: 'xvp1bqu',
+                        integrationCreated: i.routeKey === '$connect',
+                        deploymentRequired: true,
+                    });
+                case 'aws.apigatewayv2.deploy-websocket-stage@1':
+                    return good(r.tool, {
+                        deploymentId: 'o4vlne',
+                        deploymentStatus: 'DEPLOYED',
+                        stageName: i.stageName,
+                        wssUrl: `${endpoint}/${i.stageName}`,
+                        handshake: 'open',
+                        expectRoutes: { present: i.expectRoutes, missing: [] },
+                        created: true,
+                    });
+                default:
+                    return undefined;
+            }
+        },
+    });
+}
+test('B47 websocket config: defaults resolve, code mode takes true, and every malformed block is refused', () => {
+    const boot = { ...structuredClone(example), ...SOCKETS() };
+    const c = validateConfig(boot);
+    assert.deepEqual(c.websocket, {
+        routeSelectionExpression: '$request.body.action',
+        routes: SOCKETS_WEBSOCKET.routes,
+        probeTimeoutMs: 10000,
+    });
+    // every optional field of a route and the block.
+    const full = validateConfig({
+        ...boot,
+        websocket: {
+            routeSelectionExpression: '${request.body.type}',
+            probeTimeoutMs: 15000,
+            routes: [
+                { routeKey: '$connect', authorizationType: 'CUSTOM', authorizerId: 'abc123', timeoutInMillis: 50 },
+                { routeKey: 'chat:send.v1', authorizationType: 'AWS_IAM', timeoutInMillis: 29000 },
+            ],
+        },
+    });
+    assert.equal(full.websocket.routes[0].authorizerId, 'abc123');
+    // code mode: `true` or the same block.
+    assert.equal(validateConfig({ ...codeConfig(), websocket: true }).websocket, true);
+    assert.equal(validateConfig({ ...codeConfig(), websocket: SOCKETS_WEBSOCKET }).websocket.probeTimeoutMs, 10000);
+    const route = patch => ({ routes: [{ routeKey: '$connect', authorizationType: 'NONE', ...patch }] });
+    for (const websocket of [
+        true,
+        null,
+        [],
+        { ...SOCKETS_WEBSOCKET, extra: 1 },
+        { routes: [] },
+        { routes: Array.from({ length: 51 }, (_, i) => ({ routeKey: `r${i}`, authorizationType: 'NONE' })) },
+        route({ routeKey: '$foo' }),
+        route({ routeKey: 'bad key' }),
+        route({ routeKey: 'x'.repeat(129) }),
+        route({ authorizationType: 'JWT' }),
+        route({ authorizationType: 'CUSTOM' }),
+        route({ authorizerId: 'abc123' }),
+        route({ authorizationType: 'CUSTOM', authorizerId: 'a/b' }),
+        route({ timeoutInMillis: 49 }),
+        route({ timeoutInMillis: 29001 }),
+        route({ extra: true }),
+        {
+            routes: [
+                { routeKey: 'echo', authorizationType: 'NONE' },
+                { routeKey: 'echo', authorizationType: 'AWS_IAM' },
+            ],
+        },
+        { ...SOCKETS_WEBSOCKET, probeTimeoutMs: 999 },
+        { ...SOCKETS_WEBSOCKET, probeTimeoutMs: 15001 },
+        { ...SOCKETS_WEBSOCKET, probeTimeoutMs: 1500.5 },
+        { ...SOCKETS_WEBSOCKET, routeSelectionExpression: '$request.header.action' },
+        { ...SOCKETS_WEBSOCKET, routeSelectionExpression: 'action' },
+    ])
+        assert.throws(() => validateConfig({ ...boot, websocket }), DeployError, JSON.stringify(websocket));
+    for (const websocket of [false, null, 'yes', { routes: [] }])
+        assert.throws(() => validateConfig({ ...codeConfig(), websocket }), DeployError, JSON.stringify(websocket));
+});
+test('B47 websocket bootstrap plan: three functions, the WebSocket steps and the handshake probe', async t => {
+    const f = await fixture(t, 'bootstrap', SOCKETS());
+    const p = deploymentPlan(f.deployment);
+    assert.deepEqual(p.configuration.functions, [
+        ...['lambda', 'backend', 'socket'].map((component, i) => ({
+            component,
+            runtime: 'nodejs24.x',
+            architecture: 'x86_64',
+            handler: 'handler.lambda',
+            memorySize: 512,
+            timeout: i ? 300 : 30,
+            environmentMode: 'merge',
+        })),
+    ]);
+    assert.deepEqual(p.configuration.websocket, {
+        routeSelectionExpression: '$request.body.action',
+        routes: SOCKETS_WEBSOCKET.routes,
+        probeTimeoutMs: 10000,
+    });
+    assert.deepEqual(p.verification.websocketProbe, { handshake: 'open', expectRoutes: 4 });
+    assert.deepEqual(p.steps, [
+        'resolve-names (lemon / sls / backend / socket)',
+        'resolve-policy + account/region cross-check',
+        'read Lambda configuration/tags (absence allowed)',
+        'deploy.begin',
+        'presign-put → conditional ZIP PUT',
+        'WebSocket API → resolve-policy(websocketApiId) → ensure-role',
+        'table / queue / topic',
+        'log groups ×3',
+        'functions ×3 + verification',
+        'SNS / DynamoDB stream / SQS mappings',
+        'disabled schedule',
+        'REST API / 18 sequential routes / stage probe',
+        'WebSocket 4 sequential routes / stage probe',
+        'deploy.end',
+    ]);
+    assert.ok(p.limitations.at(-1).startsWith('WebSocket stage probe'));
+    // code mode: the third function only.
+    const code = await fixture(t, 'code', { project: 'chatic-sockets-api', websocket: true });
+    const cp = deploymentPlan(code.deployment);
+    assert.deepEqual(cp.steps.slice(-2), ['existing functions ×3 code + verification', 'deploy.end']);
+    assert.equal(cp.steps[0], 'resolve-names (lemon / sls / backend / socket)');
+    assert.ok(!('websocketProbe' in cp.verification));
+});
+test('B47 websocket bootstrap: API before the role, policy with websocketApiId, routes ×4 to socket, stage probe', async t => {
+    const f = await fixture(t, 'bootstrap', SOCKETS());
+    const client = websocketClient(f.deployment, { readHook: () => null });
+    const result = await execute(f, client);
+    assert.equal(result.status, 'completed');
+    const calls = client.calls.filter(x => x.method === 'POST');
+    const at = tool => calls.findIndex(x => x.tool === tool);
+    const find = tool => calls.filter(x => x.tool === tool);
+    // names: the socket function is resolved like the other two, before begin.
+    const names = find('lemon.deploy.resolve-names@1');
+    assert.deepEqual(
+        names.map(x => x.input.component ?? null),
+        [null, null, 'backend', 'socket'],
+    );
+    assert.deepEqual(
+        client.reads,
+        ['lambda', 'backend', 'socket'].map(k => `chatic-sockets-api-dev-${k}`),
+    );
+    // order: presign → websocket-api → resolve-policy(websocketApiId) → ensure-role.
+    const policies = find('lemon.deploy.resolve-policy@1');
+    assert.equal(policies.length, 2);
+    assert.ok(!('websocketApiId' in policies[0].input));
+    assert.deepEqual(policies[1].input, { ...policies[0].input, websocketApiId: WS_API_ID });
+    assert.ok(at('aws.s3.presign-put@1') < at('aws.apigatewayv2.ensure-websocket-api@1'));
+    assert.ok(at('lemon.deploy.begin@1') < at('aws.apigatewayv2.ensure-websocket-api@1'));
+    assert.ok(at('aws.apigatewayv2.ensure-websocket-api@1') < calls.indexOf(policies[1]));
+    assert.ok(calls.indexOf(policies[1]) < at('lemon.deploy.ensure-role@1'));
+    assert.deepEqual(find('aws.apigatewayv2.ensure-websocket-api@1')[0].input, {
+        project: 'chatic-sockets-api',
+        apiName: 'dev-chatic-sockets-api-websockets',
+        routeSelectionExpression: '$request.body.action',
+        tags: { 'deploy-project': 'lemon-templates' },
+    });
+    // one role, carrying the connection statement.
+    const roles = find('lemon.deploy.ensure-role@1');
+    assert.equal(roles.length, 1);
+    const own = roles[0].input.statements.find(s => s.Sid === 'OwnWebsocketConnections');
+    assert.deepEqual(own.Action, ['execute-api:ManageConnections']);
+    assert.equal(own.Resource, `arn:aws:execute-api:ap-northeast-2:123456789012:${WS_API_ID}/dev/*/@connections/*`);
+    // three log groups and functions; socket = 512 MB / 300 s, same handler and environment.
+    assert.deepEqual(
+        find('aws.logs.ensure-log-group@1').map(x => [x.input.component ?? null, x.input.logGroupName]),
+        [null, 'backend', 'socket'].map(k => [k, `/aws/lambda/chatic-sockets-api-dev-${k ?? 'lambda'}`]),
+    );
+    const functions = find('aws.lambda.ensure-function@1');
+    assert.equal(functions.length, 3);
+    assert.equal(functions[2].input.component, 'socket');
+    assert.equal(functions[2].input.functionName, 'chatic-sockets-api-dev-socket');
+    assert.equal(functions[2].input.memorySize, 512);
+    assert.equal(functions[2].input.timeout, 300);
+    assert.equal(functions[2].input.handler, functions[0].input.handler);
+    assert.equal(functions[2].input.environmentMode, 'merge');
+    assert.deepEqual(functions[2].input.environment, functions[0].input.environment);
+    // after the REST stage: four sequential routes to the socket function, then the stage with expectRoutes.
+    const routes = find('aws.apigatewayv2.ensure-websocket-route@1');
+    assert.deepEqual(
+        routes.map(x => x.input),
+        SOCKETS_WEBSOCKET.routes.map(r => ({
+            apiId: WS_API_ID,
+            ...r,
+            functionArn: 'arn:aws:lambda:ap-northeast-2:123456789012:function:chatic-sockets-api-dev-socket',
+        })),
+    );
+    assert.ok(at('aws.apigateway.deploy-stage@1') < calls.indexOf(routes[0]));
+    assert.deepEqual(find('aws.apigatewayv2.deploy-websocket-stage@1')[0].input, {
+        apiId: WS_API_ID,
+        stageName: 'dev',
+        probe: { timeoutMs: 10000 },
+        expectRoutes: ['$connect', '$disconnect', '$default', 'echo'],
+        tags: { 'deploy-project': 'lemon-templates' },
+    });
+    assert.equal(at('aws.apigatewayv2.deploy-websocket-stage@1'), at('lemon.deploy.end@1') - 1);
+    // receipt: the WebSocket state and three functions.
+    const receipt = JSON.parse(await readFile(result.receipt, 'utf8'));
+    assert.deepEqual(receipt.websocket, {
+        apiId: WS_API_ID,
+        wssUrl: `wss://${WS_API_ID}.execute-api.ap-northeast-2.amazonaws.com/dev`,
+        stageName: 'dev',
+    });
+    assert.equal(receipt.functions.length, 3);
+    assert.deepEqual(
+        receipt.steps.filter(s => s.name.startsWith('websocket')).map(s => s.name),
+        [
+            'websocket-api',
+            'websocket-policy',
+            'websocket-route-1',
+            'websocket-route-2',
+            'websocket-route-3',
+            'websocket-route-4',
+            'websocket-stage',
+        ],
+    );
+    assert.equal(receipt.steps.find(s => s.name === 'websocket-stage').output.handshake, 'open');
+    assert.ok(!JSON.stringify(receipt).includes('statements'));
+    assert.ok(!JSON.stringify(receipt).includes('secret-env-sentinel'));
+});
+test('B47 websocket routes are paced like REST routes (routeDelayMs between routes)', async t => {
+    const f = await fixture(t, 'bootstrap', { ...SOCKETS(), routeDelayMs: 2500 });
+    const client = websocketClient(f.deployment, { readHook: () => null });
+    const waits = [];
+    await execute(f, client, { sleep: async ms => waits.push([ms, client.calls.at(-1).tool]) });
+    const after = waits.filter(([, tool]) => tool === 'aws.apigatewayv2.ensure-websocket-route@1');
+    assert.deepEqual(after, Array(3).fill([2500, 'aws.apigatewayv2.ensure-websocket-route@1']));
+});
+test('B47 websocket code mode updates all three functions and requires the socket function', async t => {
+    const f = await fixture(t, 'code', { project: 'chatic-sockets-api', websocket: true });
+    const client = websocketClient(f.deployment);
+    const result = await execute(f, client);
+    assert.equal(result.status, 'completed');
+    const functions = client.calls.filter(x => x.tool === 'aws.lambda.ensure-function@1');
+    assert.deepEqual(
+        functions.map(x => [x.input.component ?? null, x.input.functionName]),
+        [null, 'backend', 'socket'].map(k => [k, `chatic-sockets-api-dev-${k ?? 'lambda'}`]),
+    );
+    const receipt = JSON.parse(await readFile(result.receipt, 'utf8'));
+    assert.deepEqual(
+        receipt.steps.filter(s => s.name.endsWith('-code')).map(s => s.name),
+        ['lambda-code', 'backend-code', 'socket-code'],
+    );
+    assert.equal(receipt.functions.length, 3);
+    assert.ok(!client.calls.some(x => x.tool.startsWith('aws.apigatewayv2.')));
+    // no socket function: FUNCTION_MISSING before begin.
+    const g = await fixture(t, 'code', { project: 'chatic-sockets-api', websocket: true });
+    const missing = websocketClient(g.deployment, {
+        readHook: (found, name) => (name.endsWith('-socket') ? null : found),
+    });
+    const { error } = await failedRun(g, missing, 'FUNCTION_MISSING');
+    assert.match(error.message, /three/);
+    assert.ok(!missing.calls.some(x => x.tool === 'lemon.deploy.begin@1'));
+});
+test('B47 a websocket bootstrap stops before begin when resolve-names has no websocketApiName', async t => {
+    const f = await fixture(t, 'bootstrap', SOCKETS());
+    const client = websocketClient(f.deployment, { readHook: () => null, names: { websocketApiName: undefined } });
+    const { receipt } = await failedRun(f, client, 'NAMES_MISSING');
+    assert.ok(!client.calls.some(x => x.tool === 'lemon.deploy.begin@1'));
+    assert.equal(receipt.status, 'failed');
+    // code mode does not touch the API, so it does not need the name.
+    const g = await fixture(t, 'code', { project: 'chatic-sockets-api', websocket: true });
+    const code = websocketClient(g.deployment, { names: { websocketApiName: undefined } });
+    assert.equal((await execute(g, code)).status, 'completed');
+});
+test('B47 a websocket policy whose connection statement or other statements differ stops before the role', async t => {
+    for (const change of [
+        s =>
+            s.map(x =>
+                x.Sid === 'OwnWebsocketConnections' ? { ...x, Resource: x.Resource.replace('/dev/', '/*/') } : x,
+            ),
+        s => s.map(x => (x.Sid === 'OwnWebsocketConnections' ? { ...x, Action: ['execute-api:*'] } : x)),
+        s => s.filter(x => x.Sid !== 'OwnWebsocketConnections'),
+        s => [{ ...s[0], Action: ['logs:*'] }, ...s.slice(1)],
+    ]) {
+        const f = await fixture(t, 'bootstrap', SOCKETS());
+        let inner;
+        const client = websocketClient(f.deployment, {
+            readHook: () => null,
+            hook: async r => {
+                if (r.tool !== 'lemon.deploy.resolve-policy@1' || !r.input.websocketApiId || inner) return undefined;
+                inner = true;
+                const got = await client.request(r);
+                inner = false;
+                client.calls.pop();
+                return good(r.tool, { statements: change(got.result.output.statements) });
+            },
+        });
+        const { error } = await failedRun(f, client, 'TARGET_MISMATCH');
+        assert.ok(error);
+        assert.ok(!client.calls.some(x => x.tool === 'lemon.deploy.ensure-role@1'));
+    }
 });
