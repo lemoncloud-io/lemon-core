@@ -115,6 +115,35 @@ export const checkLink = async (link: ChainLink): Promise<void> => {
 };
 
 /**
+ * a direct route (`GET /rooms/304?houseId=B`): a query parent key must match the target (SPEC § 3.3 S4).
+ * - any mode. the parent key comes from a registered type (`houses`→`houseId`); a move is by body only.
+ * - returns `next` as is if the target has no `manager`, or `id` is `''`/`'0'`. no retrieve without a parent key.
+ */
+export const guardQuery = (handlers: WebHandlers, type: string, id: string, next: NextHandler): NextHandler => {
+    const manager = next && id && id !== '0' ? managerOf(handlers[type]) : null;
+    if (!manager) return next;
+    return async (_id, param, body, context) => {
+        const query: any = param || {};
+        const links = Object.keys(handlers)
+            .filter(parent => parent && parent !== type)
+            .map(parent => ({ parent, key: parentKeyIn(parent, manager.FIELDS) }))
+            .filter(({ key }) => !!key && query[key as string] !== undefined && query[key as string] !== null)
+            .map(
+                ({ parent, key }): ChainLink => ({
+                    key: key as string,
+                    parent,
+                    parentId: `${query[key as string]}`,
+                    type,
+                    id,
+                    manager,
+                }),
+            );
+        for (const link of links) await checkLink(link);
+        return next(_id, param, body, context);
+    };
+};
+
+/**
  * find the target by walking `(type, id)` pairs. the existing method comes first at each step
  * (the first step is `handleProtocol()`'s own decode), then the child, then the fallback (`$sub`).
  * - once it descends into a child, it never falls back to an ancestor (the links must be checked).

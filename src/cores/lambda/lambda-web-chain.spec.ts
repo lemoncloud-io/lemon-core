@@ -291,4 +291,27 @@ describe('lambda-web-chain', () => {
         rooms.manager.retrieve = async () => Promise.reject(new Error('500 DB'));
         await expect2(() => codeOf(call('GET', 'houses', 'A', 'rooms/304'))).toEqual('500 DB');
     });
+
+    it('R-03 / R-04 / R-04b / R-04c query parent key on a direct route', async () => {
+        const { call, rooms } = setup();
+        await expect2(() => call('GET', 'rooms', '304', ''), 'via,id').toEqual({ via: 'rooms.doGet', id: '304' });
+        await expect2(() => codeOf(call('GET', 'rooms', '304', '', { houseId: 'B' }))).toEqual('404 NOT FOUND');
+        await expect2(() => call('GET', 'rooms', '304', '', { houseId: 'A' }), 'via,param').toEqual({
+            via: 'rooms.doGet',
+            param: { houseId: 'A' },
+        });
+        //* R-04b: mode does not matter.
+        await expect2(() => codeOf(call('PUT', 'rooms', '304', '', { houseId: 'B' }, {}))).toEqual('404 NOT FOUND');
+        //* R-04c: `owners` is not registered, so no check (and no retrieve).
+        const calls: string[] = [];
+        const retrieve = rooms.manager.retrieve;
+        rooms.manager.retrieve = async (id: string) => (calls.push(id), retrieve(id));
+        await expect2(() => call('GET', 'rooms', '304', '', { ownerId: 'x' }), 'via').toEqual({ via: 'rooms.doGet' });
+        await expect2(() => call('GET', 'rooms', '304'), 'via').toEqual({ via: 'rooms.doGet' });
+        await expect2(() => call('POST', 'rooms', '0', '', { houseId: 'B' }, {}), 'via').toEqual({
+            via: 'rooms.doPost',
+        });
+        await expect2(() => call('LIST', 'rooms', '', '', { houseId: 'B' }), 'via').toEqual({ via: 'rooms.doList' });
+        expect2(() => calls).toEqual([]);
+    });
 });
