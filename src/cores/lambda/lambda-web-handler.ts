@@ -63,6 +63,7 @@ import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
 import { measureAsync, PerfTrace } from '../../lib/perf';
 import { asWebPath, isTextualType, bodyLength } from '../../lib/web-body';
+import { nextOf, resolveChain } from './lambda-web-chain';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
@@ -542,18 +543,10 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
                 };
             }
 
-            //* error if no decoder.
-            if (!decoder) return null;
-
-            //* use decoder() to find target.
-            if (typeof decoder == 'function') return (decoder as NextDecoder)(MODE, ID, CMD, PATH);
-            else if (typeof decoder == 'object') {
-                const func = (decoder as CoreWEBController).decode(MODE, ID, CMD, PATH);
-                if (!func) return null; // avoid 'null' error.
-                const next: NextHandler = (i, p, b, c) => func.call(decoder, i, p, b, c);
-                return next;
-            }
-            return null;
+            //* use decoder() to find target, then the nested path (`/houses/A/rooms/304`) if `cmd` remains.
+            return (
+                nextOf(decoder, MODE, ID, CMD, PATH) ?? (CMD ? resolveChain(this._handlers, MODE, TYPE, ID, CMD) : null)
+            );
         })(this._handlers[TYPE]);
 
         //* if no next, then report error.
