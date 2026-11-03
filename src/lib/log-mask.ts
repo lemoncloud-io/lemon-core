@@ -13,6 +13,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2026-10-30 initial version (v5 B10-3: secret header values in logs)
  * @date        2026-10-30 key rotation: value-based log screening.
+ * @date        2026-11-03 copilot review (#227): JSON-escaped secrets, and Error props·`cause`·`errors` are screened.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -67,21 +68,29 @@ export const registerSecret = (v: unknown): void => {
 //* key rotation: clear the registry (for tests).
 export const clearSecrets = (): void => $secrets.clear();
 
-//* key rotation: replace every registered secret in `text` by `[masked:<len>]` (null if none found).
-const maskSecrets = (text: string): string => {
-    const hits = [...$secrets].filter(v => text.includes(v));
-    if (!hits.length) return null;
-    return hits.reduce((out, v) => out.split(v).join(maskValue(v)), text);
+//* copilot review (#227): the forms of one secret to find — JSON-escaped when it differs (`"`, `\`, control chars), then raw.
+const formsOf = (v: string): string[] => {
+    const escaped = JSON.stringify(v).slice(1, -1);
+    // the escaped form first: it may contain the raw form (ex: a trailing `\`), never the reverse.
+    return escaped === v ? [v] : [escaped, v];
 };
 
-//* key rotation: text of a non-string arg to check — `stack || message` of an Error, else `safeStringify()`.
-const textOf = (arg: unknown): string =>
-    arg instanceof Error ? `${arg.stack || arg.message}` : safeStringify(arg) ?? '';
+//* key rotation: replace every registered secret (raw or JSON-escaped) in `text` by `[masked:<len>]` (null if none found).
+const maskSecrets = (text: string): string => {
+    const hits = [...$secrets].filter(v => formsOf(v).some(f => text.includes(f)));
+    if (!hits.length) return null;
+    // each form is replaced by the mask of the original secret (original length, not the escaped one).
+    return hits.reduce((out, v) => formsOf(v).reduce((o, f) => o.split(f).join(maskValue(v)), out), text);
+};
+
+//* key rotation: text of a non-string arg to check — `safeStringify()`, which expands an Error to its name, message, stack, own props, `errors` and `cause`.
+const textOf = (arg: unknown): string => safeStringify(arg) ?? '';
 
 /**
  * key rotation: screen the args of one log line in place.
  * - a string arg keeps its text with each secret replaced by `[masked:<len>]`.
- * - an object or Error arg containing a secret is replaced by its masked text.
+ * - an object or Error arg containing a secret is replaced by its masked text (an Error is checked with its own props, `cause` and `errors`).
+ * - a secret is found in its raw form and in its JSON-escaped form.
  * - empty registry → returns false at once (no cost).
  *
  * @returns true if any secret was found (the caller prints one error line).

@@ -70,7 +70,7 @@ JWT HS256 (`verifyToken()`, issuer `api/<self>`): the secret of A is compared fi
 
 - Values shorter than 8 characters and non-strings are not registered (they collide with ordinary text). The default `lemon` is never registered.
 - A string arg keeps its text with each secret replaced by `[masked:<len>]`.
-- An `Error` arg is checked by `stack || message`; another object by the circular-safe stringify (`lib/safe-json.ts`). On a hit the arg is replaced by its masked text; the original object is not changed.
+- An `Error` or other object arg is checked by the circular-safe stringify (`lib/safe-json.ts`), which expands an `Error` to its name, message, stack, own props, `errors` and `cause`. On a hit the arg is replaced by its masked text; the original object is not changed.
 - Empty registry (no key installed) → no check at all.
 - The process does not stop: a log line must not fail a request.
 

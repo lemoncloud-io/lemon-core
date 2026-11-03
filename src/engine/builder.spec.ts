@@ -6,6 +6,7 @@
  * @author      Steve <steve@lemoncloud.io>
  * @date        2019-11-28 initial unit test.
  * @date        2026-10-30 key rotation: log screening of the engine loggers.
+ * @date        2026-11-03 copilot review (#227): an Error with a secret is printed as its masked JSON text.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -210,7 +211,10 @@ describe(`core/builder.ts`, () => {
             expect2(lines[1]).toEqual('T E !SECRET in log — masked');
             expect2(lines[2]).toEqual(`T I NS {"k":"${mask}"}`);
             expect2(lines[3]).toEqual('T E !SECRET in log — masked');
-            expect2(lines[4].startsWith(`T E NS Error: e=${mask}`)).toEqual(true);
+            //* an Error with a secret is printed as its masked JSON text (name, message, stack, own props, `cause`).
+            expect2(
+                lines[4].startsWith(`T E NS {"name":"Error","message":"e=${mask}","stack":"Error: e=${mask}`),
+            ).toEqual(true);
             expect2(lines[5]).toEqual('T E !SECRET in log — masked');
             expect2(lines[6]).toEqual('T I NS clean');
         } finally {
