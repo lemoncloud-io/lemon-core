@@ -1077,7 +1077,7 @@ Order for `/houses/A/rooms/304/beds`:
 
 1. Existing `decode(mode, id, cmd)` first (existing handlers and `getHousesRooms` stop here).
 2. Then the rest is read as `(type, id)` pairs. At every level an existing method wins (`getRoomsBeds`, `postRoomsCheckIn`); otherwise a next piece that is a registered CRUD controller with the parent key goes down to the child.
-3. Fallback: the first segment is a parent method, the rest goes to `param.$sub` (a string, never re-decoded). A `$sub` sent by the client is always dropped.
+3. Fallback: the next segment is a method of the deepest resolved level, and the rest goes to `param.$sub` (a string, never re-decoded). For `/houses/A/rooms/304/download/a/b` that is `getRoomsDownload` with `$sub = 'a/b'`; once the path went down to a child, an ancestor's method is never used. A `$sub` sent by the client is always dropped.
 4. Not found anywhere: 404.
 
 The mode is never changed. An id-less `GET /houses/A/rooms` goes to the child's `doGet('')`. To serve a list, the service's `doGet` returns `doList`.
@@ -1093,7 +1093,9 @@ Before the handler runs (`src/cores/lambda/lambda-web-chain.ts`):
 | First parent (if CRUD) is missing or soft-deleted | `404 NOT FOUND` |
 | Child is missing, soft-deleted, or its parent key is not the path parent | `404 NOT FOUND` |
 | `POST` with no target id (`''` or `'0'`), `body[parentKey]` absent, `null` or `''` | filled with the path value (a different value is `400 CONFLICT`) |
-| Every chained call | `param[parentKey]` of each link is set from the path, whether or not the query had it (this is why a chained list is filtered) |
+| Every chained call | `param[parentKey]` of each link is set from the path, whether or not the query had it (this is why a chained list is filtered, when the service transformer maps that key, § 21.4 item 2) |
+
+A chained path checks only the parent keys of its own links. Another registered parent key in the query that is not part of the path (`/houses/A/rooms/304?userId=7`) is not checked; that check (§ 21.4 item 1) is for direct routes only.
 
 The service still does the rest: parent-only access (blocking `/rooms/304` as a direct route), permissions of the parent, and the permission on the new parent when a `PUT` body moves a child.
 
@@ -1114,10 +1116,10 @@ $web.addPrefix('_key_', [apikeys]);
 
 ### 21.4 Behavior changes for existing routes
 
-1. A direct route with a target id and a query key that is a registered parent key answers `404` when the target does not belong to it, in any mode. This includes routes with a cmd, alias ids (`/users/me?teamId=T`) and an empty value (`?houseId=`). It was `200` before.
+1. A direct route with a target id and a query key that is a registered parent key answers `404` when the target does not belong to it, in any mode. This includes routes with a cmd, alias ids (`/users/me?teamId=T`) and an empty value (`?houseId=`). It was `200` before. This check and the drop of a client `param.$sub` (§ 21.1) run in `handleProtocol()`, so they apply to every caller of it, not only HTTP: `$protocol` internal calls, SNS and SQS too. When you check a service for this change, also look at the `param` those calls send.
 2. A list filters by `?<parentKey>=` only if the service transformer maps that key.
 3. Some `{cmd+}` paths that were `404` now reach a parent method through the fallback (`param.$sub`).
-4. A trailing `/` or `//` on a chained path changes from `404` to `400`.
+4. A trailing `/` or `//` on a chained path changes from `404` to `400`. So does an empty id with a cmd (`/houses//x`) sent by a non-HTTP protocol call (`$protocol`, SNS, SQS): `400 INVALID PATH` instead of `404`.
 5. `GET /public/<type>` stays `GET` (4.x made it `LIST`); a list needs `doGet` to return `doList`.
 
 Unchanged (apart from § 21.4 item 1): `/{type}/{id}/{cmd}`, nested parent handlers, `decode()` overrides, `{id+}`, `_keys`, lemon-model types, relay format. Deploy lemon-core first; services follow when they need a new path. Roll back by returning to 5.0.23, together with any service that uses a new path.
