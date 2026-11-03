@@ -59,6 +59,12 @@ export const decodePiece = (s: string): string => {
 export const decodePath = (text: string): string => `${text}`.split('/').map(decodePiece).join('/');
 
 /**
+ * v5 B20: encode a path text per segment (the reverse of `decodePath()`): split on `/`, then `encodeURIComponent` each piece.
+ * - `/` stays the separator; `#`, `?`, `%` and other reserved chars in a piece are escaped (`a#b/c` → `a%23b/c`).
+ */
+export const encodePath = (text: string): string => `${text}`.split('/').map(encodeURIComponent).join('/');
+
+/**
  * v5 B20: the protocol path of the API Gateway `pathParameters`.
  * - `{proxy+}` without `id` → `id` = 1st segment, `cmd` = the rest joined with `/` (empty → undefined).
  * - `{proxy+}` with `id` but no `cmd` (ex: `/{type}/{id}/{proxy+}`) → `cmd` = the whole proxy.

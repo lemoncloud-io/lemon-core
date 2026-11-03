@@ -11,7 +11,15 @@
 import { describe, expect, it } from 'vitest';
 import { expect2 } from '../common/test-helper';
 import { boundaryOf, parseHeaderValue, parseMultipart } from './multipart';
-import { asWebPath, decodeBase64Body, decodePath, decodePiece, isTextualType, bodyLength } from './web-body';
+import {
+    asWebPath,
+    decodeBase64Body,
+    decodePath,
+    decodePiece,
+    encodePath,
+    isTextualType,
+    bodyLength,
+} from './web-body';
 
 //* v5 B20: join lines with CRLF into a Buffer.
 const crlf = (...lines: string[]) => Buffer.from(lines.join('\r\n'));
@@ -157,6 +165,14 @@ describe('multipart B20', () => {
             'a+b',
         ]);
         expect2(() => decodePath('a%2Fb/%zz//c%20d')).toEqual('a/b/%zz//c d');
+        //* `encodePath()` is the reverse of `decodePath()` (per segment, `/` kept, `#`/`?`/`%` escaped).
+        expect2(() => encodePath('a#b/c?d/%23/한 글//')).toEqual('a%23b/c%3Fd/%2523/%ED%95%9C%20%EA%B8%80//');
+        expect2(() => ['a%2Fb/x', 'c#d/e?f', 'a b/한글', ''].map(t => decodePath(encodePath(t)))).toEqual([
+            'a%2Fb/x',
+            'c#d/e?f',
+            'a b/한글',
+            '',
+        ]);
     });
 
     //* body length for logs.
