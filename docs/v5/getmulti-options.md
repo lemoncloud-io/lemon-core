@@ -31,6 +31,13 @@ The JSDoc and the `404 → null` mapping in `getMulti()` promised a `null` gap.
 -   A number as `options` is still the size: `getMulti(ids, 100)` works as before.
 -   `my_parallel()`: JSDoc of `throwable` corrected to `(default: true — env MY_PARALLEL_THROW, …)`. No code change.
 
+Copilot review on #278 (follow-up 2):
+-   With a custom `idName`, a failure whose input id equals a model's key is not written: the model wins (one log
+    line; the `errNoti` report still counts it). Use `idName: 'id'` or `getMulti()` to see every failure.
+-   Overloads: no options, a number, `{ size }` or `{ throwable: true }` → `{ [id]: Model }`; a `GetMultiOptions`
+    variable or `{ throwable: false }` → `{ [id]: Model | GetMultiFailure }`.
+-   A synchronous throw of an overridden `retrieve()` is recorded as a failure; report ids are cut to 255 chars.
+
 ## Options (`GetMultiOptions`)
 
 | Option      | `getMulti()` default        | `getMulti$()` default          | Effect                                      |
