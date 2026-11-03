@@ -7,8 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
 import { NextHandler } from 'lemon-model';
 import { expect2 } from '../../common/test-helper';
 import { GeneralWEBController } from '../../controllers/general-controller';
@@ -243,6 +242,40 @@ describe('lambda-web-chain', () => {
         const { call } = setup();
         await expect2(() => call('GET', 'houses', 'A', 'rooms/304', { $sub: 'x' }), 'param').toEqual({
             param: { houseId: 'A' },
+        });
+    });
+
+    it('R-29b client `$sub` is dropped on the first step too', async () => {
+        const { web, call } = setup();
+        const files = fake('files', ['id'], {});
+        files.getFilesDownload = files.rec('getFilesDownload');
+        web.addController(files);
+        await expect2(() => call('GET', 'files', '0', 'download', { $sub: 'x' }), 'via,param').toEqual({
+            via: 'files.getFilesDownload',
+            param: {},
+        });
+    });
+
+    it('R-24b fallback only at the deepest level', async () => {
+        const { call, houses, rooms } = setup();
+        houses.getHousesRooms = houses.rec('getHousesRooms');
+        await expect2(() => codeOf(call('GET', 'houses', 'A', 'rooms/304/typo'))).toEqual('404 NOT FOUND');
+        rooms.getRoomsDownload = rooms.rec('getRoomsDownload');
+        await expect2(() => call('GET', 'houses', 'A', 'rooms/304/download/a/b'), 'via,id,param').toEqual({
+            via: 'rooms.getRoomsDownload',
+            id: '304',
+            param: { houseId: 'A', $sub: 'a/b' },
+        });
+        await expect2(() => codeOf(call('GET', 'houses', 'B', 'rooms/304/download/a/b'))).toEqual('404 NOT FOUND');
+    });
+
+    it('R-08b POST body parent key `null`/`` counts as missing', async () => {
+        const { call } = setup();
+        await expect2(() => call('POST', 'houses', 'A', 'rooms', {}, { houseId: null }), 'body').toEqual({
+            body: { houseId: 'A' },
+        });
+        await expect2(() => call('POST', 'houses', 'A', 'rooms', {}, { houseId: '' }), 'body').toEqual({
+            body: { houseId: 'A' },
         });
     });
 

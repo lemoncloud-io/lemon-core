@@ -61,6 +61,14 @@ export const nextOf = (
     return null;
 };
 
+/** `param` without the client `$sub` (a copy only when it has one). */
+export const dropSub = <T>(param: T): T => {
+    if (!param || typeof param != 'object' || !('$sub' in param)) return param;
+    const copy: any = { ...param };
+    delete copy.$sub;
+    return copy;
+};
+
 /** the CRUD manager of a handler, or null. */
 const managerOf = (handler: NextDecoder | CoreWEBController): ChainManager | null => {
     // ponytail: CRUD manager read directly; add a public accessor if a non-CRUD controller needs chains
@@ -109,6 +117,7 @@ export const checkLink = async (link: ChainLink): Promise<void> => {
 /**
  * find the target by walking `(type, id)` pairs. the existing method comes first at each step
  * (the first step is `handleProtocol()`'s own decode), then the child, then the fallback (`$sub`).
+ * - once it descends into a child, it never falls back to an ancestor (the links must be checked).
  */
 const walk = (
     handlers: WebHandlers,
@@ -126,8 +135,7 @@ const walk = (
     const manager = managerOf(handlers[child]);
     const key = manager && parentKeyIn(type, manager.FIELDS);
     const link: ChainLink = key ? { key, parent: type, parentId: id, type: child, id: childId, manager } : null;
-    const down = link ? walk(handlers, mode, child, childId, rest, [...links, link]) : null;
-    if (down) return down;
+    if (link) return walk(handlers, mode, child, childId, rest, [...links, link]);
     const sub = segs.length > 1 ? nextOf(decoder, mode, id, child) : null;
     return sub ? { next: sub, id, links, sub: segs.slice(1).join('/') } : null;
 };
@@ -139,9 +147,8 @@ const guarded =
     (handlers: WebHandlers, mode: NextMode, found: Found): NextHandler =>
     async (_id, param, body, context) => {
         const { links, id } = found;
-        //* the client `$sub` is always dropped.
-        const query: any = { ...(param || {}) };
-        delete query.$sub;
+        //* `handleProtocol()` already dropped the client `$sub`.
+        const query: any = param || {};
         //* the query parent key must equal the path.
         const conflict = links.find(l => query[l.key] !== undefined && `${query[l.key]}` !== l.parentId);
         if (conflict)
@@ -158,9 +165,9 @@ const guarded =
             if (link === last && (link.id === '' || creating)) continue;
             await checkLink(link);
         }
-        //* POST of a new one: fill the parent key in body.
+        //* POST of a new one: fill the parent key in body (`null`/`''` counts as missing).
         const value = last && creating && body ? body[last.key] : undefined;
-        if (last && creating && value !== undefined && `${value}` !== last.parentId)
+        if (last && creating && value !== undefined && value !== null && value !== '' && `${value}` !== last.parentId)
             throw new Error(`400 CONFLICT - .${last.key} (${value}) != path (${last.parentId})`);
         const $body = last && creating ? { ...(body || {}), [last.key]: last.parentId } : body;
         const $param = links.reduce((P, l) => ({ ...P, [l.key]: l.parentId }), {

@@ -63,7 +63,7 @@ import { AWSKMSService, fromBase64 } from '../aws/aws-kms-service';
 import $config from '../config';
 import { measureAsync, PerfTrace } from '../../lib/perf';
 import { asWebPath, isTextualType, bodyLength } from '../../lib/web-body';
-import { nextOf, resolveChain } from './lambda-web-chain';
+import { dropSub, nextOf, resolveChain } from './lambda-web-chain';
 
 import $protocol from '../protocol/';
 const NS = $U.NS('HWEB', 'yellow'); // NAMESPACE TO BE PRINTED.
@@ -514,7 +514,7 @@ export class LambdaWEBHandler extends LambdaSubHandler<WEBHandler> {
         const ID = `${param.id || ''}`;
         const CMD = `${param.cmd || ''}`;
         const PATH = `${(event && event.path) || ''}`;
-        const $param = param.param;
+        const $param = dropSub(param.param); // the client `$sub` is always dropped (only the chain fallback sets it).
         const $body = param.body;
         const context = param.context;
 
