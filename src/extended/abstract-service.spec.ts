@@ -8,6 +8,7 @@
  * @date        2026-10-27 v5 B2-b: `$OS2` / `_OS2` instead of the removed L1 search instance and factory.
  * @date        2026-10-28 v5 B4: `TestModel` is a class with `@field()` (no generated registry); field lists compared as sets.
  * @date        2026-11-03 #207: `getMulti()` options and `null` for a missing id.
+ * @date        2026-11-03 #207 follow-up (Copilot on #276): outcome apart from the model error, original error, idName keys, bounded report, context.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -21,7 +22,14 @@ import { $U, _log } from '../engine';
 import * as $engine from '../engine';
 //* v5 B4: field annotations come from lemon-model (not on the lemon-core root).
 import { field, fieldsOf } from 'lemon-model';
-import { AbstractProxy, CoreManager, CoreService, filterFields, ManagerProxy } from './abstract-service';
+import {
+    AbstractProxy,
+    CoreManager,
+    CoreService,
+    filterFields,
+    GetMultiFailure,
+    ManagerProxy,
+} from './abstract-service';
 import { $OS2, _OS2, OS2Instance, OS2Service } from './cores/abstract-services';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -1627,6 +1635,130 @@ describe('#207 getMulti options', () => {
             expect2(await $test.getMulti(['A', 'B', 'B'], { errNoti: true }).then(L => L.length)).toEqual(3);
             expect2(() => spy.mock.calls.length).toEqual(1);
             expect2(() => GETERR(spy.mock.calls[0][0])).toEqual('getMulti$(test) failed: 1/2 items');
+        } finally {
+            spy.mockRestore();
+        }
+    });
+});
+
+//* #207 follow-up: Copilot review on #276 (6 items).
+describe('#207 getMulti follow-up', () => {
+    //* the same profile load as the main describe.
+    loadProfile(process);
+
+    //* build the manager with model `A` saved (and `B` absent).
+    const prepare = async () => {
+        const { service } = instance();
+        const { $test } = service;
+        await $test.storage.delete('B').catch(() => {});
+        const $A = await $test.save('A', { name: 'AAA', test: 1 });
+        return { $test, $A };
+    };
+
+    //* reject the given ids with the given errors, read the others as usual.
+    const stubRetrieve = ($test: TestModelManager, errors: { [id: string]: unknown }) => {
+        const org = $test.retrieve.bind($test);
+        return vi
+            .spyOn($test, 'retrieve')
+            .mockImplementation((id: string) => (id in errors ? Promise.reject(errors[id]) : org(id)));
+    };
+
+    it('a stored model with `error: pending` is a model, not a failure', async () => {
+        const { $test } = await prepare();
+        await $test.save('P', { name: 'p', error: 'pending' } as any);
+        //* the dummy storage keeps the `error` field.
+        expect2(await $test.retrieve('P'), 'id,error').toEqual({ id: 'P', error: 'pending' });
+        const list = await $test.getMulti(['P']);
+        expect2(() => list.map(N => ({ id: N?.id, error: N?.error }))).toEqual([{ id: 'P', error: 'pending' }]);
+        const $map = await $test.getMulti$(['P'], 'id', { throwable: false });
+        expect2(() => Object.keys($map)).toEqual(['P']);
+        expect2(() => ($map.P as TestModel).name).toEqual('p');
+        await $test.storage.delete('P').catch(() => {});
+    });
+
+    it('a rejection with an empty message is a failure', async () => {
+        const { $test, $A } = await prepare();
+        const spy = stubRetrieve($test, { E: new Error('') });
+        try {
+            const res = await $test.getMulti(['A', 'E']).then(
+                () => 'resolved',
+                e => e,
+            );
+            expect2(() => res instanceof Error).toEqual(true);
+            expect2(await $test.getMulti$(['A', 'E'], 'id', { throwable: false })).toEqual({
+                A: { ...$A },
+                E: { id: 'E', error: '' },
+            });
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('getMulti() rethrows the original error', async () => {
+        const { $test } = await prepare();
+        const boom = Object.assign(new Error('500 BOOM - test:B'), { code: 'EBOOM' });
+        const spy = stubRetrieve($test, { B: boom });
+        try {
+            const err = await $test.getMulti(['A', 'B']).catch(e => e);
+            expect(err).toBe(boom);
+            expect2(() => err.code).toEqual('EBOOM');
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('a failure is keyed by the input id with a custom idName', async () => {
+        const { $test, $A } = await prepare();
+        const spy = stubRetrieve($test, { B: new Error('404 NOT FOUND - test:B') });
+        try {
+            const $map: { [id: string]: TestModel | GetMultiFailure } = await $test.getMulti$(['A', 'B'], 'name', {
+                throwable: false,
+            });
+            expect2(() => Object.keys($map).sort()).toEqual(['AAA', 'B']);
+            expect2($map).toEqual({
+                AAA: { ...$A },
+                B: { id: 'B', error: '404 NOT FOUND - test:B' },
+            });
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('errNoti reports at most 20 failed items, with omitted_count', async () => {
+        const { $test } = await prepare();
+        const ids = Array.from({ length: 25 }, (_, i) => `m${`${i + 1}`.padStart(2, '0')}`);
+        for (const id of ids) await $test.storage.delete(id).catch(() => {});
+        const spy = vi.spyOn($engine, 'doReportError').mockResolvedValue('mid-207');
+        try {
+            const list = await $test.getMulti(ids, { errNoti: true });
+            expect2(() => list.filter(N => N === null).length).toEqual(25);
+            expect2(() => spy.mock.calls.length).toEqual(1);
+            const data: any = spy.mock.calls[0][3];
+            expect2(() => data.total_count).toEqual(25);
+            expect2(() => data.failed_count).toEqual(25);
+            expect2(() => data.success_count).toEqual(0);
+            expect2(() => data.failed_items.length).toEqual(20);
+            expect2(() => data.omitted_count).toEqual(5);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('errNoti forwards options.context to doReportError()', async () => {
+        const { $test } = await prepare();
+        const ctx = { requestId: 'r1' } as any;
+        const spy = vi.spyOn($engine, 'doReportError').mockResolvedValue('mid-207');
+        try {
+            expect2(await $test.getMulti(['B'], { errNoti: true, context: ctx })).toEqual([null]);
+            expect2(() => spy.mock.calls.length).toEqual(1);
+            expect(spy.mock.calls[0]).toEqual([
+                expect.any(Error),
+                ctx,
+                null,
+                expect.objectContaining({ context: ctx }),
+            ]);
+            //* within the cap -> no omitted_count.
+            expect2(() => 'omitted_count' in (spy.mock.calls[0][3] as any)).toEqual(false);
         } finally {
             spy.mockRestore();
         }

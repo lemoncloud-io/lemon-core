@@ -57,3 +57,5 @@
 +AccessPublic
 # #207: options of the batch get `getMulti()` / `getMulti$()` (docs/v5/getmulti-options.md)
 +GetMultiOptions
+# #207 follow-up: a failed read in the map of `getMulti$({ throwable: false })` (docs/v5/getmulti-options.md)
++GetMultiFailure
