@@ -18,14 +18,25 @@ The JSDoc and the `404 → null` mapping in `getMulti()` promised a `null` gap.
 
 ## Fix
 
--   `getMulti(idList, options?)`: `throwable` is `false` by default. An entry whose error starts with
-    `404 NOT FOUND` is `null`; any other error is thrown (the first one; the `find()` / `findByKey()` rule).
-    The result has the order and length of `idList`. `{ throwable: true }` keeps the 4.1.1+ throw.
+-   `getMulti(idList, options?)`: `throwable` is `false` by default. A failed id whose error starts with
+    `404 NOT FOUND` is `null`; any other error is thrown as the original object (type, stack, `code`, `cause`;
+    the first non-404 id in input order; the `find()` / `findByKey()` rule). The result has the order and length
+    of `idList`. `{ throwable: true }` keeps the 4.1.1+ throw.
 -   `getMulti$(idList, idName?, options?)`: the default stays the `my_parallel()` default (throw, pinned in the
-    specs since `1c962258`). With `{ throwable: false }` a failed id is the entry `{ id, error }` in the map
-    (the 4.0 shape). The error scope is `getMulti$(<type>)`.
+    specs since `1c962258`). With `{ throwable: false }` a failed id is the entry `GetMultiFailure` `{ id, error }`
+    keyed by the input id (also with a custom `idName`); the type is `{ [id]: Model | GetMultiFailure }` (overload).
+    The error scope is `getMulti$(<type>)`.
+-   The read outcome is tracked per id (private `readMulti()`), apart from the model's own `error` field: a stored
+    `error: 'pending'` is a model, a rejection `new Error('')` is a failure.
 -   A number as `options` is still the size: `getMulti(ids, 100)` works as before.
 -   `my_parallel()`: JSDoc of `throwable` corrected to `(default: true — env MY_PARALLEL_THROW, …)`. No code change.
+
+Copilot review on #278 (follow-up 2):
+-   With a custom `idName`, a failure whose input id equals a model's key is not written: the model wins (one log
+    line; the `errNoti` report still counts it). Use `idName: 'id'` or `getMulti()` to see every failure.
+-   Overloads: no options, a number, `{ size }` or `{ throwable: true }` → `{ [id]: Model }`; a `GetMultiOptions`
+    variable or `{ throwable: false }` → `{ [id]: Model | GetMultiFailure }`.
+-   A synchronous throw of an overridden `retrieve()` is recorded as a failure; report ids are cut to 255 chars.
 
 ## Options (`GetMultiOptions`)
 
@@ -34,15 +45,23 @@ The JSDoc and the `404 → null` mapping in `getMulti()` promised a `null` gap.
 | `size`      | env `MY_PARALLEL_SIZE` (10) | same                           | size of parallel execution                  |
 | `throwable` | `false`                     | env `MY_PARALLEL_THROW` (true) | throw on the first failed id                |
 | `errNoti`   | `false`                     | `false`                        | one `doReportError()` with the failed items |
+| `context`   | none                        | none                           | request context for the `errNoti` report    |
 
 `errNoti` sends one report `getMulti$(<type>) failed: <n>/<total> items` with the payload fields of the batch
-read/update report (`total_count`, `failed_count`, `success_count`, `failed_items: [{ id, error }]`). A failed
-report is logged and never fails the batch get. In local mode `doReportError()` returns `'!ignore'`.
+read/update report (`total_count`, `failed_count`, `success_count`, `failed_items: [{ id, error }]`, `context`).
+`failed_items` holds at most 20 entries; `omitted_count` gives the rest (`failed_count` is the true total).
+`context` is the 2nd argument of `doReportError()` (the target without `REPORT_ERROR_ARN`). A throwing call throws
+before the report. A failed report is logged and never fails the batch get. In local mode it returns `'!ignore'`.
 
 ## Specs
 
 -   `src/extended/abstract-service.spec.ts` `#207 getMulti options`: mixed ids (`[A, null, A]`), numeric argument,
     `{ throwable: true }`, a non-404 error, `getMulti$()` map shape with `{ throwable: false }`, `errNoti` once / absent.
+-   `#207 getMulti follow-up`: stored `error: 'pending'`, empty-message rejection, original error (`toBe`), custom
+    `idName` keys, 25 failures → 20 items + `omitted_count: 5`, `context` forwarded.
+
+Copilot review on #276 (follow-up): outcome apart from the model `error`, original error rethrown, `GetMultiFailure`
+type, input-id keys with `idName`, 20-item report cap, `context` for the report.
 -   Changed pinned lines: `getMulti(['1', '1'])` and `getMulti(['A', 'A'])` (`abstract-services.spec.ts`) → `[null, null]`;
     `getMulti$(['1', '1'])` still throws, with the new scope `getMulti$(test)`.
 

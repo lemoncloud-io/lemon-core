@@ -15,6 +15,8 @@
  * @date        2026-10-27 v5 B2-b: `OS2Synchronizer`/`AbstractOS2Instance`; the L1 search instance, its factory and proxy are removed.
  * @date        2026-10-28 v5 B4: `CoreManager` `fields` may be a model class.
  * @date        2026-11-03 #207: getMulti() options, null for a missing id.
+ * @date        2026-11-03 #207 follow-up (Copilot on #276): outcome tracked apart from the model error, original error rethrown, GetMultiFailure, idName keys, bounded errNoti report with context.
+ * @date        2026-11-03 #207 follow-up 2 (Copilot on #278): model wins on a key collision, overload for GetMultiOptions variables, sync throw recorded, report ids truncated.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
@@ -179,7 +181,23 @@ export interface GetMultiOptions {
     throwable?: boolean;
     /** report the failed items once via `doReportError()` (default: false), same meaning as in `ManagerProxy.mget()` */
     errNoti?: boolean;
+    /** (optional) request context — forwarded to `doReportError()` for `errNoti` (the report target without `REPORT_ERROR_ARN`) */
+    context?: NextContext;
 }
+
+/**
+ * a failed read in the map of `getMulti$({ throwable: false })` (#207)
+ * - keyed by the input id (not by `idName`).
+ */
+export interface GetMultiFailure {
+    /** the input id */
+    id: string;
+    /** the error message (`GETERR()`) */
+    error: string;
+}
+
+/** cap of `failed_items` in one `errNoti` report (#207) */
+const GETMULTI_REPORT_MAX_ITEMS = 20;
 
 /**
  * class: `CoreManager`
@@ -241,6 +259,8 @@ export abstract class CoreManager<
      * - retrieve multi models per each id
      * - must be matched with idList in sequence order.
      * - a missing id (`404 NOT FOUND`) is `null`, any other error is thrown (the `find()` rule).
+     * - the thrown error is the original rejection of the first non-404 id in the input order.
+     * - a stored model with its own `error` field is returned as is (the read outcome is tracked apart).
      *
      * @param idList list of id
      * @param options (optional) options of the batch get, or a number = size (`parrallel`, kept for compatibility)
@@ -248,31 +268,72 @@ export abstract class CoreManager<
     public async getMulti(idList: string[], options?: number | GetMultiOptions): Promise<(Model | null)[]> {
         //* #207: `throwable` is false by default, so a missing id becomes `null` (not an error).
         const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
-        const $map = await this.getMulti$(idList, 'id', { ...opts, throwable: opts.throwable ?? false });
-        const list = idList.map(id => $map[id] ?? null);
-        //* #207: collected entries — throw the first non-404 error, `null` for the 404 ones.
-        if (opts.throwable !== true) {
-            const failed = list.find(N => N?.error && !`${N.error}`.startsWith('404 NOT FOUND'));
-            if (failed) throw new Error(failed.error);
-        }
-        return list.map(N => (N?.error && `${N.error}`.startsWith('404 NOT FOUND') ? null : N));
+        const { models, failures } = await this.readMulti(idList, { ...opts, throwable: opts.throwable ?? false });
+        //* #207: in the input order — `null` for a 404, the original error for the first non-404 failure.
+        return idList.map(id => {
+            if (failures.has(id)) {
+                const e = failures.get(id);
+                if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+                //* with `throwable: true` the `my_parallel()` throw already happened, so this is collect mode only.
+                if (opts.throwable !== true) throw e;
+            }
+            return models.get(id) ?? null;
+        });
     }
 
     /**
      * batch get models in map by idName
      * - throws on the first failed id by default (env `MY_PARALLEL_THROW`).
-     * - with `{ throwable: false }` a failed id is an entry `{ id, error }` in the map.
+     * - with `{ throwable: false }` a failed id is an entry `{ id, error }` (`GetMultiFailure`) keyed by the input id.
+     * - with a custom `idName`, a failure whose input id equals a model's key is not written (the model wins);
+     *   use `idName: 'id'` or `getMulti()` to see every failure.
+     * - no options, a number, `{ size }` or `{ throwable: true }` give the model-only map; a `GetMultiOptions`
+     *   value whose `throwable` may be false gives the union map.
+     * - the env default `MY_PARALLEL_THROW=0` makes the no-option call collect too; the overload cannot express that.
+     * - with `errNoti` the report is sent only in collect mode; a throwing call throws before the report.
      *
      * @param idList list of id
-     * @param idName (optional) the key of the map (default `id`)
+     * @param idName (optional) the key of the map (default `id`) for the models
      * @param options (optional) options of the batch get, or a number = size (`parrallel`, kept for compatibility)
      */
     public async getMulti$(
         idList: string[],
+        idName?: string,
+        options?: number | (GetMultiOptions & { throwable?: true }),
+    ): Promise<{ [id: string]: Model }>;
+    public async getMulti$(
+        idList: string[],
+        idName?: string,
+        options?: number | GetMultiOptions,
+    ): Promise<{ [id: string]: Model | GetMultiFailure }>;
+    public async getMulti$(
+        idList: string[],
         idName: string = 'id',
         options?: number | GetMultiOptions,
-    ): Promise<{ [id: string]: Model }> {
+    ): Promise<{ [id: string]: Model | GetMultiFailure }> {
         const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
+        const { models, failures } = await this.readMulti(idList, opts);
+        //* #207: the models keep the `idName` key; a failure is keyed by the input id.
+        const $map: { [id: string]: Model | GetMultiFailure } = Object.assign(
+            Object.create(null),
+            $T.asMap([...models.values()], idName),
+        );
+        failures.forEach((e, id) => {
+            //* #207: a model wins on a key collision (custom `idName`); the failure is still in the report.
+            if (id in $map) {
+                _log(NS, `! getMulti$(${this.type}) failure[${id}] hidden by a model key (idName=${idName})`);
+                return;
+            }
+            $map[id] = { id, error: GETERR(e) };
+        });
+        return $map;
+    }
+
+    //* #207: read the unique ids; the outcome of each read is tracked apart from the model's own `error` field.
+    private async readMulti(
+        idList: string[],
+        opts: GetMultiOptions,
+    ): Promise<{ ids: string[]; models: Map<string, Model>; failures: Map<string, unknown> }> {
         const errScope = `getMulti$(${this.type})`;
         // 1. find items in unique
         const ids = idList.reduce<string[]>((L, id) => {
@@ -280,34 +341,54 @@ export abstract class CoreManager<
             return L;
         }, []);
         // 2. find from storage.
+        //* #207: keep the original rejection per id; rethrow so `my_parallel()` still sees it.
+        const failures = new Map<string, unknown>();
         //* #207: `throwable: undefined` falls through to the `my_parallel()` default (`MY_PARALLEL_THROW`).
         const list = await my_parrallel(
             ids.map(id => ({ id })),
-            N => this.retrieve(N.id),
+            //* #207: an async wrapper, so a synchronous throw of an overridden `retrieve()` is recorded too.
+            async N => {
+                try {
+                    const model = await this.retrieve(N.id);
+                    return { id: N.id, model };
+                } catch (e) {
+                    failures.set(N.id, e);
+                    throw e;
+                }
+            },
             { size: opts.size, throwable: opts.throwable, errScope },
         );
+        //* #207: a success is the wrapper with `model`; an id in `failures` is a failure whatever its `error` string.
+        const models = new Map<string, Model>();
+        list.forEach(N => {
+            if (N?.id && !failures.has(N.id) && N.model !== undefined) models.set(N.id, N.model);
+        });
         // 3. report the failed items once (#207: the payload shape of `reportBatchError()` in `proxy-storage-service.ts`).
-        const failed = list.filter(N => N?.error);
-        if (opts.errNoti && failed.length > 0) {
+        if (opts.errNoti && failures.size > 0) {
             const MAX_ERR_LEN = 255;
-            const error = new Error(`${errScope} failed: ${failed.length}/${list.length} items`);
+            const error = new Error(`${errScope} failed: ${failures.size}/${ids.length} items`);
+            //* #207: at most `GETMULTI_REPORT_MAX_ITEMS` items in one report (SNS payload limit).
+            const items = [...failures].slice(0, GETMULTI_REPORT_MAX_ITEMS);
+            const omitted = failures.size - items.length;
             const data = {
                 dt: $U.dt(),
-                total_count: list.length,
-                failed_count: failed.length,
-                success_count: list.length - failed.length,
-                failed_items: failed.map(N => ({
-                    id: N?.id ?? 'unknown',
-                    error: `${N.error}`.substring(0, MAX_ERR_LEN),
+                total_count: ids.length,
+                failed_count: failures.size,
+                success_count: ids.length - failures.size,
+                //* #207: the id is truncated like the error.
+                failed_items: items.map(([id, e]) => ({
+                    id: `${id}`.substring(0, MAX_ERR_LEN),
+                    error: GETERR(e).substring(0, MAX_ERR_LEN),
                 })),
+                ...(omitted > 0 ? { omitted_count: omitted } : {}),
+                context: opts.context,
             };
             //* a failed report never fails the batch get.
-            await doReportError(error, undefined, null, data).catch(e =>
+            await doReportError(error, opts.context, null, data).catch(e =>
                 _err(NS, `! failed to report ${errScope}:`, e),
             );
         }
-        // 4. convert to map
-        return $T.asMap(list, idName);
+        return { ids, models, failures };
     }
 
     /**

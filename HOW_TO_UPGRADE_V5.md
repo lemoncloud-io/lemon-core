@@ -782,6 +782,8 @@ After: it returns `[modelA, null]`, in the order and length of the input. Any er
 * Options (`GetMultiOptions`): `size`, `throwable` (`getMulti()` default `false`), `errNoti` (one `doReportError()` with the failed items). A number is still the size: `getMulti(ids, 100)`.
 * Keep the old throw with `getMulti(ids, { throwable: true })`.
 * `getMulti$()` is unchanged by default (throws, env `MY_PARALLEL_THROW`); `{ throwable: false }` gives `{ id, error }` entries. The error scope is now `getMulti$(<type>)` instead of `parallel(<size>/<count>)`.
+* `getMulti()` rethrows the original error object (type, stack, `code`, `cause`). With `{ throwable: false }`, `getMulti$()` is typed `{ [id]: Model | GetMultiFailure }`; a failure is keyed by the input id, also with a custom `idName`.
+* `context` option: forwarded to `doReportError()` for `errNoti` (needed without `REPORT_ERROR_ARN`). The report holds at most 20 `failed_items` plus `omitted_count`.
 * Details: `docs/v5/getmulti-options.md`.
 
 ## 12. Services that carry a `src/cores/` copy (B6)
