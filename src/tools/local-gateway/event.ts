@@ -121,7 +121,7 @@ export interface GatewayEventInput {
     body: Buffer | null;
     /** matched resource (like `/{type}/{id}`) */
     resource: string;
-    /** decoded path parameters (or `null`) */
+    /** raw path parameters as API Gateway delivers them (or `null`) */
     pathParameters: { [k: string]: string } | null;
     /** stage name (`requestContext.stage`) */
     stage: string;

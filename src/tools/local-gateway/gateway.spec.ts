@@ -90,7 +90,7 @@ describe('local-gateway over http (B20)', () => {
             '/{type}/{proxy+}',
             '/hello/a/b%20c/d',
             'GET',
-            { type: 'hello', proxy: 'a/b c/d' },
+            { type: 'hello', proxy: 'a/b%20c/d' }, // raw, like API Gateway
         ]);
         expect([e.queryStringParameters, e.multiValueQueryStringParameters]).toEqual([{ x: '2' }, { x: ['1', '2'] }]);
         expect([e.headers['X-Dup'], e.multiValueHeaders['X-Dup']]).toEqual(['b', ['a', 'b']]);
@@ -311,5 +311,36 @@ describe('local-gateway over http (B20)', () => {
             200,
             { mode: 'PUT', id: 'abc', cmd: 'do', param: null, body: { a: 1 }, domain: '127.0.0.1' },
         ]);
+    });
+
+    //* v5 B20: the gateway delivers raw path values (measured 2026-11-04); `asWebPath()` decodes them once.
+    it('should deliver raw path values and decode them once in the handler (B20)', async () => {
+        const { $web, events } = stubWeb();
+        const app = appOf($web);
+        //* a `{param}` value stays percent-encoded in `pathParameters` and in `path`.
+        expect((await request(app).get('/hello/a%20b?q=a%20b')).status).toBe(200);
+        expect([events[0].path, events[0].pathParameters, events[0].queryStringParameters]).toEqual([
+            '/hello/a%20b',
+            { id: 'a%20b' },
+            { q: 'a b' },
+        ]);
+        //* an inner empty segment is kept; a trailing `/` stays in `path` but not in the greedy value.
+        expect((await request(app).get('/hello/a//b')).status).toBe(200);
+        expect([events[1].path, events[1].pathParameters]).toEqual(['/hello/a//b', { type: 'hello', proxy: 'a//b' }]);
+        expect((await request(app).get('/hello/a/b/c/')).status).toBe(200);
+        expect([events[2].path, events[2].pathParameters]).toEqual([
+            '/hello/a/b/c/',
+            { type: 'hello', proxy: 'a/b/c' },
+        ]);
+
+        //* the real web handler gets the values decoded exactly once.
+        const $real = new LambdaWEBHandler(new LambdaHandler(), true);
+        const decoder: NextDecoder = (mode, id, cmd) => async (i: string) => ({ mode, id: i, cmd: cmd ?? '' });
+        $real.setHandler('hello', decoder);
+        const real = appOf($real);
+        const one = await request(real).get('/hello/a%20b');
+        expect([one.status, one.body]).toEqual([200, { mode: 'GET', id: 'a b', cmd: '' }]);
+        const two = await request(real).get('/hello/a%2Fb/%2523/%ED%95%9C%EA%B8%80');
+        expect([two.status, two.body]).toEqual([200, { mode: 'GET', id: 'a/b', cmd: '%23/한글' }]);
     });
 });

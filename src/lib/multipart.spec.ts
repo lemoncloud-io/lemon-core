@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { expect2 } from '../common/test-helper';
 import { boundaryOf, parseHeaderValue, parseMultipart } from './multipart';
-import { asWebPath, decodeBase64Body, isTextualType, bodyLength } from './web-body';
+import { asWebPath, decodeBase64Body, decodePath, decodePiece, isTextualType, bodyLength } from './web-body';
 
 //* v5 B20: join lines with CRLF into a Buffer.
 const crlf = (...lines: string[]) => Buffer.from(lines.join('\r\n'));
@@ -118,6 +118,45 @@ describe('multipart B20', () => {
         expect2(() => asWebPath({ proxy: '' })).toEqual({ type: undefined, id: undefined, cmd: undefined });
         expect2(() => asWebPath({ type: 't', id: 'i', proxy: 'x/y' })).toEqual({ type: 't', id: 'i', cmd: 'x/y' });
         expect2(() => asWebPath({ id: 'i', cmd: 'c', proxy: 'x' })).toEqual({ type: undefined, id: 'i', cmd: 'c' });
+    });
+
+    //* v5 B20: API Gateway delivers path values raw (measured 2026-11-04) → split on `/`, then decode each piece once.
+    it('should decode B20 web path pieces once', () => {
+        const p = (proxy: string) => asWebPath({ proxy });
+        const table: [string, string, string][] = [
+            ['a%20b/c', 'a b', 'c'],
+            ['a%2Fb/c', 'a/b', 'c'], // an encoded `/` stays in one piece
+            ['%ED%95%9C%EA%B8%80/x', '한글', 'x'],
+            ['a+b/c', 'a+b', 'c'], // `+` is literal in a path
+            ['%2523/x', '%23', 'x'], // decoded once
+            ['a%25b/c', 'a%b', 'c'],
+            ['%zz/x', '%zz', 'x'], // a bad escape stays raw
+            ['a//b', 'a', '/b'], // an empty segment is kept
+            ['x/c%2Fd/e%20f', 'x', 'c/d/e f'],
+        ];
+        expect2(() => table.map(([proxy]) => [proxy, p(proxy).id, p(proxy).cmd])).toEqual(table);
+        //* greedy `{id+}` / `{cmd+}` → per segment, re-joined with `/`.
+        expect2(() => asWebPath({ id: 'a%2Fb/c.png' })).toEqual({ type: undefined, id: 'a/b/c.png', cmd: undefined });
+        expect2(() => asWebPath({ id: 'i', cmd: 'c%2Fd' })).toEqual({ type: undefined, id: 'i', cmd: 'c/d' });
+        expect2(() => asWebPath({ id: 'i', cmd: 'x%20y/%zz' })).toEqual({ type: undefined, id: 'i', cmd: 'x y/%zz' });
+        //* plain `{id}` / `{cmd}`.
+        expect2(() => asWebPath({ id: 'a%20b', cmd: 'c%2Fd' })).toEqual({ type: undefined, id: 'a b', cmd: 'c/d' });
+        //* `{id}/{proxy+}` → the whole proxy as `cmd`, decoded per piece.
+        expect2(() => asWebPath({ type: 't', id: 'a%20b', proxy: 'x%2Fy/z' })).toEqual({
+            type: 't',
+            id: 'a b',
+            cmd: 'x/y/z',
+        });
+        //* `undefined`/empty rules are kept.
+        expect2(() => asWebPath({ id: '', cmd: '' })).toEqual({ type: undefined, id: '', cmd: '' });
+        expect2(() => asWebPath({ proxy: 'a%20b/' })).toEqual({ type: undefined, id: 'a b', cmd: undefined });
+        //* the helpers.
+        expect2(() => [decodePiece('a%20b'), decodePiece('%E0%A4%A'), decodePiece('a+b')]).toEqual([
+            'a b',
+            '%E0%A4%A',
+            'a+b',
+        ]);
+        expect2(() => decodePath('a%2Fb/%zz//c%20d')).toEqual('a/b/%zz//c d');
     });
 
     //* body length for logs.
