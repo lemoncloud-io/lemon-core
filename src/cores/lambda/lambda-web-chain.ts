@@ -36,8 +36,10 @@ interface Found {
     next: NextHandler;
     id: string;
     links: ChainLink[];
-    /** the rest of the path for the fallback (`param.$sub`) */
-    sub?: string;
+    /** the child piece of a parent method `<mode><Parent><Child>` (SPEC § 3.2-4) */
+    child?: string;
+    /** the pieces after the child piece (`param.<childKey>`, `param.$sub`) */
+    rest?: string[];
 }
 
 /**
@@ -80,13 +82,15 @@ const managerOf = (handler: NextDecoder | CoreWEBController): ChainManager | nul
     return manager && Array.isArray(manager.FIELDS) && typeof manager.retrieve == 'function' ? manager : null;
 };
 
+/** kebab → camelCase (`site-user` → `siteUser`). */
+const camel = (s: string): string => s.replace(/-([a-z])/g, g => g[1].toUpperCase());
+
 /**
  * first candidate of SPEC § 3.1 found in `fields`, else null.
  * - `houses`→`houseId`, `categories`→`categoryId`, `boxes`→`boxId`, `site-users`→`siteUserId`.
  */
 export const parentKeyIn = (parentType: string, fields: string[]): string | null => {
     const t = `${parentType || ''}`;
-    const camel = (s: string): string => s.replace(/-([a-z])/g, g => g[1].toUpperCase());
     const names = [
         t.endsWith('s') && t.slice(0, -1),
         t.endsWith('ies') && `${t.slice(0, -3)}y`,
@@ -99,6 +103,37 @@ export const parentKeyIn = (parentType: string, fields: string[]): string | null
             .map(n => `${camel(n as string)}Id`)
             .find(k => (fields || []).includes(k)) ?? null
     );
+};
+
+/**
+ * the param key of a child id (SPEC § 3.2-4): singular in a fixed order, then camelCase + `Id`.
+ * - `ies`→`y`, `ses`/`xes`/`zes`/`ches`/`shes` → drop `es`, `s` → drop `s`, else as is.
+ * - `rooms`→`roomId`, `categories`→`categoryId`, `boxes`→`boxId`, `site-users`→`siteUserId`, `download`→`downloadId`.
+ */
+export const childKeyOf = (child: string): string => {
+    const t = `${child || ''}`;
+    const one = t.endsWith('ies')
+        ? `${t.slice(0, -3)}y`
+        : /(ses|xes|zes|ches|shes)$/.test(t)
+        ? t.slice(0, -2)
+        : t.endsWith('s')
+        ? t.slice(0, -1)
+        : t;
+    return `${camel(one)}Id`;
+};
+
+/**
+ * the param of a parent method `<mode><Parent><Child>` with the pieces after the child (SPEC § 3.2-4).
+ * - `<childKey>` = the first piece, `$sub` = all pieces. no pieces → `param` as is (S40).
+ * - a query `<childKey>` with a different value throws `400 CONFLICT` (same value passes).
+ */
+export const withChildId = (child: string, rest: string[], param: any): any => {
+    if (!rest || !rest.length) return param;
+    const key = childKeyOf(child);
+    const value = param ? param[key] : undefined;
+    if (value !== undefined && `${value}` !== rest[0])
+        throw new Error(`400 CONFLICT - .${key} (${value}) != path (${rest[0]})`);
+    return { ...(param || {}), [key]: rest[0], $sub: rest.join('/') };
 };
 
 /** the model of `id`, or null if missing (404) or deleted. other errors propagate. */
@@ -149,7 +184,9 @@ export const guardQuery = (handlers: WebHandlers, type: string, id: string, next
 
 /**
  * find the target by walking `(type, id)` pairs. the existing method comes first at each step
- * (the first step is `handleProtocol()`'s own decode), then the child, then the fallback (`$sub`).
+ * (the first step is `handleProtocol()`'s own decode), then the parent method `<mode><Parent><Child>`
+ * with the rest (`param.<childKey>`, `$sub`), then the child.
+ * - the parent method wins over the child chain (SPEC § 3.2-4, S37).
  * - once it descends into a child, it never falls back to an ancestor (the links must be checked).
  */
 const walk = (
@@ -165,12 +202,13 @@ const walk = (
     if (own) return { next: own, id, links };
     if (!segs.length) return null;
     const [child, childId = '', ...rest] = segs;
+    //* the parent method with pieces after the child (no pieces: the existing method above).
+    const parent = segs.length > 1 ? nextOf(decoder, mode, id, child) : null;
+    if (parent) return { next: parent, id, links, child, rest: segs.slice(1) };
     const manager = managerOf(handlerOf(handlers, child));
     const key = manager && parentKeyIn(type, manager.FIELDS);
     const link: ChainLink = key ? { key, parent: type, parentId: id, type: child, id: childId, manager } : null;
-    if (link) return walk(handlers, mode, child, childId, rest, [...links, link]);
-    const sub = segs.length > 1 ? nextOf(decoder, mode, id, child) : null;
-    return sub ? { next: sub, id, links, sub: segs.slice(1).join('/') } : null;
+    return link ? walk(handlers, mode, child, childId, rest, [...links, link]) : null;
 };
 
 /** a plain object (not an array, `Buffer`, string ...). */
@@ -203,6 +241,8 @@ const guarded =
         const conflict = links.find(l => query[l.key] !== undefined && `${query[l.key]}` !== l.parentId);
         if (conflict)
             throw new Error(`400 CONFLICT - .${conflict.key} (${query[conflict.key]}) != path (${conflict.parentId})`);
+        //* a parent method: the query child key must equal the path (before any retrieve).
+        const $query = found.child ? withChildId(found.child, found.rest, query) : query;
         //* the first parent exists (if CRUD).
         const first = links[0];
         const root = first && managerOf(handlerOf(handlers, first.parent));
@@ -217,10 +257,7 @@ const guarded =
         }
         //* POST of a new one: fill the parent key in body.
         const $body = last && creating ? fillBody(body, last) : body;
-        const $param = links.reduce((P, l) => ({ ...P, [l.key]: l.parentId }), {
-            ...query,
-            ...(found.sub !== undefined ? { $sub: found.sub } : {}),
-        });
+        const $param = links.reduce((P, l) => ({ ...P, [l.key]: l.parentId }), { ...$query });
         return found.next(id, $param, $body, context);
     };
 

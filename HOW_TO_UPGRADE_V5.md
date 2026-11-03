@@ -1076,9 +1076,11 @@ A child CRUD controller is reached under its parent when its model `FIELDS` has 
 Order for `/houses/A/rooms/304/beds`:
 
 1. Existing `decode(mode, id, cmd)` first (existing handlers and `getHousesRooms` stop here).
-2. Then the rest is read as `(type, id)` pairs. At every level an existing method wins (`getRoomsBeds`, `postRoomsCheckIn`); otherwise a next piece that is a registered CRUD controller with the parent key goes down to the child.
-3. Fallback: the next segment is a method of the deepest resolved level, and the rest goes to `param.$sub` (a string, never re-decoded). For `/houses/A/rooms/304/download/a/b` that is `getRoomsDownload` with `$sub = 'a/b'`; once the path went down to a child, an ancestor's method is never used. A `$sub` sent by the client is always dropped.
+2. Then the rest is read as `(type, id)` pairs. At every level an existing method wins (`getRoomsBeds`, `postRoomsCheckIn`); then a parent method `<mode><Parent><Child>` for the next piece, with the pieces after it (`param.<child>Id` and `param.$sub`, below); otherwise a next piece that is a registered CRUD controller with the parent key goes down to the child.
+3. Fallback: the parent method is looked up on the deepest resolved level, and the rest goes to `param.$sub` (a string, never re-decoded). For `/houses/A/rooms/304/download/a/b` that is `getRoomsDownload` with `downloadId = 'a'` and `$sub = 'a/b'`; once the path went down to a child, an ancestor's method is never used. A `$sub` sent by the client is always dropped.
 4. Not found anywhere: 404.
+
+Child id of a parent method. When a parent method `<mode><Parent><Child>` takes a path with pieces after the child piece, `param.<childKey>` is the first of those pieces and `param.$sub` is all of them. `GET /houses/A/rooms/1` with `getHousesRooms` calls `getHousesRooms('A', { roomId: '1', $sub: '1' }, body, $ctx)`; `POST /houses/A/rooms/1/check-in` with `postHousesRooms` gets `{ roomId: '1', $sub: '1/check-in' }`. The key is the child piece made singular in a fixed order, then camelCase + `Id`: `ies` → `y`, `ses`/`xes`/`zes`/`ches`/`shes` → strip `es`, `s` → strip `s`, else as is (`rooms` → `roomId`, `categories` → `categoryId`, `boxes` → `boxId`, `site-users` → `siteUserId`, `download` → `downloadId`). With no piece after the child (`GET /houses/A/rooms`) neither is set. The parent method wins over the child chain: `/houses/A/rooms/1/beds/2` stays in `getHousesRooms` with `$sub = '1/beds/2'`, and no membership is checked. To use the child chain, do not write a parent method of that name.
 
 The mode is never changed. An id-less `GET /houses/A/rooms` goes to the child's `doGet('')`. To serve a list, the service's `doGet` returns `doList`.
 
@@ -1090,6 +1092,7 @@ Before the handler runs (`src/cores/lambda/lambda-web-chain.ts`):
 | --- | --- |
 | Empty, `.`, `..` or `$…` segment, including a trailing `/` or `//` | `400 INVALID PATH` |
 | Query parent key differs from the path (`/houses/A/rooms?houseId=B`) | `400 CONFLICT` |
+| Parent method: query child key differs from the path (`/houses/A/rooms/1?roomId=2` with `getHousesRooms`) | `400 CONFLICT` (the same value passes; absent is filled from the path) |
 | First parent (if CRUD) is missing or soft-deleted | `404 NOT FOUND` |
 | Child is missing, soft-deleted, or its parent key is not the path parent | `404 NOT FOUND` |
 | `POST` with no target id (`''` or `'0'`), `body[parentKey]` absent, `null` or `''` | filled with the path value (a different value is `400 CONFLICT`) |
@@ -1118,7 +1121,7 @@ $web.addPrefix('_key_', [apikeys]);
 
 1. A direct route with a target id and a query key that is a registered parent key answers `404` when the target does not belong to it, in any mode. This includes routes with a cmd, alias ids (`/users/me?teamId=T`) and an empty value (`?houseId=`). It was `200` before. This check and the drop of a client `param.$sub` (§ 21.1) run in `handleProtocol()`, so they apply to every caller of it, not only HTTP: `$protocol` internal calls, SNS and SQS too. When you check a service for this change, also look at the `param` those calls send.
 2. A list filters by `?<parentKey>=` only if the service transformer maps that key.
-3. Some `{cmd+}` paths that were `404` now reach a parent method through the fallback (`param.$sub`).
+3. Some `{cmd+}` paths that were `404` now reach a parent method through the fallback (`param.$sub`). `param.$sub` now comes with `param.<child>Id`, its first piece (`getFilesDownload` for `/files/0/download/a/b` gets `downloadId = 'a'`).
 4. A trailing `/` or `//` on a chained path changes from `404` to `400`. So does an empty id with a cmd (`/houses//x`) sent by a non-HTTP protocol call (`$protocol`, SNS, SQS): `400 INVALID PATH` instead of `404`.
 5. `GET /public/<type>` stays `GET` (4.x made it `LIST`); a list needs `doGet` to return `doList`.
 
