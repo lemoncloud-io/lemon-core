@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## Unreleased (5.x)
+## 5.x bundles B19–B39 (shipped in 5.0.13–5.0.24, not split per version)
 
 ### Features
 
@@ -50,7 +50,7 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## 5.0.13–5.0.24 (package.json bump commits)
 
-One row per `version` bump commit on `develop` (tags exist for 5.0.22–5.0.24). The entries are not split per version yet; see `Unreleased (5.x)` above and `git log`.
+One row per `version` bump commit on `develop` (tags exist for 5.0.22–5.0.24). The entries are not split per version yet; see the B19–B39 section above and `git log`.
 
 | Version   | Commit date | Commit     | Description (commit subject)
 |--         |--          |--          |--

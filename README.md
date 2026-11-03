@@ -247,7 +247,7 @@ npm audit --omit=dev  # found 0 vulnerabilities
 | [docs/specs/](docs/specs/) | `$T`, `$U` characterization specs |
 | [docs/header-identity-token.md](docs/header-identity-token.md) | Identity token header |
 | [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md), [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) | PR process; supported versions; conduct |
-| [CHANGELOG.md](CHANGELOG.md) | `Unreleased (5.x)` (B19–B39), 5.0.13–5.0.24 bump commits, 5.0.5–5.0.12 entries, the version history table (5.0.12 → 1.2.12, moved from this README), then 1.2.0 and older (2019) |
+| [CHANGELOG.md](CHANGELOG.md) | B19–B39 bundle entries (shipped in 5.0.13–5.0.24), one row per 5.0.13–5.0.24 bump commit, 5.0.5–5.0.12 entries, the version history table (5.0.12 → 1.2.12, moved from this README), then 1.2.0 and older (2019) |
 | External (planned) | DevOps runbooks for the lemon-* services (deploy, migration guard, agent operations) are planned for `lemoncloud-io/2nd-brain`; not published yet. |
 
 ## Contribution
