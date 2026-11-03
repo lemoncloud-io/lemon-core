@@ -339,6 +339,9 @@ test('strict config/CLI validation refuses ambiguous, unsupported or wrong targe
         () => validateConfig({ ...example, routes: [{ ...example.routes[0], httpMethod: 'OPTIONS' }] }),
         DeployError,
     );
+    //* `policy.snsPushEndpoints` (knowledge#1172) is a boolean, passed through to resolve-policy as is.
+    assert.equal(validateConfig({ ...example, policy: { snsPushEndpoints: true } }).policy.snsPushEndpoints, true);
+    assert.throws(() => validateConfig({ ...example, policy: { snsPushEndpoints: 'true' } }), DeployError);
 });
 test('artifact tamper/runtime/architecture and encrypted env missing KMS refuse before client construction', async t => {
     const f = await fixture(t);
