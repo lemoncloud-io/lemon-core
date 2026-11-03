@@ -1,0 +1,313 @@
+/**
+ * `lambda-web-chain.ts`
+ * - nested `{proxy+}` paths on the default route, like `/houses/A/rooms/304`.
+ * - a child is linked to its parent by the `<parent>Id` field in the child `manager.FIELDS`.
+ *
+ * @author      Steve Jung <steve@lemoncloud.io>
+ * @date        2026-11-03 initial version (v5 proxy decode).
+ *
+ * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
+ */
+import { NextDecoder, NextHandler, NextMode } from 'lemon-model';
+import { NUL404 } from '../../common/test-helper';
+import type { CoreWEBController } from './lambda-web-handler';
+
+export type WebHandlers = { [type: string]: NextDecoder | CoreWEBController };
+
+/** the part of a CRUD `manager` the chain reads. */
+interface ChainManager {
+    FIELDS: string[];
+    retrieve(id: string): Promise<any>;
+}
+
+/** one parent-child step of the chain. */
+export interface ChainLink {
+    /** the parent key in the child (`houseId`) */
+    key: string;
+    parent: string;
+    parentId: string;
+    type: string;
+    id: string;
+    manager: ChainManager;
+}
+
+/** the resolved target. */
+interface Found {
+    next: NextHandler;
+    id: string;
+    links: ChainLink[];
+    /** the child piece of a parent method `<mode><Parent><Child>` (SPEC § 3.2-4) */
+    child?: string;
+    /** the pieces after the child piece (`param.<childKey>`, `param.$sub`) */
+    rest?: string[];
+}
+
+/**
+ * the next handler of a decoder (function) or a controller (object), as `handleProtocol()` does.
+ */
+export const nextOf = (
+    decoder: NextDecoder | CoreWEBController,
+    mode: NextMode,
+    id: string,
+    cmd: string,
+    path?: string,
+): NextHandler | null => {
+    if (typeof decoder == 'function') {
+        const next = decoder(mode, id, cmd, path);
+        return typeof next == 'function' ? next : null;
+    }
+    if (decoder && typeof decoder == 'object') {
+        const func = decoder.decode(mode, id, cmd, path);
+        return func ? (i, p, b, c) => func.call(decoder, i, p, b, c) : null;
+    }
+    return null;
+};
+
+/** the handler of `type` (own key only: `__proto__`, `valueOf` → undefined). */
+export const handlerOf = (handlers: WebHandlers, type: string): NextDecoder | CoreWEBController | undefined =>
+    Object.prototype.hasOwnProperty.call(handlers, type) ? handlers[type] : undefined;
+
+/** `param` without the client `$sub` (a copy only when it has one). */
+export const dropSub = <T>(param: T): T => {
+    if (!param || typeof param != 'object' || !('$sub' in param)) return param;
+    const copy: any = { ...param };
+    delete copy.$sub;
+    return copy;
+};
+
+/** the CRUD manager of a handler, or null. */
+const managerOf = (handler: NextDecoder | CoreWEBController): ChainManager | null => {
+    // ponytail: CRUD manager read directly; add a public accessor if a non-CRUD controller needs chains
+    const manager = (handler as any)?.manager;
+    return manager && Array.isArray(manager.FIELDS) && typeof manager.retrieve == 'function' ? manager : null;
+};
+
+/** kebab → camelCase (`site-user` → `siteUser`). */
+const camel = (s: string): string => s.replace(/-([a-z])/g, g => g[1].toUpperCase());
+
+/**
+ * first candidate of SPEC § 3.1 found in `fields`, else null.
+ * - `houses`→`houseId`, `categories`→`categoryId`, `boxes`→`boxId`, `site-users`→`siteUserId`.
+ */
+export const parentKeyIn = (parentType: string, fields: string[]): string | null => {
+    const t = `${parentType || ''}`;
+    const names = [
+        t.endsWith('s') && t.slice(0, -1),
+        t.endsWith('ies') && `${t.slice(0, -3)}y`,
+        t.endsWith('es') && t.slice(0, -2),
+        t,
+    ];
+    return (
+        names
+            .filter(n => !!n)
+            .map(n => `${camel(n as string)}Id`)
+            .find(k => (fields || []).includes(k)) ?? null
+    );
+};
+
+/**
+ * the param key of a child id (SPEC § 3.2-4): singular in a fixed order, then camelCase + `Id`.
+ * - `ies`→`y`, `sses`/`xes`/`ches`/`shes` → drop `es`, `s` → drop `s`, else as is.
+ * - known misses (`buses`→`buseId`, `statuses`→`statuseId`, `caches`→`cachId`): read the first piece of `param.$sub`.
+ * - `rooms`→`roomId`, `houses`→`houseId`, `categories`→`categoryId`, `boxes`→`boxId`, `site-users`→`siteUserId`, `download`→`downloadId`.
+ */
+export const childKeyOf = (child: string): string => {
+    const t = `${child || ''}`;
+    const one = t.endsWith('ies')
+        ? `${t.slice(0, -3)}y`
+        : /(sses|xes|ches|shes)$/.test(t)
+        ? t.slice(0, -2)
+        : t.endsWith('s')
+        ? t.slice(0, -1)
+        : t;
+    return `${camel(one)}Id`;
+};
+
+/**
+ * the param of a parent method `<mode><Parent><Child>` with the pieces after the child (SPEC § 3.2-4).
+ * - `<childKey>` = the first piece, `$sub` = all pieces. no pieces → `param` as is (S40).
+ * - a query `<childKey>` with a different value throws `400 CONFLICT` (same value passes).
+ */
+export const withChildId = (child: string, rest: string[], param: any): any => {
+    if (!rest || !rest.length) return param;
+    const key = childKeyOf(child);
+    const value = param ? param[key] : undefined;
+    if (value !== undefined && `${value}` !== rest[0])
+        throw new Error(`400 CONFLICT - .${key} (${value}) != path (${rest[0]})`);
+    return { ...(param || {}), [key]: rest[0], $sub: rest.join('/') };
+};
+
+/**
+ * the ancestor link whose key is the child key of a parent method, with another id (SPEC § 3.3 S41), or undefined.
+ * - `/users/9/rooms/304/users/10` with `getRoomsUsers`: `userId` cannot be both `9` and `10`. the same id passes.
+ */
+export const childClash = (child: string, rest: string[], links: ChainLink[]): ChainLink | undefined => {
+    const key = childKeyOf(child);
+    return links.find(l => l.key === key && l.parentId !== rest[0]);
+};
+
+/** the model of `id`, or null if missing (404) or deleted. other errors propagate. */
+const modelOf = (manager: ChainManager, id: string): Promise<any> =>
+    manager
+        .retrieve(id)
+        .catch(NUL404)
+        .then(model => (model && !(model.deletedAt > 0) ? model : null));
+
+/**
+ * check one link: the child `id` exists and belongs to the parent. throws `404 NOT FOUND`.
+ */
+export const checkLink = async (link: ChainLink): Promise<void> => {
+    const model = await modelOf(link.manager, link.id);
+    const value = model ? model[link.key] : undefined;
+    if (value === undefined || value === null || `${value}` !== link.parentId)
+        throw new Error(`404 NOT FOUND - ${link.type}/${link.id} of ${link.parent}/${link.parentId}`);
+};
+
+/**
+ * a direct route (`GET /rooms/304?houseId=B`): a query parent key must match the target (SPEC § 3.3 S4).
+ * - any mode. the parent key comes from a registered type (`houses`→`houseId`); a move is by body only.
+ * - returns `next` as is if the target has no `manager`, or `id` is `''`/`'0'`. no retrieve without a parent key.
+ */
+export const guardQuery = (handlers: WebHandlers, type: string, id: string, next: NextHandler): NextHandler => {
+    const manager = next && id && id !== '0' ? managerOf(handlerOf(handlers, type)) : null;
+    if (!manager) return next;
+    return async (_id, param, body, context) => {
+        const query: any = param || {};
+        const links = Object.keys(handlers)
+            .filter(parent => parent && parent !== type)
+            .map(parent => ({ parent, key: parentKeyIn(parent, manager.FIELDS) }))
+            .filter(({ key }) => !!key && query[key as string] !== undefined && query[key as string] !== null)
+            .map(
+                ({ parent, key }): ChainLink => ({
+                    key: key as string,
+                    parent,
+                    parentId: `${query[key as string]}`,
+                    type,
+                    id,
+                    manager,
+                }),
+            );
+        for (const link of links) await checkLink(link);
+        return next(_id, param, body, context);
+    };
+};
+
+/**
+ * find the target by walking `(type, id)` pairs. the existing method comes first at each step
+ * (the first step is `handleProtocol()`'s own decode), then the parent method `<mode><Parent><Child>`
+ * with the rest (`param.<childKey>`, `$sub`), then the child.
+ * - the parent method wins over the child chain (SPEC § 3.2-4, S37).
+ * - once it descends into a child, it never falls back to an ancestor (the links must be checked).
+ */
+const walk = (
+    handlers: WebHandlers,
+    mode: NextMode,
+    type: string,
+    id: string,
+    segs: string[],
+    links: ChainLink[],
+): Found | null => {
+    const decoder = handlerOf(handlers, type);
+    const own = links.length ? nextOf(decoder, mode, id, segs.join('/')) : null;
+    if (own) return { next: own, id, links };
+    if (!segs.length) return null;
+    const [child, childId = '', ...rest] = segs;
+    //* the parent method with pieces after the child (no pieces: the existing method above).
+    const parent = segs.length > 1 ? nextOf(decoder, mode, id, child) : null;
+    if (parent) return { next: parent, id, links, child, rest: segs.slice(1) };
+    const manager = managerOf(handlerOf(handlers, child));
+    const key = manager && parentKeyIn(type, manager.FIELDS);
+    const link: ChainLink = key ? { key, parent: type, parentId: id, type: child, id: childId, manager } : null;
+    return link ? walk(handlers, mode, child, childId, rest, [...links, link]) : null;
+};
+
+/** a plain object (not an array, `Buffer`, string ...). */
+const isPlain = (v: any): boolean => Object.prototype.toString.call(v) === '[object Object]';
+
+/** fill the parent key in one body (`null`/`''` counts as missing). throws `400 CONFLICT`. */
+const fillOne = (body: any, last: ChainLink): any => {
+    const value = body ? body[last.key] : undefined;
+    if (value !== undefined && value !== null && value !== '' && `${value}` !== last.parentId)
+        throw new Error(`400 CONFLICT - .${last.key} (${value}) != path (${last.parentId})`);
+    return { ...(body || {}), [last.key]: last.parentId };
+};
+
+/** POST of a new one: an object (or none) is filled, each object of an array too; others pass as is. */
+const fillBody = (body: any, last: ChainLink): any => {
+    if (body === undefined || body === null || isPlain(body)) return fillOne(body, last);
+    return Array.isArray(body) ? body.map(b => (isPlain(b) ? fillOne(b, last) : b)) : body;
+};
+
+/**
+ * the handler that runs the checks of SPEC § 3.3 (in order), then calls the target.
+ */
+const guarded =
+    (handlers: WebHandlers, mode: NextMode, found: Found): NextHandler =>
+    async (_id, param, body, context) => {
+        const { links, id } = found;
+        //* `handleProtocol()` already dropped the client `$sub`.
+        const query: any = param || {};
+        //* the query parent key must equal the path.
+        const conflict = links.find(l => query[l.key] !== undefined && `${query[l.key]}` !== l.parentId);
+        if (conflict)
+            throw new Error(`400 CONFLICT - .${conflict.key} (${query[conflict.key]}) != path (${conflict.parentId})`);
+        //* a parent method: the query child key must equal the path (before any retrieve).
+        const $query = found.child ? withChildId(found.child, found.rest, query) : query;
+        //* a parent method: the child key must not be an ancestor key with another id (before any retrieve).
+        const clash =
+            found.child && found.rest && found.rest.length ? childClash(found.child, found.rest, links) : null;
+        if (clash) throw new Error(`400 CONFLICT - .${clash.key} (${clash.parentId}) != path (${found.rest[0]})`);
+        //* the first parent exists (if CRUD).
+        const first = links[0];
+        const root = first && managerOf(handlerOf(handlers, first.parent));
+        if (root && !(await modelOf(root, first.parentId)))
+            throw new Error(`404 NOT FOUND - ${first.parent}/${first.parentId}`);
+        //* each child belongs to its parent (no target id, or POST `0`, is a new one).
+        const last = links[links.length - 1];
+        const creating = mode === 'POST' && (id === '' || id === '0');
+        for (const link of links) {
+            if (link === last && (link.id === '' || creating)) continue;
+            await checkLink(link);
+        }
+        //* POST of a new one: fill the parent key in body.
+        const $body = last && creating ? fillBody(body, last) : body;
+        const $param = links.reduce((P, l) => ({ ...P, [l.key]: l.parentId }), { ...$query });
+        return found.next(id, $param, $body, context);
+    };
+
+/**
+ * resolve `cmd` as a chain of `(type, id)` (SPEC § 3.2), after the first step failed.
+ * - null → 404 as today. throws `400 INVALID PATH`.
+ */
+export const resolveChain = (
+    handlers: WebHandlers,
+    mode: NextMode,
+    type: string,
+    id: string,
+    cmd: string,
+): NextHandler | null => {
+    if (!handlerOf(handlers, type)) return null;
+    const segs = `${cmd || ''}`.split('/');
+    const bad = [id, ...segs].some(s => !s || s === '.' || s === '..' || s.startsWith('$'));
+    if (bad) throw new Error(`400 INVALID PATH - /${type}/${id}/${cmd}`);
+    const found = walk(handlers, mode, type, id, segs, []);
+    return found ? guarded(handlers, mode, found) : null;
+};
+
+/**
+ * the target of `(type, id, cmd)` in `handlers` (SPEC § 3.2): the decoder first (with the query guard), then the chain.
+ * - used by the default route and by a prefix (with its own `handlers`). null → 404.
+ */
+export const resolveNext = (
+    handlers: WebHandlers,
+    mode: NextMode,
+    type: string,
+    id: string,
+    cmd: string,
+    path?: string,
+): NextHandler | null => {
+    const first = nextOf(handlerOf(handlers, type), mode, id, cmd, path);
+    //* a direct route: the query parent key must match the target.
+    if (first) return guardQuery(handlers, type, id, first);
+    return cmd ? resolveChain(handlers, mode, type, id, cmd) : null;
+};
