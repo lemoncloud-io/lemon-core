@@ -13,7 +13,7 @@ import { expect2 } from '../../common/test-helper';
 import { GeneralWEBController } from '../../controllers/general-controller';
 import { LambdaWEBHandler } from './lambda-web-handler';
 import { LambdaHandler } from './lambda-handler';
-import { parentKeyIn } from './lambda-web-chain';
+import { childKeyOf, parentKeyIn } from './lambda-web-chain';
 
 //* a fake CRUD-like controller: GeneralWEBController + `manager` (FIELDS, retrieve) + recording handlers.
 const fake = (
@@ -67,7 +67,7 @@ const setup = () => {
         param: any = {},
         body: any = null,
     ): Promise<any> => web.handleProtocol({ mode, type, id, cmd, param, body, context: {} } as any);
-    return { web, call, houses, rooms };
+    return { web, call, houses, rooms, users };
 };
 
 //* the error code part (`404 NOT FOUND`, `400 CONFLICT`, ...), or 'OK'.
@@ -210,7 +210,7 @@ describe('lambda-web-chain', () => {
         await expect2(() => call('GET', 'files', '0', 'download/a/b'), 'via,id,param').toEqual({
             via: 'files.getFilesDownload',
             id: '0',
-            param: { $sub: 'a/b' },
+            param: { downloadId: 'a', $sub: 'a/b' },
         });
     });
 
@@ -258,14 +258,14 @@ describe('lambda-web-chain', () => {
     });
 
     it('R-24b fallback only at the deepest level', async () => {
-        const { call, houses, rooms } = setup();
-        houses.getHousesRooms = houses.rec('getHousesRooms');
+        //* (a parent method `getHousesRooms` would win before the chain goes down: R-37)
+        const { call, rooms } = setup();
         await expect2(() => codeOf(call('GET', 'houses', 'A', 'rooms/304/typo'))).toEqual('404 NOT FOUND');
         rooms.getRoomsDownload = rooms.rec('getRoomsDownload');
         await expect2(() => call('GET', 'houses', 'A', 'rooms/304/download/a/b'), 'via,id,param').toEqual({
             via: 'rooms.getRoomsDownload',
             id: '304',
-            param: { houseId: 'A', $sub: 'a/b' },
+            param: { houseId: 'A', downloadId: 'a', $sub: 'a/b' },
         });
         await expect2(() => codeOf(call('GET', 'houses', 'B', 'rooms/304/download/a/b'))).toEqual('404 NOT FOUND');
     });
@@ -374,6 +374,117 @@ describe('lambda-web-chain', () => {
             await expect2(() => codeOf(call('GET', type, 'x', 'y'))).toEqual('404 NOT FOUND');
             await expect2(() => codeOf(call('GET', 'houses', 'A', `${type}/x`))).toEqual('404 NOT FOUND');
         }
+    });
+});
+
+describe('child id', () => {
+    //* houses with the parent methods `getHousesRooms` and `postHousesRooms` (rooms, beds are registered too).
+    const parented = () => {
+        const S = setup();
+        S.houses.getHousesRooms = S.houses.rec('getHousesRooms');
+        S.houses.postHousesRooms = S.houses.rec('postHousesRooms');
+        return S;
+    };
+
+    it('R-34 GET houses A rooms/1 → getHousesRooms with roomId', async () => {
+        const { call } = parented();
+        await expect2(() => call('GET', 'houses', 'A', 'rooms/1'), 'via,id,param').toEqual({
+            via: 'houses.getHousesRooms',
+            id: 'A',
+            param: { roomId: '1', $sub: '1' },
+        });
+    });
+
+    it('R-35 query child key differs from path', async () => {
+        const { call } = parented();
+        await expect2(() => codeOf(call('GET', 'houses', 'A', 'rooms/1', { roomId: '2' }))).toEqual('400 CONFLICT');
+        await expect2(() => call('GET', 'houses', 'A', 'rooms/1', { roomId: '1' }), 'via,param').toEqual({
+            via: 'houses.getHousesRooms',
+            param: { roomId: '1', $sub: '1' },
+        });
+    });
+
+    it('R-36 POST houses A rooms/1/check-in → postHousesRooms', async () => {
+        const { call } = parented();
+        await expect2(() => call('POST', 'houses', 'A', 'rooms/1/check-in', {}, {}), 'via,id,param').toEqual({
+            via: 'houses.postHousesRooms',
+            id: 'A',
+            param: { roomId: '1', $sub: '1/check-in' },
+        });
+    });
+
+    it('R-37 parent method wins over the child chain', async () => {
+        const { web, call } = parented();
+        const seen: string[] = [];
+        const beds = fake('beds', ['id', 'roomId'], {});
+        beds.doGet = async (id: string) => (seen.push(id), { via: 'beds.doGet' });
+        web.addController(beds);
+        await expect2(() => call('GET', 'houses', 'A', 'rooms/1/beds/2'), 'via,id,param').toEqual({
+            via: 'houses.getHousesRooms',
+            id: 'A',
+            param: { roomId: '1', $sub: '1/beds/2' },
+        });
+        //* an existing room too: no membership check, no descent.
+        await expect2(() => call('GET', 'houses', 'A', 'rooms/304/typo'), 'via,param').toEqual({
+            via: 'houses.getHousesRooms',
+            param: { roomId: '304', $sub: '304/typo' },
+        });
+        expect2(() => seen).toEqual([]);
+    });
+
+    it('R-38 GET files 0 download/a/b → downloadId', async () => {
+        const { web, call } = setup();
+        const files = fake('files', ['id'], {});
+        files.getFilesDownload = files.rec('getFilesDownload');
+        web.addController(files);
+        await expect2(() => call('GET', 'files', '0', 'download/a/b'), 'via,param').toEqual({
+            via: 'files.getFilesDownload',
+            param: { downloadId: 'a', $sub: 'a/b' },
+        });
+    });
+
+    it('R-39 childKeyOf()', () => {
+        expect2(() => childKeyOf('categories')).toEqual('categoryId');
+        expect2(() => childKeyOf('site-users')).toEqual('siteUserId');
+        expect2(() => childKeyOf('boxes')).toEqual('boxId');
+        expect2(() => childKeyOf('rooms')).toEqual('roomId');
+        expect2(() => childKeyOf('download')).toEqual('downloadId');
+        expect2(() => childKeyOf('addresses')).toEqual('addressId');
+        expect2(() => childKeyOf('houses')).toEqual('houseId');
+        expect2(() => childKeyOf('sizes')).toEqual('sizeId');
+    });
+
+    it('R-40 GET houses A rooms (no piece after the child)', async () => {
+        const { call } = parented();
+        await expect2(() => call('GET', 'houses', 'A', 'rooms'), 'via,id,param').toEqual({
+            via: 'houses.getHousesRooms',
+            id: 'A',
+            param: {},
+        });
+    });
+
+    it('R-41 child key equal to an ancestor key: another id is 400 CONFLICT', async () => {
+        const { call, rooms, users } = setup();
+        //* users 9 is a chain parent of rooms (rooms FIELDS has `userId`); record every retrieve.
+        const seen: string[] = [];
+        const record = (type: string, m: any) => {
+            const get = m.retrieve;
+            m.retrieve = (id: string) => (seen.push(`${type}/${id}`), get(id));
+        };
+        record('users', users.manager);
+        record('rooms', rooms.manager);
+        rooms.getRoomsUsers = rooms.rec('getRoomsUsers');
+        await expect2(() => call('GET', 'users', '9', 'rooms/304/users/10').catch(e => `${e.message}`)).toEqual(
+            '400 CONFLICT - .userId (9) != path (10)',
+        );
+        //* the 400 is before any retrieve (no users/10 either).
+        expect2(() => seen).toEqual([]);
+        await expect2(() => call('GET', 'users', '9', 'rooms/304/users/9'), 'via,id,param').toEqual({
+            via: 'rooms.getRoomsUsers',
+            id: '304',
+            param: { userId: '9', $sub: '9' },
+        });
+        expect2(() => seen).toEqual(['users/9', 'rooms/304']);
     });
 });
 
