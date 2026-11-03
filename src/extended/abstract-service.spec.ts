@@ -7,6 +7,7 @@
  * @date        2022-03-31 optimize test-spec
  * @date        2026-11-03 #207: `getMulti()` options and `null` for a missing id (backport of 5.0.25).
  * @date        2026-11-03 #207 follow-up (Copilot on #276/#277): outcome apart from the model error, original error, idName keys, bounded report, context.
+ * @date        2026-11-03 #207 follow-up 2 (Copilot on #278): key collision, union overload, sync throw, report id length.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.spec.ts`
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
@@ -27,6 +28,7 @@ import {
     Elastic6SearchParams,
     filterFields,
     GetMultiFailure,
+    GetMultiOptions,
     ManagerProxy,
 } from './abstract-service';
 import { asyncCredentials } from '../tools';
@@ -1441,6 +1443,106 @@ describe('#207 getMulti follow-up', () => {
             ]);
             //* within the cap -> no omitted_count.
             expect2(() => 'omitted_count' in (spy.mock.calls[0][3] as any)).toEqual(false);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+});
+
+//* exact type equality (for the overload checks under tsc).
+type SameType<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+//* #207 follow-up 2: Copilot review on #278 (4 items).
+describe('#207 getMulti follow-up 2', () => {
+    //* the same profile load as the main describe.
+    loadProfile(process);
+
+    //* build the manager with model `A` saved (and `B` absent).
+    const prepare = async () => {
+        const { service } = instance();
+        const { $test } = service;
+        await $test.storage.delete('B').catch(() => {});
+        const $A = await $test.save('A', { name: 'AAA', test: 1 });
+        return { $test, $A };
+    };
+
+    //* reject the given ids with the given errors, read the others as usual.
+    const stubRetrieve = ($test: TestModelManager, errors: { [id: string]: unknown }) => {
+        const org = $test.retrieve.bind($test);
+        return jest
+            .spyOn($test, 'retrieve')
+            .mockImplementation((id: string) => (id in errors ? Promise.reject(errors[id]) : org(id)));
+    };
+
+    it('a model wins on a key collision with a custom idName', async () => {
+        const { $test } = await prepare();
+        //* model `A` has the key `B` under `idName: 'name'`.
+        await $test.save('A', { name: 'B', test: 1 });
+        const spy = stubRetrieve($test, { B: new Error('404 NOT FOUND - test:B') });
+        try {
+            const $map = await $test.getMulti$(['A', 'B'], 'name', { throwable: false });
+            expect2(() => Object.keys($map)).toEqual(['B']);
+            expect2(() => $map.B.id).toEqual('A');
+            expect2(() => 'error' in $map.B).toEqual(false);
+            //* `getMulti()` is unchanged.
+            const list = await $test.getMulti(['A', 'B']);
+            expect2(() => list.map(N => N?.id ?? null)).toEqual(['A', null]);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('a GetMultiOptions variable gets the union map', async () => {
+        const { $test } = await prepare();
+        const opts: GetMultiOptions = { throwable: false };
+        const m = await $test.getMulti$(['B'], 'id', opts);
+        const v: TestModel | GetMultiFailure = m['B'];
+        expect(v).toEqual({ id: 'B', error: '404 NOT FOUND - test:B' });
+        //* type level (checked by tsc): `GetMultiFailure` is assignable to the all-optional model, so compare the map types.
+        // @ts-expect-error the map of a `GetMultiOptions` variable is not the model-only map.
+        const modelOnly: SameType<typeof m, { [id: string]: TestModel }> = true;
+        const union: SameType<typeof m, { [id: string]: TestModel | GetMultiFailure }> = true;
+        expect2(() => [modelOnly, union]).toEqual([true, true]);
+        //* no options -> the model-only map.
+        const m2 = await $test.getMulti$(['A']);
+        const ok: TestModel = m2['A'];
+        const same: SameType<typeof m2, { [id: string]: TestModel }> = true;
+        expect2(() => [ok.id, same]).toEqual(['A', true]);
+    });
+
+    it('a synchronous throw from retrieve() is recorded', async () => {
+        const { $test, $A } = await prepare();
+        const orig = $test.retrieve.bind($test);
+        const boom = new Error('500 SYNC - test:B');
+        $test.retrieve = ((id: string) => {
+            if (id === 'B') throw boom;
+            return orig(id);
+        }) as any;
+        try {
+            const err = await $test.getMulti(['A', 'B']).then(
+                () => 'resolved',
+                e => e,
+            );
+            expect(err).toBe(boom);
+            expect2(await $test.getMulti$(['A', 'B'], 'id', { throwable: false })).toEqual({
+                A: { ...$A },
+                B: { id: 'B', error: '500 SYNC - test:B' },
+            });
+        } finally {
+            delete ($test as any).retrieve;
+        }
+    });
+
+    it('errNoti truncates a long id to 255 chars', async () => {
+        const { $test } = await prepare();
+        const longId = 'L'.repeat(1000);
+        const spy = jest.spyOn($engine, 'doReportError').mockResolvedValue('mid-207');
+        try {
+            expect2(await $test.getMulti([longId], { errNoti: true })).toEqual([null]);
+            expect2(() => spy.mock.calls.length).toEqual(1);
+            const data: any = spy.mock.calls[0][3];
+            expect2(() => data.failed_count).toEqual(1);
+            expect2(() => data.failed_items[0].id.length).toEqual(255);
         } finally {
             spy.mockRestore();
         }

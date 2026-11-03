@@ -14,6 +14,7 @@
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
  * @date        2026-11-03 #207: getMulti() options, null for a missing id (backport of 5.0.25).
  * @date        2026-11-03 #207 follow-up (Copilot on #276): outcome tracked apart from the model error, original error rethrown, GetMultiFailure, idName keys, bounded errNoti report with context.
+ * @date        2026-11-03 #207 follow-up 2 (Copilot on #278): model wins on a key collision, overload for GetMultiOptions variables, sync throw recorded, report ids truncated.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
@@ -279,6 +280,10 @@ export abstract class CoreManager<
      * batch get models in map by idName
      * - throws on the first failed id by default (env `MY_PARALLEL_THROW`).
      * - with `{ throwable: false }` a failed id is an entry `{ id, error }` (`GetMultiFailure`) keyed by the input id.
+     * - with a custom `idName`, a failure whose input id equals a model's key is not written (the model wins);
+     *   use `idName: 'id'` or `getMulti()` to see every failure.
+     * - no options, a number, `{ size }` or `{ throwable: true }` give the model-only map; a `GetMultiOptions`
+     *   value whose `throwable` may be false gives the union map.
      * - the env default `MY_PARALLEL_THROW=0` makes the no-option call collect too; the overload cannot express that.
      * - with `errNoti` the report is sent only in collect mode; a throwing call throws before the report.
      *
@@ -288,14 +293,14 @@ export abstract class CoreManager<
      */
     public async getMulti$(
         idList: string[],
-        idName: string,
-        options: GetMultiOptions & { throwable: false },
-    ): Promise<{ [id: string]: Model | GetMultiFailure }>;
+        idName?: string,
+        options?: number | (GetMultiOptions & { throwable?: true }),
+    ): Promise<{ [id: string]: Model }>;
     public async getMulti$(
         idList: string[],
-        idName?: string,
-        options?: number | GetMultiOptions,
-    ): Promise<{ [id: string]: Model }>;
+        idName: string,
+        options: GetMultiOptions,
+    ): Promise<{ [id: string]: Model | GetMultiFailure }>;
     public async getMulti$(
         idList: string[],
         idName: string = 'id',
@@ -307,6 +312,11 @@ export abstract class CoreManager<
         //* #207: the models keep the `idName` key; a failure is keyed by the input id.
         const $map: { [id: string]: Model | GetMultiFailure } = $T.asMap([...models.values()], idName);
         failures.forEach((e, id) => {
+            //* #207: a model wins on a key collision (custom `idName`); the failure is still in the report.
+            if (id in $map) {
+                _log(NS, `! getMulti$(${this.type}) failure[${id}] hidden by a model key (idName=${idName})`);
+                return;
+            }
             $map[id] = { id, error: GETERR(e) };
         });
         return $map;
@@ -329,14 +339,16 @@ export abstract class CoreManager<
         //* #207: `throwable: undefined` falls through to the `my_parallel()` default (`MY_PARALLEL_THROW`).
         const list = await my_parrallel(
             ids.map(id => ({ id })),
-            N =>
-                this.retrieve(N.id).then(
-                    model => ({ id: N.id, model }),
-                    e => {
-                        failures.set(N.id, e);
-                        throw e;
-                    },
-                ),
+            //* #207: an async wrapper, so a synchronous throw of an overridden `retrieve()` is recorded too.
+            async N => {
+                try {
+                    const model = await this.retrieve(N.id);
+                    return { id: N.id, model };
+                } catch (e) {
+                    failures.set(N.id, e);
+                    throw e;
+                }
+            },
             { size: opts.size, throwable: opts.throwable, errScope },
         );
         //* #207: a success is the wrapper with `model`; an id in `failures` is a failure whatever its `error` string.
@@ -356,7 +368,11 @@ export abstract class CoreManager<
                 total_count: ids.length,
                 failed_count: failures.size,
                 success_count: ids.length - failures.size,
-                failed_items: items.map(([id, e]) => ({ id, error: GETERR(e).substring(0, MAX_ERR_LEN) })),
+                //* #207: the id is truncated like the error.
+                failed_items: items.map(([id, e]) => ({
+                    id: `${id}`.substring(0, MAX_ERR_LEN),
+                    error: GETERR(e).substring(0, MAX_ERR_LEN),
+                })),
                 ...(omitted > 0 ? { omitted_count: omitted } : {}),
                 context: opts.context,
             };
