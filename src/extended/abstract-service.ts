@@ -12,6 +12,8 @@
  * @date        2022-03-17 optimized w/ `lemon-core#3.0.2` and use `env.ES6_DOCTYPE`
  * @date        2022-03-31 optimized w/ unit test spec.
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
+ * @date        2026-11-03 #207: getMulti() options, null for a missing id (backport of 5.0.25).
+ * @date        2026-11-03 #207 follow-up (Copilot on #276): outcome tracked apart from the model error, original error rethrown, GetMultiFailure, idName keys, bounded errNoti report with context.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
@@ -41,7 +43,8 @@ import $cores, {
     StorageMakeable,
     TypedStorageService,
 } from '../cores/';
-import { $U, _err, _log } from '../engine/';
+//* #207: `doReportError()` for the `errNoti` option of the batch get.
+import { $U, _err, _log, doReportError } from '../engine/';
 import { GETERR, NUL404, onlyDefined } from '../common/test-helper';
 import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
 import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
@@ -161,6 +164,36 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
     }
 }
 
+//* #207: options of the batch get.
+/**
+ * options of the batch get (#207)
+ * - used by `CoreManager.getMulti()` and `CoreManager.getMulti$()`.
+ */
+export interface GetMultiOptions {
+    /** size of parallel execution (default: env `MY_PARALLEL_SIZE`, 10) */
+    size?: number;
+    /** throw if any item fails. `getMulti$()` default: env `MY_PARALLEL_THROW` (true); `getMulti()` default: false */
+    throwable?: boolean;
+    /** report the failed items once via `doReportError()` (default: false), same meaning as in `ManagerProxy.mget()` */
+    errNoti?: boolean;
+    /** (optional) request context — forwarded to `doReportError()` for `errNoti` (the report target without `REPORT_ERROR_ARN`) */
+    context?: NextContext;
+}
+
+/**
+ * a failed read in the map of `getMulti$({ throwable: false })` (#207)
+ * - keyed by the input id (not by `idName`).
+ */
+export interface GetMultiFailure {
+    /** the input id */
+    id: string;
+    /** the error message (`GETERR()`) */
+    error: string;
+}
+
+/** cap of `failed_items` in one `errNoti` report (#207) */
+const GETMULTI_REPORT_MAX_ITEMS = 20;
+
 /**
  * class: `CoreManager`
  * - shared core manager for all model
@@ -219,36 +252,120 @@ export abstract class CoreManager<
      * batch get models
      * - retrieve multi models per each id
      * - must be matched with idList in sequence order.
+     * - a missing id (`404 NOT FOUND`) is `null`, any other error is thrown (the `find()` rule).
+     * - the thrown error is the original rejection of the first non-404 id in the input order.
+     * - a stored model with its own `error` field is returned as is (the read outcome is tracked apart).
      *
      * @param idList list of id
-     * @param parrallel (optional) in parrallel size
+     * @param options (optional) options of the batch get, or a number = size (`parrallel`, kept for compatibility)
      */
-    public async getMulti(idList: string[], parrallel?: number): Promise<(Model | null)[]> {
-        const $map = await this.getMulti$(idList, 'id', parrallel);
-        return idList.map(id => $map[id] ?? null).map(N => (N?.error?.startsWith('404 NOT FOUND') ? null : N));
+    public async getMulti(idList: string[], options?: number | GetMultiOptions): Promise<(Model | null)[]> {
+        //* #207: `throwable` is false by default, so a missing id becomes `null` (not an error).
+        const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
+        const { models, failures } = await this.readMulti(idList, { ...opts, throwable: opts.throwable ?? false });
+        //* #207: in the input order — `null` for a 404, the original error for the first non-404 failure.
+        return idList.map(id => {
+            if (failures.has(id)) {
+                const e = failures.get(id);
+                if (GETERR(e).startsWith('404 NOT FOUND')) return null;
+                //* with `throwable: true` the `my_parallel()` throw already happened, so this is collect mode only.
+                if (opts.throwable !== true) throw e;
+            }
+            return models.get(id) ?? null;
+        });
     }
 
     /**
      * batch get models in map by idName
+     * - throws on the first failed id by default (env `MY_PARALLEL_THROW`).
+     * - with `{ throwable: false }` a failed id is an entry `{ id, error }` (`GetMultiFailure`) keyed by the input id.
+     * - the env default `MY_PARALLEL_THROW=0` makes the no-option call collect too; the overload cannot express that.
+     * - with `errNoti` the report is sent only in collect mode; a throwing call throws before the report.
+     *
+     * @param idList list of id
+     * @param idName (optional) the key of the map (default `id`) for the models
+     * @param options (optional) options of the batch get, or a number = size (`parrallel`, kept for compatibility)
      */
     public async getMulti$(
         idList: string[],
+        idName: string,
+        options: GetMultiOptions & { throwable: false },
+    ): Promise<{ [id: string]: Model | GetMultiFailure }>;
+    public async getMulti$(
+        idList: string[],
+        idName?: string,
+        options?: number | GetMultiOptions,
+    ): Promise<{ [id: string]: Model }>;
+    public async getMulti$(
+        idList: string[],
         idName: string = 'id',
-        parrallel?: number,
-    ): Promise<{ [id: string]: Model }> {
+        options?: number | GetMultiOptions,
+    ): Promise<{ [id: string]: Model | GetMultiFailure }> {
+        //* #207: a number is still the size; `errScope` names the manager type.
+        const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
+        const { models, failures } = await this.readMulti(idList, opts);
+        //* #207: the models keep the `idName` key; a failure is keyed by the input id.
+        const $map: { [id: string]: Model | GetMultiFailure } = $T.asMap([...models.values()], idName);
+        failures.forEach((e, id) => {
+            $map[id] = { id, error: GETERR(e) };
+        });
+        return $map;
+    }
+
+    //* #207: read the unique ids; the outcome of each read is tracked apart from the model's own `error` field.
+    private async readMulti(
+        idList: string[],
+        opts: GetMultiOptions,
+    ): Promise<{ ids: string[]; models: Map<string, Model>; failures: Map<string, unknown> }> {
+        const errScope = `getMulti$(${this.type})`;
         // 1. find items in unique
         const ids = idList.reduce<string[]>((L, id) => {
             if (id && !L.includes(id)) L.push(id);
             return L;
         }, []);
         // 2. find from storage.
+        //* #207: keep the original rejection per id; rethrow so `my_parallel()` still sees it.
+        const failures = new Map<string, unknown>();
+        //* #207: `throwable: undefined` falls through to the `my_parallel()` default (`MY_PARALLEL_THROW`).
         const list = await my_parrallel(
             ids.map(id => ({ id })),
-            N => this.retrieve(N.id),
-            parrallel,
+            N =>
+                this.retrieve(N.id).then(
+                    model => ({ id: N.id, model }),
+                    e => {
+                        failures.set(N.id, e);
+                        throw e;
+                    },
+                ),
+            { size: opts.size, throwable: opts.throwable, errScope },
         );
-        // 3. convert to map
-        return $T.asMap(list, idName);
+        //* #207: a success is the wrapper with `model`; an id in `failures` is a failure whatever its `error` string.
+        const models = new Map<string, Model>();
+        list.forEach(N => {
+            if (N?.id && !failures.has(N.id) && N.model !== undefined) models.set(N.id, N.model);
+        });
+        // 3. report the failed items once (#207: the payload shape of `reportBatchError()` in `proxy-storage-service.ts`).
+        if (opts.errNoti && failures.size > 0) {
+            const MAX_ERR_LEN = 255;
+            const error = new Error(`${errScope} failed: ${failures.size}/${ids.length} items`);
+            //* #207: at most `GETMULTI_REPORT_MAX_ITEMS` items in one report (SNS payload limit).
+            const items = [...failures].slice(0, GETMULTI_REPORT_MAX_ITEMS);
+            const omitted = failures.size - items.length;
+            const data = {
+                dt: $U.dt(),
+                total_count: ids.length,
+                failed_count: failures.size,
+                success_count: ids.length - failures.size,
+                failed_items: items.map(([id, e]) => ({ id, error: GETERR(e).substring(0, MAX_ERR_LEN) })),
+                ...(omitted > 0 ? { omitted_count: omitted } : {}),
+                context: opts.context,
+            };
+            //* a failed report never fails the batch get.
+            await doReportError(error, opts.context, null, data).catch(e =>
+                _err(NS, `! failed to report ${errScope}:`, e),
+            );
+        }
+        return { ids, models, failures };
     }
 
     /**
