@@ -134,8 +134,8 @@ Controllers: `$lemon.cores.lambda.web.addController()`. Models: subclass `MyCore
   - hello: `lambda:pack` → `lemon-lambda-pack`.
   - templates: `pack` → `lemon-lambda-pack`; `lambda:local` → `lemon-lambda-local`; `fields:admin` → `lemon-fields-admin`; `loop:check` → `lemon-loop-check`.
   - `deploy:dev` runs the service's own `bin/deploy-dev.sh`, not a lemon-core CLI.
-- Internal calls: the receiving side checks `hasAdminRole()` (local mode, signed key or `admin` role), never `context.domain` (§ 11.3).
-  - templates overrides it in `src/service/backend-proxy.ts` for v4 callers in transition.
+- Internal calls: lemon-core's base `hasAdminRole()` checks local mode, a signed access key or the `admin` role, not `context.domain` (§ 11.3).
+  - templates overrides it in `src/service/backend-proxy.ts` for v4 callers in transition: it also accepts `context.domain === 'localhost'` when `isInternalAdmin()` succeeds.
   - hello takes no protocol message: `guardProtocol()` (`src/service/protocol-guard.ts`) drops them on SNS/SQS outside local mode.
 - New service: clone lemon-templates-api and follow its README "새 서비스로 복제할 때".
 - Existing v5 service: run `node bin/sync-v5-tooling.mjs --target <checkout>` in lemon-templates-api. It reports only; `--apply` writes.
