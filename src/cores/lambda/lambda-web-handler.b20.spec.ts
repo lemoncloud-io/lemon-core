@@ -114,11 +114,15 @@ describe('LambdaWEBHandler B20 path', () => {
         const r3 = await run(eventOf({ resource: '/files/{proxy+}', path: '/files/', pathParameters: { proxy: '' } }));
         expect2(() => r3.last, 'mode,id,cmd').toEqual({ mode: 'LIST', id: '', cmd: '' });
 
-        //* values are used as delivered (API Gateway decoded them): no second decode of `%`.
+        //* API Gateway delivers the proxy raw (measured 2026-11-04): each piece is decoded once.
         const r4 = await run(
-            eventOf({ resource: '/files/{proxy+}', path: '/files/x', pathParameters: { proxy: 'hello world/100%25' } }),
+            eventOf({
+                resource: '/files/{proxy+}',
+                path: '/files/hello%20world/100%25',
+                pathParameters: { proxy: 'hello%20world/100%25' },
+            }),
         );
-        expect2(() => r4.last, 'id,cmd').toEqual({ id: 'hello world', cmd: '100%25' });
+        expect2(() => r4.last, 'id,cmd').toEqual({ id: 'hello world', cmd: '100%' });
 
         //* `/{type}/{proxy+}` → type from the path parameter.
         const r5 = await run(

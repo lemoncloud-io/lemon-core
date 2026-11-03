@@ -672,6 +672,21 @@ describe('LambdaWEBHandler', () => {
             expect2(await sourceOf(event)).toEqual(`${base}/hello/a%20b/c/d#${$pack.version}`);
         }
 
+        //* v5 B20 (#283 review): raw path parameters → decoded once, re-encoded per segment (`#`/`?` stay in the path).
+        if (1) {
+            const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+            //* the source of raw (API Gateway) path parameters.
+            const raw = async (pathParameters: any) => sourceOf({ ...event, pathParameters });
+            expect2(await raw({ type: 'hello', id: 'a', cmd: 'c%23d' })).toEqual(
+                `${base}/hello/a/c%23d#${$pack.version}`,
+            );
+            expect2(await raw({ type: 'hello', id: 'a', cmd: 'x%3Fy/z' })).toEqual(
+                `${base}/hello/a/x%3Fy/z#${$pack.version}`,
+            );
+            //* no double encoding (before #283: `a%2520b`).
+            expect2(await raw({ type: 'hello', id: 'a%20b' })).toEqual(`${base}/hello/a%20b#${$pack.version}`);
+        }
+
         //* without `pathParameters` → the service uri only (same as v4).
         if (1) {
             const event: any = loadJsonSync('data/samples/events/sample.event.web.json');

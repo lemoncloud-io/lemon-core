@@ -26,7 +26,7 @@ export interface GatewayMatch {
     status: 'matched' | 'method' | 'none';
     /** matched resource like `/{type}/{proxy+}` */
     resource?: string;
-    /** decoded path parameters (`null` when the resource has none) */
+    /** raw path parameters as API Gateway delivers them (percent-encoded; `null` when the resource has none) */
     pathParameters?: { [key: string]: string } | null;
     /** the route of the method (exact first, else `ANY`) */
     route?: GatewayRoute;
@@ -47,37 +47,40 @@ const segsOf = (resource: string): Seg[] =>
             return { kind: 0 as SegKind, text: s };
         });
 
-//* v5 B20: decode one path segment (a bad `%` sequence is kept as is).
-const decodeSeg = (s: string): string => {
-    try {
-        return decodeURIComponent(s);
-    } catch (e) {
-        return s;
-    }
-};
-
-//* v5 B20: try one resource against the request segments → ranks per segment + params, or `null`.
+//* v5 B20: try one resource against the raw request segments → ranks per segment + params, or `null`.
+//* values are not decoded (API Gateway delivers them raw; `asWebPath()` decodes once).
 const tryResource = (segs: Seg[], parts: string[]): { ranks: number[]; params: { [k: string]: string } } | null => {
     const params: { [k: string]: string } = {};
     const ranks: number[] = [];
     for (let i = 0; i < segs.length; i++) {
         const seg = segs[i];
-        //* `{proxy+}` only as the last segment, and it takes ≥ 1 remaining segment.
+        //* `{proxy+}` only as the last segment, and it takes a non-empty rest (empty segments kept: `a//b`).
         if (seg.kind === 2) {
-            if (i !== segs.length - 1 || parts.length <= i) return null;
-            params[seg.text] = parts.slice(i).map(decodeSeg).join('/');
+            const rest = parts.slice(i).join('/');
+            if (i !== segs.length - 1 || parts.length <= i || !rest) return null;
+            params[seg.text] = rest;
             ranks.push(2);
             return { ranks, params };
         }
         if (i >= parts.length) return null;
         if (seg.kind === 0) {
-            if (decodeSeg(parts[i]) !== decodeSeg(seg.text)) return null;
+            if (parts[i] !== seg.text) return null;
         } else {
-            params[seg.text] = decodeSeg(parts[i]);
+            //* a `{param}` never takes an empty segment.
+            if (!parts[i]) return null;
+            params[seg.text] = parts[i];
         }
         ranks.push(seg.kind);
     }
     return segs.length === parts.length ? { ranks, params } : null;
+};
+
+//* v5 B20: the raw segments of a request path: drop the leading `/` and one trailing `/`, keep inner empty ones.
+const partsOf = (pathname: string): string[] => {
+    const parts = `${pathname ?? ''}`.split('/');
+    if (parts[0] === '') parts.shift();
+    if (parts.length && parts[parts.length - 1] === '') parts.pop();
+    return parts;
 };
 
 //* v5 B20: lexical compare of rank lists (first differing segment decides; literal < param < proxy+).
@@ -95,9 +98,11 @@ const compareRanks = (a: number[], b: number[]): number => {
  * v5 B20: match a request path + method against the route table.
  * - resource precedence per segment: literal > `{param}` > `{proxy+}` (greedy, last segment, ≥ 1 segment).
  * - then the method: exact > `ANY`. A resource without the method is `status: 'method'` (API Gateway → 403).
+ * - like API Gateway (measured 2026-11-04): segments are compared and delivered raw (no percent decode),
+ *   inner empty segments are kept (`a//b`), and one trailing `/` is not part of the greedy value.
  */
 export const matchRoute = (routes: GatewayRoute[], method: string, pathname: string): GatewayMatch => {
-    const parts = `${pathname ?? ''}`.split('/').filter(s => s.length > 0);
+    const parts = partsOf(pathname);
     const byResource = routes.reduce<{ [r: string]: GatewayRoute[] }>((M, r) => {
         (M[r.resource] = M[r.resource] || []).push(r);
         return M;

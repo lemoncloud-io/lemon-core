@@ -41,25 +41,54 @@ export const isTextualType = (contentType: string): boolean => {
 };
 
 /**
+ * v5 B20: decode one path piece once (a bad `%` sequence stays raw).
+ * - `+` is a literal `+` in a path (no form decoding).
+ */
+export const decodePiece = (s: string): string => {
+    try {
+        return decodeURIComponent(s);
+    } catch (e) {
+        return s;
+    }
+};
+
+/**
+ * v5 B20: decode a path text per segment: split on the literal `/` first, then decode each piece.
+ * - `a%2Fb/c` → `a/b/c` as text, but `a%2Fb` stays one piece (it was split before the decode).
+ */
+export const decodePath = (text: string): string => `${text}`.split('/').map(decodePiece).join('/');
+
+/**
+ * v5 B20: encode a path text per segment (the reverse of `decodePath()`): split on `/`, then `encodeURIComponent` each piece.
+ * - `/` stays the separator; `#`, `?`, `%` and other reserved chars in a piece are escaped (`a#b/c` → `a%23b/c`).
+ */
+export const encodePath = (text: string): string => `${text}`.split('/').map(encodeURIComponent).join('/');
+
+/**
  * v5 B20: the protocol path of the API Gateway `pathParameters`.
  * - `{proxy+}` without `id` → `id` = 1st segment, `cmd` = the rest joined with `/` (empty → undefined).
  * - `{proxy+}` with `id` but no `cmd` (ex: `/{type}/{id}/{proxy+}`) → `cmd` = the whole proxy.
- * - `{cmd+}` (greedy `cmd`) is kept as is (it may hold `/`).
- * - values are used as delivered: API Gateway gives them percent-decoded, so no second decode here.
- * - no `proxy` → the same `{ type, id, cmd }` as before.
+ * - `{cmd+}` (greedy `cmd`) keeps its `/` (decoded per segment).
+ * - API Gateway delivers path parameters raw (percent-encoded, measured 2026-11-04), so this is the single
+ *   decode point: split on `/` first, then `decodeURIComponent` per segment (`type` is kept as delivered).
+ * - no `proxy` → the same `{ type, id, cmd }` keys as before (`id`/`cmd` decoded).
  */
 export const asWebPath = (pathParameters: { [key: string]: string } | null | undefined): WebPath => {
     const $path: { [key: string]: string } = pathParameters || {};
-    const { type, id, cmd, proxy } = $path;
+    const { type, proxy } = $path;
+    //* decode a given value (`undefined`/`null` kept as is).
+    const dec = (v: string): string => (v === undefined || v === null ? v : decodePath(`${v}`));
+    const id = dec($path.id);
+    const cmd = dec($path.cmd);
     if (proxy === undefined || proxy === null) return { type, id, cmd };
-    //* v5 B20: map the greedy `proxy` only to the slots that are not given.
+    //* v5 B20: map the greedy `proxy` only to the slots that are not given (split raw, then decode per piece).
     const text = `${proxy}`;
     if (id === undefined || id === null) {
         const [first, ...rest] = text.split('/');
-        const $cmd = cmd !== undefined && cmd !== null ? cmd : rest.join('/') || undefined;
-        return { type, id: first || undefined, cmd: $cmd };
+        const $cmd = cmd !== undefined && cmd !== null ? cmd : rest.map(decodePiece).join('/') || undefined;
+        return { type, id: decodePiece(first) || undefined, cmd: $cmd };
     }
-    if (cmd === undefined || cmd === null) return { type, id, cmd: text || undefined };
+    if (cmd === undefined || cmd === null) return { type, id, cmd: decodePath(text) || undefined };
     return { type, id, cmd };
 };
 

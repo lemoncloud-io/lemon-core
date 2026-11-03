@@ -90,7 +90,7 @@ const compilePath = (path: string, prefix: boolean): { keys: string[]; regex: Re
     return { keys, regex: new RegExp(prefix ? `^${body}(?:/|$)` : `^${body}/?$`) };
 };
 
-//* v5 B21: decode a path segment (a bad escape stays as is).
+//* v5 B21: decode a path segment (a bad escape stays as is) — extension routes are local-only (like express), not API Gateway.
 const decodeSeg = (s: string): string => {
     try {
         return decodeURIComponent(s);

@@ -226,6 +226,35 @@ describe('ProtocolService', () => {
         }
     });
 
+    //* v5 B20 (#283 review): an internal call keeps the literal id/cmd — encoded into the synthetic event, decoded once.
+    it('should pass transformEvent() round-trip of literal id/cmd (#283)', async () => {
+        const { service, config } = instance();
+        const $ctx: NextContext = {};
+        //* the synthetic event of a GET call to `/test/{id}/{cmd}`.
+        const eventOf = (id: string, cmd: string, mode: any = 'GET') => {
+            const param = asParam('', 'test', { id, cmd, mode });
+            return service.transformEvent(service.asProtocolURI('web', param, config), param) as APIGatewayProxyEvent;
+        };
+        //* the param the handler gets back from that event.
+        const trip = (id: string, cmd: string, mode: any = 'GET') =>
+            service.web.transformToParam(eventOf(id, cmd, mode), $ctx);
+
+        //* the event carries the values raw (percent-encoded) as API Gateway does.
+        expect2(() => eventOf('%23', 'a%2Fb/x'), 'path,pathParameters').toEqual({
+            path: '/test/%2523/a%252Fb/x',
+            pathParameters: { type: 'test', id: '%2523', cmd: 'a%252Fb/x' },
+        });
+        //* the handler gets the same literal values (no second decode).
+        expect2(() => trip('%23', 'a%2Fb/x'), 'mode,id,cmd').toEqual({ mode: 'GET', id: '%23', cmd: 'a%2Fb/x' });
+        expect2(() => trip('a b', 'a b/한글'), 'mode,id,cmd').toEqual({ mode: 'GET', id: 'a b', cmd: 'a b/한글' });
+        expect2(() => trip('한글', 'c#d/e?f'), 'mode,id,cmd').toEqual({ mode: 'GET', id: '한글', cmd: 'c#d/e?f' });
+        expect2(() => trip('b/c', ''), 'mode,id,cmd').toEqual({ mode: 'GET', id: 'b/c', cmd: '' });
+        //* empty and LIST values are kept as before.
+        expect2(() => eventOf('', '').pathParameters).toEqual({ type: 'test', id: '', cmd: '' });
+        expect2(() => eventOf('x', 'y', 'LIST').pathParameters).toEqual({ type: 'test', id: null, cmd: null });
+        expect2(() => trip('x', 'y', 'LIST'), 'mode,id,cmd').toEqual({ mode: 'LIST', id: null, cmd: null });
+    });
+
     //* for each event protocol
     it('should pass transformEvent() of web.dev', async () => {
         const { service, config } = instance({ STAGE: 'develop' });
@@ -457,6 +486,13 @@ describe('ProtocolService', () => {
             cmd: 'c/d/',
         });
 
+        //* v5 B20: `cmd` is decoded per segment (`%23`/`%3F` → `#`/`?`), like `id`.
+        expect2(() => service.fromURL(context, 'lemon://self/a/b%23/c%23d/e%3Ff,g'), 'type,id,cmd').toEqual({
+            type: 'a',
+            id: 'b#',
+            cmd: 'c#d/e?f,g',
+        });
+
         expect2(() => service.fromURL(context, 'lemon://u@self/a/b/c/d/'), 'service,type,id,cmd').toEqual({
             service: 'self',
             type: 'a',
@@ -541,6 +577,17 @@ describe('ProtocolService', () => {
             id: 'b/c',
             cmd: 'd',
             context,
+        });
+
+        //* v5 B20: `cmd` encoded per segment (`#`/`?` escaped, `/` kept), and decoded back the same by `fromURL()`.
+        expect2(() => service2.myProtocolURI(context, 'a', 'b', 'c#d/e?f')).toEqual(
+            'api://melon@lemon-hello-api-dev/a/b/c%23d/e%3Ff#1.2.3',
+        );
+        ['c#d/e?f', 'a,b:c@d', 'x%2Fy/z', 'a b/한글'].forEach(cmd => {
+            expect2(() => service2.fromURL(context, service2.myProtocolURI(context, 'a', 'b', cmd)), 'id,cmd').toEqual({
+                id: 'b',
+                cmd,
+            });
         });
 
         // without account-id

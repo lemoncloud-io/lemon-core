@@ -37,7 +37,7 @@ import { invokeLambda } from './aws-lambda-helper';
 import { isActive as isLocalTransport, localSns, localSqs, localWeb, selfHostOf } from './local-transport';
 import { snsTargetOf } from '../aws/aws-sns-service';
 import { measureAsync } from '../../lib/perf';
-import { asWebPath, decodeBase64Body, WebPath } from '../../lib/web-body';
+import { asWebPath, decodeBase64Body, decodePath, encodePath, WebPath } from '../../lib/web-body';
 import {
     signContext,
     signMessage,
@@ -239,11 +239,12 @@ export class MyProtocolService implements ProtocolService {
      */
     public hello = (): string => `protocol-service:${this.selfService || ''}`;
 
-    //* determine path part
+    //* determine path part (v5 B20: `cmd` is encoded per segment, so `#`/`?` stay in the path).
     public static asPath = (type: string, id?: string, cmd?: string): string => {
         const buf = [''];
         const enc = (_: string) => encodeURIComponent(_);
-        const esc = (_: string) => encodeURI(_);
+        //* v5 B20: per-segment `encodeURIComponent` (was `encodeURI`, which left `#`/`?` raw); `/` kept.
+        const esc = (_: string) => encodePath(_);
         //* add type by default
         buf.push(enc(`${type || ''}`));
         if (id !== undefined && id !== null) {
@@ -446,7 +447,8 @@ export class MyProtocolService implements ProtocolService {
             type,
             stage,
             id: id ? decodeURIComponent(id) : id,
-            cmd: cmd ? decodeURI(cmd) : cmd,
+            //* v5 B20: per-segment decode (the reverse of `asPath()`), was `decodeURI` (kept `%23`/`%3F`/`%2C` …).
+            cmd: cmd ? decodePath(cmd) : cmd,
             context: { ...context },
         };
         if (param !== undefined) proto.param = param;
@@ -675,6 +677,10 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
         const cmd = mode == 'LIST' ? null : `${param.cmd || ''}`;
         const path = MyProtocolService.asPath(type, id, cmd);
         const stage = `${param.stage || ''}`;
+        //* v5 B20: the path parameters as API Gateway delivers them (raw), since `asWebPath()` decodes once.
+        //* - only non-empty strings are encoded (`null` of LIST and `''` kept); `id` whole, `cmd` per segment.
+        const $id = id ? encodeURIComponent(id) : id;
+        const $cmd = cmd ? encodePath(cmd) : cmd;
 
         //NOTE - must validate request with `requestId` + `accountId`.
         const context = param.context || {};
@@ -699,7 +705,7 @@ export class WEBProtocolTransformer implements ProtocolTransformer<APIGatewayPro
             },
             path,
             httpMethod,
-            pathParameters: { type, id, cmd },
+            pathParameters: { type, id: $id, cmd: $cmd },
             queryStringParameters: param.param,
             requestContext: {
                 ...$ctx,
