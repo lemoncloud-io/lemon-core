@@ -314,7 +314,10 @@ export abstract class CoreManager<
         const opts: GetMultiOptions = typeof options === 'number' ? { size: options } : options ?? {};
         const { models, failures } = await this.readMulti(idList, opts);
         //* #207: the models keep the `idName` key; a failure is keyed by the input id.
-        const $map: { [id: string]: Model | GetMultiFailure } = $T.asMap([...models.values()], idName);
+        const $map: { [id: string]: Model | GetMultiFailure } = Object.assign(
+            Object.create(null),
+            $T.asMap([...models.values()], idName),
+        );
         failures.forEach((e, id) => {
             //* #207: a model wins on a key collision (custom `idName`); the failure is still in the report.
             if (id in $map) {
