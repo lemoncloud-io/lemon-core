@@ -1,6 +1,6 @@
 {
   "name": "lemon-core",
-  "version": "5.0.26",
+  "version": "5.0.27",
   "description": "TypeScript bootloader for serverless micro-services on AWS Lambda — one function, many event sources (API Gateway, ALB, SNS, SQS, cron, DynamoDB stream), engine modules, signed inter-service protocol.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
