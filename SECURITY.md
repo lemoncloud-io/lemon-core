@@ -12,7 +12,7 @@ please upgrade before reporting an issue against an older version.
 |---|---|
 | `lemon-core` | 4.3.0 |
 | `lemon-model` | 1.2.4 |
-| `lemon-devkit` | 0.2.0 |
+| `lemon-devkit` | 0.2.0 (not used by lemon-core since B20) |
 
 ## Reporting a vulnerability
 

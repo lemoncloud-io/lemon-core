@@ -22,6 +22,8 @@ import {
     ENGINE_KEY_IN_SCOPE,
 } from './types';
 import { Utilities } from './utilities';
+//* key rotation: value-based log screening. `lib/log-mask` imports only `lib/safe-json` (no engine, no cycle).
+import { screenLogArgs } from '../lib/log-mask';
 
 //WARN! - ------------------------------------------------------
 //WARN! - DO NOT IMPORT ANY DEPENDENCY IN HERE EXCEPT TYPES.
@@ -54,37 +56,32 @@ export const BLUE = '\x1b[32m';
 export const YELLOW = '\x1b[33m';
 export const RESET = '\x1b[0m';
 
+//* the no-op console of `LS=1` (log silent) — `build_line` skips screening when it is in use.
+const silent = (): void => {};
+
 /* eslint-disable @typescript-eslint/indent */
-export const build_log = ($console: EngineConsole): EngineLogger =>
+//* key rotation: print one line with the level prefix (ts, color) through `$console.log`.
+const print_line = ($console: EngineConsole, level: string, color: string, args: any[]) => {
+    const _ts = build_ts({ console: $console });
+    if ($console.auto_color)
+        ($console.auto_ts && args.unshift(_ts(), level + RESET)) || args.unshift(level + RESET), args.unshift(color);
+    else $console.auto_ts && args.unshift(_ts(), level);
+    return $console.log.apply($console.thiz, args);
+};
+//* key rotation: screen the args, print the line, then 1 error line (no value) if a secret was masked.
+//* nothing to screen when the output is off (`LS=1`).
+const build_line = ($console: EngineConsole, level: string, color: string): EngineLogger =>
     function () {
-        const _ts = build_ts({ console: $console });
-        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
-        if ($console.auto_color)
-            ($console.auto_ts && args.unshift(_ts(), LEVEL_LOG + RESET)) || args.unshift(LEVEL_LOG + RESET),
-                args.unshift(BLUE);
-        else $console.auto_ts && args.unshift(_ts(), LEVEL_LOG);
-        return $console.log.apply($console.thiz, args);
+        if ($console.log === silent) return;
+        const args = Array.prototype.slice.call(arguments);
+        const hit = screenLogArgs(args);
+        const res = print_line($console, level, color, args);
+        if (hit) print_line($console, LEVEL_ERR, RED, ['!SECRET in log — masked']);
+        return res;
     };
-export const build_inf = ($console: EngineConsole): EngineLogger =>
-    function () {
-        const _ts = build_ts({ console: $console });
-        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
-        if ($console.auto_color)
-            ($console.auto_ts && args.unshift(_ts(), LEVEL_INF + RESET)) || args.unshift(LEVEL_INF + RESET),
-                args.unshift(YELLOW);
-        else $console.auto_ts && args.unshift(_ts(), LEVEL_INF);
-        return $console.log.apply($console.thiz, args);
-    };
-export const build_err = ($console: EngineConsole): EngineLogger =>
-    function () {
-        const _ts = build_ts({ console: $console });
-        const args = (!Array.isArray(arguments) && Array.prototype.slice.call(arguments)) || arguments;
-        if ($console.auto_color)
-            ($console.auto_ts && args.unshift(_ts(), LEVEL_ERR + RESET)) || args.unshift(LEVEL_ERR + RESET),
-                args.unshift(RED);
-        else $console.auto_ts && args.unshift(_ts(), LEVEL_ERR);
-        return $console.log.apply($console.thiz, args);
-    };
+export const build_log = ($console: EngineConsole): EngineLogger => build_line($console, LEVEL_LOG, BLUE);
+export const build_inf = ($console: EngineConsole): EngineLogger => build_line($console, LEVEL_INF, YELLOW);
+export const build_err = ($console: EngineConsole): EngineLogger => build_line($console, LEVEL_ERR, RED);
 /* eslint-enable @typescript-eslint/indent */
 
 /** ****************************************************************************************************************
@@ -134,9 +131,17 @@ export const do_serialize = <T, U>(
 class MyEngineModules implements EngineModules {
     private mods: EngineModule[] = [];
     private inited: boolean = false;
-    public constructor() {}
+    /** `notice` prints the skipped duplicate registrations (optional). */
+    public constructor(private readonly notice?: GeneralFuntion) {}
+    /** register a module once per name; a later module of the same name is ignored. */
     public register(mod: EngineModule) {
         // console.info(`! mod.reg(${mod.getModuleName()})..`);
+        const name = mod.getModuleName();
+        //NOTE - keep the first module of the same name (e.g. two copies of lemon-core on one engine).
+        if (this.mods.some(_ => _.getModuleName() == name)) {
+            this.notice && this.notice(`! mod.reg(${name}) is already registered - ignored`);
+            return;
+        }
         this.mods.push(mod);
     }
     public module<T extends EngineModule>(name: string) {
@@ -148,6 +153,8 @@ class MyEngineModules implements EngineModules {
         if (!force && this.inited) return;
         // console.info(`! EngineModules.init()..`);
         this.inited = true;
+        //* PERF (D40): start time (inline: this file takes no value import).
+        const perf0 = process.hrtime.bigint();
         //* setup init level per each module.
         const mods = await Promise.all(
             this.mods.map(async mod => {
@@ -187,6 +194,10 @@ class MyEngineModules implements EngineModules {
             ),
         );
         // console.info(`! engine[${res.length}].inited =`, res);
+        //* PERF (D40): one line via the engine's own `inf` and `U.NS` (`this` is the engine at runtime).
+        const $e = this as unknown as Partial<LemonEngine>;
+        const perfMs = (Number(process.hrtime.bigint() - perf0) / 1e6).toFixed(1);
+        $e.inf && $e.inf($e.U ? $e.U.NS('PERF', 'cyan') : 'PERF:', '>', 'initialize', `${perfMs} ms`);
         return res;
     }
 }
@@ -215,7 +226,6 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     const LC = _environ('LC', STAGE === 'local' || STAGE === 'express' ? '1' : '') === '1'; // COLORIZE LOG
 
     //* common function for logging.
-    const silent = () => {};
     const $console: EngineConsole = {
         thiz: console,
         log: LS ? silent : console.log,
@@ -232,7 +242,8 @@ export const buildEngine = (scope?: EngineScope, options?: EngineOption): LemonE
     const createEngine = (): LemonEngine => {
         const $engine: LemonEngine = new (class extends MyEngineModules implements LemonEngine {
             public constructor() {
-                super();
+                //* report ignored duplicate module registrations via `_inf`.
+                super(_inf);
                 this.U = new Utilities(this);
             }
             public readonly STAGE: string = STAGE;

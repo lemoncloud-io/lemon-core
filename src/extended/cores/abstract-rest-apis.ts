@@ -198,7 +198,8 @@ export class DummyRestAPI<View = any, Body = View, Model = View> extends RestAPI
  *  import * as $boards from '@lemoncloud/lemon-boards-api'; //INFO! import the type information.
  *  ...
  *  const boardId = '100001'; //NOTE! sample board-id.
- *  const $ctx = this.proxy.asNextContext(null, { domain: 'localhost' }); //WARN! asumme as internal call.
+ *  //WARN! v5: `domain: 'localhost'` grants nothing — claim the role explicitly (the call is signed, B5 § 6.3).
+ *  const $ctx = this.proxy.asNextContext(null, { identity: { ...identity, roles: [...(identity?.roles ?? []), 'admin'] } });
  *  const opts = { isProd: true }; //WARN! use the production data.
  *  const $api = {
  *      boards: $createApi<$boards.BoardView, $boards.BoardBody>($ctx, '//lemon-boards-api/boards', opts),

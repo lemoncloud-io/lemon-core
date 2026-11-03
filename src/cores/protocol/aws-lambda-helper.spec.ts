@@ -158,6 +158,29 @@ describe('invokeLambda', () => {
         expect(err).toBe('{"error":"broken"}');
     });
 
+    //* v5 B5: the relayed failure carries the peer status, the message is unchanged.
+    it('should reject with the peer status on the error (v5)', async () => {
+        lambdaMock.send.mockResolvedValueOnce({
+            StatusCode: 200,
+            Payload: encodeLambdaPayload({ statusCode: 403, body: JSON.stringify('403 NOT ALLOWED - nope') }),
+        });
+        const err: any = await invokeLambda('target-lambda', asEvent()).catch(e => e);
+        expect(err.message).toBe('403 NOT ALLOWED - nope');
+        expect(err.status).toBe(403);
+        expect(err.code).toBe('NOT ALLOWED');
+    });
+
+    //* v5 B5: any 2xx is a success, 204 without a body → `null`.
+    it('should resolve any 2xx (204 → null) (v5)', async () => {
+        lambdaMock.send.mockResolvedValueOnce({ StatusCode: 200, Payload: encodeLambdaPayload({ statusCode: 204 }) });
+        expect(await invokeLambda('target-lambda', asEvent())).toBe(null);
+        lambdaMock.send.mockResolvedValueOnce({
+            StatusCode: 200,
+            Payload: encodeLambdaPayload({ statusCode: 202, body: JSON.stringify({ ok: 1 }) }),
+        });
+        expect(await invokeLambda('target-lambda', asEvent())).toEqual({ ok: 1 });
+    });
+
     it('should rethrow LambdaClient send errors', async () => {
         lambdaMock.send.mockRejectedValueOnce(new Error('network is unavailable'));
 

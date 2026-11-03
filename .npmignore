@@ -46,9 +46,6 @@ npm-debug.log
 .babelrc
 babel.config.js
 
-# codecov
-.codecov.yml
-
 # docker
 dbuild
 dexec
@@ -84,9 +81,6 @@ tests
 .prettierrc
 .prettierignore
 prettier.config.js
-
-# travis
-.travis.yml
 
 # development
 CODE_OF_CONDUCT.md

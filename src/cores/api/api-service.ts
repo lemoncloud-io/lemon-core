@@ -13,7 +13,6 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 import { loadJsonSync } from '../../tools/';
-import { GETERR } from '../../common/test-helper';
 import fs from 'fs';
 const NS = $U.NS('APIS', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -485,8 +484,8 @@ export class APIService implements APIServiceClient {
  *  BODY IMPLEMENTATION.
  ** ********************************************************************************************************************/
 import URL from 'url';
-import REQUEST from 'request';
-import queryString from 'query-string';
+import { fetchProxyBody, isJsonBody, toPayload } from '../../lib/http-fetch';
+import { qsStringify } from '../../lib/qs-compat'; //* v5 B11: `query-string` -> `qs` (same output).
 
 /**
  * create http-web-proxy agent which using endpoint as proxy server.
@@ -540,19 +539,21 @@ export const createHttpWebProxy = (
 
             //* prepare request parameters
             // eslint-disable-next-line prettier/prettier
-            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
+            const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? qsStringify($param) : `${$param}`);
             const url =
                 endpoint +
                 (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
                 (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
                 (!query_string ? '' : '?' + query_string);
-            const request = REQUEST;
+            //* serialize the body once: the same string is signed and sent.
+            const json = isJsonBody($body);
+            const payload = toPayload($body, json);
             const options: any = {
                 method,
                 uri: url,
                 headers: {},
-                body: $body === null ? undefined : $body,
-                json: typeof $body === 'string' ? false : true,
+                body: payload,
+                json,
             };
 
             //* relay HEADERS to `WEB-API`
@@ -569,41 +570,10 @@ export const createHttpWebProxy = (
             _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
             _log(NS, '> options =', $U.json(options));
 
-            //* returns promise
-            return new Promise((resolve, reject) => {
-                //* start request..
-                request(options, function (error: any, response: any, body: any) {
-                    error && _err(NS, '>>>>> requested! err=', error);
-                    if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
-                    //* detecte trouble.
-                    const statusCode = response.statusCode;
-                    const statusMessage = response.statusMessage;
-                    //* if not in success
-                    if (statusCode !== 200 && statusCode !== 201) {
-                        const msg = body ? GETERR(body) : `${statusMessage || ''}`;
-                        if (statusCode === 400 || statusCode === 404) {
-                            const title = `${(statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'}`.toUpperCase();
-                            const message = msg.startsWith('404 NOT FOUND') ? msg : `${statusCode} ${title} - ${msg}`;
-                            return reject(new Error(message));
-                        }
-                        statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
-                        body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
-                        return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
-                    }
-                    //* try to parse body.
-                    try {
-                        if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
-                            body = JSON.parse(body);
-                        } else if (body && typeof body == 'string' && body.startsWith('[') && body.endsWith(']')) {
-                            body = JSON.parse(body);
-                        }
-                    } catch (e) {
-                        _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
-                    }
-                    //* ok! successed.
-                    resolve(body);
-                });
-            }).then((res: any) => {
+            //* send via `fetch` (status check, error format and body parse in `http-fetch`)
+            const logger = { log: (...a: any[]) => _log(NS, ...a), err: (...a: any[]) => _err(NS, ...a) };
+            const req = { method, url: options.uri, headers: options.headers, payload, json };
+            return fetchProxyBody(req, logger).then((res: any) => {
                 if (resultKey && res && res[resultKey] !== undefined) return res[resultKey];
                 return res;
             });

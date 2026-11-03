@@ -7,6 +7,7 @@
  *
  * @copyright (C) lemoncloud.io 2022 - All Rights Reserved.
  */
-export * from './elastic6-service';
-export * from './elastic6-query-service';
+//* v5 B3: the renamed files (the old ES-era file names are re-export shims, not loaded here).
+export * from './os2-service';
+export * from './os2-query-service';
 export * from './hangul-service';

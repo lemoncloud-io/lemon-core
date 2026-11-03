@@ -12,8 +12,21 @@
 import { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem } from 'lemon-model';
 import { DynamoOption, DynamoService } from './dynamo-service';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { measureAsync } from '../../lib/perf';
 const NS = $U.NS('DSCN', 'green'); // NAMESPACE TO BE PRINTED.
+
+/**
+ * `@aws-sdk/lib-dynamodb`, imported on the first use (not at import; v5 B2-c, K6). This file keeps its own loader.
+ */
+let $dynamoDoc: Promise<typeof import('@aws-sdk/lib-dynamodb')>;
+// memoized loader (the first call prints one `PERF` line; near 0 ms if `dynamo-service` loaded it first).
+const loadDynamoDoc = () =>
+    ($dynamoDoc ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/lib-dynamodb',
+        () => import('@aws-sdk/lib-dynamodb'),
+    ));
 
 // ComparisonCondition - arithmetic comparison (EQ, NE, LE, LT, GE, GT)
 // - NOTE: '!=' is shortcut to { not: { comparator: '=' } }
@@ -55,12 +68,22 @@ function isStringCondition(c: Condition): c is StringCondition {
     return 'operator' in c;
 }
 
+// AttrTypeCondition - the stored type of a field is {attrType} (`attribute_type`) - v5 B39
+interface AttrTypeCondition {
+    key: string;
+    attrType: 'S' | 'SS' | 'N' | 'NS' | 'B' | 'BS' | 'BOOL' | 'NULL' | 'L' | 'M';
+}
+//NOTE - v5 B39: type guard of `AttrTypeCondition`.
+function isAttrTypeCondition(c: Condition): c is AttrTypeCondition {
+    return 'attrType' in c;
+}
+
 /**
  * interface: DynamoScanFilter
  * - for joining multiple conditions with logical AND -> Array
  * - for joining multiple conditions with logical OR -> { or: Array }
  */
-type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition;
+type Condition = ComparisonCondition | BetweenCondition | ExistenceCondition | StringCondition | AttrTypeCondition;
 export type DynamoScanFilter = (Condition | { not: Condition }) | DynamoScanFilter[] | { or: DynamoScanFilter[] };
 
 /**
@@ -126,6 +149,7 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
 
         //* get instance of dynamodoc, and execute query().
         const dynamodoc = await DynamoService.instance().dynamodoc();
+        const { ScanCommand } = await loadDynamoDoc(); // command class from the lazy-loaded package.
         const res = await dynamodoc.send(new ScanCommand(payload));
         _log(NS, `> scan.res =`, $U.json({ ...res, Items: undefined }));
         res?.Items && _log(NS, `> scan[0] =`, $U.json(res?.Items?.[0]));
@@ -209,6 +233,10 @@ export class DynamoScanService<T extends GeneralItem> implements DynamoSimpleSca
                     } else if (isStringCondition(cond)) {
                         const [name, value] = [asAttrName(cond.key), asAttrValue(cond.key, cond.value)];
                         return `${cond.operator}(${name}, ${value})`;
+                    } else if (isAttrTypeCondition(cond)) {
+                        //* v5 B39: `attribute_type(#k, :k0)`, the type name as a string value (DocumentClient → `{ S }`).
+                        const [name, value] = [asAttrName(cond.key), asAttrValue(cond.key, cond.attrType)];
+                        return `attribute_type(${name}, ${value})`;
                     }
                 }
             };

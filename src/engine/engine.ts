@@ -21,16 +21,20 @@
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
  * @date        2022-02-21 remove `$_` the lodash libs.
  * @date        2026-05-08 optimized to ignore of reporting.
+ * @date        2026-10-30 `getHelloArn()`: placeholder account `000000000000` only with the local transport (`LOCAL_TRANSPORT=mock`).
+ * @date        2026-10-30 v5 B14: `doReportError()` payload has the `trace` of the context.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
 import { $engine, $U, _log, _inf, _err } from './index';
 import { NextContext } from 'lemon-model';
+import { DEFAULT_TIME_ZONE, defaultTimeZone } from './utilities'; //* v5: the constant and its env helper live with `$U.dt`/`$U.ts` (B5 § 6.8).
 
 //* import sub-modules.
 import { SlackPostBody, MetricPostBody, CallbackData } from '../common/types';
 import { loadJsonSync } from '../tools/';
 import { AWSSNSService } from '../cores/aws/aws-sns-service';
+import { safeStringify } from '../lib/safe-json'; //* v5 B10-2: circular-safe stringify for error reports (internal).
 
 import * as $lambda from 'aws-lambda';
 type Context = $lambda.Context;
@@ -60,13 +64,22 @@ export const getHelloArn = (context?: Context | RequestContext | NextContext, NS
         const $ncx: NextContext = context as NextContext;
         //* build arn via context information.
         const invokedFunctionArn = `${$ctx.invokedFunctionArn || ''}`; // if called via lambda call ex: 'arn:aws:lambda:ap-northeast-2:085403634746:function:lemon-messages-api-prod-user'
-        const accountId = $ncx?.accountId || invokedFunctionArn?.split(':')[4] || $req?.accountId;
+        //* v5 B10-6: own account first (Lambda always has `invokedFunctionArn`), then context; only 12-digit ids pass.
+        const isAccount = (v: unknown): v is string => typeof v === 'string' && /^\d{12}$/.test(v);
+        const candidates: unknown[] = [invokedFunctionArn.split(':')[4], $ncx?.accountId, $req?.accountId];
+        const accountId = candidates.find(isAccount);
         const region = invokedFunctionArn.split(':')[3] || `ap-northeast-2`;
-        _inf(NS, '! accountId =', accountId);
-        if (!accountId || typeof accountId !== 'string') {
-            _err(NS, 'ERROR! missing accountId. context =', $U.json(context));
-            throw new Error(`.accountId[${accountId ?? ''}] is missing - ${errScope}`);
+        //* local transport (`LOCAL_TRANSPORT=mock` in local mode, never in Lambda): nothing is sent, so a placeholder account.
+        if (!accountId && process.env.LOCAL_TRANSPORT === 'mock' && $U.isLocalMode()) {
+            _log(NS, '! accountId = 000000000000 (local transport)');
+            return `arn:aws:sns:${region}:000000000000:${target}`;
         }
+        if (!accountId) {
+            //* v5 B10-6: never log or throw the rejected value (it can be an OS user name from a local runner).
+            _err(NS, 'ERROR! missing accountId. context =', $U.json({ ...context, accountId: undefined }));
+            throw new Error(`.accountId[] is missing - ${errScope}`);
+        }
+        _inf(NS, '! accountId =', accountId);
         return `arn:aws:sns:${region}:${accountId}:${target}`;
     }
 };
@@ -83,16 +96,17 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
     const NS = $U.NS('RPTE');
 
     //* ignore only if local express-run or empty accountId.
-    const ignored = context?.source === 'express' || context?.accountId === '';
+    //* v5 B10-6: also ignore in local mode (`LOCAL_MODE=1` outside Lambda) — `source` is never 'express' after `packContext()`.
+    const ignored = context?.source === 'express' || context?.accountId === '' || $U.isLocalMode();
     if (ignored) {
         _err(NS, `! err(report) :=`, e);
         return '!ignore';
     }
 
-    //TODO - optimize message extractor.
+    //* v5 B10-2: message extractor — circular-safe (`$U.json()` throws on a circular object, outside of `try`).
     const $message = (e: any) => {
         const m = (e && (e.message || e.statusMessage)) || e;
-        return typeof m == 'object' ? $U.json(m) : `${m}`;
+        return typeof m == 'object' ? safeStringify(m) : `${m}`;
     };
     _log(NS, `doReportError(${$message(e)})...`);
 
@@ -108,12 +122,13 @@ export const doReportError = async (e: Error, context?: any, event?: any, data?:
         const identity = context?.identity || {};
         const service = `api://${$pack.name || 'lemon-core'}/${name}-${stage}#${$pack.version || '0.0.0'}`;
 
-        //* prepare payload to publish.
+        //* prepare payload to publish (v5 B14: + the call-chain `trace` of the context).
         const payload = {
             service,
             message,
             context: { ...context, stage, apiId, resourcePath, identity, domainPrefix, event },
             data,
+            trace: context?.trace,
         };
 
         //* find target arn.
@@ -179,7 +194,8 @@ export const doReportSlack = async (channel: string, body: SlackPostBody, contex
     _log(NS, `doReportSlack()...`);
 
     //* ignore only if local express-run or empty accountId.
-    const ignored = context?.source === 'express' || context?.accountId === '';
+    //* v5 B10-6: also ignore in local mode, same as `doReportError()`.
+    const ignored = context?.source === 'express' || context?.accountId === '' || $U.isLocalMode();
     if (ignored) {
         _err(NS, `! slack(report) :=`, $U.json(body));
         return '!ignore';
@@ -268,7 +284,13 @@ export const doReportMetric = async (ns: string, id: string, body: MetricPostBod
         const target = 'lemon-metrics-sns';
         const arn0 = getHelloArn(context, NS);
         // eslint-disable-next-line prettier/prettier
-        const arn = arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6 ? arn0.split(':').map((v,i)=>i==5?target:v).join(':') : arn0;
+        const arn =
+            arn0.startsWith('arn:aws:sns:') && arn0.split(':').length == 6
+                ? arn0
+                      .split(':')
+                      .map((v, i) => (i == 5 ? target : v))
+                      .join(':')
+                : arn0;
         _log(NS, `> report-metric.arn =`, arn);
         return $sns(arn)
             .publish(arn || target, 'metric', payload)
@@ -347,15 +369,15 @@ export const do_parallel = <T, U>(
                 const R2: Promise<any> = R as Promise<any>; // avoid compile error.
                 return R2.catch(e => {
                     _err(`!ERR@1 node[${index}] =`, e);
-                    //* make sure error instance.
-                    return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
+                    //* make sure error instance. (v5 B10-2: circular-safe)
+                    return e instanceof Error ? e : new Error(typeof e == 'string' ? e : safeStringify(e));
                 });
             }
             return R;
         } catch (e) {
             _err(`!ERR@2 node[${index}] =`, e);
-            //* make sure error instance.
-            return e instanceof Error ? e : new Error(typeof e == 'string' ? e : JSON.stringify(e));
+            //* make sure error instance. (v5 B10-2: circular-safe)
+            return e instanceof Error ? e : new Error(typeof e == 'string' ? e : safeStringify(e));
         }
     });
     //* do parrallel.
@@ -390,11 +412,11 @@ export const do_parallel = <T, U>(
  */
 export const do_parrallel = do_parallel;
 
-//* default time-zone for this api. (Asia/Seoul - 9 hours)
-export const DEFAULT_TIME_ZONE = 9;
+//* default time-zone for this api. (Asia/Seoul - 9 hours) — v5: defined in `utilities.ts`, re-exported here (root name unchanged).
+export { DEFAULT_TIME_ZONE };
 
-//* convert to date of input.
-export const convDate = (dt: string | number | Date): Date => $U.dt(dt, DEFAULT_TIME_ZONE)!;
+//* convert to date of input. v5: the default zone follows env `DEFAULT_TIME_ZONE` like `$U.dt()` (B5 § 6.8).
+export const convDate = (dt: string | number | Date): Date => $U.dt(dt, defaultTimeZone())!;
 
 /**
  * Convert input to time value (in number)
@@ -415,5 +437,5 @@ export const convDateToTime = (dt: string | number | Date) => {
  */
 export const convDateToTS = (dt: string | number | Date) => {
     const t = convDate(dt);
-    return $U.ts(t, DEFAULT_TIME_ZONE);
+    return $U.ts(t, defaultTimeZone()); //* v5: same default zone as `$U.ts()` (B5 § 6.8).
 };

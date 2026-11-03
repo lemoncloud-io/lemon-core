@@ -9,34 +9,13 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
-import net from 'net';
 import { expect2, GETERR, _it } from '../..';
-import { CacheService, DummyCacheService, sleep, toTTL, fromTTL } from './cache-service';
+import { CacheBackend, CacheService, DummyCacheService, ItemEntry, sleep, toTTL, fromTTL } from './cache-service';
 
-export const instance = (type: 'dummy' | 'memcached' | 'redis', ns: string = 'cache-service-test') => {
-    if (type === 'dummy') {
-        return { cache: DummyCacheService.create({ ns, defTimeout: 0 }) };
-    } else {
-        return { cache: CacheService.create({ type, ns, defTimeout: 0 }) }; // use local cache server
-    }
+//* create the dummy (in-process) cache for tests.
+export const instance = (type: 'dummy', ns: string = 'cache-service-test') => {
+    return { cache: DummyCacheService.create({ ns, defTimeout: 0 }) };
 };
-
-export async function isLocalCacheAvailable(type: 'memcached' | 'redis'): Promise<boolean> {
-    const host = 'localhost';
-    const port = type == 'memcached' ? 11211 : 6379;
-
-    return new Promise(resolve => {
-        const socket = net.createConnection({ port, host });
-        socket.setTimeout(200);
-        socket
-            .on('connect', () => {
-                socket.destroy();
-                resolve(true);
-            })
-            .on('timeout', () => resolve(false))
-            .on('error', () => resolve(false));
-    });
-}
 
 //* main test body.
 describe('DummyCacheService', () => {
@@ -278,334 +257,40 @@ describe('DummyCacheService', () => {
     });
 });
 
-describe('CacheService - Memcached', () => {
-    it('hello', async () => {
-        const { cache } = instance('memcached');
-        expect2(() => cache instanceof CacheService).toBeTruthy();
-        expect2(() => cache instanceof DummyCacheService).toBeFalsy();
-        expect2(() => cache.hello()).toEqual('cache-service:memcached:cache-service-test');
+//* v5: a consumer injects its own backend (ex: Redis); without one the cache is in-process.
+describe('CacheService - injected backend', () => {
+    it('should use the injected backend, else node-cache', async () => {
+        //* a minimal map-based backend, standing in for a consumer's Redis backend.
+        const map = new Map<string, any>();
+        const fake: CacheBackend = {
+            name: 'fake',
+            set: async (key, val) => !!map.set(key, val),
+            get: async key => map.get(key),
+            mset: async (entries: ItemEntry[]) => entries.every(e => map.set(e.key, e.val)),
+            mget: async keys => keys.reduce((M: any, k) => (map.has(k) ? { ...M, [k]: map.get(k) } : M), {}),
+            incr: async (key, inc) => map.set(key, (map.get(key) ?? 0) + inc).get(key),
+            keys: async () => [...map.keys()],
+            has: async key => map.has(key),
+            del: async key => map.delete(key),
+            expire: async () => true,
+            ttl: async () => 0,
+            close: async () => map.clear(),
+        };
+        const cache = CacheService.create({ backend: fake, ns: 'inj' });
+        expect2(() => cache.hello()).toEqual('cache-service:fake:inj');
+        expect2(await cache.set('a', 1)).toEqual(true);
+        expect2(await cache.get('a')).toEqual(1);
+        expect2(() => [...map.keys()]).toEqual(['inj::a']);
         await cache.close();
-    });
 
-    it('set/get/exists/delete', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
-        const { cache } = instance('memcached', 'TC01');
+        //* default: in-process node-cache (v4 default was redis).
+        const local = CacheService.create({ ns: 'loc' });
+        expect2(() => local.hello()).toEqual('cache-service:node-cache:loc');
+        await local.close();
 
-        // setup test
-        await cache.deleteMulti(['N', 'S', 'M', 'L', 'nil']);
-
-        // number
-        expect2(await cache.exists('N').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('N', 100).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('N').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('N').catch(GETERR)).toEqual(100);
-        expect2(await cache.delete('N').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('N').catch(GETERR)).toEqual(false);
-        // string
-        expect2(await cache.exists('S').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('S', 'lemon').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('S').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('S').catch(GETERR)).toEqual('lemon');
-        expect2(await cache.delete('S').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('S').catch(GETERR)).toEqual(false);
-        // object
-        expect2(await cache.exists('M').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('M', { a: 9, b: 'bar', c: null }).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('M').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('M').catch(GETERR)).toEqual({ a: 9, b: 'bar', c: null });
-        expect2(await cache.delete('M').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('M').catch(GETERR)).toEqual(false);
-        // array
-        expect2(await cache.exists('L').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('L', ['foo', -1, {}]).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('L').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('L').catch(GETERR)).toEqual(['foo', -1, {}]);
-        expect2(await cache.delete('L').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('L').catch(GETERR)).toEqual(false);
-        // null
-        expect2(await cache.exists('nil').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('nil', null).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('nil').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('nil').catch(GETERR)).toEqual(null);
-        expect2(await cache.delete('nil').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('nil').catch(GETERR)).toEqual(false);
-
-        // failed: empty key
-        expect2(await cache.set('', undefined).catch(GETERR)).toEqual('@key (CacheKey) is required.');
-        // failed: undefined value
-        expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
-
-        await cache.close();
-    });
-
-    it('setMulti/getMulti/deleteMulti', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
-        const { cache } = instance('memcached', 'TC02');
-
-        // setup test
-        await cache.deleteMulti([1, 2, 3]);
-
-        // setMulti
-        expect2(
-            await cache
-                .setMulti([
-                    { key: 1, val: 1 },
-                    { key: 2, val: 2 },
-                    { key: 3, val: 3 },
-                ])
-                .catch(GETERR),
-        ).toEqual(true);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
-        // getMulti
-        expect2(await cache.getMulti([1, 2, 3]).catch(GETERR)).toEqual({ '1': 1, '2': 2, '3': 3 });
-        // deleteMulti
-        expect2(await cache.deleteMulti([1, 2]).catch(GETERR)).toEqual([true, true]);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
-        expect2(await cache.deleteMulti([1, 2, 3]).catch(GETERR)).toEqual([false, false, true]);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
-
-        await cache.close();
-    });
-
-    it('getAndSet/getAndDelete', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
-        const { cache } = instance('memcached', 'TC03');
-
-        // setup test
-        await cache.set('a', 'bar');
-
-        // get-and-set
-        expect2(await cache.getAndSet('a', 'baz').catch(GETERR)).toEqual('bar');
-        expect2(await cache.get('a').catch(GETERR)).toEqual('baz');
-        // get-and-delete
-        expect2(await cache.getAndDelete('a').catch(GETERR)).toEqual('baz');
-        expect2(await cache.exists('a').catch(GETERR)).toEqual(false);
-        expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
-
-        await cache.close();
-    });
-
-    _it('TTL', async () => {
-        if (!(await isLocalCacheAvailable('memcached'))) return;
-        const { cache } = instance('memcached', 'TC04');
-
-        // setup test
-        await cache.deleteMulti([1, 2, 3]);
-
-        // set key with TTL
-        expect2(await cache.set(1, 'foo', 1).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
-        // expired
-        await sleep(1000);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.getTimeout(1).catch(GETERR)).toBeUndefined(); // undefined if key expired
-        expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
-
-        // set multiple keys with TTL
-        expect2(
-            await cache
-                .setMulti([
-                    { key: 1, val: 1, timeout: { expireIn: 1 } },
-                    { key: 2, val: 2 },
-                    { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } },
-                ])
-                .catch(GETERR),
-        ).toEqual(true);
-        expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
-        expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
-        expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
-        // expired
-        await sleep(1000);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
-
-        // remove TTL
-        expect2(await cache.removeTimeout(3).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(3).catch(GETERR)).toEqual(0);
-
-        // change TTL manually
-        expect2(await cache.setTimeout(3, 3).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(3000);
-        expect2(await cache.setTimeout(3, 1).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(1000);
-        // expired
-        await sleep(1000);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
-
-        await cache.close();
-    });
-});
-
-describe('CacheService - Redis', () => {
-    it('hello', async () => {
-        const { cache } = instance('redis');
-        expect2(() => cache instanceof CacheService).toBeTruthy();
-        expect2(() => cache instanceof DummyCacheService).toBeFalsy();
-        expect2(() => cache.hello()).toEqual('cache-service:redis:cache-service-test');
-        await cache.close();
-    });
-
-    it('set/get/exists/delete', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
-        const { cache } = instance('redis', 'TC01');
-
-        // setup test
-        await cache.deleteMulti(['N', 'S', 'M', 'L', 'nil']);
-
-        // number
-        expect2(await cache.exists('N').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('N', 100).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('N').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('N').catch(GETERR)).toEqual(100);
-        expect2(await cache.delete('N').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('N').catch(GETERR)).toEqual(false);
-        // string
-        expect2(await cache.exists('S').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('S', 'lemon').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('S').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('S').catch(GETERR)).toEqual('lemon');
-        expect2(await cache.delete('S').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('S').catch(GETERR)).toEqual(false);
-        // object
-        expect2(await cache.exists('M').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('M', { a: 9, b: 'bar', c: null }).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('M').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('M').catch(GETERR)).toEqual({ a: 9, b: 'bar', c: null });
-        expect2(await cache.delete('M').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('M').catch(GETERR)).toEqual(false);
-        // array
-        expect2(await cache.exists('L').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('L', ['foo', -1, {}]).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('L').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('L').catch(GETERR)).toEqual(['foo', -1, {}]);
-        expect2(await cache.delete('L').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('L').catch(GETERR)).toEqual(false);
-        // null
-        expect2(await cache.exists('nil').catch(GETERR)).toEqual(false);
-        expect2(await cache.set('nil', null).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('nil').catch(GETERR)).toEqual(true);
-        expect2(await cache.get('nil').catch(GETERR)).toEqual(null);
-        expect2(await cache.delete('nil').catch(GETERR)).toEqual(true);
-        expect2(await cache.exists('nil').catch(GETERR)).toEqual(false);
-
-        // failed: empty key
-        expect2(await cache.set('', undefined).catch(GETERR)).toEqual('@key (CacheKey) is required.');
-        // failed: undefined value
-        expect2(await cache.set('key', undefined).catch(GETERR)).toEqual('@val (CacheValue) cannot be undefined.');
-
-        await cache.close();
-    });
-
-    it('setMulti/getMulti/deleteMulti', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
-        const { cache } = instance('redis', 'TC02');
-
-        // setup test
-        await cache.deleteMulti([1, 2, 3]);
-
-        // setMulti
-        expect2(
-            await cache
-                .setMulti([
-                    { key: 1, val: 1 },
-                    { key: 2, val: 2 },
-                    { key: 3, val: 3 },
-                ])
-                .catch(GETERR),
-        ).toEqual(true);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
-        // getMulti
-        expect2(await cache.getMulti([1, 2, 3]).catch(GETERR)).toEqual({ '1': 1, '2': 2, '3': 3 });
-        // deleteMulti
-        expect2(await cache.deleteMulti([1, 2]).catch(GETERR)).toEqual([true, true]);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
-        expect2(await cache.deleteMulti([1, 2, 3]).catch(GETERR)).toEqual([false, false, true]);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
-
-        await cache.close();
-    });
-
-    it('getAndSet/getAndDelete', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
-        const { cache } = instance('redis', 'TC03');
-
-        // setup test
-        await cache.set('a', 'bar');
-
-        // get-and-set
-        expect2(await cache.getAndSet('a', 'baz').catch(GETERR)).toEqual('bar');
-        expect2(await cache.get('a').catch(GETERR)).toEqual('baz');
-        // get-and-delete
-        expect2(await cache.getAndDelete('a').catch(GETERR)).toEqual('baz');
-        expect2(await cache.exists('a').catch(GETERR)).toEqual(false);
-        expect2(await cache.get('a').catch(GETERR)).toEqual(undefined);
-
-        await cache.close();
-    });
-
-    _it('TTL', async () => {
-        if (!(await isLocalCacheAvailable('redis'))) return;
-        const { cache } = instance('redis', 'TC04');
-
-        // setup test
-        await cache.deleteMulti([1, 2, 3]);
-
-        // set key with TTL
-        expect2(await cache.set(1, 'foo', 1).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
-        // expired
-        await sleep(1000);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.getTimeout(1).catch(GETERR)).toBeUndefined(); // undefined if key expired
-        expect2(await cache.getTimeout(2).catch(GETERR)).toBeUndefined(); // undefined if key does not exist
-
-        // set multiple keys with TTL
-        expect2(
-            await cache
-                .setMulti([
-                    { key: 1, val: 1, timeout: { expireIn: 1 } },
-                    { key: 2, val: 2 },
-                    { key: 3, val: 3, timeout: { expireAt: Date.now() + 2000 } },
-                ])
-                .catch(GETERR),
-        ).toEqual(true);
-        expect2(await cache.getTimeout(1).catch(GETERR)).toBeLessThanOrEqual(1000);
-        expect2(await cache.getTimeout(2).catch(GETERR)).toBe(0); // 0 if no timeout set
-        expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(2000);
-        // expired
-        await sleep(1000);
-        expect2(await cache.exists(1).catch(GETERR)).toEqual(false);
-        expect2(await cache.exists(2).catch(GETERR)).toEqual(true);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(true);
-
-        // remove TTL
-        expect2(await cache.removeTimeout(3).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(3).catch(GETERR)).toEqual(0);
-
-        // change TTL manually
-        expect2(await cache.setTimeout(3, 3).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(3000);
-        expect2(await cache.setTimeout(3, 1).catch(GETERR)).toEqual(true);
-        expect2(await cache.getTimeout(3).catch(GETERR)).toBeLessThanOrEqual(1000);
-        // expired
-        await sleep(1000);
-        expect2(await cache.exists(3).catch(GETERR)).toEqual(false);
-
-        await cache.close();
+        //* a v4 remote type without a backend fails loudly.
+        expect2(() => CacheService.create({ type: 'redis' as any })).toEqual(
+            '@type [redis] is invalid (inject options.backend) - CacheService.create()',
+        );
     });
 });

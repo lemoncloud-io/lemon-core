@@ -5,16 +5,20 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2026-10-30 v5 B14: the receiver's own ids (`packContext()`) for a relay; channel `internal`.
+ * @date        2026-10-30 v5 B14: a same-service callback advances `trace.hop` (cap `PROTOCOL_MAX_HOP`), `depth` in sync.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { $U, _log, _inf, _err, do_parrallel } from '../../engine/';
-import { SNSEventRecord, SNSMessage } from 'aws-lambda';
+import { SNSEventRecord, SNSMessage, Context } from 'aws-lambda';
 import { NextContext, NextHandler } from 'lemon-model';
 import { LambdaHandler, SNSHandler, LambdaSubHandler, buildReportError } from './lambda-handler';
 import { MyProtocolParam } from '../protocol/protocol-service';
 import $protocol from '../protocol/';
+import { ATTR_PROTOCOL_SIGNATURE, assertSigned, verifyMessage } from '../protocol/protocol-sign';
+import { accountOfArn, nextHopContext, logTrace } from '../protocol/protocol-relay';
 const NS = $U.NS('HSNS', 'yellow'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -42,9 +46,22 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
     protected $lastResult: any = null;
 
     /**
-     * Default SNS Handler.
+     * v5 B14: the receiver's own ids of this invocation (the relay context uses them, D2).
+     * - `requestId` = Lambda `awsRequestId`, `accountId` = the account of `invokedFunctionArn` (12 digits).
      */
-    public handle: SNSHandler = async (event): Promise<void> => {
+    public async packContext(event: any, context: Context): Promise<NextContext> {
+        const own: NextContext = {};
+        if (context?.awsRequestId) own.requestId = `${context.awsRequestId}`;
+        const accountId = accountOfArn(context?.invokedFunctionArn);
+        if (accountId) own.accountId = accountId;
+        return own;
+    }
+
+    /**
+     * Default SNS Handler.
+     * - v5 B5: reports each failure and resolves `void` (no rethrow: SNS → Lambda is async, a reject = retries + DLQ).
+     */
+    public handle: SNSHandler = async (event, $ctx): Promise<void> => {
         //* for each records.
         const records: SNSEventRecord[] = event.Records || [];
         _log(NS, `handle(len=${records.length})...`);
@@ -59,7 +76,15 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
             const $msg: SNSMessage = record.Sns;
             const { Subject } = $msg;
             if (Subject == 'x-protocol-service') {
-                const param: MyProtocolParam = $protocol.service.asTransformer('sns').transformToParam($msg);
+                //* v5 B5: verify the signature before dispatch (`enforce` → this record is reported, not dispatched).
+                const signature = `${$msg.MessageAttributes?.[ATTR_PROTOCOL_SIGNATURE]?.Value ?? ''}`;
+                assertSigned('sns', () => verifyMessage(signature, $msg.Message));
+                //* v5 B14: own ids — the invocation's, else the message id and the topic account.
+                const own: NextContext = {
+                    requestId: `${$ctx?.requestId || $msg.MessageId || ''}` || undefined,
+                    accountId: `${$ctx?.accountId || accountOfArn($msg.TopicArn) || ''}` || undefined,
+                };
+                const param: MyProtocolParam = $protocol.service.asTransformer('sns').transformToParam($msg, own);
                 const context: NextContext = param.context;
                 const callback = param.callback || '';
                 const result = await this.lambda
@@ -74,7 +99,9 @@ export class LambdaSNSHandler extends LambdaSubHandler<SNSHandler> {
                         _log(NS, `> config.service =`, this.lambda.config && this.lambda.config.getService());
                         //* check if service is in same..
                         if (proto && this.lambda.config && proto.service == this.lambda.config.getService()) {
-                            proto.context.depth = $U.N(proto.context.depth, 1) + 1;
+                            //* v5 B14: an in-process next hop — hop + 1 (cap → 508), same tid, via/pid of this receiver.
+                            proto.context = nextHopContext(proto.context, $protocol.service.myProtocolURI(context));
+                            logTrace(proto.context);
                             proto.body = body;
                             _log(NS, `! body[${index}] =`, $U.json(body));
                             return this.lambda.handleProtocol(proto).then(body => {

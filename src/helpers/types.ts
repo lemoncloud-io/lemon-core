@@ -8,13 +8,15 @@
  * @date        2023-01-18 optimized with `lemon-core@3.2.4`
  * @date        2023-02-15 optimized with `lemon-core@3.2.5`
  * @date        2024-11-14 optimized `IdentityToken`.
+ * @date        2026-10-28 v5 B3: the single definition (L2 content; `extended/cores/types.ts` re-exports it).
  *
  * @copyright   (C) 2022 LemonCloud Co Ltd. - All Rights Reserved.
  * @origin      `@lemoncloud/lemon-templates-api/cores`
  */
 //NOTE - must use `lemon-model` to publish w/o `lemon-core`.
 import { NextIdentity, CoreModel, View, Body } from 'lemon-model';
-export { CoreModel, View, Body };
+//* type-only re-export (`isolatedModules`): lemon-model symbols, also re-exported by `extended/cores/types.ts`.
+export type { CoreModel, View, Body };
 
 /** type: `IdentityTokenSite` */
 export interface IdentityTokenSite {
@@ -56,6 +58,13 @@ export interface IdentityToken<
     S extends IdentityTokenSite = IdentityTokenSite,
     G extends IdentityTokenGroup = IdentityTokenGroup,
 > extends NextIdentity<T> {
+    //* v5 B3: L2 shape wins (required `cid`, optional `did`, no `iid`) — the root already exposed this.
+    /**
+     * cloud-id (= id in `AWS ACCOUNT_NO`)
+     * - `#` 일경우, 무시됨.
+     * - aws 계정 수준의 cloud-id
+     */
+    cid: string;
     /**
      * site-id (= id in `SiteModel(사이트)`)
      * - `#` 일경우, 특정 site에 엮이지 않음 (무시됨)
@@ -87,20 +96,19 @@ export interface IdentityToken<
      * @see AuthModel
      */
     aid: string;
+    /**
+     * (optional) delegator-id (= 위임된 게스트 User ID)
+     * - **중계서버(`backend-api`)에서만 유효한 필드.** 다른 시스템(socials 등)은 이 필드를 신뢰하지 말 것.
+     * - 소셜 로그인 세션에서 원본 디바이스 게스트 User ID를 가리킴 (= `AuthModel.linkUserId`).
+     * - 채팅(개인 채팅방) 도메인은 본 신원이 아닌 `did`를 채택하여 게스트의 데이터를 그대로 이용함.
+     * - 게스트 세션이거나 위임이 없을 때는 `undefined`.
+     */
+    did?: string;
 
     /**
      * list of roles  (like `user`, `admin`, `super`)
      */
     roles: string[];
-
-    /**
-     * (optional) internal `identity-id` (= delegated identity)
-     * - `.identityId` 는 aws cognito 인증을 통해서, 현재 인증된 `identity-id`를 알 수 있음
-     * - 다만, `delegated`된 경우에는 위임된 id 가 들어감.
-     *
-     * @deprecated 삭제될 예정! @241114
-     */
-    iid?: string;
 
     /**
      * service-name of issuer
@@ -141,10 +149,16 @@ export interface ListResult<T, R = any> {
      */
     list: T[];
 
+    //* v5 B3: L2 union (`R | R[]`) — the root already exposed this shape.
     /**
      * (optional) aggr list
      */
-    aggr?: R[];
+    aggr?: R | R[];
+}
+
+//* v5 B3: was L2-only; now part of the single definition (root name unchanged).
+export interface AggrResult {
+    [key: string]: { [key: string]: number };
 }
 
 export interface AggrKeyCount {

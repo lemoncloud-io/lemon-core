@@ -9,10 +9,7 @@
  *
  * @copyright   (C) lemoncloud.io 2020 - All Rights Reserved.
  */
-import { promisify } from 'util';
 import NodeCache from 'node-cache';
-import Memcached from 'memcached';
-import IORedis, { Redis } from 'ioredis';
 import { $U, _log, _inf } from '../../engine';
 const NS = $U.NS('CCHS', 'green'); // NAMESPACE TO BE PRINTED.
 
@@ -21,13 +18,14 @@ const NS = $U.NS('CCHS', 'green'); // NAMESPACE TO BE PRINTED.
  */
 export interface CacheOptions {
     /**
-     * (optional) cache backend type (default: 'redis')
+     * (optional) cache backend type (default: 'node' = in-process `node-cache`)
+     * - v5: the remote types are removed. inject a remote cache via `backend`.
      */
-    type?: 'memcached' | 'redis';
+    type?: 'node';
     /**
-     * (optional) cache server endpoint (not required for dummy-cache)
+     * (optional) cache backend implemented by the consumer (ex: a Redis client). default is in-process `node-cache`.
      */
-    endpoint?: string;
+    backend?: CacheBackend;
     /**
      * (optional) namespace. used as cache key prefix to avoid key collision between different services
      */
@@ -122,6 +120,7 @@ export interface CacheSupportable<CacheValue = any> {
 export class CacheService<CacheValue = any> implements CacheSupportable<CacheValue> {
     /**
      * Environment variable name for cache server endpoint
+     * - v5: lemon-core no longer reads it (kept as a name for consumers that build their own backend).
      * @static
      */
     public static readonly ENV_CACHE_ENDPOINT = 'CACHE_ENDPOINT';
@@ -174,32 +173,23 @@ export class CacheService<CacheValue = any> implements CacheSupportable<CacheVal
      * @static
      */
     public static create(options?: CacheOptions, maker?: CacheKeyMakable): CacheService {
-        const type = options?.type || 'redis';
-        const endpoint = options?.endpoint || $U.env(CacheService.ENV_CACHE_ENDPOINT);
+        const type = options?.type || 'node';
         const ns = options?.ns || '';
         const defTimeout = $U.N(
             options?.defTimeout,
             $U.N($U.env(CacheService.ENV_CACHE_DEFAULT_TIMEOUT), CacheService.DEF_CACHE_DEFAULT_TIMEOUT),
         );
-        options = { ...options, type, endpoint, ns, defTimeout };
+        // without an injected backend, only the in-process type is valid (ex: a v4 `redis` caller fails loudly).
+        if (!options?.backend && type !== 'node')
+            throw new Error(`@type [${type}] is invalid (inject options.backend) - CacheService.create()`);
+        options = { ...options, type, ns, defTimeout };
 
-        _log(NS, `constructing [${type}] cache ...`);
-        _log(NS, ` > endpoint =`, endpoint);
+        _log(NS, `constructing [${options.backend ? options.backend.name : type}] cache ...`);
         _log(NS, ` > ns =`, ns);
         _log(NS, ` > defTimeout =`, defTimeout);
 
-        let backend: CacheBackend;
-        switch (type) {
-            case 'memcached':
-                backend = new MemcachedBackend(endpoint, defTimeout);
-                break;
-            case 'redis':
-                backend = new RedisBackend(endpoint, defTimeout);
-                break;
-            default:
-                throw new Error(`@type [${type}] is invalid - CacheService.create()`);
-        }
-
+        // the injected backend wins, else a new in-process `node-cache` backend.
+        const backend: CacheBackend = options.backend ?? new NodeCacheBackend(defTimeout);
         return new CacheService(backend, { ns, options, maker });
     }
 
@@ -600,12 +590,12 @@ export function fromTTL(ttl: number): number {
 }
 
 /** ********************************************************************************************************************
- *  Internal Types
+ *  Backend Types (exported in v5 so a consumer can inject its own backend)
  ** ********************************************************************************************************************/
 /**
  * type `ItemEntry`: parameter for mset operation
  */
-interface ItemEntry<T = any> {
+export interface ItemEntry<T = any> {
     key: string;
     val: T;
     ttl?: number;
@@ -613,9 +603,9 @@ interface ItemEntry<T = any> {
 
 /**
  * interface `CacheBackend`
- * @internal
+ * - implement this to plug a remote cache (ex: Redis) into `CacheService.create({ backend })`.
  */
-interface CacheBackend {
+export interface CacheBackend {
     /**
      * backend type
      */
@@ -843,382 +833,5 @@ class NodeCacheBackend implements CacheBackend {
      */
     public async close(): Promise<void> {
         this.cache.close();
-    }
-}
-
-/**
- * class `MemcachedBackend`
- * @internal
- */
-class MemcachedBackend implements CacheBackend {
-    /**
-     * Memcached promisified APIs
-     * @private
-     */
-    private readonly api: {
-        get: (key: string) => Promise<any>;
-        gets: (key: string) => Promise<{
-            [key: string]: any;
-            cas: string;
-        }>;
-        getMulti: (keys: string[]) => Promise<{ [key: string]: any }>;
-        set: (key: string, value: any, lifetime: number) => Promise<boolean>;
-        cas: (key: string, value: any, cas: string, lifetime: number) => Promise<boolean>;
-        del: (key: string) => Promise<boolean>;
-        items: () => Promise<Memcached.StatusData[]>;
-        cachedump: (server: string, slabid: number, number: number) => Promise<Memcached.CacheDumpData[]>;
-        end: () => void;
-    };
-
-    /**
-     * Default TTL as number in seconds
-     * @private
-     */
-    private readonly defTTL: number;
-
-    /**
-     * backend type
-     */
-    public readonly name: string = 'memcached';
-
-    /**
-     * Public constructor
-     */
-    public constructor(endpoint?: string, defTTL: number = 0) {
-        const memcached = new Memcached(endpoint || 'localhost:11211');
-
-        // Build promisified API map
-        this.api = {
-            get: promisify(memcached.get.bind(memcached)),
-            gets: promisify(memcached.gets.bind(memcached)),
-            getMulti: promisify(memcached.getMulti.bind(memcached)),
-            set: promisify(memcached.set.bind(memcached)),
-            cas: promisify(memcached.cas.bind(memcached)),
-            del: promisify(memcached.del.bind(memcached)),
-            items: promisify(memcached.items.bind(memcached)),
-            cachedump: (server, slabid, number) => {
-                return new Promise((resolve, reject) => {
-                    memcached.cachedump(server, slabid, number, (err, cachedump) => {
-                        if (err) return reject(err);
-                        if (!cachedump) return resolve([]);
-                        // Deep-copy를 안하면 데이터가 없어지는 이슈가 있음
-                        resolve(Array.isArray(cachedump) ? [...cachedump] : [cachedump]);
-                    });
-                });
-            },
-            end: memcached.end.bind(memcached),
-        };
-        // default TTL
-        this.defTTL = defTTL;
-    }
-
-    /**
-     * CacheBackend.set implementation
-     */
-    public async set<T>(key: string, val: T, ttl: number = this.defTTL): Promise<boolean> {
-        const entry = { val, exp: fromTTL(ttl) };
-        _log(NS, `[${this.name}-backend] storing to key [${key}] =`, $U.json(entry));
-
-        return await this.api.set(key, entry, ttl);
-    }
-
-    /**
-     * CacheBackend.get implementation
-     */
-    public async get<T>(key: string): Promise<T | undefined> {
-        const entry = await this.api.get(key);
-        _log(NS, `[${this.name}-backend] entry fetched =`, $U.json(entry));
-
-        return entry && entry.val;
-    }
-
-    /**
-     * CacheBackend.mset implementation
-     */
-    public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
-        _log(NS, `[${this.name}-backend] storing multiple keys ...`);
-        const promises = entries.map(({ key, val, ttl = this.defTTL }, idx) => {
-            const entry = { val, exp: fromTTL(ttl) };
-            _log(NS, ` ${idx}) key [${key}] =`, $U.json(entry));
-            return this.api.set(key, entry, ttl);
-        });
-        const results = await Promise.all(promises);
-
-        return results.every(result => result === true);
-    }
-
-    /**
-     * CacheBackend.mget implementation
-     */
-    public async mget<T>(keys: string[]): Promise<{ [key: string]: T }> {
-        const map = await this.api.getMulti(keys);
-        _log(NS, `[${this.name}-backend] entry map fetched =`, $U.json(map));
-
-        Object.keys(map).forEach(key => {
-            const entry = map[key];
-            map[key] = entry.val;
-        });
-        return map;
-    }
-
-    /**
-     * CacheBackend.incr implementation
-     */
-    public async incr(key: string, increment: number): Promise<number> {
-        // NOTE:
-        // Memcached는 음수에 대한 incr/decr를 지원하지 않으며 0 미만으로 decr 되지 않는다.
-        // 이런 이유로 sets & cas 조합을 이용해 직접 구현함
-
-        _log(NS, `[${this.name}-backend] incrementing (${increment}) to key [${key}] ...`);
-
-        // Use get/check-and-save + retry strategy for consistency
-        for (let retry = 0; retry < 5; await sleep(10), retry++) {
-            const result = await this.api.gets(key); // Get entry w/ CAS id
-
-            if (result === undefined) {
-                // Initialize to increment value if the key does not exist
-                if (!(await this.set(key, increment, 0))) break;
-                return increment;
-            } else {
-                const { [key]: oldEntry, cas } = result;
-                if (typeof oldEntry.val !== 'number') throw new Error(`.key [${key}] has non-numeric value.`);
-
-                // Preserve remaining lifetime w/ best effort strategy, not accurate
-                const now = Date.now();
-                const ttl = oldEntry.exp && Math.round((oldEntry.exp - now) / 1000);
-                const entry = {
-                    val: oldEntry.val + increment,
-                    exp: ttl && now + ttl * 1000,
-                };
-                if (await this.api.cas(key, entry, cas, ttl)) return entry.val;
-            }
-        }
-
-        throw new Error(`[memcached] failed to increment key [${key}].`);
-    }
-
-    /**
-     * CacheBackend.keys implementation
-     */
-    public async keys(): Promise<string[]> {
-        // NOTE:
-        //  memcached는 원래 keys 기능을 지원하지 않으며
-        //  아래와 같이 cachedump를 사용하여 가능하지만 set한 key가 dump 될 때 까지 상당한 시간이 소요되는 것으로 보인다.
-        //  따라서 이 operation의 결과를 신뢰하지 않도록 한다.
-
-        const item = (await this.api.items())[0];
-        if (!item || Object.keys(item).length === 0) return [];
-
-        const [server, slabid] = [item.server, Number(Object.keys(item)[0])];
-        const number = (item[slabid] as unknown as Memcached.StatusData).number as number;
-        const cachedump = await this.api.cachedump(server, slabid, number);
-        return cachedump.map(({ key }) => key);
-    }
-
-    /**
-     * CacheBackend.has implementation
-     */
-    public async has(key: string): Promise<boolean> {
-        return (await this.api.get(key)) !== undefined;
-    }
-
-    /**
-     * CacheBackend.del implementation
-     */
-    public async del(key: string): Promise<boolean> {
-        return await this.api.del(key);
-    }
-
-    /**
-     * CacheBackend.expire implementation
-     */
-    public async expire(key: string, ttl: number): Promise<boolean> {
-        let saved = false;
-
-        for (let retry = 0; !saved && retry < 5; await sleep(10), retry++) {
-            const result = await this.api.gets(key); // Get entry w/ CAS id
-            if (result === undefined) break; // If key does not exist or already expired
-
-            // Refresh timeout
-            const { [key]: oldEntry, cas } = result;
-            const newEntry = {
-                val: oldEntry.val,
-                exp: ttl && Date.now() + ttl * 1000,
-            };
-            saved = await this.api.cas(key, newEntry, cas, ttl);
-        }
-
-        return saved;
-    }
-
-    /**
-     * CacheBackend.ttl implementation
-     */
-    public async ttl(key: string): Promise<number | undefined> {
-        const entry = await this.api.get(key); // undefined if key does not exist
-        return entry?.exp && entry.exp - Date.now();
-    }
-
-    /**
-     * CacheBackend.close implementation
-     */
-    public async close(): Promise<void> {
-        this.api.end();
-    }
-}
-
-/**
- * class `RedisBackend`
- * @internal
- */
-class RedisBackend implements CacheBackend {
-    /**
-     * ioredis client
-     * @private
-     */
-    private readonly redis: Redis;
-
-    /**
-     * Default TTL as number in seconds
-     * @private
-     */
-    private readonly defTTL: number;
-
-    /**
-     * backend type
-     */
-    public readonly name: string = 'redis';
-
-    /**
-     * Public constructor
-     */
-    public constructor(endpoint?: string, defTTL: number = 0) {
-        this.redis = new IORedis(endpoint || 'localhost:6379');
-        this.defTTL = defTTL;
-    }
-
-    /**
-     * CacheBackend.set implementation
-     */
-    public async set<T>(key: string, val: T, ttl: number = this.defTTL): Promise<boolean> {
-        const data = JSON.stringify(val); // Serialize
-        ttl > 0 ? await this.redis.set(key, data, 'EX', ttl) : await this.redis.set(key, data);
-        return true; // 'set' command always return OK
-    }
-
-    /**
-     * CacheBackend.get implementation
-     */
-    public async get<T>(key: string): Promise<T | undefined> {
-        const data = await this.redis.get(key);
-        if (data !== null) return JSON.parse(data); // Deserialize
-    }
-
-    /**
-     * CacheBackend.mset implementation
-     */
-    public async mset<T>(entries: ItemEntry<T>[]): Promise<boolean> {
-        // Create transaction pipeline
-        //  -> MSET command를 사용할 수도 있으나 ttl 지정이 불가능하여 pipeline으로 구현함
-        const pipeline = entries.reduce((pipeline, { key, val, ttl = this.defTTL }) => {
-            const data = JSON.stringify(val); // Serialize
-            return ttl > 0 ? pipeline.set(key, data, 'EX', ttl) : pipeline.set(key, data);
-        }, this.redis.multi());
-
-        // Execute transaction
-        await pipeline.exec(); // Always OK
-
-        return true;
-    }
-
-    /**
-     * CacheBackend.mget implementation
-     */
-    public async mget<T>(keys: string[]): Promise<{ [key: string]: T }> {
-        const list = await this.redis.mget(keys);
-
-        // Deserialize and map array into object
-        return list.reduce<{ [key: string]: T }>((map, data, idx) => {
-            if (data !== null) {
-                const key = keys[idx];
-                map[key] = JSON.parse(data); // Deserialize
-            }
-            return map;
-        }, {});
-    }
-
-    /**
-     * CacheBackend.getset implementation
-     */
-    public async getset<T, U>(key: string, val: T): Promise<U | undefined> {
-        const newData = JSON.stringify(val); // Serialize
-        const oldData = await this.redis.getset(key, newData);
-        if (oldData !== null) return JSON.parse(oldData); // Deserialize
-    }
-
-    /**
-     * CacheBackend.pop implementation
-     */
-    public async pop<T>(key: string): Promise<T | undefined> {
-        const [[err, data]] = await this.redis
-            .multi()
-            .get(key) // read
-            .del(key) // and delete
-            .exec();
-        if (!err && data !== null) return JSON.parse(data as any);
-    }
-
-    /**
-     * CacheBackend.incr implementation
-     */
-    public async incr(key: string, increment: number): Promise<number> {
-        // Support both integer and floating point
-        const ret = await this.redis.incrbyfloat(key, increment);
-        return Number(ret);
-    }
-
-    /**
-     * CacheBackend.keys implementation
-     */
-    public async keys(): Promise<string[]> {
-        return await this.redis.keys('*');
-    }
-
-    /**
-     * CacheBackend.has implementation
-     */
-    public async has(key: string): Promise<boolean> {
-        return (await this.redis.exists(key)) > 0; // 1: exists / 0: does not exist
-    }
-
-    /**
-     * CacheBackend.del implementation
-     */
-    public async del(key: string): Promise<boolean> {
-        return (await this.redis.del(key)) === 1; // number of keys removed
-    }
-
-    /**
-     * CacheBackend.expire implementation
-     */
-    public async expire(key: string, ttl: number): Promise<boolean> {
-        const ret = ttl > 0 ? await this.redis.expire(key, ttl) : await this.redis.persist(key);
-        return ret > 0; // 1: success / 0: key does not exist
-    }
-
-    /**
-     * CacheBackend.ttl implementation
-     */
-    public async ttl(key: string): Promise<number | undefined> {
-        const ms = await this.redis.pttl(key); // -2: key does not exist / -1: no timeout
-        if (ms >= 0) return ms;
-        if (ms === -1) return 0;
-    }
-
-    /**
-     * CacheBackend.close implementation
-     */
-    public async close(): Promise<void> {
-        await this.redis.quit();
     }
 }

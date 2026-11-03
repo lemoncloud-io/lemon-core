@@ -5,6 +5,7 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-09-27 initial version
+ * @date        2026-10-30 `sendMessage()`: the local transport (`LOCAL_TRANSPORT=mock`) delivers in-process, no AWS call.
  *
  * @copyright   (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -12,11 +13,25 @@
 import { $engine, _log, _inf, _err, $U } from '../../engine/';
 const NS = $U.NS('SQSS', 'blue'); // NAMESPACE TO BE PRINTED.
 // eslint-disable-next-line prettier/prettier
-import { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
-// eslint-disable-next-line prettier/prettier
-import { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessageCommandInput, GetQueueAttributesCommandInput } from '@aws-sdk/client-sqs';
+import type { SendMessageCommandInput, ReceiveMessageCommandInput, DeleteMessageCommandInput, GetQueueAttributesCommandInput } from '@aws-sdk/client-sqs';
 import { CoreServices } from '../core-services';
 import { awsConfig } from '../../tools';
+import { measureAsync } from '../../lib/perf';
+import { isActive as isLocalTransport, localSqs } from '../protocol/local-transport';
+
+/**
+ * `@aws-sdk/client-sqs`, imported on the first use (not at import; v5 B2-c, K6).
+ */
+let $sqs: Promise<typeof import('@aws-sdk/client-sqs')>;
+// memoized loader (the first call prints one `PERF` line).
+const loadSqs = () =>
+    ($sqs ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sqs',
+        () => import('@aws-sdk/client-sqs'),
+    ));
+
 /**
  * interface: SQSService
  * - common interface type for `SQS`
@@ -34,7 +49,7 @@ export interface SQSAttribute {
 
 export interface SqsMessage {
     sent: number;
-    attr: SQSAttribute;
+    attr: SQSAttribute | undefined;
     data: any;
     id: string;
     handle: string;
@@ -124,6 +139,10 @@ export class AWSSQSService implements SQSService {
         };
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
+        //* local transport (opt-in, local mode only): deliver to this service in-process (no AWS call).
+        if (isLocalTransport()) return localSqs(this.endpoint(), params);
+
+        const { SQSClient, SendMessageCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new SendMessageCommand(params));
         _log(NS, '> result =', result);
@@ -153,14 +172,15 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call api
+        const { SQSClient, ReceiveMessageCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new ReceiveMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
 
         //* transform list.
-        const list: SqsMessage[] = (result && result.Messages).map(_ => {
-            const N: any = {};
-            N.sent = _.Attributes.SentTimestamp;
+        const list: SqsMessage[] = (result?.Messages ?? []).map(_ => {
+            const N: Partial<SqsMessage> = {};
+            N.sent = $U.N(_?.Attributes?.SentTimestamp ?? 0);
             const $attr = _.MessageAttributes || {};
             N.attr = Object.keys($attr).reduce((O: any, key: string) => {
                 const V = $attr[key];
@@ -172,7 +192,7 @@ export class AWSSQSService implements SQSService {
             N.data = JSON.parse(_.Body || '{}');
             N.id = _.MessageId;
             N.handle = _.ReceiptHandle;
-            return N;
+            return N as SqsMessage;
         });
 
         //* returns.
@@ -195,6 +215,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
+        const { SQSClient, DeleteMessageCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new DeleteMessageCommand(params));
         _log(NS, '> result =', $U.json(result));
@@ -214,6 +235,7 @@ export class AWSSQSService implements SQSService {
         _log(NS, `> params[${this.endpoint()}] =`, $U.json(params));
 
         //* call delete.
+        const { SQSClient, GetQueueAttributesCommand } = await loadSqs(); // a new client per call (no `PERF > client` line).
         const sqs = new SQSClient(awsConfig($engine, this.region()));
         const result = await sqs.send(new GetQueueAttributesCommand(params));
         _log(NS, '> result =', $U.json(result));

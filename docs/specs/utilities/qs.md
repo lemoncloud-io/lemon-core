@@ -21,6 +21,12 @@ Both wrap the `query-string` npm package (`QUERY_STRING`, imported `utilities.ts
 and stringification syntax itself (bracket/encoding conventions) is that library's contract,
 not `$U`'s; this spec covers only the **post-processing `$U` layers on top**.
 
+> **v5 B11 (2026-10-29):** `query-string` was removed. `$U.qs` now calls the internal helper
+> `src/lib/qs-compat.ts` (`qsParse`/`qsStringify` on `qs`), set up to give the same output as
+> `query-string` 7. The tables below still hold; the golden test is `src/engine/utilities.qs.spec.ts`.
+> Two known differences (a `__proto__` key, the `%C2` → `\uFFFD` fallback) are listed in
+> `docs/v5/B11-deps-audit.md`. Line numbers below refer to the 2026-09-02 source.
+
 ## `qs_parse` — post-processing over `QUERY_STRING.parse` (`utilities.ts:705-720`)
 
 ```ts

@@ -6,21 +6,20 @@
  * @date        2021-02-23 initial version
  * @author      Steve <steve@lemoncloud.io>
  * @date        2022-02-18 optimized search w/ ES6.8
- * @date        2022-02-22 optimized w/ `lemon-core#3.0` and `@elastic/elasticsearch`
+ * @date        2022-02-22 optimized w/ `lemon-core#3.0` and the elastic client
  * @date        2022-02-24 use `$id` in elastic-search as `_id` in dynamo-table.
  * @date        2022-03-15 optimized w/ `AbstractProxy`
  * @date        2022-03-17 optimized w/ `lemon-core#3.0.2` and use `env.ES6_DOCTYPE`
  * @date        2022-03-31 optimized w/ unit test spec.
  * @date        2022-05-19 optimized `CacheService` w/ typed key.
+ * @date        2026-10-27 v5 B2-b: `OS2Synchronizer`/`AbstractOS2Instance`; the L1 search instance, its factory and proxy are removed.
+ * @date        2026-10-28 v5 B4: `CoreManager` `fields` may be a model class.
  *
  * @origin      see `lemon-accounts-api/src/service/core-service.ts`
  * @copyright   (C) 2021 LemonCloud Co Ltd. - All Rights Reserved.
  */
 import $cores, {
     AbstractManager,
-    APIHeaders,
-    APIHttpMethod,
-    ApiHttpProxy,
     CacheService,
     CoreModel,
     CoreModelFilterable,
@@ -28,9 +27,9 @@ import $cores, {
     DynamoStreamCallback,
     DynamoStreamEvent,
     DynamoStreamFilter,
-    Elastic6Option,
-    Elastic6QueryService,
-    Elastic6Service,
+    OS2BaseOption,
+    OS2QueryService,
+    OS2CoreService,
     GeneralKeyMaker,
     LambdaDynamoStreamHandler,
     NextContext,
@@ -39,16 +38,15 @@ import $cores, {
     ProxyStorageService,
     SearchBody,
     StorageMakeable,
+    StorageService,
     TypedStorageService,
 } from '../cores/';
-import { $U, _err, _log } from '../engine/';
+import { $U, _log } from '../engine/';
+//* v5 B4: manager `fields` may be a model class.
+import { ModelClass } from '../cores/storage/model-fields';
 import { GETERR, NUL404, onlyDefined } from '../common/test-helper';
-import { $info, $protocol, $slack, $T, my_parrallel } from '../helpers';
-import { sigV4Client, sigV4ClientConfig } from './libs/sig-v4';
-import { CrendentialForAWS } from '../environ';
-import REQUEST from 'request';
-import queryString from 'query-string';
-import elasticsearch from '@elastic/elasticsearch';
+import { $protocol, $slack, $T, my_parrallel } from '../helpers';
+import type { Client } from '@opensearch-project/opensearch';
 const NS = $U.NS('back', 'blue'); // NAMESPACE TO BE PRINTED.
 
 /**
@@ -154,10 +152,18 @@ export abstract class CoreService<Model extends CoreModel<ModelType>, ModelType 
      * create storage-service w/ fields list.
      */
     public makeStorageService<T extends Model>(type: ModelType, fields: string[], filter: CoreModelFilterable<T>) {
-        //* use proxy-storage-service for both dynamo-table and dummy-data.
-        const storage = new ProxyStorageService<T, ModelType>(this, this.tableName, fields, filter, this.idName);
+        //* use proxy-storage-service for both dynamo-table and dummy-data (dummy: one inner storage per service).
+        const inner = this.tableName.endsWith('.yml') ? this.dummyStorage<T>(fields) : this.tableName;
+        const storage = new ProxyStorageService<T, ModelType>(this, inner, fields, filter, this.idName);
         storage.setTimer(() => (this.current ? this.current : new Date().getTime()));
         return storage.makeTypedStorageService(type);
+    }
+
+    //* the shared inner dummy storage of this service (lazy, `.yml` table only).
+    private $dummy: StorageService<any> = null;
+    private dummyStorage<T extends Model>(fields: string[]): StorageService<T> {
+        this.$dummy = this.$dummy ?? ProxyStorageService.makeStorageService<T>(this.tableName, fields, this.idName);
+        return this.$dummy as StorageService<T>;
     }
 }
 
@@ -176,7 +182,8 @@ export abstract class CoreManager<
      * constructor
      * @protected
      */
-    protected constructor(type: ModelType, parent: Service, fields: string[], uniqueField?: string) {
+    //* v5 B4: `fields` may be a model class (resolved in `AbstractManager`).
+    protected constructor(type: ModelType, parent: Service, fields: string[] | ModelClass, uniqueField?: string) {
         super(type, parent, fields, uniqueField);
     }
 
@@ -616,15 +623,34 @@ export class ManagerProxy<
         }, {} as any as Model);
         const keys: string[] = Object.keys($inc);
         if (!keys.length) throw new Error(`@model (object) is empty to inc() - proxy/${this.$mgr.type}/id:${id}!`);
-        //* try to increment, and update the latest to both org and new.
-        const $res = await this.$mgr.storage.update(id, {} as Model, $inc);
-        const $new = await this.get(id);
-        const $org = this.org(id, true);
-        return keys.reduce<Model>((N, k) => {
-            const key = k as keyof Model;
-            N[key] = $org[key] = $res[key];
-            return N;
-        }, $new);
+        //* try to increment, and update the latest to both org and new (serialized per id, so the last write is the latest).
+        return this.withIncLock(id, async () => {
+            const $res = await this.$mgr.storage.update(id, {} as Model, $inc);
+            const $new = await this.get(id);
+            const $org = this.org(id, true);
+            return keys.reduce<Model>((N, k) => {
+                const key = k as keyof Model;
+                N[key] = $org[key] = $res[key];
+                return N;
+            }, $new);
+        });
+    }
+
+    //* serialize inc() by id (same pattern as `DummyStorageService.withLock`).
+    private readonly $incQueues: { [id: string]: Promise<unknown> } = {};
+    private withIncLock<R>(id: string, fn: () => Promise<R>): Promise<R> {
+        const prev = this.$incQueues[id] ?? Promise.resolve();
+        const run: Promise<R> = prev.catch((): undefined => undefined).then((): Promise<R> => fn());
+        const tail: Promise<void> = run
+            .then(
+                (): undefined => undefined,
+                (): undefined => undefined,
+            )
+            .then((): void => {
+                if (this.$incQueues[id] === tail) delete this.$incQueues[id];
+            });
+        this.$incQueues[id] = tail;
+        return run;
     }
 
     /**
@@ -657,25 +683,20 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
     public readonly context: NextContext;
     /** (internal) backend-service */
     public readonly service: T;
-    /** (internal) cache service instance */
+    /** (internal) cache service instance (v5: no longer created from `CACHE_ENDPOINT`, so `undefined` unless a subclass sets it) */
     public readonly cache?: CacheService;
 
     /**
      * constructor of proxy.
      * @param service user service instance
      * @param parrallel parrallel count (default 2)
-     * @param cacheScope prefix of cache-key (like `lemon:SS:` or `lemon:SS:user`)
+     * @param cacheScope prefix of cache-key (like `lemon:SS:` or `lemon:SS:user`). v5: kept for signature compat, unused.
      */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public constructor(context: NextContext, service: T, parrallel = 2, cacheScope?: string) {
         this.context = context;
         this.service = service;
         this.parrallel = parrallel;
-
-        // create cache
-        const endpoint = $U.env('CACHE_ENDPOINT', '');
-        if (cacheScope && endpoint.startsWith('redis:')) {
-            this.cache = CacheService.create({ type: 'redis', endpoint, ns: cacheScope });
-        }
     }
 
     /**
@@ -887,17 +908,6 @@ export abstract class AbstractProxy<U extends string, T extends CoreService<Core
         if (!identityId && throwable) throw new Error(`400 NOT ALLOWED - getCurrentIdentity(${identityId || ''})`);
         return identityId;
     }
-
-    /**
-     * get the current identity object (or throw access-error)
-     *
-     * @deprecated useless anymore since 3.2.10
-     */
-    public async getCurrentIdentity$(throwable = true): Promise<NextIdentityAccess> {
-        const identityId = await this.getCurrentIdentityId(throwable);
-        if (!identityId && !throwable) return null;
-        return this.getIdentity$(identityId);
-    }
 }
 
 /**
@@ -923,10 +933,10 @@ export interface SearchResult<T, U = any> {
 }
 
 /**
- * class `Elastic6Synchronizer`
- * - listen DynamoDBStream events and index into Elasticsearch
+ * class `OS2Synchronizer`
+ * - listen DynamoDBStream events and index into OpenSearch
  */
-export class Elastic6Synchronizer {
+export class OS2Synchronizer {
     /**
      * model synchronizer map
      * @private
@@ -939,11 +949,11 @@ export class Elastic6Synchronizer {
     private readonly defModelSynchronizer: ModelSynchronizer;
 
     /**
-     * constructor
-     * @param elastic       (optional) elastic6-service instance
+     * constructor (registers one dynamo-stream listener)
+     * @param elastic       (optional) OS2CoreService instance
      * @param dynamoOptions (optional) dynamo config options
      */
-    public constructor(elastic?: Elastic6Service, dynamoOptions?: DynamoOption | { tableName: string }) {
+    public constructor(elastic?: OS2CoreService, dynamoOptions?: DynamoOption | { tableName: string }) {
         //NOTE - can be created without elastic instance (just to prepare synchronizer map)
         // if (!elastic) throw new Error(`@elastic (elastic-service) is required!`);
         // if (!dynamoOptions) throw new Error(`@dynamoOptions (object) is required!`);
@@ -955,7 +965,7 @@ export class Elastic6Synchronizer {
         });
 
         //* create sync-handler w/ this.
-        const listener = LambdaDynamoStreamHandler.createSyncToElastic6<{ type?: string; stereo?: string }>(
+        const listener = LambdaDynamoStreamHandler.createSyncToOS2<{ type?: string; stereo?: string }>(
             options,
             elastic,
             this.filter.bind(this),
@@ -1014,18 +1024,14 @@ export class Elastic6Synchronizer {
 }
 
 /**
- * type: `Elastic6ContructParams`
- * - params for `new Elastic6Instance()`
+ * type: `OS2ConstructParams`
+ * - params for `new OS2Instance()` (v5: no engine version, no doc-type)
  */
-export interface Elastic6ContructParams {
+export interface OS2ConstructParams {
     /** url endpoint */
     endpoint: string;
     /** name of index */
     indexName: string;
-    /** ES engine version(6.2 ~ 7.x) */
-    esVersion: string;
-    /** doc-type (only valid under 6.2) */
-    esDocType: string;
     /** dynamo table-name to synchronize */
     tableName: string;
     /** (optional) field to make auto-complele */
@@ -1033,110 +1039,72 @@ export interface Elastic6ContructParams {
 }
 
 /**
- * type: `Elastic6SearchParams`
+ * type: `OS2SearchParams`
  */
-export interface Elastic6SearchParams {
+export interface OS2SearchParams {
     /** index-name */
     indexName?: string;
-    /** search-type */
+    /** search-type (sent as `search_type`) */
     searchType?: 'query_then_fetch' | 'dfs_query_then_fetch';
     /** (optional) signature to check the request */
     signature?: string;
 }
 
 /**
- * class `AbstractElastic6Instance`
- * - to manipulate the shared Elasticsearch resources.
+ * class `AbstractOS2Instance`
+ * - to manipulate the shared OpenSearch resources.
+ * - the constructor builds nothing; the subclass (`OS2Instance`) builds one service set.
  */
-export abstract class AbstractElastic6Instance {
+export abstract class AbstractOS2Instance {
     /**
-     * Elasticsearch client
+     * OS2CoreService instance
      */
-    public readonly client?: elasticsearch.Client;
+    public readonly elastic?: OS2CoreService;
     /**
-     * Elastic6Service instance
+     * OS2QueryService instance
      */
-    public readonly elastic?: Elastic6Service;
+    public readonly query?: OS2QueryService<any>;
     /**
-     * Elastic6QueryService instance
+     * OS2Synchronizer instance
      */
-    public readonly query?: Elastic6QueryService<any>;
-    /**
-     * Elastic6Synchronizer instance
-     */
-    public readonly synchronizer?: Elastic6Synchronizer;
+    public readonly synchronizer?: OS2Synchronizer;
 
     /**
-     * default constructor
+     * default constructor (empty: no service, no client, no listener)
      */
-    public constructor({
-        endpoint,
-        indexName,
-        esVersion,
-        esDocType,
-        tableName,
-        autocompleteFields,
-    }: Elastic6ContructParams) {
-        // initialize Elasticsearch only if there are valid endpoint & index
-        if (endpoint && indexName) {
-            const options: Elastic6Option = {
-                endpoint,
-                indexName,
-                version: esVersion,
-                autocompleteFields,
-            };
-            if (esDocType) options.docType = esDocType;
-            this.elastic = new Elastic6Service<any>(options);
-            this.client = this.elastic.client;
-            this.query = new Elastic6QueryService<any>(this.elastic);
-        }
-        // WARN `this.elastic` can be null!
-        this.synchronizer = new Elastic6Synchronizer(this.elastic, { tableName });
-    }
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    public constructor() {}
 
     /** say hello */
     public abstract hello(): string;
 
     /**
-     * read the current elastic6-option.
+     * the OpenSearch client of `elastic` (created on first access).
      */
-    public get options(): Elastic6Option {
+    public get client(): Client {
+        return this.elastic?.client;
+    }
+
+    /**
+     * read the current option.
+     */
+    public get options(): OS2BaseOption {
         if (!this.elastic) return null;
         return this.elastic.options;
     }
 
     /**
-     * create Elasticsearch index w/ custom settings
+     * create the index w/ the default typeless settings (one implementation for every instance)
      */
     public async createIndex(): Promise<any> {
-        if (this.elastic) {
-            const { docType, idName } = this.options;
-            const settings = Elastic6Service.prepareSettings({ docType, idName }); // default setting
-            const { version } = this.elastic.options;
-
-            // force set type of 'score_' field
-            const ver = $U.F(version, 7.0);
-            const $set = { score_: { type: 'half_float' } };
-            if (ver < 7.0) {
-                settings.mappings[docType].properties = {
-                    ...(settings.mappings[docType]?.properties || {}),
-                    ...$set,
-                };
-            } else {
-                settings.mappings.properties = {
-                    ...(settings.mappings?.properties || {}),
-                    ...$set,
-                };
-            }
-
-            return this.elastic.createIndex(settings);
-        }
-
-        return null;
+        if (!this.elastic) return null;
+        const { idName } = this.options;
+        const settings = OS2CoreService.prepareSettings({ idName });
+        return this.elastic.createIndex(settings);
     }
 
     /**
-     * destroy Elasticsearch index
+     * destroy the index
      */
     public async destroyIndex(): Promise<any> {
         return this.elastic && (await this.elastic.destroyIndex());
@@ -1150,19 +1118,18 @@ export abstract class AbstractElastic6Instance {
     }
 
     /**
-     * multi get
+     * multi get (typeless: index + docs only)
      * @param _ids  _id list
      */
     public async mget<T>(_ids: string[]): Promise<(T | null)[]> {
         const $res = await this.client.mget({
             index: this.options.indexName,
-            type: this.options.docType,
             body: {
                 docs: _ids.map(_id => ({ _id })),
             },
         });
         // _log(NS, `> res =`, $U.json({ ...$res, meta: undefined }));
-        const { docs } = $res.body;
+        const { docs } = $res.body as any;
 
         const idName = this.options.idName;
         return docs.map((doc: any) => (doc.found ? sourceToItem<T>(doc._source, idName) : null));
@@ -1170,22 +1137,22 @@ export abstract class AbstractElastic6Instance {
 
     /**
      * search raw query
-     * @param body          Elasticsearch Query DSL
-     * @param params        see 'search_type' in Elasticsearch documentation
+     * @param body          OpenSearch Query DSL
+     * @param params        see 'search_type' in OpenSearch documentation
      */
-    public async search<T>(body: any, params?: Elastic6SearchParams): Promise<SearchResult<T>> {
+    public async search<T>(body: any, params?: OS2SearchParams): Promise<SearchResult<T>> {
         if (!this.elastic) throw new Error(`Could not read Elasticsearch endpoint or index setting.`);
         const searchType = params?.searchType;
         const elastic = params?.indexName
-            ? new Elastic6Service<any>({ ...this.options, indexName: params.indexName })
+            ? new OS2CoreService<any>({ ...this.options, indexName: params.indexName })
             : this.elastic;
         return elastic.search(body, searchType);
     }
 
     /**
      * create async generator that yields items queried until last
-     * @param body          Elasticsearch Query DSL
-     * @param searchType    see 'search_type' in Elasticsearch documentation
+     * @param body          OpenSearch Query DSL
+     * @param searchType    see 'search_type' in OpenSearch documentation
      */
     public async *generateSearchResult<T>(body: any, searchType?: 'query_then_fetch' | 'dfs_query_then_fetch') {
         if (!body.sort) body.sort = '_doc';
@@ -1196,57 +1163,6 @@ export abstract class AbstractElastic6Instance {
 
             yield list;
         } while (body.search_after);
-    }
-}
-
-/**
- * class: `Elastic6Instance`
- * - default agent to handle search.
- */
-export class Elastic6Instance extends AbstractElastic6Instance {
-    public constructor(params: Elastic6ContructParams) {
-        super(params);
-    }
-    public hello(): string {
-        return `Elastic6Instance`;
-    }
-    /**
-     * expose the internal helpers. (ONLY for debugging)
-     */
-    get $X() {
-        return $X;
-    }
-}
-
-/**
- * (internal) class: `Elastic6Proxy`
- * - proxied agent to handle `search()`
- */
-class Elastic6Proxy extends Elastic6Instance {
-    public constructor(params: Elastic6ContructParams, protected readonly proxy: ApiHttpProxy) {
-        super(params);
-    }
-    public hello(): string {
-        return `Elastic6Proxy`;
-    }
-
-    /**
-     * search raw query
-     *
-     * @override
-     */
-    public async search<T>(body: any, params?: Elastic6SearchParams): Promise<SearchResult<T>> {
-        const _hmac = (s: string | string[], delim = ':', prefix = 'v1') =>
-            [prefix, $U.hmac(Array.isArray(s) ? s.join(delim) : s, 'base64')].join(delim);
-        //* use proxy if possible.
-        if (this.proxy) {
-            const service = $info()?.service;
-            const indexName = params?.indexName ?? this.options?.indexName ?? '';
-            const signature = params?.signature ?? _hmac([_hmac(service), indexName]);
-            const $body: SearchProxyBody = { body, service, index: indexName, signature };
-            return this.proxy.doProxy('POST', null, null, params, $body);
-        }
-        return super.search(body, params);
     }
 }
 
@@ -1267,224 +1183,6 @@ export function sourceToItem<T>(_source: T, idName: string = '$id'): T {
 }
 
 /**
- * internal helper function.
- */
-const $X = {
-    /**
-     * describe (or parse) the endpoint url
-     * - it detects if endpoint is the proxied search.
-     * - it detects if endpoint needs the tunneling.
-     *
-     * @param url
-     */
-    describeEndpointUrl: (url: string, options?: { throwable?: boolean; errScope?: string }) => {
-        const errScope = options?.errScope ?? `describeEndpointUrl()`;
-        const throwable = options?.throwable ?? true;
-        url = /^\/\/[a-z0-9]+/.test(url) ? `https:${url}` : url;
-        if (throwable) {
-            if (!url) throw new Error(`@url(string) is required - ${errScope}`);
-            if (!(url?.startsWith('http://') || url?.startsWith('https://')))
-                throw new Error(`@url[${url ?? ''}] is invalid (no http) - ${errScope}`);
-        }
-
-        const $url = new URL(url);
-
-        const host = $U.S($url.hostname || $url.host);
-        const isTunnel = $url.hostname === 'localhost';
-        const protocol = $U.S($url.protocol).split(':')[0] ?? '';
-        const port = $U.N($url.port, url?.startsWith('https') ? 443 : 80);
-        const hosts = host.split('.');
-        //* use `/search/0/proxy` working with deployed enpoint (requires access-key)
-        const isProxy = host.endsWith('.amazonaws.com') && hosts[hosts.length - 4] == 'execute-api';
-        const region = isProxy ? hosts[hosts.length - 3] : undefined;
-
-        return {
-            /** protocol */
-            protocol,
-            /** host name */
-            host,
-            /** port number */
-            port,
-            /** region in cloud */
-            region,
-            /** flag to use tunneling w/ ssh */
-            isTunnel,
-            /** flag to use proxy */
-            isProxy,
-        };
-    },
-    /**
-     * create http-web-proxy agent which using endpoint as proxy server.
-     * - originally refer to `createHttpWebProxy()`
-     *
-     * # as cases.
-     * as proxy agent: GET <endpoint>/<host?>/<path?>
-     * as direct agent: GET <endpoint>/<id?>/<cmd?>
-     *
-     * @param endpoint  service url (ex: `https://xyz.execute-api.~/dev/search/0/proxy`)
-     * @param options   optionals parameters.
-     */
-    createHttpSearchProxy: (
-        endpoint: string,
-        options?: {
-            /** client-name (default `env.NAME`) */
-            name?: string;
-            /** headers */
-            headers?: APIHeaders;
-            /** path encoder (default encodeURIComponent) */
-            encoder?: (name: string, path: string) => string;
-            /** relay-key in headers for proxy. */
-            relayHeaderKey?: string;
-            /** resultKey in response */
-            resultKey?: string;
-            /** credentials to load */
-            credentials?: CrendentialForAWS;
-            /** region */
-            region?: string;
-        },
-    ): ApiHttpProxy => {
-        const name = options?.name ?? $U.env('NAME');
-        const errScope = `createHttpSearchProxy(${name ?? ''})`;
-        if (!endpoint) throw new Error(`@endpoint (url) is required - ${errScope}`);
-        const NS = $U.NS(`X${name}`, 'magenta'); // NAMESPACE TO BE PRINTED.
-        const headers = options?.headers;
-        const encoder = options?.encoder ?? ((name, path) => path);
-        const relayHeaderKey = options?.relayHeaderKey || '';
-        const resultKey = options?.resultKey ?? '';
-
-        // initialize AWS SigV4 Client
-        const _client = () => {
-            if (!options?.credentials) return null;
-            const $cred = options?.credentials;
-            const $info = $X.describeEndpointUrl(endpoint, { throwable: false });
-            const config: sigV4ClientConfig = {
-                accessKey: $cred?.accessKeyId,
-                secretKey: $cred?.secretAccessKey,
-                serviceName: 'execute-api',
-                host: $info?.host,
-                region: options?.region ?? $info?.region,
-                endpoint,
-            };
-            return sigV4Client(config);
-        };
-        const sigClient = _client();
-
-        /**
-         * class: `ApiHttpProxy`
-         * - http proxy client via backbone's web.
-         */
-        return new (class implements ApiHttpProxy {
-            // eslint-disable-next-line @typescript-eslint/no-empty-function
-            public constructor() {}
-            public hello = () => `http-search-proxy:${name}`;
-            public doProxy<T = any>(
-                method: APIHttpMethod,
-                path1?: string,
-                path2?: string,
-                $param?: any,
-                $body?: any,
-                ctx?: any,
-            ): Promise<T> {
-                if (!method) throw new Error(`@method is required - ${errScope}`);
-                _log(NS, `doProxy(${method})..`);
-                const _isNa = (a: any) => a === undefined || a === null;
-                _log(NS, '> endpoint =', endpoint);
-                _isNa(path1) && _log(NS, `> host(id) =`, typeof path1, path1);
-                _isNa(path2) && _log(NS, `> path(cmd) =`, typeof path2, path2);
-
-                // eslint-disable-next-line prettier/prettier
-                const query_string = _isNa($param) ? '' : (typeof $param == 'object' ? queryString.stringify($param) : `${$param}`);
-                const url =
-                    endpoint +
-                    (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
-                    (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`) +
-                    (!query_string ? '' : '?' + query_string);
-                const request = REQUEST;
-                const options: any = {
-                    method,
-                    uri: url,
-                    headers: { ...headers },
-                    body: $body === null ? undefined : $body,
-                    json: typeof $body === 'string' ? false : true,
-                };
-
-                //* build signed url
-                if (sigClient) {
-                    const signedRequest = sigClient.signRequest({
-                        method,
-                        path:
-                            (_isNa(path1) ? '' : `/${encoder('host', path1)}`) +
-                            (_isNa(path1) && _isNa(path2) ? '' : `/${encoder('path', path2)}`),
-                        queryParams: $param,
-                        headers: options.headers,
-                        body: $body,
-                    });
-                    options.headers = { ...options.headers, ...signedRequest.headers };
-                    options.uri = signedRequest.url;
-                }
-
-                //* relay HEADERS to `WEB-API`
-                if (headers) {
-                    options.headers = Object.keys(headers).reduce((H: any, key: string) => {
-                        const val = headers[key];
-                        const name = `${relayHeaderKey}${key}`;
-                        const text = `${val ?? ''}`;
-                        H[name] = text;
-                        return H;
-                    }, options.headers);
-                }
-                _log(NS, ' url :=', options.method, url);
-                _log(NS, '*', options.method, url, options.json ? 'json' : 'plain');
-                _log(NS, '> options =', $U.json(options));
-
-                //* returns promise
-                return new Promise((resolve, reject) => {
-                    //* start request..
-                    request(options, function (error: any, response: any, body: any) {
-                        error && _err(NS, '>>>>> requested! err=', error);
-                        if (error) return reject(error instanceof Error ? error : new Error(GETERR(error)));
-                        //* detect trouble.
-                        const statusCode = response.statusCode;
-                        const statusMessage = response.statusMessage;
-                        //* if not in success
-                        if (statusCode !== 200 && statusCode !== 201) {
-                            const msg = body ? GETERR(body) : `${statusMessage || ''}`;
-                            if (statusCode === 400 || statusCode === 404) {
-                                const title = `${
-                                    (statusCode == 404 ? '' : statusMessage) || 'NOT FOUND'
-                                }`.toUpperCase();
-                                const message = msg.startsWith('404 NOT FOUND')
-                                    ? msg
-                                    : `${statusCode} ${title} - ${msg}`;
-                                return reject(new Error(message));
-                            }
-                            statusMessage && _log(NS, `> statusMessage[${statusCode}] =`, statusMessage);
-                            body && _log(NS, `> body[${statusCode}] =`, $U.json(body));
-                            return reject(new Error(`${statusCode} ${statusMessage || 'FAILURE'} - ${msg}`));
-                        }
-                        //* try to parse body.
-                        try {
-                            if (body && typeof body == 'string' && body.startsWith('{') && body.endsWith('}')) {
-                                body = JSON.parse(body);
-                            } else if (body && typeof body == 'string' && body.startsWith('[') && body.endsWith(']')) {
-                                body = JSON.parse(body);
-                            }
-                        } catch (e) {
-                            _err(NS, '!WARN! parse(body) =', e instanceof Error ? e : $U.json(e));
-                        }
-                        //* ok! succeeded.
-                        resolve(body);
-                    });
-                }).then((res: any) => {
-                    if (resultKey && res && res[resultKey] !== undefined) return res[resultKey];
-                    return res;
-                });
-            }
-        })();
-    },
-};
-
-/**
  * `SearchProxyBody`
  * - the body to `/search/0/proxy`
  */
@@ -1494,70 +1192,8 @@ export interface SearchProxyBody {
 
     /** service-name of request (ex: `lemon-sandbox-api`) */
     service?: string;
-    /** index name to search via proxy (must be same as `env.ES6_INDEX`) */
+    /** index name to search via proxy (must be same as `env.OS2_INDEX`) */
     index?: string;
     /** (optional) signature to validate this request. */
     signature?: string;
 }
-
-/**
- * (internal) factory function for `$ES6`
- *
- * @param options (optional) for debugging
- */
-export const _ES6 = (options?: {
-    /** endpoint url */
-    endpoint?: string;
-    /** index-name */
-    indexName?: string;
-    /** flag to use search-proxy */
-    useProxy?: boolean;
-    /** (optional) aws:credentials to sign request in proxy */
-    credentials?: CrendentialForAWS;
-}): Elastic6Instance => {
-    // 0. load from env configuration.
-    const endpoint = options?.endpoint ?? $U.env('ES6_ENDPOINT', '');
-    const indexName = options?.indexName ?? $U.env('ES6_INDEX', 'test-v1');
-    const esVersion = $U.env('ES6_VERSION', '6.8'); //* version of elastic server (default 6.8)
-    const esDocType = $U.env('ES6_DOCTYPE', ''); //* version of elastic server (default `_doc`)
-    const tableName = $U.env('MY_DYNAMO_TABLE', 'Test');
-    const autocompleteFields = $T.SS($U.env('ES6_AUTOCOMPLETE_FIELDS', ''));
-
-    // use search-proxy by detectiong automatically.
-    const _isProxy = (): boolean => {
-        const isProxy = $U.env('ES6_IS_PROXY', '')?.toLowerCase();
-        if (isProxy == '1' || isProxy == 'y' || isProxy == 'true') return true;
-        if (endpoint) {
-            const $res = $X.describeEndpointUrl(endpoint, { throwable: false });
-            if ($res?.isProxy) return true;
-        }
-        return false;
-    };
-    const useProxy = options?.useProxy ?? _isProxy();
-
-    // prepare constructor parameters.
-    const params: Elastic6ContructParams = {
-        endpoint,
-        indexName,
-        esVersion,
-        esDocType,
-        tableName,
-        autocompleteFields,
-    };
-
-    //* use proxy.
-    if (useProxy) {
-        const credentials = options?.credentials;
-        const proxy = $X.createHttpSearchProxy(endpoint, { credentials });
-        return new Elastic6Proxy(params, proxy);
-    }
-
-    //* make a default instance.
-    return new Elastic6Instance(params);
-};
-
-/**
- * const `$ES6`
- * - default instance as a singleton by env configuration.
- */
-export const $ES6 = _ES6();

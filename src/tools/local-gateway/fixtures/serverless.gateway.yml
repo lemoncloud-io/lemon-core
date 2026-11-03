@@ -1,0 +1,66 @@
+# src/tools/local-gateway/fixtures/serverless.gateway.yml (lemon-core, test-only)
+# - v5 B20: a sample Serverless service for the local API Gateway specs (no account, no hostname).
+# - covers: string/object `http` events, `${self:…}` variables, CloudFormation tags, `{proxy+}`, `ANY`, binary types.
+service: gateway-fixture
+custom:
+    cors:
+        origin: 'http://localhost:3000'
+        headers:
+            - Content-Type
+            - X-Lemon-Identity
+        allowCredentials: true
+        maxAge: 600
+provider:
+    name: aws
+    stage: ${opt:stage, 'dev'}
+    apiGateway:
+        binaryMediaTypes:
+            - application/octet-stream
+            - image/*
+            - multipart/form-data
+    environment:
+        TABLE: !Ref MyTable
+        REGION_NAME: !Sub '${AWS::Region}-fixture'
+functions:
+    lambda:
+        handler: handler.lambda
+        events:
+            - http: GET /
+            - http: 'GET hello/{id}'
+            - http:
+                  path: /hello
+                  method: get
+                  cors: ${self:custom.cors, true}
+            - http:
+                  path: /hello/world
+                  method: get
+            - http:
+                  path: /hello/{id}/{cmd}
+                  method: any
+                  cors: true
+            - http:
+                  path: /files/{id}
+                  method: post
+                  cors: ${self:custom.missing, true}
+            - http:
+                  path: /files/{id}
+                  method: get
+            - http:
+                  path: /assets/{proxy+}
+                  method: get
+            - http:
+                  path: /{type}/{proxy+}
+                  method: any
+                  cors: ${self:custom.cors}
+    worker:
+        handler: handler.sqs
+        events:
+            - sqs:
+                  arn: !GetAtt [MyQueue, Arn]
+                  batchSize: 1
+resources:
+    Resources:
+        MyTable:
+            Type: AWS::DynamoDB::Table
+            Properties:
+                TableName: !Join ['-', [fixture, table]]

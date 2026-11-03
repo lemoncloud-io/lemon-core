@@ -6,6 +6,7 @@
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-07-19 initial version
  * @date        2019-11-26 cleanup and optimized for `lemon-core#v2`
+ * @date        2026-10-30 `publish()`: the local transport (`LOCAL_TRANSPORT=mock`) delivers in-process, no AWS call.
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
@@ -16,13 +17,44 @@ const NS = (() => {
     return () => (ns ??= $U.NS('SNS', 'blue'));
 })();
 
-import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
-import { IAMClient, GetUserCommand } from '@aws-sdk/client-iam';
-import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
-
 import { asErrorPayload } from '../../common/test-helper';
 import { CoreSnsService } from '../core-services';
 import { awsConfig, AwsConfigParams } from '../../tools';
+import { measureAsync } from '../../lib/perf';
+import { safeStringify } from '../../lib/safe-json'; //* v5 B10-2: circular-safe stringify for the payload (internal).
+import { isActive as isLocalTransport, localSns } from '../protocol/local-transport';
+
+/**
+ * SDK packages, imported on the first use (not at import: this file is in the engine closure; v5 B2-c, K6).
+ * - each loader is memoized, and its first call prints one `PERF` line.
+ */
+let $sns: Promise<typeof import('@aws-sdk/client-sns')>;
+let $iam: Promise<typeof import('@aws-sdk/client-iam')>;
+let $sts: Promise<typeof import('@aws-sdk/client-sts')>;
+// loader of `@aws-sdk/client-sns`.
+const loadSns = () =>
+    ($sns ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sns',
+        () => import('@aws-sdk/client-sns'),
+    ));
+// loader of `@aws-sdk/client-iam`.
+const loadIam = () =>
+    ($iam ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-iam',
+        () => import('@aws-sdk/client-iam'),
+    ));
+// loader of `@aws-sdk/client-sts`.
+const loadSts = () =>
+    ($sts ??= measureAsync(
+        _inf,
+        $U.NS('PERF', 'cyan'),
+        'lazy-load @aws-sdk/client-sts',
+        () => import('@aws-sdk/client-sts'),
+    ));
 
 const region = (): string => $engine.environ('REGION', 'ap-northeast-2') as string;
 
@@ -102,6 +134,11 @@ export class AWSSNSService implements CoreSnsService {
      * refer: `https://stackoverflow.com/questions/35563270/finding-my-aws-account-id-using-javascript`
      */
     public accountID = async (engine?: LemonEngine, $cfg?: AwsConfigParams): Promise<string> => {
+        //* load both packages first; the executor below stays as it was (sync).
+        const [{ IAMClient, GetUserCommand }, { STSClient, GetCallerIdentityCommand }] = await Promise.all([
+            loadIam(),
+            loadSts(),
+        ]);
         return new Promise((resolve, reject) => {
             const cfg = awsConfig(engine ?? $engine, $cfg);
             const iam = new IAMClient(cfg);
@@ -140,14 +177,24 @@ export class AWSSNSService implements CoreSnsService {
      */
     public publish = async (target: string, subject: string, payload: any): Promise<string> => {
         _inf(NS(), `publish(${target}, ${subject})...`);
+        //* local transport (opt-in, local mode only): deliver to this service in-process (no endpoint lookup, no AWS call).
+        if (isLocalTransport()) {
+            const message = payload && typeof payload == 'object' ? safeStringify(payload) : `${payload ?? ''}`;
+            //* no target and no env `MY_SNS_ENDPOINT` (a local run) → '' = this service's topic (Lambda sets the env to it).
+            const $target = target || this._arn;
+            const hasEnv = !!$engine.environ(AWSSNSService.ENV_SNS_ENDPOINT, '');
+            return localSns($target || hasEnv ? snsTargetOf($target) : '', { Subject: subject, Message: message });
+        }
         const arn = await this.endpoint(target);
         if (!arn) throw new Error(`.arn is required! target:${target}`);
-        _log(NS(), `> payload[${arn}] =`, $U.json(payload));
+        //* v5 B10-2: stringify the payload once, circular-safe (a circular `data`·`context` must not drop the report).
+        const body = payload && typeof payload == 'object' ? safeStringify(payload) : payload;
+        _log(NS(), `> payload[${arn}] =`, payload && typeof payload == 'object' ? body : $U.json(payload));
         const params = {
             TopicArn: arn,
             Subject: subject,
             Message: JSON.stringify({
-                default: payload && typeof payload == 'object' ? JSON.stringify(payload) : payload,
+                default: body,
             }),
             MessageStructure: 'json',
         };
@@ -156,6 +203,7 @@ export class AWSSNSService implements CoreSnsService {
         const region = arn.split(':')[3];
         if (!region) throw new Error(`@region is required. arn:${arn}`);
         const cfg = awsConfig($engine, region);
+        const { SNSClient, PublishCommand } = await loadSns(); // a new client per call (no `PERF > client` line).
         const sns = new SNSClient(cfg);
         return sns
             .send(new PublishCommand(params))
@@ -199,3 +247,10 @@ export class AWSSNSService implements CoreSnsService {
         return asErrorPayload(e, data);
     };
 }
+
+/**
+ * the SNS target (topic name or ARN) by the same rule as `endpoint()`: `''` → env `MY_SNS_ENDPOINT` (or
+ * `lemon-hello-sns`), an upper-case name → that env value, else as is. no ARN lookup (no AWS call).
+ */
+export const snsTargetOf = (target?: string): string =>
+    environ(target, AWSSNSService.ENV_SNS_ENDPOINT, AWSSNSService.DEF_SNS_ENDPOINT);

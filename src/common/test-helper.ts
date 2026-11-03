@@ -9,6 +9,8 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 
+import { safeStringify } from '../lib/safe-json'; //* v5 B10-2: circular-safe stringify for error text (internal).
+
 // Keep test runner access indirect. This module is exported from the public package API,
 // so importing Vitest here would leak a devDependency into runtime consumers.
 const $expect = (): any => (globalThis as any)?.expect;
@@ -28,7 +30,8 @@ export const GETERR = (e: any): string => {
         const errors = Array.isArray((e as any).errors) ? ((e as any).errors as any[]).map(GETERR) : [];
         return [`${e.message}`, ...errors].filter(_ => _).join('\n');
     }
-    return e && typeof e == 'object' ? JSON.stringify(e) : `${e}`;
+    //* v5 B10-2: a circular object (e.g. http response) must not throw here.
+    return e && typeof e == 'object' ? safeStringify(e) : `${e}`;
 };
 
 /**
@@ -191,7 +194,8 @@ type ErrorPayload = { 'stack-trace'?: any; message: string; error: string; error
 export const asErrorPayload = (e: any, data?: string | object): ErrorPayload => {
     const _msg = (e: any): string => {
         const m = (e && (e.message || e.statusMessage)) || e;
-        return typeof m == 'object' ? JSON.stringify(m) : `${m}`;
+        //* v5 B10-2: circular-safe, so the report is not lost.
+        return typeof m == 'object' ? safeStringify(m) : `${m}`;
     };
     const _pack = (e: any, depth = 0): { error: string; stack?: string; errors?: any[] } => {
         if (e === undefined || e === null) return { error: e };
@@ -203,7 +207,7 @@ export const asErrorPayload = (e: any, data?: string | object): ErrorPayload => 
                 ? e
                 : e instanceof Error
                 ? `${e.message}`
-                : JSON.stringify(e);
+                : safeStringify(e); //* v5 B10-2: circular-safe (e.g. `req` <-> `res`).
 
         // make sure of no infinite recursion.
         if (depth > 5) return { stack, error };

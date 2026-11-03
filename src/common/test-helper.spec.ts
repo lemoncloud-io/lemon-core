@@ -245,4 +245,32 @@ describe('TestHelper', () => {
             'stack-trace': expect.any(String),
         });
     });
+
+    //* v5 B10-2: a circular error object must not drop the report.
+    it('should pass asErrorPayload() with circular structure', async () => {
+        // http-response like object: `r.req.res === r`.
+        const r: any = { statusMessage: 'Bad' };
+        r.req = { res: r };
+        expect(() => JSON.stringify(r)).toThrow(/circular/i);
+
+        // non-Error object thrown.
+        const p1 = asErrorPayload(r, { type: 'error' });
+        expect(p1).toEqual({
+            type: 'error',
+            message: 'Bad',
+            error: '{"statusMessage":"Bad","req":{"res":"[Circular]"}}',
+        });
+
+        // Error with `errors: [circular]`, and a circular `message` object.
+        const e: any = new Error('outer');
+        e.errors = [r];
+        const p2 = asErrorPayload(e, {});
+        expect(p2.message).toBe('outer');
+        expect(p2.error).toBe('outer');
+        expect(p2.errors).toEqual([{ error: '{"statusMessage":"Bad","req":{"res":"[Circular]"}}' }]);
+        expect(asErrorPayload({ message: r }).message).toBe('{"statusMessage":"Bad","req":{"res":"[Circular]"}}');
+
+        // GETERR() of a circular object.
+        expect(GETERR(r)).toBe('{"statusMessage":"Bad","req":{"res":"[Circular]"}}');
+    });
 });

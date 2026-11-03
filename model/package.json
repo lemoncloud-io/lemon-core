@@ -1,0 +1,7 @@
+{
+    "name": "lemon-core-model",
+    "private": true,
+    "description": "v5 B16-b: resolution shim for `lemon-core/model` under moduleResolution=node / Jest 27 (Node itself uses the exports map).",
+    "main": "../dist/model.js",
+    "types": "../dist/model.d.ts"
+}

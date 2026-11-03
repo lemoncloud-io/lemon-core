@@ -5,13 +5,14 @@
  *
  * @author      Steve Jung <steve@lemoncloud.io>
  * @date        2019-11-20 initial version via backbone
+ * @date        2026-10-30 v5 B14: `channel`/`trace` in the packed context; a legacy context gets `channel: 'internal'`.
  *
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
-import { $U } from '../../engine/';
+import { $U, $engine } from '../../engine/';
 import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
 import { expect2, GETERR, GETERR$ } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
@@ -62,7 +63,8 @@ const decode_next_handler: NextDecoder = (mode, id, cmd) => {
                     throw new Error(`404 NOT FOUND - id:${id}`);
                 };
             // eslint-disable-next-line prettier/prettier
-            else if (id == '!') next = async (id, param, body, context) => ({ id, param, body, context });  // dump parameter if '!'
+            else if (id == '!')
+                next = async (id, param, body, context) => ({ id, param, body, context }); // dump parameter if '!'
             else next = async id => ({ id, hello: `${id}` });
     }
     return next;
@@ -154,9 +156,14 @@ describe('LambdaWEBHandler', () => {
             const expectedHead =
                 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzaWQiOiIg44WO7Z6BIiwidWlkIjoiVSIsImdpZCI6ImciLCJyb2xlcyI6WyImQCAkKy0iXSwiaXNzIjpudWxsLCJpYXQiOjE2NTIxNDkzNTMsImV4cCI6MTY1MjIzNTc1M30';
             expect2(() => current).toEqual(1652149353000);
-            expect2(await $t.encodeIdentityJWT(identity, { current }), 'token').toEqual({
+            //* the fixture keeps a 1-day token through an explicit `exp` (the default is 30 min since key rotation).
+            const exp = Math.floor(current / 1000) + 24 * 60 * 60;
+            expect2(await $t.encodeIdentityJWT(identity, { current, exp }), 'token').toEqual({
                 token: `${expectedHead}.`,
             });
+            //* without `exp` → 30 min.
+            const $short = await $t.encodeIdentityJWT(identity, { current });
+            expect2(() => $U.jwt().decode($short.token).exp - Math.floor(current / 1000)).toEqual(30 * 60);
             expect2(() => $U.jwt().decode(`${expectedHead}.`)).toEqual({
                 iss: null,
                 exp: 1652235753,
@@ -185,7 +192,11 @@ describe('LambdaWEBHandler', () => {
             expect2(() => _alias(`kms/abc`)).toEqual('abc');
             expect2(() => _alias(`kms/abc,ef`)).toEqual('abc');
 
-            const $enc = await $t.encodeIdentityJWT(identity, { current, alias });
+            const $enc = await $t.encodeIdentityJWT(identity, {
+                current,
+                alias,
+                exp: Math.floor(current / 1000) + 24 * 60 * 60,
+            });
             expect2(() => $enc, 'token').toEqual({ token: `${expectedHead}.${$enc.signature}` });
 
             expect2(() => $U.jwt().decode($enc.token)).toEqual({
@@ -205,7 +216,9 @@ describe('LambdaWEBHandler', () => {
             expect2(() => (err1 as string).startsWith('@signature[] is invalid')).toEqual(true);
             const err2 = await parse1($enc.message + '.' + $enc.signature.replace('0', '1'));
             expect2(() => (err2 as string).startsWith('@signature[] is invalid')).toEqual(true);
-            expect2(await parse1($enc.token + '.x')).toEqual(`@token[${$enc.token + '.x'}] is invalid (format) - verifyJWT(http)`);
+            expect2(await parse1($enc.token + '.x')).toEqual(
+                `@token[masked:${($enc.token + '.x').length}] is invalid (format) - verifyJWT(http)`,
+            );
             expect2(await parse1($enc.token)).toEqual({
                 iss: `kms/${alias}`,
                 exp: 1652235753,
@@ -224,7 +237,9 @@ describe('LambdaWEBHandler', () => {
 
             const parse3 = (t: string) =>
                 $t.parseIdentityJWT(t, { current: current + 24 * 60 * 60 * 1000 + 1 }).catch(GETERR);
-            expect2(await parse3($enc.token)).toEqual('.exp[2022-05-11 11:22:33] is invalid (expired) - verifyJWT(http)');
+            expect2(await parse3($enc.token)).toEqual(
+                '.exp[2022-05-11 11:22:33] is invalid (expired) - verifyJWT(http)',
+            );
         }
     });
 
@@ -528,13 +543,15 @@ describe('LambdaWEBHandler', () => {
             cookie: undefined,
             clientIp: '221.149.250.0',
             userAgent: 'HTTPie/1.0.2',
-            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+            source: `api://796730245826@lemon-core-dev/hello/a_123_test#${$pack.version}`, // v5 B10: + request path
             authorization: 'Bearer 12345678',
             origin: 'http://localhost:5004',
             referer: 'http://localhost:5004/',
+            channel: 'external', // v5 B14: `Host` → external
+            trace: { tid: context.requestId, hop: 0 }, // v5 B14: entry → hop 0
         });
 
-        //* pre-condition.
+        //* v5 B5: the fixture has `Host` (external) → `x-protocol-context` is ignored whatever it holds (S-29).
         if (1) {
             event.headers['x-protocol-context'] = null;
             const $res = await lambda.handle(event, null).catch(GETERR$);
@@ -543,28 +560,59 @@ describe('LambdaWEBHandler', () => {
         if (1) {
             event.headers['x-protocol-context'] = {};
             const $res = await lambda.handle(event, null).catch(GETERR$);
-            expect2(() => $res, 'statusCode,error').toEqual({
-                error: '@context (NextContext) should be string - web.transformToParam(/hello/a_123_test)',
-            });
+            expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
         }
         if (1) {
             event.headers['x-protocol-context'] = '-';
             const $res = await lambda.handle(event, null).catch(GETERR$);
-            expect2(() => $res, 'statusCode,error').toEqual({
-                error: '@context[-] is not valid JSON - web.transformToParam(/hello/a_123_test)',
-            });
+            expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
         }
 
-        //* pack context by header
-        event.headers['x-protocol-context'] = $U.json(context);
+        //* v5 B5: a forged admin context with `Host` is not trusted (flipped from v4, A1).
+        const forged = { identity: { sid: 'X', roles: ['admin'], accessKey: 'x' }, domain: 'localhost' };
+        event.headers['x-protocol-context'] = $U.json(forged);
         const id = '!'; // call dump paramters.
         event.pathParameters['id'] = id;
         const $res = await lambda.handle(event, null).catch(GETERR$);
         expect2(() => $res, 'statusCode,error').toEqual({ statusCode: 200 });
-
         const body = JSON.parse($res.body);
         expect2(() => body, 'id,param,body').toEqual({ id, param: { ts: '1574150700000' }, body: null });
-        expect2(body.context, '').toEqual({ ...context });
+        expect2(() => body.context?.domain).toEqual('na12ibnzu4.execute-api.ap-northeast-2.amazonaws.com');
+        expect2(() => body.context?.identity?.roles).toEqual(undefined);
+        expect2(() => body.context?.identity?.accessKey).toEqual(undefined);
+
+        //* v5 B5: host-less (internal) event → the header is read (mode `off` without a key).
+        const internal = { ...event, headers: { ...event.headers } };
+        Object.keys(internal.headers)
+            .filter(key => key.toLowerCase() === 'host')
+            .forEach(key => delete internal.headers[key]);
+        if (1) {
+            //* bad header → `400 INVALID CONTEXT` response (resolved, not rejected).
+            internal.headers['x-protocol-context'] = {};
+            const $res = await lambda.handle(internal, null).catch(GETERR$);
+            expect2(() => $res, 'statusCode,body').toEqual({
+                statusCode: 400,
+                body: '400 INVALID CONTEXT - @context (NextContext) should be string - web.transformToParam(/hello/a_123_test)',
+            });
+        }
+        if (1) {
+            internal.headers['x-protocol-context'] = '-';
+            const $res = await lambda.handle(internal, null).catch(GETERR$);
+            expect2(() => $res, 'statusCode,body').toEqual({
+                statusCode: 400,
+                body: '400 INVALID CONTEXT - @context[-] is not valid JSON - web.transformToParam(/hello/a_123_test)',
+            });
+        }
+        internal.headers['x-protocol-context'] = $U.json(context);
+        const $res2 = await lambda.handle(internal, null).catch(GETERR$);
+        expect2(() => $res2, 'statusCode,error').toEqual({ statusCode: 200 });
+        const body2 = JSON.parse($res2.body);
+        //* v5 B14: a legacy context is kept as is + channel `internal` + an entry trace.
+        expect2(body2.context, '').toEqual({
+            ...context,
+            channel: 'internal',
+            trace: { tid: context.requestId, hop: 0 },
+        });
     });
 
     //* test packContext() via lambda protocol
@@ -602,10 +650,50 @@ describe('LambdaWEBHandler', () => {
             cookie: undefined,
             clientIp: '221.149.50.0',
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_4) AppleWebKit/537.36 (KHTML, like Gecko)',
-            source: `api://796730245826@lemon-core-dev#${$pack.version}`,
+            source: `api://796730245826@lemon-core-dev/user/0#${$pack.version}`, // v5 B10: + request path
             origin: 'http://localhost:8888',
             referer: 'http://localhost:8888/?code=auth:bc7dd7fe-5d27-45d8-ba45-fa5dc64a7c0a',
+            channel: 'external', // v5 B14: `Host` → external
+            trace: { tid: context.requestId, hop: 0 }, // v5 B14: entry → hop 0
         });
+    });
+
+    //* v5 B10: `context.source` carries the first request path, and an internal call keeps the caller's source.
+    it('should pass context.source with the first request path (v5 B10)', async () => {
+        const { service: $web } = instance();
+        const $pack = loadJsonSync('package.json');
+        const base = `api://796730245826@lemon-core-dev`;
+        const sourceOf = async (event: any) => (await $web.packContext(event, null).catch(GETERR))?.source;
+
+        //* with `pathParameters` → `/{type}/{id}/{cmd}` (encoded by `asPath()`).
+        if (1) {
+            const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+            event.pathParameters = { type: 'hello', id: 'a b', cmd: 'c/d' };
+            expect2(await sourceOf(event)).toEqual(`${base}/hello/a%20b/c/d#${$pack.version}`);
+        }
+
+        //* without `pathParameters` → the service uri only (same as v4).
+        if (1) {
+            const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+            event.pathParameters = null;
+            expect2(await sourceOf(event)).toEqual(`${base}#${$pack.version}`);
+        }
+
+        //* internal call (host-less, `x-protocol-context`) → the caller's source is kept as is.
+        if (1) {
+            const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+            Object.keys(event.headers)
+                .filter(key => key.toLowerCase() === 'host')
+                .forEach(key => delete event.headers[key]);
+            const source = 'api://caller@lemon-caller-api-dev/first/1/start#1.0.0';
+            const context: NextContext = {
+                accountId: '796730245826',
+                requestId: 'd8485d00-5624-4094-9a93-ce09c351ee5b',
+                source,
+            };
+            event.headers['x-protocol-context'] = $U.json(context);
+            expect2(await sourceOf(event)).toEqual(source);
+        }
     });
 
     //* test packContext() via web-handler-servce
@@ -656,7 +744,26 @@ describe('LambdaWEBHandler', () => {
         expect2(() => decodedHs256, 'sid,uid,gid,roles').toEqual({ sid: 'S', uid: 'U', gid: 'G', roles: ['admin'] });
         expect2(() => decodedHs256?.iss?.startsWith('api/')).toEqual(true);
         expect2(() => decodedHs256?.iat).toEqual(Math.floor(current / 1000));
-        expect2(() => decodedHs256?.exp).toEqual(Math.floor(current / 1000) + 24 * 60 * 60);
+        expect2(() => decodedHs256?.exp).toEqual(Math.floor(current / 1000) + 30 * 60); //* default 30 min.
+        //* env `JWT_TOKEN_TTL_SEC`: held to 30 min ~ 24 h; not a number → 30 min. An explicit `exp` is kept.
+        const ttlOf = async (env?: string, exp?: number) => {
+            const keep = process.env.JWT_TOKEN_TTL_SEC;
+            if (env === undefined) delete process.env.JWT_TOKEN_TTL_SEC;
+            else process.env.JWT_TOKEN_TTL_SEC = env;
+            try {
+                const $e = await $t.encodeIdentityJWT(identity, { current, useHs256: true, exp });
+                return $U.jwt().decode($e.token).exp - Math.floor(current / 1000);
+            } finally {
+                if (keep === undefined) delete process.env.JWT_TOKEN_TTL_SEC;
+                else process.env.JWT_TOKEN_TTL_SEC = keep;
+            }
+        };
+        expect2(await ttlOf()).toEqual(1800);
+        expect2(await ttlOf('7200')).toEqual(7200);
+        expect2(await ttlOf('60')).toEqual(1800);
+        expect2(await ttlOf('999999')).toEqual(86400);
+        expect2(await ttlOf('abc')).toEqual(1800);
+        expect2(await ttlOf('7200', Math.floor(current / 1000) + 60)).toEqual(60);
 
         //* test of encodeIdentityJWT without useHs256 (V1 동작 - signature empty, iss null)
         const $encV1 = await $t.encodeIdentityJWT(identity, { current });
@@ -678,10 +785,10 @@ describe('LambdaWEBHandler', () => {
 
         //* match err cases - parseIdentityJWT
         expect2(await $t.parseIdentityJWT('abc.def').catch(GETERR)).toEqual(
-            '@token[abc.def] is invalid (format) - verifyJWT(http)',
+            '@token[masked:7] is invalid (format) - verifyJWT(http)',
         );
         expect2(await $t.parseIdentityJWT('a.b.c.d').catch(GETERR)).toEqual(
-            '@token[a.b.c.d] is invalid (format) - verifyJWT(http)',
+            '@token[masked:7] is invalid (format) - verifyJWT(http)',
         );
 
         //* test of parseIdentityJWT - HS256 token verification
@@ -696,9 +803,15 @@ describe('LambdaWEBHandler', () => {
         );
 
         //* test of parseIdentityJWT - expiration
-        const expiredCurrent = current + 24 * 60 * 60 * 1000 + 1;
+        expect2(
+            await $t.parseIdentityJWT($encHs256.token, { current: current + 30 * 60 * 1000 }).catch(GETERR),
+            'sid',
+        ).toEqual({
+            sid: 'S',
+        });
+        const expiredCurrent = current + 30 * 60 * 1000 + 1;
         expect2(await $t.parseIdentityJWT($encHs256.token, { current: expiredCurrent }).catch(GETERR)).toEqual(
-            '.exp[2026-02-13 20:00:00] is invalid (expired) - verifyJWT(http)',
+            '.exp[2026-02-12 20:30:00] is invalid (expired) - verifyJWT(http)',
         );
 
         //* test of parseIdentityJWT - null iss should fail
@@ -789,5 +902,155 @@ describe('LambdaWEBHandler', () => {
         expect2(await $t.parseIdentityJWT(invalidIssToken, { current }).catch(GETERR)).toEqual(
             '@signature[] is invalid (@iss[unknown/issuer] is invalid (unsupportable issuer) - verifyToken(unknown/issuer)) - verifyJWT(http)',
         );
+    });
+
+    //* key rotation: JWT HS256 key A (`JWT_SIGN_KEY`) and previous key B (`JWT_SIGN_KEY_PREV` + `_PREV_UNTIL`).
+    it('should verify HS256 tokens with the sign key A and the previous key B', async () => {
+        const names = ['JWT_SIGN_KEY', 'JWT_SIGN_KEY_PREV', 'JWT_SIGN_KEY_PREV_UNTIL'];
+        const keep = names.map(n => process.env[n]);
+        //* set or delete an env name.
+        const setEnv = (name: string, val?: string) =>
+            val === undefined ? delete process.env[name] : (process.env[name] = val);
+        const $t = new MyHttpHeaderTool({});
+        const identity: NextIdentity = { sid: 'S', uid: 'U', roles: ['admin'] };
+        const current = $U.current_time_ms();
+        const now = Math.floor(current / 1000);
+        try {
+            //* unset → the default key, same secret as before.
+            names.forEach(n => setEnv(n));
+            expect2(await $t.buildJwtSecret()).toEqual(await $t.buildJwtSecret('lemon'));
+            const $old = await $t.encodeIdentityJWT(identity, { current, useHs256: true });
+            expect2(await $t.parseIdentityJWT($old.token, { current }), 'sid').toEqual({ sid: 'S' });
+
+            //* A set → sign and verify with A. the old (default-key) token fails without B.
+            setEnv('JWT_SIGN_KEY', 'unit-test-jwt-key-a');
+            const $a = await $t.encodeIdentityJWT(identity, { current, useHs256: true });
+            expect2(() => $a.signature === $old.signature).toEqual(false);
+            expect2(await $t.parseIdentityJWT($a.token, { current }), 'sid').toEqual({ sid: 'S' });
+            const iss = $U.jwt().decode($old.token).iss;
+            expect2(await $t.verifyToken(iss, $old.message, $old.signature)).toEqual({ valid: false });
+
+            //* B = the old key, valid → the old token verifies; A still verifies.
+            setEnv('JWT_SIGN_KEY_PREV', 'lemon-old-key-b');
+            setEnv('JWT_SIGN_KEY', 'lemon-old-key-b');
+            const $b = await $t.encodeIdentityJWT(identity, { current, useHs256: true });
+            setEnv('JWT_SIGN_KEY', 'unit-test-jwt-key-a');
+            setEnv('JWT_SIGN_KEY_PREV_UNTIL', `${now + 60}`);
+            expect2(await $t.verifyToken(iss, $b.message, $b.signature)).toEqual({ valid: true });
+            expect2(await $t.verifyToken(iss, $a.message, $a.signature)).toEqual({ valid: true });
+
+            //* B expired, or no `_PREV_UNTIL` → the old token fails.
+            setEnv('JWT_SIGN_KEY_PREV_UNTIL', `${now - 1}`);
+            expect2(await $t.verifyToken(iss, $b.message, $b.signature)).toEqual({ valid: false });
+            setEnv('JWT_SIGN_KEY_PREV_UNTIL');
+            expect2(await $t.verifyToken(iss, $b.message, $b.signature)).toEqual({ valid: false });
+            expect2(await $t.parseIdentityJWT($b.token, { current }).catch(GETERR)).toEqual(
+                `@signature[] is invalid (failed to verify by ${iss}) - verifyJWT(http)`,
+            );
+
+            //* A configured but failed to decrypt → no fallback to the default key (sign throws, verify fails).
+            setEnv('JWT_SIGN_KEY', 'ERROR - decrypt failed');
+            expect2(await $t.encodeIdentityJWT(identity, { current, useHs256: true }).catch(GETERR)).toEqual(
+                '500 INVALID CONFIG - JWT_SIGN_KEY decrypt failed',
+            );
+            expect2(await $t.verifyToken(iss, $old.message, $old.signature), 'valid').toEqual({ valid: false });
+        } finally {
+            names.forEach((n, i) => setEnv(n, keep[i]));
+        }
+    });
+});
+
+//! v5 B7: the per-request `PERF` lines.
+describe('LambdaWEBHandler PERF (v5 B7)', () => {
+    //* the parts of `PERF: > <label> <ms> ms <tail>` in the logged args (`LS=1` → spy on the engine console).
+    const perfLines = (calls: any[][], label: string) =>
+        calls
+            .map(args => args.map(a => `${a}`))
+            .filter(a => a.indexOf(label) > 0 && a[a.indexOf(label) - 1] === '>' && a.some(x => x.includes('PERF')))
+            .map(a => ({ total: a[a.indexOf(label) + 1], tail: a[a.indexOf(label) + 2] || '' }));
+    //* the keys and the values of a `key=value` tail.
+    const keysOf = (tail: string) => tail.split(' ').map(kv => kv.split('=')[0]);
+    const valuesOf = (tail: string) =>
+        tail.split(' ').reduce<Record<string, string>>((M, kv) => ({ ...M, [kv.split('=')[0]]: kv.split('=')[1] }), {});
+    //* a fresh web event for the `hello` type.
+    const eventOf = (id: string, cmd?: string): any => {
+        const event: any = loadJsonSync('data/samples/events/sample.event.web.json');
+        event.pathParameters['id'] = id;
+        if (cmd) event.pathParameters['cmd'] = cmd;
+        return event;
+    };
+    const MS = /^\d+\.\d$/;
+
+    //* request lines: key order, `cmd` only when present, failure status, and `cold` only on the first line.
+    it('should print one request line per request', async () => {
+        //* fresh modules → a fresh `cold` counter in this test file.
+        vi.resetModules();
+        const $web = await import('./lambda-web-handler');
+        const $lam = await import('./lambda-handler');
+        const service = new $web.LambdaWEBHandler(new $lam.LambdaHandler(), true);
+        service.setHandler('hello', decode_next_handler);
+        const spy = vi.spyOn($engine.$console, 'log');
+        try {
+            //* 1) success: GET /hello/abc
+            const e1 = eventOf('abc');
+            expect2((await service.handle(e1, await service.packContext(e1, null))).statusCode).toEqual(200);
+            //* 2) success with cmd: GET /hello/abc/hi
+            const e2 = eventOf('abc', 'hi');
+            expect2((await service.handle(e2, await service.packContext(e2, null))).statusCode).toEqual(200);
+            //* 3) failure: GET /hello/0 → 404
+            const e3 = eventOf('0');
+            expect2((await service.handle(e3, await service.packContext(e3, null))).statusCode).toEqual(404);
+            //* 4) no `packContext()` for this event object (reuse a context) → `context=0.0`
+            const $ctx = await service.packContext(eventOf('ctx'), null);
+            expect2((await service.handle(eventOf('xyz'), $ctx)).statusCode).toEqual(200);
+
+            const lines = perfLines(spy.mock.calls, 'request');
+            expect2(lines.length).toEqual(4);
+            const [l1, l2, l3, l4] = lines;
+            expect2(keysOf(l1.tail)).toEqual('mode,type,status,context,param,handler,response,cold'.split(','));
+            expect2(keysOf(l2.tail)).toEqual('mode,type,cmd,status,context,param,handler,response,cold'.split(','));
+            expect2(keysOf(l3.tail)).toEqual(keysOf(l1.tail));
+            expect2(valuesOf(l1.tail), 'mode,type,status,cold').toEqual({
+                mode: 'GET',
+                type: 'hello',
+                status: '200',
+                cold: '1',
+            });
+            expect2(valuesOf(l2.tail), 'cmd,status,cold').toEqual({ cmd: 'hi', status: '200', cold: '0' });
+            expect2(valuesOf(l3.tail), 'status,cold').toEqual({ status: '404', cold: '0' });
+            expect2(valuesOf(l4.tail), 'context,cold').toEqual({ context: '0.0', cold: '0' });
+            //* every ms has one decimal, and no id/path is in the line.
+            lines.forEach(({ total, tail }) => {
+                expect2(total).toMatch(/^\d+\.\d ms$/);
+                const v = valuesOf(tail);
+                ['context', 'param', 'handler', 'response'].forEach(k => expect2(v[k]).toMatch(MS));
+                expect2(tail.includes('abc') || tail.includes('xyz') || tail.includes('/')).toEqual(false);
+            });
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    //* the `LambdaModule` wrapper: one handle line per call (with `initialize()`), `type=unknown` for a bad event.
+    it('should print one handle line per lambda call', async () => {
+        vi.resetModules();
+        const $mod = await import('./index');
+        const inf = vi.fn();
+        const engine: any = { register: () => {}, initialize: vi.fn(async () => {}), inf };
+        const mod = new $mod.LambdaModule(engine);
+        mod.web.setHandler('hello', decode_next_handler);
+
+        //* web event → `type=web cold=1`
+        expect2((await mod.lambda.handle(eventOf('abc'), null)).statusCode).toEqual(200);
+        //* unknown event → resolved failure, `type=unknown cold=0`
+        await mod.lambda.handle({}, null);
+        //* init failure → resolved failure, still one line.
+        engine.initialize.mockRejectedValueOnce(new Error('boom'));
+        await mod.lambda.handle(eventOf('abc'), null);
+
+        expect2(engine.initialize.mock.calls.length).toEqual(3);
+        const lines = perfLines(inf.mock.calls, 'handle');
+        expect2(lines.map(_ => _.tail)).toEqual(['type=web cold=1', 'type=unknown cold=0', 'type=web cold=0']);
+        lines.forEach(({ total }) => expect2(total).toMatch(/^\d+\.\d ms$/));
     });
 });

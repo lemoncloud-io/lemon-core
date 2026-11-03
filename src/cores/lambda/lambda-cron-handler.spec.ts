@@ -44,4 +44,24 @@ describe('LambdaCronHandler', () => {
         expect2(() => data, 'param').toEqual({ param: { name: 'hello' } });
         expect2(() => data, 'body,context').toEqual({ body: null, context: null });
     });
+
+    //* v5 B5: a failing listener is caught and reported, the other listeners run, and the handler resolves.
+    it('should resolve when a listener throws (v5)', async () => {
+        const { lambda, service } = instance();
+        const event: any = loadJsonSync('data/samples/events/sample.event.cron.json');
+        let done = 0;
+        //* one sync throw, one async reject, one success.
+        service.addListener(() => {
+            throw new Error('boom-cron');
+        });
+        service.addListener(async () => {
+            throw new Error('boom-cron-2');
+        });
+        service.addListener(async () => {
+            done++;
+        });
+        expect2(await service.handle(event, null)).toEqual(undefined);
+        expect2(await lambda.handle(event, null)).toEqual(undefined);
+        expect2(done).toEqual(2);
+    });
 });

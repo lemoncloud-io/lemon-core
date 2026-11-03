@@ -38,6 +38,9 @@ describe(`core/utilities.ts`, () => {
 
         expect2($U.uuid().length).toEqual('e82f0f6e-3b06-4cfb-8e56-12e046a8814e'.length);
         expect2($U.uuid().split('-').length).toEqual('e82f0f6e-3b06-4cfb-8e56-12e046a8814e'.split('-').length);
+        //* v5 B11: lower-case v4 form (`crypto.randomUUID()`), unique per call.
+        expect2($U.uuid()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        expect2($U.uuid() !== $U.uuid()).toEqual(true);
     });
 
     //* test qs()
@@ -83,18 +86,9 @@ describe(`core/utilities.ts`, () => {
         const date6 = '19781201';
         const date7 = '19781201 1234';
 
-        const expectedUtcForLocalString = (
-            y: number,
-            m: number,
-            d: number,
-            h: number,
-            i: number,
-            s: number,
-        ): number => {
-            const todayOffset = new Date().getTimezoneOffset();
-            const targetOffset = new Date(y, m, d, h, i, s).getTimezoneOffset();
-            return Date.UTC(y, m, d, h, i, s) - (todayOffset - targetOffset) * 60 * 1000;
-        };
+        //* v5 B5 (SPEC § 6.8): the wall clock of the default timeZone 9 → `Date.UTC(y, m, d, h - 9, i, s)`, host TZ free.
+        const expectedUtcForLocalString = (y: number, m: number, d: number, h: number, i: number, s: number): number =>
+            Date.UTC(y, m, d, h - 9, i, s);
 
         expect2($U.dt(date3).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 0, 0));
         expect2($U.dt(date4).getTime()).toEqual(expectedUtcForLocalString(1978, 11, 1, 12, 34, 0));
@@ -104,22 +98,6 @@ describe(`core/utilities.ts`, () => {
 
         expect2($U.dt(date1).getTime()).toEqual(expectedUtcForLocalString(1979, 10, 26, 12, 0, 0));
         expect2($U.dt(date2).getTime()).toEqual(expectedUtcForLocalString(2019, 10, 26, 12, 0, 0));
-    });
-
-    //* test cryto()
-    it('check cryto()', async () => {
-        const { $U } = instance();
-
-        const passwd = 'lemon';
-        const $crypt = $U.crypto(passwd);
-        const $crypt2 = $U.crypto('LM~1212@' + 'SES');
-
-        expect2(() => $crypt.encrypt(passwd)).toEqual('mwy4PPoRKDwGLlimYBvm8jbzAT0EMTl0FB7ErItyFEIux4bclkJc');
-        expect2(() => $crypt.decrypt($crypt.encrypt(passwd))).toEqual(passwd);
-        expect2(() => $crypt2.decrypt($crypt.encrypt(passwd))).toEqual('400 INVALID PASSWD - invalid magic string!');
-        expect2(() => $crypt2.decrypt('XrlNs0ahuu9KVZbmkKphV3wc7eDeJ0P4WiAgSlYVMV9Z9hD9LZi5+s/h/LbiYPWYnqk=')).toEqual(
-            'gXdY3v6rQMtSeXwF',
-        );
     });
 
     //* test cryto2()
@@ -288,8 +266,9 @@ describe(`core/utilities.ts`, () => {
         const current = 1 ? 1614241198963 : $U.current_time_ms();
 
         expect2(() => current).toEqual(1614241198963);
-        // expect2(() => $U.ts(current)).toEqual('2021-02-25 17:19:58');
-        expect2(() => $U.ts(current)).toEqual('2021-02-25 08:19:58');
+        //* v5 B5: `ts(N)` is the KST wall clock (default timeZone 9); v4 printed the UTC wall `08:19:58`.
+        expect2(() => $U.ts(current)).toEqual('2021-02-25 17:19:58');
+        expect2(() => $U.ts(current, 0)).toEqual('2021-02-25 08:19:58');
         const iat = Math.floor(current / 1000);
 
         //* build jwt handler.

@@ -16,7 +16,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi, test, afterEach } from 'vitest';
 import { expect2 } from '../common/test-helper';
-import { Utilities } from './utilities';
+import { Utilities, DEFAULT_TIME_ZONE, defaultTimeZone, dateOnlyClock } from './utilities';
 
 import * as $builder from './builder.spec';
 
@@ -49,6 +49,13 @@ const expectedUtcForLocalString = (
     return Date.UTC(y, m, d, h, i, s) - (todayOffset - targetOffset) * 60 * 1000 - timeZoneHours * 3600 * 1000;
 };
 
+/**
+ * v5 B5 (SPEC § 6.8): a string is the wall clock of `timeZone` (default `DEFAULT_TIME_ZONE` = 9),
+ * converted by `Date.UTC(y, m, d, h - tz, i, s)` — host TZ and DST free.
+ */
+const expectedUtcV5 = (y: number, m: number, d: number, h: number, i: number, s: number, timeZoneHours = 9): number =>
+    Date.UTC(y, m, d, h, i, s) - timeZoneHours * 3600 * 1000;
+
 //! main test body.
 describe(`core/utilities.ts (characterization, WP-U2)`, () => {
     //* ---------------------------------------------------------------------
@@ -68,12 +75,16 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             ['1978-12-01 12:34:20', 1978, 11, 1, 12, 34, 20],
             ['19781201', 1978, 11, 1, 12, 0, 0],
             ['19781201 1234', 1978, 11, 1, 12, 34, 0],
-        ])('dt.md Format table row: dt(%j) -> UTC(%j-%j-%j %j:%j:%j) (utilities.ts:208-241)', (input, y, m, d, h, i, s) => {
-            const { $U } = instance();
-            expect($U.dt(input as string).getTime()).toEqual(
-                expectedUtcForLocalString(y as number, m as number, d as number, h as number, i as number, s as number),
-            );
-        });
+        ])(
+            'dt.md Format table row: dt(%j) -> KST(%j-%j-%j %j:%j:%j) (v5 B5: default timeZone 9)',
+            (input, y, m, d, h, i, s) => {
+                const { $U } = instance();
+                //* v5 B5: timeZone omitted = 9 (was 0), host TZ free.
+                expect($U.dt(input as string).getTime()).toEqual(
+                    expectedUtcV5(y as number, m as number, d as number, h as number, i as number, s as number),
+                );
+            },
+        );
 
         //* dt.md Format table rows 8-9: no format matches -> null.
         it("dt.md Format table row: dt('') -> null (no format matches, utilities.ts:242-243)", () => {
@@ -89,18 +100,21 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
         //* dt.md "timeZone explicit vs. omitted" table (input '1978-12-01') — same
         //* machine-TZ-independence rationale as the Format table above.
         it.each([[undefined], [9], [0], [-5]])(
-            "dt.md timeZone table row: dt('1978-12-01', %j) -> UTC(1978-12-01 12:00:00) shifted by timeZone (utilities.ts:206)",
+            "dt.md timeZone table row: dt('1978-12-01', %j) -> 1978-12-01 12:00:00 at timeZone (v5 B5: omitted = 9)",
             tz => {
                 const { $U } = instance();
+                //* v5 B5: `tz ?? 9` (was `?? 0`).
                 expect($U.dt('1978-12-01', tz as number).getTime()).toEqual(
-                    expectedUtcForLocalString(1978, 11, 1, 12, 0, 0, tz ?? 0),
+                    expectedUtcV5(1978, 11, 1, 12, 0, 0, tz ?? 9),
                 );
             },
         );
 
-        it('dt.md timeZone table: timeZone 0 and timeZone omitted produce identical output — confirms `?? 0` is nullish coalescing, not falsy-coalescing (utilities.ts:206)', () => {
+        it('dt.md timeZone table (v5 B5): timeZone omitted = 9, explicit 0 = UTC — nullish, not falsy', () => {
             const { $U } = instance();
-            expect($U.dt('1978-12-01', 0).getTime()).toEqual($U.dt('1978-12-01').getTime());
+            //* v5 B5: flipped — omitted is no longer the same as 0.
+            expect($U.dt('1978-12-01').getTime()).toEqual($U.dt('1978-12-01', 9).getTime());
+            expect($U.dt('1978-12-01', 0).getTime() - $U.dt('1978-12-01').getTime()).toEqual(9 * 3600 * 1000);
         });
 
         //* Sanity connection back to dt.md's literal table values: on THIS run, if the target
@@ -158,10 +172,26 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             },
         );
 
-        it('dt.md number/Date table row: Date input returns the same object reference, not a copy (utilities.ts:259-260, Known defect #4, preserved)', () => {
+        it('dt.md number/Date table row (v5 B5): Date input returns a copy, not the same reference (Known defect #4 fixed)', () => {
             const { $U } = instance();
             const D = new Date(2020, 0, 1);
-            expect($U.dt(D, 9)).toBe(D);
+            //* v5 B5: flipped — a copy with the same instant.
+            expect($U.dt(D, 9)).not.toBe(D);
+            expect($U.dt(D, 9).getTime()).toEqual(D.getTime());
+        });
+
+        it('ts() (v5 B5): ts(Date, tz) never mutates the input, ts(N) is the KST wall clock', () => {
+            const { $U } = instance();
+            const D = new Date(Date.UTC(2026, 6, 15, 0, 30, 0));
+            const before = D.getTime();
+            expect($U.ts(D, 9)).toEqual('2026-07-15 09:30:00');
+            expect(D.getTime()).toEqual(before);
+            expect($U.ts(D.getTime())).toEqual('2026-07-15 09:30:00');
+            expect($U.ts(D.getTime(), 0)).toEqual('2026-07-15 00:30:00');
+            //* winter and summer give the same offset (no DST).
+            expect($U.ts(Date.UTC(2026, 0, 15, 0, 30, 0), 9)).toEqual('2026-01-15 09:30:00');
+            expect($U.ts(Date.UTC(2026, 0, 15, 0, 30, 0), -5)).toEqual('2026-01-14 19:30:00');
+            expect($U.ts(Date.UTC(2026, 6, 15, 0, 30, 0), -5)).toEqual('2026-07-14 19:30:00');
         });
 
         //* dt.md undefined/unsupported input table.
@@ -196,15 +226,12 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
         //* expected value below is computed via the identical offset-difference formula the
         //* source itself uses, so it holds on this (KST, non-DST) machine and is designed to
         //* hold under DST too (cross-checked once under TZ=America/New_York, see U2 report).
-        it('dt.md Known defect (coordinator U1 note): DST-dependent offset source (utilities.ts:205), preserved — expected computed via call-time-vs-target-date offset difference, not hardcoded', () => {
+        it('dt.md Known defect (coordinator U1 note) fixed in v5 B5: no DST / host offset — Date.UTC(y, m, d, h - tz, i, s)', () => {
             const { $U } = instance();
-            const y = 1978,
-                m = 11, // December, 0-indexed month
-                d = 1;
-            const todayOffset = new Date().getTimezoneOffset();
-            const targetDateOffset = new Date(y, m, d, 12).getTimezoneOffset();
-            const expected = Date.UTC(y, m, d, 12) - (todayOffset - targetDateOffset) * 60 * 1000;
-            expect($U.dt('1978-12-01').getTime()).toEqual(expected);
+            //* v5 B5: flipped — the offset comes from `timeZone` only (no call-time host offset).
+            expect($U.dt('1978-12-01').getTime()).toEqual(Date.UTC(1978, 11, 1, 12 - 9));
+            expect($U.dt('2026-01-15 09:30', -5).getTime()).toEqual(Date.UTC(2026, 0, 15, 14, 30));
+            expect($U.dt('2026-07-15 09:30', -5).getTime()).toEqual(Date.UTC(2026, 6, 15, 14, 30));
         });
     });
 
@@ -305,7 +332,7 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             ['a', 'e40c292c'],
             ['hello', '4f9f2cab'],
             ['123', '7238631b'],
-        ])("hash.md Behavior table row: hash(%j) -> %j", (input, expected) => {
+        ])('hash.md Behavior table row: hash(%j) -> %j', (input, expected) => {
             const { $U } = instance();
             expect($U.hash(input)).toEqual(expected);
         });
@@ -347,7 +374,7 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             expect($U.hash([1, 2, 3])).toEqual('488c418a');
         });
 
-        it('hash.md Determinism: hash(\'hello\') called twice in the same process returns the identical value', () => {
+        it("hash.md Determinism: hash('hello') called twice in the same process returns the identical value", () => {
             const { $U } = instance();
             const first = $U.hash('hello');
             const second = $U.hash('hello');
@@ -373,19 +400,19 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
     //* ---------------------------------------------------------------------
     describe('qs_parse() — numeric-conversion boundary cases', () => {
         it.each([
-            ["a=01", { a: '01' }],
-            ["a=1e3", { a: '1e3' }],
-            ["a=0x10", { a: '0x10' }],
-            ["a=", { a: '' }],
-            ["a=-0", { a: '-0' }],
-            ["a=-1", { a: '-1' }],
-            ["a=0", { a: '0' }],
-            ["a=00", { a: '00' }],
-            ["a=1.5", { a: '1.5' }],
-            ["a", { a: '' }],
-            ["a=null", { a: 'null' }],
-            ["?a=1&b=x", { a: 1, b: 'x' }],
-            ["a=%20", { a: ' ' }],
+            ['a=01', { a: '01' }],
+            ['a=1e3', { a: '1e3' }],
+            ['a=0x10', { a: '0x10' }],
+            ['a=', { a: '' }],
+            ['a=-0', { a: '-0' }],
+            ['a=-1', { a: '-1' }],
+            ['a=0', { a: '0' }],
+            ['a=00', { a: '00' }],
+            ['a=1.5', { a: '1.5' }],
+            ['a', { a: '' }],
+            ['a=null', { a: 'null' }],
+            ['?a=1&b=x', { a: 1, b: 'x' }],
+            ['a=%20', { a: ' ' }],
         ])(
             'qs.md Behavior table row: qs_parse(%j) -> %j (Known defect #2, preserved — numeric conversion inconsistent across representations)',
             (input, expected) => {
@@ -418,9 +445,7 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
     describe('qs_stringify()', () => {
         it("qs.md Behavior table row: qs_stringify({a:1,b:'x y',c:'z?=y',d:'p&q'}) -> 'a=1&b=x%20y&c=z%3F%3Dy&d=p%26q' (utilities.spec.ts:47-54 parity)", () => {
             const { $U } = instance();
-            expect($U.qs_stringify({ a: 1, b: 'x y', c: 'z?=y', d: 'p&q' })).toEqual(
-                'a=1&b=x%20y&c=z%3F%3Dy&d=p%26q',
-            );
+            expect($U.qs_stringify({ a: 1, b: 'x y', c: 'z?=y', d: 'p&q' })).toEqual('a=1&b=x%20y&c=z%3F%3Dy&d=p%26q');
         });
 
         it("qs.md Behavior table row: qs_stringify({a: undefined}) -> '' — key with undefined value is dropped entirely", () => {
@@ -475,6 +500,112 @@ describe(`core/utilities.ts (characterization, WP-U2)`, () => {
             expect($U.qs.stringify(obj)).toEqual($U.qs_stringify(obj));
             const qstr = 'a=10&b=x';
             expect($U.qs.parse(qstr)).toEqual($U.qs_parse(qstr));
+        });
+    });
+
+    //* ---------------------------------------------------------------------
+    //* v5: env `DEFAULT_TIME_ZONE` / `DATE_ONLY_CLOCK` (owner 2026-10-28, B5 § 6.8)
+    //* ---------------------------------------------------------------------
+    describe('env DEFAULT_TIME_ZONE / DATE_ONLY_CLOCK (v5)', () => {
+        //* the env names under test, restored after each case.
+        const $saved = {
+            DEFAULT_TIME_ZONE: process.env.DEFAULT_TIME_ZONE,
+            DATE_ONLY_CLOCK: process.env.DATE_ONLY_CLOCK,
+        };
+        afterEach(() => {
+            //* restore each name (delete if it was unset).
+            (Object.keys($saved) as (keyof typeof $saved)[]).forEach(name => {
+                if ($saved[name] === undefined) delete process.env[name];
+                else process.env[name] = $saved[name];
+            });
+        });
+        //* a fixed instant: 2026-01-01T00:00:00Z.
+        const T0 = Date.UTC(2026, 0, 1, 0, 0, 0);
+
+        it('defaultTimeZone(): unset -> 9 (DEFAULT_TIME_ZONE constant kept)', () => {
+            delete process.env.DEFAULT_TIME_ZONE;
+            expect(DEFAULT_TIME_ZONE).toEqual(9);
+            expect(defaultTimeZone()).toEqual(9);
+            const { $U } = instance();
+            expect($U.ts(T0)).toEqual('2026-01-01 09:00:00');
+        });
+
+        it.each([
+            ['0', 0, '2026-01-01 00:00:00'],
+            ['-5', -5, '2025-12-31 19:00:00'],
+            ['5.5', 5.5, '2026-01-01 05:30:00'],
+        ])('defaultTimeZone(): DEFAULT_TIME_ZONE=%j -> %j, $U.ts(T0) -> %j', (env, tz, ts) => {
+            process.env.DEFAULT_TIME_ZONE = env as string;
+            expect(defaultTimeZone()).toEqual(tz);
+            const { $U } = instance();
+            expect($U.ts(T0)).toEqual(ts);
+            //* an explicit timeZone still wins over the env.
+            expect($U.ts(T0, 9)).toEqual('2026-01-01 09:00:00');
+        });
+
+        it.each([['abc'], [''], ['  '], ['Infinity'], ['NaN']])(
+            'defaultTimeZone(): invalid DEFAULT_TIME_ZONE=%j -> 9',
+            env => {
+                process.env.DEFAULT_TIME_ZONE = env;
+                expect(defaultTimeZone()).toEqual(9);
+                const { $U } = instance();
+                expect($U.ts(T0)).toEqual('2026-01-01 09:00:00');
+            },
+        );
+
+        it('$U.ts()/$U.dt(): DEFAULT_TIME_ZONE=0 shifts the output by 9 h against unset', () => {
+            const { $U } = instance();
+            delete process.env.DEFAULT_TIME_ZONE;
+            const ts9 = $U.ts(T0);
+            const dt9 = $U.dt('2026-01-01 12:00:00').getTime();
+            process.env.DEFAULT_TIME_ZONE = '0';
+            const ts0 = $U.ts(T0);
+            const dt0 = $U.dt('2026-01-01 12:00:00').getTime();
+            expect([ts9, ts0]).toEqual(['2026-01-01 09:00:00', '2026-01-01 00:00:00']);
+            expect(dt0 - dt9).toEqual(9 * 3600 * 1000);
+        });
+
+        it('dateOnlyClock(): unset -> noon, midnight -> 00:00:00, noon -> noon, invalid -> noon', () => {
+            delete process.env.DATE_ONLY_CLOCK;
+            expect(dateOnlyClock()).toEqual(' 12:00:00');
+            process.env.DATE_ONLY_CLOCK = 'midnight';
+            expect(dateOnlyClock()).toEqual(' 00:00:00');
+            process.env.DATE_ONLY_CLOCK = 'noon';
+            expect(dateOnlyClock()).toEqual(' 12:00:00');
+            process.env.DATE_ONLY_CLOCK = 'MIDNIGHT';
+            expect(dateOnlyClock()).toEqual(' 12:00:00');
+        });
+
+        it("$U.dt('2026-01-01'): epoch moves by 12 h between noon and midnight", () => {
+            const { $U } = instance();
+            delete process.env.DEFAULT_TIME_ZONE;
+            process.env.DATE_ONLY_CLOCK = 'noon';
+            const noon = $U.dt('2026-01-01').getTime();
+            process.env.DATE_ONLY_CLOCK = 'midnight';
+            const midnight = $U.dt('2026-01-01').getTime();
+            expect(noon).toEqual(expectedUtcV5(2026, 0, 1, 12, 0, 0));
+            expect(midnight).toEqual(expectedUtcV5(2026, 0, 1, 0, 0, 0));
+            expect(noon - midnight).toEqual(12 * 3600 * 1000);
+        });
+
+        it.each([['2026-01-01'], ['26-01-01'], ['20260101']])(
+            '$U.dt(%j): every date-only form follows DATE_ONLY_CLOCK (unset = noon)',
+            input => {
+                const { $U } = instance();
+                delete process.env.DATE_ONLY_CLOCK;
+                expect($U.dt(input).getTime()).toEqual(expectedUtcV5(2026, 0, 1, 12, 0, 0));
+                process.env.DATE_ONLY_CLOCK = 'midnight';
+                expect($U.dt(input).getTime()).toEqual(expectedUtcV5(2026, 0, 1, 0, 0, 0));
+                process.env.DATE_ONLY_CLOCK = 'evening';
+                expect($U.dt(input).getTime()).toEqual(expectedUtcV5(2026, 0, 1, 12, 0, 0));
+            },
+        );
+
+        it("$U.dt('79-12-01'): the 19YY form follows DATE_ONLY_CLOCK, and a string with time does not", () => {
+            const { $U } = instance();
+            process.env.DATE_ONLY_CLOCK = 'midnight';
+            expect($U.dt('79-12-01').getTime()).toEqual(expectedUtcV5(1979, 11, 1, 0, 0, 0));
+            expect($U.dt('2026-01-01 12:34').getTime()).toEqual(expectedUtcV5(2026, 0, 1, 12, 34, 0));
         });
     });
 });

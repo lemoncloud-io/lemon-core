@@ -12,7 +12,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadProfile } from '../../environ';
 import { expect2, GETERR } from '../../common/test-helper';
-import { $U } from '../../engine/';
+import { $U, $engine } from '../../engine/';
 import { loadJsonSync } from '../../tools/';
 import { AWSKMSService } from './../aws/aws-kms-service';
 import { marshal, Filter, MyConfigService } from './config-service';
@@ -94,7 +94,14 @@ describe('ConfigService', () => {
         const origin = JSON.parse($U.json($config)); // deep copy
         const _conf = new MyConfigService($config);
         _conf.kms = $kms;
+        //* v5 B10-4: the decrypted value must not be in the log (length only).
+        const spy = vi.spyOn($engine.$console, 'log');
         const config = await _conf.init(); // wait until loading completely.
+        const logged = spy.mock.calls.map(args => args.join(' ')).join('\n');
+        spy.mockRestore();
+        expect(logged).toContain('> config[token.secret] :=');
+        expect(logged).toContain(`[masked:${message.length}]`);
+        expect(logged).not.toContain(message);
 
         //* check result..
         expect2(config.hello()).toEqual('config-service');

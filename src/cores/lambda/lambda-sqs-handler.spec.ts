@@ -43,9 +43,9 @@ describe('LambdaSQSHandler', () => {
         expect2(() => web.result).toEqual(null);
         expect2(service.getLastResult()).toEqual(null);
 
-        //* RUN
+        //* RUN — v5 B5: the failed record is reported in `batchItemFailures` (flipped from v4 `undefined`).
         const res = await lambda.handle(event, null);
-        expect2(res).toEqual(undefined);
+        expect2(res).toEqual({ batchItemFailures: [{ itemIdentifier: '3649c307-b056-406c-b42a-d68493b8055e' }] });
 
         //* POST-CONDITION.
         expect2(service.getLastResult()).toEqual(['404 NOT FOUND - GET /metrics/hello/test-protocol']);
@@ -68,9 +68,9 @@ describe('LambdaSQSHandler', () => {
         expect2(() => web.result).toEqual(null);
         expect2(service.getLastResult()).toEqual(null);
 
-        //* RUN
+        //* RUN — v5 B5: all records succeeded → an empty `batchItemFailures` (flipped from v4 `undefined`).
         const res = await lambda.handle(event, null);
-        expect2(res).toEqual(undefined);
+        expect2(res).toEqual({ batchItemFailures: [] });
 
         //* POST-CONDITION.
         const expected = { id: 'hello', cmd: 'test-protocol', hello: 'test-protocol hello' };

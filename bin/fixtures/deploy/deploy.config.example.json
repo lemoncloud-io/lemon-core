@@ -1,0 +1,375 @@
+{
+    "schemaVersion": 1,
+    "mode": "bootstrap",
+    "project": "lemon-templates-api",
+    "stage": "dev",
+    "region": "ap-northeast-2",
+    "account": "123456789012",
+    "endpoint": "https://example123.execute-api.ap-northeast-2.amazonaws.com/dev",
+    "profile": "lemon",
+    "artifactBucket": "example-deploy-artifacts",
+    "keyPrefix": "lemon-templates-api/dev",
+    "environmentFile": "deploy.env.json",
+    "deletionProtection": true,
+    "policy": {},
+    "routes": [
+        {
+            "path": "/",
+            "httpMethod": "GET",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "Authorization",
+                    "X-Api-Key",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Amzn-Trace-Id"
+                ],
+                "credentials": false
+            }
+        },
+        {
+            "path": "/hello",
+            "httpMethod": "GET",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/hello/{id}",
+            "httpMethod": "GET",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/hello/{id}",
+            "httpMethod": "POST",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/hello/{id}/{cmd}",
+            "httpMethod": "GET",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/mocks",
+            "httpMethod": "GET",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/mocks/{id}",
+            "httpMethod": "GET",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/mocks/{id}",
+            "httpMethod": "POST",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/mocks/{id}/{cmd}",
+            "httpMethod": "POST",
+            "authorizationType": "NONE",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}",
+            "httpMethod": "GET",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}",
+            "httpMethod": "GET",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}/{cmd}",
+            "httpMethod": "GET",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}",
+            "httpMethod": "PUT",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}/{cmd}",
+            "httpMethod": "PUT",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}",
+            "httpMethod": "POST",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}/{cmd}",
+            "httpMethod": "POST",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}",
+            "httpMethod": "DELETE",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        },
+        {
+            "path": "/{type}/{id}/{cmd}",
+            "httpMethod": "DELETE",
+            "authorizationType": "AWS_IAM",
+            "cors": {
+                "origin": "*",
+                "headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Amz-Date",
+                    "X-Amz-Security-Token",
+                    "X-Amz-User-Agent",
+                    "X-Api-Key",
+                    "X-Lemon-Language",
+                    "X-Lemon-Identity"
+                ],
+                "credentials": true,
+                "allowCredentialsWithWildcardOrigin": true
+            }
+        }
+    ]
+}

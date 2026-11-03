@@ -14,20 +14,51 @@
 import $engine, { $U, _log, _inf, _err } from '../../engine/';
 import { GeneralItem, Incrementable } from 'lemon-model';
 import { awsConfig, loadDataYml } from '../../tools/';
-import { StreamViewType, KeySchemaElement } from '@aws-sdk/client-dynamodb';
-import { CreateTableCommand, DeleteTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-    DynamoDBDocumentClient,
-    GetCommand,
-    BatchGetCommand,
-    PutCommand,
-    DeleteCommand,
-    UpdateCommand,
-    BatchWriteCommand,
-} from '@aws-sdk/lib-dynamodb';
-import { DynamoDBStreamsClient } from '@aws-sdk/client-dynamodb-streams';
+import { measure } from '../../lib/perf';
 
 const NS = $U.NS('DYNA', 'green'); // NAMESPACE TO BE PRINTED.
+
+/**
+ * SDK packages, required on the first use (not at import; v5 B2-c, K6).
+ * - sync loaders: `DynamoService.instance()` stays sync. Each first call prints one `PERF` line.
+ */
+let $dynamo: typeof import('@aws-sdk/client-dynamodb');
+let $dynamoDoc: typeof import('@aws-sdk/lib-dynamodb');
+// loader of `@aws-sdk/client-dynamodb`.
+const loadDynamo = (): typeof import('@aws-sdk/client-dynamodb') =>
+    ($dynamo ??= measure(_inf, $U.NS('PERF', 'cyan'), 'lazy-load @aws-sdk/client-dynamodb', () =>
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        require('@aws-sdk/client-dynamodb'),
+    ));
+// loader of `@aws-sdk/lib-dynamodb`.
+const loadDynamoDoc = (): typeof import('@aws-sdk/lib-dynamodb') =>
+    ($dynamoDoc ??= measure(_inf, $U.NS('PERF', 'cyan'), 'lazy-load @aws-sdk/lib-dynamodb', () =>
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        require('@aws-sdk/lib-dynamodb'),
+    ));
+
+/**
+ * the low-level client as this service uses it (local structural type, no SDK type in `.d.ts`; v5 B2-c).
+ */
+type DynamoClientLike = { send: (command: any) => Promise<any> };
+/**
+ * the document client as this service uses it (local structural type; v5 B2-c).
+ */
+type DynamoDocClientLike = { send: (command: any) => Promise<any> };
+/**
+ * a key-schema element of `prepareCreateTable()` (local structural type = SDK `KeySchemaElement`; v5 B2-c).
+ */
+interface KeySchemaElementLike {
+    AttributeName: string;
+    KeyType: 'HASH' | 'RANGE';
+}
+/**
+ * the output of `createTable()` / `deleteTable()` (local minimal structure; v5 B2-c).
+ */
+interface TableCommandOutput {
+    TableDescription?: { TableName?: string; TableStatus?: string; [key: string]: any };
+    $metadata?: { httpStatusCode?: number; requestId?: string; [key: string]: any };
+}
 
 export type KEY_TYPE = 'number' | 'string';
 type DynamoKey = Record<string, KEY_TYPE extends 'number' ? number : string>;
@@ -126,37 +157,54 @@ export class DynamoService<T extends GeneralItem> {
      */
     public hello = () => `dynamo-service:${this.options.tableName}`;
 
-    protected static _dynamo: Record<string, DynamoDBClient> = {};
-    protected static _dynamostr: Record<string, DynamoDBStreamsClient> = {};
+    /** low-level clients per region (v5 B2-c: now actually written, one per region) */
+    protected static _dynamo: Record<string, DynamoClientLike> = {};
     //TODO [Steve] why to use promise here to make DynamoDBDocumentClient? @251212
-    protected static _dynamodoc: Record<string, () => Promise<DynamoDBDocumentClient>> = {};
+    protected static _dynamodoc: Record<string, () => Promise<DynamoDocClientLike>> = {};
 
     /**
-     * simple instance maker.
+     * simple instance maker (sync; the SDK packages are loaded on the first call).
+     * - v5 B2-c: one low-level client per region (cached), and no `dynamostr` (streams client) any more.
      * @param region    (default as `ap-northeast-2`)
      */
-    public static instance(region?: string) {
+    public static instance(region?: string): {
+        dynamo: DynamoClientLike;
+        dynamodoc: () => Promise<DynamoDocClientLike>;
+    } {
         region = `${region || 'ap-northeast-2'}`;
         const $cfg = awsConfig($engine, region);
-        const dynamo = DynamoService._dynamo[region] ?? new DynamoDBClient($cfg); // Low-level DynamoDB client
-        const dynamostr = DynamoService._dynamostr[region] ?? new DynamoDBStreamsClient($cfg); // DynamoDB Streams client
+        //* low-level client: built once per region (`PERF > client DYNAMO` once per region).
+        if (!DynamoService._dynamo[region]) {
+            const { DynamoDBClient } = loadDynamo();
+            DynamoService._dynamo[region] = measure(
+                _inf,
+                $U.NS('PERF', 'cyan'),
+                'client DYNAMO',
+                () => new DynamoDBClient($cfg),
+            );
+        }
+        const dynamo = DynamoService._dynamo[region]; // Low-level DynamoDB client
 
         // Create memoized function for dynamodoc
         if (!DynamoService._dynamodoc[region]) {
-            const cache: { client: DynamoDBDocumentClient | null } = { client: null };
-            DynamoService._dynamodoc[region] = async (): Promise<DynamoDBDocumentClient> => {
+            const cache: { client: DynamoDocClientLike | null } = { client: null };
+            DynamoService._dynamodoc[region] = async (): Promise<DynamoDocClientLike> => {
                 if (!cache.client) {
                     _log(NS, `! creating NEW DynamoDBDocumentClient for region[${region}]`);
                     const credentials = $cfg.credentials;
-                    const dynamo = new DynamoDBClient({ ...$cfg, credentials });
-                    cache.client = DynamoDBDocumentClient.from(dynamo);
+                    const { DynamoDBClient } = loadDynamo();
+                    const { DynamoDBDocumentClient } = loadDynamoDoc();
+                    //* `PERF > client DYNAMO-DOC`: once per region (this memo).
+                    cache.client = measure(_inf, $U.NS('PERF', 'cyan'), 'client DYNAMO-DOC', () =>
+                        DynamoDBDocumentClient.from(new DynamoDBClient({ ...$cfg, credentials })),
+                    );
                 }
                 return cache.client;
             };
         }
 
         const dynamodoc = DynamoService._dynamodoc[region]; // High-level Document client
-        return { dynamo, dynamostr, dynamodoc };
+        return { dynamo, dynamodoc };
     }
 
     /**
@@ -198,7 +246,7 @@ export class DynamoService<T extends GeneralItem> {
                     AttributeName: idName,
                     KeyType: 'HASH',
                 },
-            ] as KeySchemaElement[],
+            ] as KeySchemaElementLike[],
             AttributeDefinitions: [
                 {
                     AttributeName: idName,
@@ -206,7 +254,7 @@ export class DynamoService<T extends GeneralItem> {
                 },
             ],
             ProvisionedThroughput: { ReadCapacityUnits, WriteCapacityUnits },
-            StreamSpecification: { StreamEnabled, StreamViewType: StreamViewType.NEW_AND_OLD_IMAGES },
+            StreamSpecification: { StreamEnabled, StreamViewType: 'NEW_AND_OLD_IMAGES' as const }, // the SDK enum value (a string)
         };
         //* set sort-key.
         if (sortName) {
@@ -386,9 +434,13 @@ export class DynamoService<T extends GeneralItem> {
      * @param ReadCapacityUnits
      * @param WriteCapacityUnits
      */
-    public async createTable(ReadCapacityUnits: number = 1, WriteCapacityUnits: number = 1) {
+    public async createTable(
+        ReadCapacityUnits: number = 1,
+        WriteCapacityUnits: number = 1,
+    ): Promise<TableCommandOutput> {
         _log(NS, `createTable(${ReadCapacityUnits}, ${WriteCapacityUnits})...`);
         const payload = this.prepareCreateTable(ReadCapacityUnits, WriteCapacityUnits);
+        const { CreateTableCommand } = loadDynamo(); // command class from the lazy-loaded package.
         return instance()
             .dynamo.send(new CreateTableCommand(payload))
             .then(res => {
@@ -401,9 +453,10 @@ export class DynamoService<T extends GeneralItem> {
      * delete-table
      *
      */
-    public async deleteTable() {
+    public async deleteTable(): Promise<TableCommandOutput> {
         _log(NS, `deleteTable()...`);
         const payload = this.prepareDeleteTable();
+        const { DeleteTableCommand } = loadDynamo(); // command class from the lazy-loaded package.
         return instance()
             .dynamo.send(new DeleteTableCommand(payload))
             .then(res => {
@@ -425,6 +478,7 @@ export class DynamoService<T extends GeneralItem> {
         const itemKey = this.prepareItemKey(id, sort);
         // _log(NS, `> pkey[${id}${sort ? '/' : ''}${sort || ''}] =`, $U.json(itemKey));
         const dynamodoc = await instance().dynamodoc();
+        const { GetCommand } = loadDynamoDoc(); // command class from the lazy-loaded package.
         return dynamodoc
             .send(new GetCommand(itemKey))
             .then(res => {
@@ -485,6 +539,7 @@ export class DynamoService<T extends GeneralItem> {
                 attempt: number,
                 acc: T[],
             ): Promise<{ items: T[]; unprocessed: DynamoKey[] }> => {
+                const { BatchGetCommand } = loadDynamoDoc(); // command class from the lazy-loaded package.
                 const response = await dynamodoc
                     .send(new BatchGetCommand({ RequestItems: { [tableName]: { Keys: keys } } }))
                     .catch((e: Error) => {
@@ -591,6 +646,7 @@ export class DynamoService<T extends GeneralItem> {
         const payload = this.prepareSaveItem(id, item);
         // _log(NS, '> payload :=', payload);
         const dynamodoc = await DynamoService.instance().dynamodoc();
+        const { PutCommand } = loadDynamoDoc(); // command class from the lazy-loaded package.
         return dynamodoc
             .send(new PutCommand(payload))
             .then(res => {
@@ -641,6 +697,7 @@ export class DynamoService<T extends GeneralItem> {
                 requests: BatchWriteRequest[],
                 attempt: number,
             ): Promise<BatchWriteRequest[]> => {
+                const { BatchWriteCommand } = loadDynamoDoc(); // command class from the lazy-loaded package.
                 const response = await dynamodoc
                     .send(new BatchWriteCommand({ RequestItems: { [tableName]: requests } }))
                     .catch((e: Error) => {
@@ -733,6 +790,7 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `deleteItem(${id})...`);
         const payload = this.prepareItemKey(id, sort);
         const dynamodoc = await DynamoService.instance().dynamodoc();
+        const { DeleteCommand } = loadDynamoDoc(); // command class from the lazy-loaded package.
         return dynamodoc
             .send(new DeleteCommand(payload))
             .then(res => {
@@ -764,6 +822,7 @@ export class DynamoService<T extends GeneralItem> {
         // _log(NS, `updateItem(${id})...`);
         const payload = this.prepareUpdateItem(id, sort, updates, increments);
         const dynamodoc = await DynamoService.instance().dynamodoc();
+        const { UpdateCommand } = loadDynamoDoc(); // command class from the lazy-loaded package.
         return dynamodoc
             .send(new UpdateCommand(payload))
             .then(res => {
@@ -822,6 +881,7 @@ export class DynamoService<T extends GeneralItem> {
                 requests: BatchWriteRequest[],
                 attempt: number,
             ): Promise<BatchWriteRequest[]> => {
+                const { BatchWriteCommand } = loadDynamoDoc(); // command class from the lazy-loaded package.
                 const response = await dynamodoc
                     .send(new BatchWriteCommand({ RequestItems: { [tableName]: requests } }))
                     .catch((e: Error) => {
@@ -1067,7 +1127,8 @@ export class DummyDynamoService<T extends GeneralItem> extends DynamoService<T> 
                 if (org !== undefined && !Array.isArray(org)) throw new Error(`.${key} (${value}) should be array!`);
                 memo[key] = [...(org || []), ...normalize(value)];
             } else {
-                if (org !== undefined && typeof org !== 'number') throw new Error(`.${key} (${value}) should be number!`);
+                if (org !== undefined && typeof org !== 'number')
+                    throw new Error(`.${key} (${value}) should be number!`);
                 memo[key] = $U.N(org, 0) + (value as number);
             }
             updated[key] = memo[key];

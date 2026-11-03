@@ -10,7 +10,7 @@
  *
  * @copyright (C) lemoncloud.io 2019 - All Rights Reserved.
  */
-import _ from 'lodash';
+import { isEmpty, merge } from './lang';
 import * as expressions from './expressions';
 import * as utils from './utils';
 
@@ -20,7 +20,7 @@ internals.keyCondition = function (keyName: any, schema: any, query: any) {
     const f = function (operator: any) {
         return function (/*values*/) {
             const copy = [].slice.call(arguments);
-            const existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
+            const existingValueKeys = Object.keys(query.request.ExpressionAttributeValues ?? {});
             const args = [keyName, operator, existingValueKeys].concat(copy);
             const cond = expressions.buildFilterExpression.apply(null, args);
             return query.addKeyCondition(cond);
@@ -43,7 +43,7 @@ internals.queryFilter = function (keyName: any, schema: any, query: any) {
     const f = function (operator: any) {
         return function (/*values*/) {
             const copy = [].slice.call(arguments);
-            const existingValueKeys = _.keys(query.request.ExpressionAttributeValues);
+            const existingValueKeys = Object.keys(query.request.ExpressionAttributeValues ?? {});
             const args = [keyName, operator, existingValueKeys].concat(copy);
             const cond = expressions.buildFilterExpression.apply(null, args);
             return query.addFilterCondition(cond);
@@ -130,7 +130,7 @@ class Query {
     };
 
     public consistentRead = function (read: any) {
-        if (!_.isBoolean(read)) {
+        if (typeof read !== 'boolean') {
             read = true;
         }
 
@@ -142,7 +142,7 @@ class Query {
     public addKeyCondition = function (condition: any) {
         internals.addExpressionAttributes(this.request, condition);
 
-        if (_.isString(this.request.KeyConditionExpression)) {
+        if (typeof this.request.KeyConditionExpression === 'string') {
             this.request.KeyConditionExpression =
                 this.request.KeyConditionExpression + ' AND (' + condition.statement + ')';
         } else {
@@ -155,7 +155,7 @@ class Query {
     public addFilterCondition = function (condition: any) {
         internals.addExpressionAttributes(this.request, condition);
 
-        if (_.isString(this.request.FilterExpression)) {
+        if (typeof this.request.FilterExpression === 'string') {
             this.request.FilterExpression = this.request.FilterExpression + ' AND (' + condition.statement + ')';
         } else {
             this.request.FilterExpression = '(' + condition.statement + ')';
@@ -171,23 +171,20 @@ class Query {
     };
 
     public attributes = function (attrs: any) {
-        if (!_.isArray(attrs)) {
+        if (!Array.isArray(attrs)) {
             attrs = [attrs];
         }
 
-        const expressionAttributeNames = _.reduce(
-            attrs,
-            function (result: any, attr: any) {
-                const path = '#' + attr;
-                result[path] = attr;
+        //* `#attr` → `attr` name map for the projection.
+        const expressionAttributeNames = attrs.reduce(function (result: any, attr: any) {
+            const path = '#' + attr;
+            result[path] = attr;
 
-                return result;
-            },
-            {},
-        );
+            return result;
+        }, {});
 
-        this.request.ProjectionExpression = _.keys(expressionAttributeNames).join(',');
-        this.request.ExpressionAttributeNames = _.merge(
+        this.request.ProjectionExpression = Object.keys(expressionAttributeNames).join(',');
+        this.request.ExpressionAttributeNames = merge(
             {},
             expressionAttributeNames,
             this.request.ExpressionAttributeNames,
@@ -215,7 +212,7 @@ class Query {
     };
 
     public returnConsumedCapacity = function (value: any) {
-        if (_.isUndefined(value)) {
+        if (value === undefined) {
             value = 'TOTAL';
         }
 
@@ -257,30 +254,31 @@ class Query {
             key = this.table.schema.globalIndexes[this.request.IndexName].hashKey;
         }
 
-        const existingValueKeys = _.keys(this.request.ExpressionAttributeValues);
+        const existingValueKeys = Object.keys(this.request.ExpressionAttributeValues ?? {});
         return expressions.buildFilterExpression(key, '=', existingValueKeys, this.hashKey);
     };
 
+    //* the request with `TableName`, as a deep copy (nested key and value maps are not shared).
     public buildRequest = function () {
-        return _.merge({}, this.request, { TableName: this.table.tableName() });
+        return merge({}, this.request, { TableName: this.table.tableName() });
     };
 }
 
 internals.addExpressionAttributes = function (request: any, condition: any) {
-    const expressionAttributeNames = _.merge({}, condition.attributeNames, request.ExpressionAttributeNames);
-    const expressionAttributeValues = _.merge({}, condition.attributeValues, request.ExpressionAttributeValues);
+    const expressionAttributeNames = merge({}, condition.attributeNames, request.ExpressionAttributeNames);
+    const expressionAttributeValues = merge({}, condition.attributeValues, request.ExpressionAttributeValues);
 
-    if (!_.isEmpty(expressionAttributeNames)) {
+    if (!isEmpty(expressionAttributeNames)) {
         request.ExpressionAttributeNames = expressionAttributeNames;
     }
 
-    if (!_.isEmpty(expressionAttributeValues)) {
+    if (!isEmpty(expressionAttributeValues)) {
         request.ExpressionAttributeValues = expressionAttributeValues;
     }
 };
 
 internals.formatAttributeValue = function (val: any) {
-    if (_.isDate(val)) {
+    if (val instanceof Date) {
         return val.toISOString();
     }
 

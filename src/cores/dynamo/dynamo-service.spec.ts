@@ -50,6 +50,11 @@ describe('DynamoService', () => {
             expect2(() => normalize({ a: 'a' })).toEqual({ a: 'a' });
         });
 
+        //* v5 B2-c: `instance()` writes its cache, so the same region gives the same low-level client (no send).
+        it('should cache instance() per region', () => {
+            expect2(() => DynamoService.instance('r').dynamo === DynamoService.instance('r').dynamo).toBe(true);
+        });
+
         it('update', () => {
             payload = dummy.prepareUpdateItem(id, sort, {});
             expect2(() => payload.UpdateExpression).toBe('');
