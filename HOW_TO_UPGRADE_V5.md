@@ -664,6 +664,14 @@ const context = this.proxy.asNextContext(null, { identity: { ...identity, roles 
 ```
 
 * Specs that need local behaviour set `process.env.LOCAL_MODE = '1'` (and delete `AWS_LAMBDA_FUNCTION_NAME`) and restore both in `afterEach`.
+* **Gate of an internal call: two kinds** (#1194). Never gate on `domain`.
+
+    | Kind | Receiver gate | Caller sends |
+    | --- | --- | --- |
+    | administrative action | `hasAdminRole()` | `asAdminContext()` |
+    | internal delegation that keeps the caller identity | a named helper on the channel, e.g. `isInternalCall(ctx)` = `ctx.channel === 'internal' \|\| ctx.channel === 'local'` | the normal next context (the relay) |
+
+    A v5 relay context has no `domain` (§ 15.2), so a condition `context.domain === 'localhost'` never matches a v5 caller. An override such as `super.hasAdminRole() || (context.domain === 'localhost' && isInternalAdmin())` (lemon-templates-api `src/service/backend-proxy.ts`) is a v4 transition condition only (legacy context with `domain: 'localhost'`); a v5 caller passes it only by claiming the role.
 
 #### 11.3.1 Local transport (`LOCAL_TRANSPORT=mock`, opt-in)
 
@@ -888,6 +896,7 @@ Internal calls no longer carry the caller's full context. Each entry sets `conte
 The receiver builds its context from the relay: `identity` = `idt`, `channel` = `internal`, `depth` = `hop`, `source` = `src`, `trace` = `{ tid, hop, via, pid, src }`, and its own `requestId`/`accountId` (Lambda `awsRequestId` and the account of `invokedFunctionArn`). Nothing else of the caller crosses the hop: no `cookie`, `authorization`, `referer`, `origin`, `clientIp`, `userAgent`, `domain`, `meta`, tokens or keys. A web event with `host` ignores the relay exactly like `x-protocol-context`. A bad relay → `400 INVALID CONTEXT - relay <reason>`.
 
 * **Code that read caller request values in a downstream service** (`$ctx.cookie`, `$ctx.authorization`, `$ctx.clientIp`, `$ctx.domain`, `identity.meta` …) gets `undefined` now. Pass what you need in the body or the param.
+* **Example (#1194).** A token refresh endpoint that requires `userAgent` must receive it in the request body from the caller (e.g. a sockets service relaying a refresh to a backend); `$ctx.userAgent` is `undefined` on the hop. A login record written on an internal call must not overwrite `clientIp`/`userAgent` with empty strings: keep the stored values when the context has none. `PROTOCOL_LEGACY_CONTEXT=send` does not help: when the relay header is present the web handler uses the relay and ignores `x-protocol-context`.
 * **`depth`** is the hop count of the chain. Code that raised `context.depth` by hand to detect loops can read `context.trace.hop` instead.
 * **The receiver's `requestId` is its own.** The first request's id is `context.trace.tid`, the direct caller's is `context.trace.pid`.
 
@@ -1056,6 +1065,17 @@ lemon-core no longer needs `lemon-devkit`. `loadEnviron()` / `loadProfile()` liv
     - A service that decoded `id`, `cmd` or the proxy itself now decodes twice (`%2523` → `#` instead of `%23`). Drop its own decode. Example: eureka-flows-api `src/api/open-api.v2.ts` `parseProxy()` calls `decodeURIComponent` on the proxy pieces.
     - A service that stored ids percent-encoded since v4 (because the path value arrived encoded) now receives the decoded id (`a b`, not `a%20b`). Check the ids you look up by path.
     - The local gateway (`buildExpress()`) now delivers raw values as API Gateway does: `pathParameters` are not decoded, inner empty segments are kept (`a//b`), and `path` is the path as sent. Extension routes (`app.get(…)`) still get decoded `req.params`.
+    - **Mixed versions** (#1194). Since 5.0.26 (#283) the sender (`transformToEvent()`) also sets `pathParameters.id = encodeURIComponent(id)` and encodes `cmd` per segment, to match raw delivery. A receiver below 5.0.26 (5.0.23, v4.x) does not decode, so a protocol `GET /channels/U:1002143/detail` arrives there as id `U%3A1002143` → 404. The comment of 5.0.23 `web-body.ts` ("API Gateway gives them percent-decoded") was wrong.
+
+        | Sender → receiver | Result |
+        | --- | --- |
+        | ≥ 5.0.26 → < 5.0.26 | broken (encoded id) |
+        | < 5.0.26 → ≥ 5.0.26 | fine |
+        | ≥ 5.0.26 → ≥ 5.0.26 | fine |
+        | < 5.0.26 → < 5.0.26 | fine |
+
+        During a v5 roll-out, **upgrade the receiving services to ≥ 5.0.26 first, then the callers.** The sender encoding stays: it matches raw delivery, and a 5.0.26+ receiver also handles an unencoded id.
+    - A caller that applied `encodeURIComponent(id)` itself before the protocol call must drop its own encoding (a 5.0.26+ receiver gets it double-encoded: `U%3A1002143`).
 
 Behaviour you may notice locally:
 

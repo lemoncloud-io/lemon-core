@@ -353,6 +353,13 @@ describe('protocol-relay', () => {
         });
     });
 
+    //* #1194: the caller's `userAgent`, `clientIp` and `domain` never reach the receiver context (keys absent, not only undefined).
+    it('should not carry userAgent/clientIp/domain to the receiver (#1194)', () => {
+        const ctx: any = asRelayContext(buildRelay(caller, { via: viaOf(caller) }), { requestId: 'r2' });
+        expect2(() => ['userAgent', 'clientIp', 'domain'].filter(k => k in ctx)).toEqual([]);
+        expect2(() => 'userAgent' in (ctx.identity || {})).toEqual(false);
+    });
+
     //* the TRACE line: tid/hop/channel, the via host and the src path only (no identity, no account).
     it('should format the TRACE line', () => {
         const ctx = asRelayContext(buildRelay(caller, { via: viaOf(caller) }), { requestId: 'r2' });
