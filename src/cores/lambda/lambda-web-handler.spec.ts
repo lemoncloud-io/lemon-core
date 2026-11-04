@@ -10,7 +10,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { loadProfile } from '../../environ';
 import { $U, $engine } from '../../engine/';
 import { NextDecoder, NextHandler, NextContext } from 'lemon-model';
@@ -87,6 +87,15 @@ class MyLemonWebController implements CoreWEBController {
 
 //! main test body.
 describe('LambdaWEBHandler', () => {
+    //* v5 B49 (#1194, D116): the v4 sample events of this spec are legacy-only → `warn` explicitly (default `reject`).
+    const $legacyKeep = process.env.PROTOCOL_LEGACY_ACCEPT;
+    beforeEach(() => {
+        process.env.PROTOCOL_LEGACY_ACCEPT = 'warn';
+    });
+    afterEach(() => {
+        if ($legacyKeep === undefined) delete process.env.PROTOCOL_LEGACY_ACCEPT;
+        else process.env.PROTOCOL_LEGACY_ACCEPT = $legacyKeep;
+    });
     //* use `env.PROFILE`
     const PROFILE = loadProfile(process); // override process.env.
     if (PROFILE) console.info(`! PROFILE =`, PROFILE);

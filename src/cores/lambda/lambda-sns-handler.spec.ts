@@ -9,7 +9,7 @@
  * @copyright (C) 2019 LemonCloud Co Ltd. - All Rights Reserved.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { $U } from '../../engine';
 import { expect2 } from '../../common/test-helper';
 import { loadJsonSync } from '../../tools/';
@@ -33,6 +33,15 @@ export const instance = () => {
 
 //! main test body.
 describe('LambdaSNSHandler', () => {
+    //* v5 B49 (#1194, D116): the v4 sample events of this spec are legacy-only → `warn` explicitly (default `reject`).
+    const $legacyKeep = process.env.PROTOCOL_LEGACY_ACCEPT;
+    beforeEach(() => {
+        process.env.PROTOCOL_LEGACY_ACCEPT = 'warn';
+    });
+    afterEach(() => {
+        if ($legacyKeep === undefined) delete process.env.PROTOCOL_LEGACY_ACCEPT;
+        else process.env.PROTOCOL_LEGACY_ACCEPT = $legacyKeep;
+    });
     //* protocol param
     it('should pass handle protocol with web (default)', async () => {
         const { lambda, service, web } = instance();

@@ -106,6 +106,33 @@ export const expect2 = (test: any, view?: string): any => {
 };
 
 /**
+ * v5 #1194: the own keys of an object, sorted (`[]` if not an object).
+ * - `toEqual()` ignores a key whose value is `undefined`; compare `keysOf()` to catch such a key.
+ *
+ * @param obj   any value.
+ */
+export const keysOf = (obj: any): string[] => (obj && typeof obj == 'object' ? Object.keys(obj).sort() : []);
+
+/**
+ * v5 #1194: assert key presence — every `present` key is an own key (any value, `undefined` too),
+ * and no `absent` key is an own key (a key set to `undefined` fails).
+ *
+ * ```js
+ * expectKeys({ a: 1, b: undefined }, { present: ['a'], absent: ['c'] }); // ok
+ * expectKeys({ a: 1, b: undefined }, { absent: ['b'] }); // fails: { missing: [], unexpected: ['b'] }
+ * ```
+ * @param obj   the object to check.
+ * @param keys  the keys that must be present, and the keys that must be absent.
+ */
+export const expectKeys = (obj: any, keys: { present?: string[]; absent?: string[] }): void => {
+    //* own key check (a non-object has no key).
+    const has = (k: string) => !!obj && typeof obj == 'object' && Object.prototype.hasOwnProperty.call(obj, k);
+    const missing = (keys?.present ?? []).filter(k => !has(k));
+    const unexpected = (keys?.absent ?? []).filter(k => has(k));
+    $expect()({ missing, unexpected }).toEqual({ missing: [], unexpected: [] });
+};
+
+/**
  * ignore of `it()`
  *
  * @param name

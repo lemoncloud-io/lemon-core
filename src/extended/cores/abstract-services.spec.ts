@@ -35,6 +35,7 @@ import { vi, afterEach } from 'vitest';
 import { PaginateParam } from './types';
 import { loadSample } from './contexts.spec';
 import { isCrossCloud, buildRelay, asRelayContext } from '../../cores/protocol/protocol-relay'; //* v5 B15
+import { encodeRelay, decodeRelay } from '../../cores/protocol/protocol-relay'; //* v5 #1194: the real relay codec.
 import { DynamoScanService } from '../../cores/'; //* v5 B39: the scan-filter expression (T-11)
 
 export type ModelType = 'test';
@@ -2092,6 +2093,69 @@ describe('abstract-services B15 security', () => {
         );
         expect2(() => ACTS.map(A => _off(_relay(USER), A, OTHER))).toEqual([false, false, false, false, false]);
         expect2(() => _pack(_relay(USER), { sid: 'x', view: 'admin' }, { useSession: false })).toEqual({ sid: 'x' });
+    });
+});
+
+//* #1194 path 3: the admin gate of an internal call — base `hasAdminRole()` vs `isInternalAdmin()` per caller.
+describe('abstract-services #1194 internal-call gate', () => {
+    //* restore the toggled env.
+    afterEach(() => {
+        restoreEnvB5('LOCAL_MODE');
+        restoreEnvB5('AWS_LAMBDA_FUNCTION_NAME');
+    });
+    loadProfile(process); // override process.env (same profile as above).
+
+    //* the receiver context of a relay through the real codec (build → encode → decode → receiver context).
+    const _relay = (roles: string[], origin?: NextContext): NextContext =>
+        asRelayContext(
+            decodeRelay(
+                encodeRelay(
+                    buildRelay({
+                        ...origin,
+                        identity: { sid: '1000000', uid: '1000001', roles } as any,
+                        requestId: 'req-1194',
+                    }),
+                ),
+            ),
+            { requestId: 'req-recv', accountId: '123456789012' },
+        );
+    //* [caller, context, hasAdminRole(), isInternalAdmin()].
+    const CASES: [string, () => NextContext, boolean, boolean][] = [
+        ['relay roles [user]', () => _relay(['user']), false, true],
+        ['relay roles [admin] (asAdminContext)', () => _relay(['admin']), true, true],
+        [
+            'v4 legacy (domain localhost, internal, roles [user])',
+            () => ({ domain: 'localhost', channel: 'internal', identity: { roles: ['user'] } as any }),
+            false,
+            true,
+        ],
+        ['external (domain localhost)', () => ({ domain: 'localhost', channel: 'external' }), false, false],
+        //* D115: a v5 chain that started on a local server relays `domain: localhost` (origin only).
+        ['relay roles [user], origin domain localhost', () => _relay(['user'], { domain: 'localhost' }), false, true],
+    ];
+    for (const [name, ctxOf, admin, internal] of CASES) {
+        //* #1194 path 3: one caller of the table (`$U.isLocalMode()` false).
+        it(`should gate ${name} → hasAdminRole ${admin}, isInternalAdmin ${internal}`, async () => {
+            delete process.env.LOCAL_MODE;
+            expect2(() => $U.isLocalMode()).toEqual(false);
+            const { service, context } = instance('session');
+            const proxy = service.createProxy(context);
+            const ctx = ctxOf();
+            expect2(() => [
+                proxy.hasAdminRole(null, { context: ctx }),
+                proxy.isInternalAdmin(DEFAULT_ACCESS_POLICY, ctx),
+            ]).toEqual([admin, internal]);
+        });
+    }
+
+    //* #1194 path 3 (D115): the relayed origin `domain` is what a templates-style override reads.
+    it('should relay the origin domain localhost only for a local-origin chain', async () => {
+        expect2(() => _relay(['user'], { domain: 'localhost' }), 'channel,domain').toEqual({
+            channel: 'internal',
+            domain: 'localhost',
+        });
+        expect2(() => _relay(['user'], { domain: 'api.example.com' }).domain).toEqual('api.example.com');
+        expect2(() => 'domain' in _relay(['user'])).toEqual(false);
     });
 });
 

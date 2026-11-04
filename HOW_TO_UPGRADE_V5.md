@@ -671,7 +671,7 @@ const context = this.proxy.asNextContext(null, { identity: { ...identity, roles 
     | administrative action | `hasAdminRole()` | `asAdminContext()` |
     | internal delegation that keeps the caller identity | a named helper on the channel, e.g. `isInternalCall(ctx)` = `ctx.channel === 'internal' \|\| ctx.channel === 'local'` | the normal next context (the relay) |
 
-    A v5 relay context has no `domain` (§ 15.2), so a condition `context.domain === 'localhost'` never matches a v5 caller. An override such as `super.hasAdminRole() || (context.domain === 'localhost' && isInternalAdmin())` (lemon-templates-api `src/service/backend-proxy.ts`) is a v4 transition condition only (legacy context with `domain: 'localhost'`); a v5 caller passes it only by claiming the role.
+    Since B49 (#1194, D115) a relayed `domain` is the **first entry's** domain (§ 15.2), so `context.domain === 'localhost'` now matches a v5 chain that started on a local server — and only that. An override such as `super.hasAdminRole() || (context.domain === 'localhost' && isInternalAdmin())` (lemon-templates-api `src/service/backend-proxy.ts`) therefore grants admin to an internal call only for a local-origin chain (and to a v4 legacy context with `domain: 'localhost'`); any other v5 caller passes only by claiming the role (`asAdminContext()`). Base `hasAdminRole()` does not read `domain`: a relay with roles `['user']` is `false` there and `isInternalAdmin()` is `true`.
 
 #### 11.3.1 Local transport (`LOCAL_TRANSPORT=mock`, opt-in)
 
@@ -890,13 +890,14 @@ Internal calls no longer carry the caller's full context. Each entry sets `conte
 | web | header `x-lemon-relay` |
 | SNS/SQS | the `relay` field of the protocol param; the `context` field is not sent |
 | value | `r1.<base64url(JSON)>`, at most 4096 bytes on receive (about 0.4 KB for a typical caller) |
-| JSON | `idt` (`sid`, `uid`, `gid`, `roles`, `identityId`, `lang`, and since B15 `cid`, `aid` only), `tid`, `hop`, `src`, `via`, `pid`, `iat` |
+| JSON | `idt` (`sid`, `uid`, `gid`, `roles`, `identityId`, `lang`, and since B15 `cid`, `aid` only), `tid`, `hop`, `src`, `via`, `pid`, `iat`, and since B49 (#1194) `ua`, `ip`, `dom` (request origin), `path` (call path) |
 | signature | web: `x-protocol-signature` with the relay string in the context slot of the canonical; SNS/SQS: the message signature (unchanged) |
 
-The receiver builds its context from the relay: `identity` = `idt`, `channel` = `internal`, `depth` = `hop`, `source` = `src`, `trace` = `{ tid, hop, via, pid, src }`, and its own `requestId`/`accountId` (Lambda `awsRequestId` and the account of `invokedFunctionArn`). Nothing else of the caller crosses the hop: no `cookie`, `authorization`, `referer`, `origin`, `clientIp`, `userAgent`, `domain`, `meta`, tokens or keys. A web event with `host` ignores the relay exactly like `x-protocol-context`. A bad relay → `400 INVALID CONTEXT - relay <reason>`.
+The receiver builds its context from the relay: `identity` = `idt`, `channel` = `internal`, `depth` = `hop`, `source` = `src`, `trace` = `{ tid, hop, via, pid, src, path }`, `userAgent` = `ua`, `clientIp` = `ip`, `domain` = `dom`, and its own `requestId`/`accountId` (Lambda `awsRequestId` and the account of `invokedFunctionArn`). A web event with `host` ignores the relay exactly like `x-protocol-context`. A bad relay → `400 INVALID CONTEXT - relay <reason>`.
 
-* **Code that read caller request values in a downstream service** (`$ctx.cookie`, `$ctx.authorization`, `$ctx.clientIp`, `$ctx.domain`, `identity.meta` …) gets `undefined` now. Pass what you need in the body or the param.
-* **Example (#1194).** A token refresh endpoint that requires `userAgent` must receive it in the request body from the caller (e.g. a sockets service relaying a refresh to a backend); `$ctx.userAgent` is `undefined` on the hop. A login record written on an internal call must not overwrite `clientIp`/`userAgent` with empty strings: keep the stored values when the context has none. `PROTOCOL_LEGACY_CONTEXT=send` does not help: when the relay header is present the web handler uses the relay and ignores `x-protocol-context`.
+* **Request origin (B49, #1194, D115).** Since this version the relay also carries the **first entry's** `userAgent` (`ua`, cut to 512 chars), `clientIp` (`ip`) and `domain` (`dom`); a next hop passes them on unchanged. They are origin info only: no v5 gate reads `domain`, `channel` stays the trust signal, and the relay is signed. `cookie`, `authorization`, `referer`, `origin`, `identity.meta`, tokens and keys still do not cross the hop.
+* **Code that read other caller request values in a downstream service** (`$ctx.cookie`, `$ctx.authorization`, `identity.meta` …) gets `undefined`. Pass what you need in the body or the param.
+* **Example (#1194).** A token refresh endpoint that requires `userAgent` (e.g. a sockets service relaying a refresh to a backend) gets `$ctx.userAgent` from the relay once **both** sides run this version; the body workaround is then no longer needed. A receiver below this version still gets no `userAgent` on the hop, so keep passing it in the body while versions are mixed, and do not overwrite a login record's `clientIp`/`userAgent` with empty strings when the context has none. Compatibility: a receiver 5.0.13–5.0.28 drops the unknown keys `ua`/`ip`/`dom`/`path` (no error); an older sender gives a new receiver none of them (keys absent).
 * **`depth`** is the hop count of the chain. Code that raised `context.depth` by hand to detect loops can read `context.trace.hop` instead.
 * **The receiver's `requestId` is its own.** The first request's id is `context.trace.tid`, the direct caller's is `context.trace.pid`.
 
@@ -909,15 +910,16 @@ A same-service callback of an SNS/SQS protocol call (the `callback` attribute na
 ### 15.4 Trace
 
 * Every entry sets `context.trace`: `{ tid: requestId, hop: 0 }` without a relay (external, local, direct invoke, legacy context), or the relay trace. `tid` is the requestId only when it is a safe id (`/^[\w.:-]{1,128}$/`, as Lambda and API Gateway ids are); otherwise a new uuid. The local express requestId (`YYYY-MM-DD hh:mm:ss.SSS`, with a space, not unique within a millisecond) therefore gets a uuid; `context.requestId` itself is unchanged.
-* One line per web entry and per SNS/SQS protocol receive: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|->` (the via service host and the src path only; no identity value, no account). Join the lines of a chain by `tid` in CloudWatch Logs Insights.
-* `doReportError()` adds `trace` to the report payload.
+* **Call path (B49, #1194, D115).** `trace.path` is the ordered service hosts of the chain, one per hop (service name only, no account, no version; each at most 128 chars): the sender appends the host of its own uri (`via`) to the caller's `trace.path`, and a same-service callback appends the same way. On receive `path.length` must equal `hop` and stay within `PROTOCOL_MAX_HOP`, else `400 INVALID CONTEXT - relay path`. A relay from an older sender has no `path`; a next hop from such a context sends no `path` either (unknown chain, no error).
+* One line per web entry and per SNS/SQS protocol receive: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|-> path=<a>b>c|->[ cross=1]` (the via service host, the src path and the call path hosts joined by `>`; no identity value, no account). Join the lines of a chain by `tid` in CloudWatch Logs Insights.
+* `doReportError()` adds `trace` to the report payload (with `trace.path`).
 
 ### 15.5 `x-protocol-context` is deprecated
 
 | Env | Values | Default | Effect |
 | --- | --- | --- | --- |
 | `PROTOCOL_LEGACY_CONTEXT` | `off`, `send` | `off` | `off`: send the relay only. `send`: the relay and the full context (`x-protocol-context` / `context`) for v4 receivers |
-| `PROTOCOL_LEGACY_ACCEPT` | `accept`, `warn`, `reject` | `warn` | a call with the legacy context and no relay. `accept`: as before. `warn`: as before + one `PROTOCOL deprecated x-protocol-context <caller service> (<web\|sns\|sqs>)` line. `reject`: web `400 INVALID CONTEXT - legacy context rejected`, SNS reported, SQS record failure |
+| `PROTOCOL_LEGACY_ACCEPT` | `accept`, `warn`, `reject` | `reject` (since B49, #1194 D116; was `warn`) | a call with the legacy context and no relay. `accept`: as before. `warn`: as before + one `PROTOCOL deprecated x-protocol-context <caller service> (<web\|sns\|sqs>)` line. `reject`: web `400 INVALID CONTEXT - legacy context rejected`, SNS reported, SQS record failure |
 | `PROTOCOL_MAX_HOP` | a positive integer | `8` | hop cap (§ 15.3) |
 
 * An accepted legacy context keeps the v4 behaviour (the caller's context as is) plus `channel: 'internal'` and an entry trace.
@@ -926,13 +928,15 @@ A same-service callback of an SNS/SQS protocol call (the `callback` attribute na
 * `HEADER_PROTOCOL_CONTEXT` is `@deprecated`; removal in v6.
 * The values are read through the config service like `PROTOCOL_VERIFY` (env or the config file).
 
+* **Behaviour change (B49, #1194 D116).** The receive default is `reject`: a host-less web event with `x-protocol-context` and no `x-lemon-relay`, or an SNS/SQS protocol message with the `context` field and no `relay`, is refused. **A v5 receiver that still has v4 callers must set `PROTOCOL_LEGACY_ACCEPT=warn` (or `accept`) explicitly** before it deploys this version; otherwise those calls fail with `400 INVALID CONTEXT - legacy context rejected` (web), are reported (SNS) or fail the record (SQS). The send default stays `off`.
+
 Settings while services move from v4 to v5 (DoU):
 
 | Stage | Setting of a migrated (v5) service |
 | --- | --- |
-| some services still v4 | send `PROTOCOL_LEGACY_CONTEXT=send` (v4 receivers need the context). receive `PROTOCOL_LEGACY_ACCEPT=warn` (v4 callers send only the context) |
-| all services v5 | send `off`. receive keep `warn`, and check that no `PROTOCOL deprecated` line is logged |
-| after the `deprecated` count is 0 | receive `reject`. then `PROTOCOL_VERIFY=enforce` (§ 13.4) |
+| some services still v4 | send `PROTOCOL_LEGACY_CONTEXT=send` (v4 receivers need the context). receive `PROTOCOL_LEGACY_ACCEPT=warn` **set explicitly** (v4 callers send only the context; the default `reject` refuses them) |
+| all services v5 | send `off`. receive keep the explicit `warn`, and check that no `PROTOCOL deprecated` line is logged |
+| after the `deprecated` count is 0 | remove `PROTOCOL_LEGACY_ACCEPT` (default `reject`). then `PROTOCOL_VERIFY=enforce` (§ 13.4) |
 
 Module: `src/cores/protocol/protocol-relay.ts` (deep path `lemon-core/dist/cores/protocol/protocol-relay`, not on the root): `buildRelay`, `encodeRelay`, `decodeRelay`, `asRelayContext`, `traceLine`, `readLegacySend`, `readLegacyAccept`, `readMaxHop`, `HEADER_LEMON_RELAY`.
 
@@ -1214,9 +1218,9 @@ Details: `lemoncloud-io/knowledge` `projects/lemon-core-v5/routes/SPEC.md`.
 - [ ] `PROTOCOL_VERIFY=enforce` only after the key is set everywhere, every caller is on v5, and a `warn` window shows no `PROTOCOL unsigned` line (§ 13.4)
 - [ ] `npm run fields:types` (`lemon-fields-types`) shows no `hard` conflict; services that share one index are checked together with `--with` (§ 13.5)
 - [ ] Direct imports of `query-string` or `uuid` are in your own `package.json` (§ 14)
-- [ ] Downstream code does not read caller request values (`cookie`, `authorization`, `clientIp`, `domain`, `identity.meta` …) from an internal call's context; loops are detected by `context.trace.hop` (§ 15.2)
+- [ ] Downstream code does not read caller request values (`cookie`, `authorization`, `identity.meta` …) from an internal call's context (`userAgent`/`clientIp`/`domain` are the first entry's since B49); loops are detected by `context.trace.hop` (§ 15.2)
 - [ ] `fields/admin` and other gates read `context.channel`, not `domain` (§ 15.1)
-- [ ] While v4 services remain: send `PROTOCOL_LEGACY_CONTEXT=send`, receive `PROTOCOL_LEGACY_ACCEPT=warn`; then `off`, then `reject` when no `PROTOCOL deprecated` line is logged (§ 15.5)
+- [ ] While v4 callers remain: send `PROTOCOL_LEGACY_CONTEXT=send`, receive `PROTOCOL_LEGACY_ACCEPT=warn` set explicitly (the default is `reject` since B49); then `off`, then drop the env (default `reject`) when no `PROTOCOL deprecated` line is logged (§ 15.5)
 - [ ] `@aws-sdk/*` peers in your `package.json` at `^3.1159.0`, one `@aws-sdk/core` in `npm ls` (§ 14)
 - [ ] Since 5.0.9: no `lemon-model` in your `package.json`; root names from `lemon-core`, `field`/`fieldsOf`/`specsOf` from `lemon-core/model`; `npm ls lemon-model` shows one copy (§ 16)
 - [ ] Specs that relied on separate dummy buffers per manager of one service (same `_id`, `nextSeq()` restarting) expect one shared buffer (§ 17)

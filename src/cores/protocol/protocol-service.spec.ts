@@ -754,3 +754,72 @@ describe('ProtocolService', () => {
         });
     });
 });
+
+//* #1194 path 1: the mixed-version path id — a 5.0.26+ sender encodes `id`/`cmd`, a 5.0.26+ receiver decodes once.
+describe('#1194 mixed-version path id', () => {
+    const $web = new WEBProtocolTransformer();
+    const $ctx: NextContext = {};
+    //* the protocol param of `GET /channels/{id}/{cmd}` (a socials call).
+    const paramOf = (id: string, cmd = 'detail'): any => ({
+        service: 'socials',
+        type: 'channels',
+        mode: 'GET',
+        id,
+        cmd,
+        context: $ctx,
+    });
+    //* the synthetic web event a 5.0.26+ sender builds.
+    const eventOf = (id: string, cmd = 'detail') =>
+        $web.transformToEvent(`lemon://socials/channels/${id}/${cmd}`, paramOf(id, cmd));
+    //* the param a 5.0.26+ receiver gets from an event.
+    const trip = (event: APIGatewayProxyEvent) => $web.transformToParam(event, $ctx);
+
+    //* #1194 path 1 (new → old): the event id is encoded; a < 5.0.26 receiver (no decode) reads it as is.
+    it('should send the id encoded (what a < 5.0.26 receiver reads as is)', () => {
+        expect2(() => eventOf('U:1002143'), 'path,pathParameters').toEqual({
+            path: '/channels/U%3A1002143/detail',
+            pathParameters: { type: 'channels', id: 'U%3A1002143', cmd: 'detail' },
+        });
+    });
+
+    //* #1194 path 1 (new → new): a 5.0.26+ receiver decodes the id once.
+    it('should decode the id once on a 5.0.26+ receiver (new → new)', () => {
+        expect2(() => trip(eventOf('U:1002143')), 'mode,type,id,cmd').toEqual({
+            mode: 'GET',
+            type: 'channels',
+            id: 'U:1002143',
+            cmd: 'detail',
+        });
+    });
+
+    //* #1194 path 1 (old → new): a < 5.0.26 sender puts the raw id; a 5.0.26+ receiver keeps it.
+    it('should keep a raw id of a < 5.0.26 sender (old → new)', () => {
+        const event = eventOf('U:1002143');
+        //* the event of a < 5.0.26 sender: path and path parameters not encoded.
+        const old: APIGatewayProxyEvent = {
+            ...event,
+            path: '/channels/U:1002143/detail',
+            pathParameters: { type: 'channels', id: 'U:1002143', cmd: 'detail' },
+        };
+        expect2(() => trip(old), 'id,cmd').toEqual({ id: 'U:1002143', cmd: 'detail' });
+    });
+
+    //* #1194 path 1 (double encoding): a caller that encodes the id itself gets it encoded twice; the receiver sees one level.
+    it('should keep a self-encoded id encoded (double-encoding trap)', () => {
+        const event = eventOf('U%3A1002143');
+        expect2(() => event.pathParameters.id).toEqual('U%253A1002143');
+        expect2(() => trip(event).id).toEqual('U%3A1002143');
+        expect2(() => trip(event).id === 'U:1002143').toEqual(false);
+    });
+
+    //* #1194 path 1: ids from the issue with several reserved chars (`:` many times, `@`) round trip.
+    it('should round-trip ids with reserved chars (`:`, `@`)', () => {
+        const ids = ['dou:dev-mock:1001494:portone:3', 'user@example.com', 'a:b@c'];
+        expect2(() => ids.map(id => eventOf(id).pathParameters.id)).toEqual([
+            'dou%3Adev-mock%3A1001494%3Aportone%3A3',
+            'user%40example.com',
+            'a%3Ab%40c',
+        ]);
+        expect2(() => ids.map(id => trip(eventOf(id)).id)).toEqual(ids);
+    });
+});

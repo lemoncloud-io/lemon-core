@@ -154,6 +154,7 @@ describe('context.channel (B14 D1)', () => {
         const relay = new WEBProtocolTransformer().transformToEvent('api://self/hello/!', paramOf(caller));
         expect2(await lambda.handle(relay, null), 'statusCode').toEqual({ statusCode: 200 });
         setEnv('PROTOCOL_LEGACY_CONTEXT', 'send');
+        setEnv('PROTOCOL_LEGACY_ACCEPT', 'warn'); //* v5 B49 (#1194, D116): a v4 caller needs `warn` (default `reject`).
         const legacy = new WEBProtocolTransformer().transformToEvent('api://self/hello/!', paramOf(caller));
         delete legacy.headers[HEADER_LEMON_RELAY];
         expect2(await lambda.handle(legacy, null), 'statusCode').toEqual({ statusCode: 200 });
