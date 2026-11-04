@@ -11,6 +11,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { describe, expect, it, vi } from 'vitest';
 import { expect2, marshal, Filter, _it, environ, waited, GETERR, GETERR$, NUL404, asErrorPayload } from './test-helper';
+import { keysOf, expectKeys } from './test-helper'; //* v5 #1194: key-presence helpers.
 
 //! main test body.
 describe('TestHelper', () => {
@@ -35,6 +36,19 @@ describe('TestHelper', () => {
 
     //* test expect2()
     it('should pass expect2 helper', async () => {});
+
+    //* v5 #1194: key-presence helpers see a key whose value is `undefined` (`toEqual()` does not).
+    it('should pass keysOf() and expectKeys() (#1194)', async () => {
+        const obj = { b: 1, a: undefined as any };
+        expect2(() => obj).toEqual({ b: 1 }); // `toEqual()` ignores `a`.
+        expect2(() => keysOf(obj)).toEqual(['a', 'b']);
+        expect2(() => [keysOf(null), keysOf('x'), keysOf(undefined)]).toEqual([[], [], []]);
+        expectKeys(obj, { present: ['a', 'b'], absent: ['c'] });
+        expectKeys(null, { absent: ['a'] });
+        //* a key set to `undefined` is not absent; a missing key is not present.
+        expect2(() => expectKeys(obj, { absent: ['a'] })).toContain('unexpected');
+        expect2(() => expectKeys(obj, { present: ['c'] })).toContain('missing');
+    });
 
     //* test _it()
     _it('should ignore this test', async () => {});

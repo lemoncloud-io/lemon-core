@@ -2,10 +2,10 @@
  * `cores/protocol/protocol-relay.ts`
  * - v5 B14: the relay envelope of an internal hop — a whitelisted identity and the trace, nothing else.
  * - web: header `x-lemon-relay`. SNS/SQS: the `relay` field of the protocol param (no `context` field).
- * - value `r1.<base64url(JSON)>`, JSON keys `idt tid hop src via pid iat`. signed by the existing signature
+ * - value `r1.<base64url(JSON)>`, JSON keys `idt tid hop src via pid iat ua ip dom path` (`ua ip dom path` since #1194). signed by the existing signature
  *   (web: the relay string in the context slot of the canonical; SNS/SQS: the message signature).
- * - the legacy `x-protocol-context` (full context) is deprecated: `PROTOCOL_LEGACY_CONTEXT` (send) and
- *   `PROTOCOL_LEGACY_ACCEPT` (receive) decide whether it is sent and accepted. removal in v6.
+ * - the legacy `x-protocol-context` (full context) is deprecated: `PROTOCOL_LEGACY_CONTEXT` (send, default `off`) and
+ *   `PROTOCOL_LEGACY_ACCEPT` (receive, default `reject` since B49 #1194 D116) decide whether it is sent and accepted.
  * - hop cap `PROTOCOL_MAX_HOP` (default 8): `508 LOOP DETECTED - protocol hop <n>` on send and on receive.
  * - NOTE: deep module only (`./dist/cores/protocol/protocol-relay`). not re-exported by the root.
  *
@@ -13,6 +13,7 @@
  * @date        2026-10-30 initial version (v5 B14)
  * @date        2026-10-30 a safe trace id (`SAFE_TRACE_ID`), and `nextHopContext()` for an in-process (same-service) callback.
  * @date        2026-10-30 v5 B15: `cid` (cloud-id) and `aid` (auth-id) cross a hop; `isCrossCloud()`; `TRACE … cross=1`.
+ * @date        2026-11-04 v5 B49 (#1194, D115): the request origin (`ua`/`ip`/`dom`) and the call path (`path`) cross a hop.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
@@ -42,6 +43,10 @@ export const PROTOCOL_LEGACY_ACCEPT = 'PROTOCOL_LEGACY_ACCEPT';
 export const PROTOCOL_MAX_HOP = 'PROTOCOL_MAX_HOP';
 /** default hop cap */
 export const DEFAULT_MAX_HOP = 8;
+/** v5 B49 (#1194): max length of the relayed `userAgent` (`ua`, truncated on build) */
+export const RELAY_MAX_UA = 512;
+/** v5 B49 (#1194): max length of one service host in the relayed call path (`path`) */
+export const RELAY_MAX_PATH_ENTRY = 128;
 /** a requestId used as a trace id as is (else a new uuid): the local express id `YYYY-MM-DD hh:mm:ss.SSS` is not */
 export const SAFE_TRACE_ID = /^[\w.:-]{1,128}$/;
 
@@ -68,6 +73,16 @@ export interface RelayIdentity {
     aid?: string;
 }
 
+/**
+ * v5 B49 (#1194, D115): the trace of a context with the call path.
+ * - `path`: the service hosts of the chain in order, one per hop (`path.length === hop`). `lemon-model`'s
+ *   `NextTrace` has no `path` yet, so it is extended here (as B15 did for `cid`/`aid`).
+ */
+export type RelayTrace = NextTrace & {
+    /** (optional) the service hosts of the chain (one per hop; no account, no version) */
+    path?: string[];
+};
+
 /** the relay JSON (`r1.` payload) */
 export interface ProtocolRelay {
     /** identity summary (whitelist) */
@@ -84,10 +99,22 @@ export interface ProtocolRelay {
     pid?: string;
     /** signing time (epoch seconds) */
     iat?: number;
+    /**
+     * (optional) v5 B49 (#1194): the request origin of the first entry — `userAgent` (max 512), `clientIp`, `domain`.
+     * - origin info only: no v5 gate reads `domain` (B14 § 15.1), `channel` stays the trust signal.
+     * - the relay is signed, and a web event with a `host` header still ignores the relay.
+     */
+    ua?: string;
+    /** (optional) v5 B49 (#1194): the `clientIp` of the first entry */
+    ip?: string;
+    /** (optional) v5 B49 (#1194): the `domain` of the first entry */
+    dom?: string;
+    /** (optional) v5 B49 (#1194): the call path (service hosts, one per hop; `path.length === hop`) */
+    path?: string[];
 }
 
 //* the relay keys in the order they are written.
-const RELAY_KEYS = ['idt', 'tid', 'hop', 'src', 'via', 'pid', 'iat'] as const;
+const RELAY_KEYS = ['idt', 'tid', 'hop', 'src', 'via', 'pid', 'iat', 'ua', 'ip', 'dom', 'path'] as const;
 //* max length of a string field of the relay.
 const MAX_TEXT = 2048;
 
@@ -95,10 +122,14 @@ const MAX_TEXT = 2048;
 export const readLegacySend = (): LegacySendMode =>
     `${readConfig(PROTOCOL_LEGACY_CONTEXT) ?? ''}`.trim().toLowerCase() === 'send' ? 'send' : 'off';
 
-/** read the receive mode of the legacy context (default `warn`) */
+/**
+ * read the receive mode of the legacy context (default `reject`).
+ * - v5 B49 (#1194, D116): the default is `reject` (was `warn`) — a legacy-only call (`x-protocol-context` or the
+ *   SNS/SQS `context` field, no relay) is refused. `warn`/`accept` are explicit opt-ins for a receiver with v4 callers.
+ */
 export const readLegacyAccept = (): LegacyAcceptMode => {
     const mode = `${readConfig(PROTOCOL_LEGACY_ACCEPT) ?? ''}`.trim().toLowerCase();
-    return mode === 'accept' || mode === 'reject' ? mode : 'warn';
+    return mode === 'accept' || mode === 'warn' ? mode : 'reject';
 };
 
 /** read the hop cap (a positive integer, default 8) */
@@ -128,10 +159,23 @@ export const relayIdentityOf = (identity?: NextIdentity): RelayIdentity => {
 };
 
 /**
+ * v5 B49 (#1194): the call path of the next hop — the caller's `trace.path` + the host of `via` (`-` if none).
+ * - `undefined` when the caller's path is unknown (a hop from a sender before #1194: no `path`, or a length that
+ *   is not the caller hop), so the receiver's `path.length === hop` check never fails a mixed chain.
+ */
+const nextPathOf = (trace: NextTrace, hop: number, via?: string): string[] => {
+    const prev = (trace as RelayTrace)?.path;
+    const base = hop === 1 ? [] : Array.isArray(prev) && prev.length === hop - 1 ? prev : undefined;
+    return base ? [...base, hostOf(via).substring(0, RELAY_MAX_PATH_ENTRY)] : undefined;
+};
+
+/**
  * build the relay of the next hop from the caller context.
  * - `tid` = caller `trace.tid`, else `requestId`, else a new id. `hop` = caller `trace.hop` + 1.
  * - `src` = caller `trace.src`, else `source`. `pid` = caller `requestId`. `via` = the caller's service uri.
  * - throws `508 LOOP DETECTED` if the next hop is over the cap (before any send).
+ * - v5 B49 (#1194): `ua`/`ip`/`dom` = the caller's `userAgent` (max 512)/`clientIp`/`domain` (a receiver context
+ *   holds the first entry's values, so a next hop passes them on). `path` = the caller's `trace.path` + the via host.
  *
  * @param context   the caller context
  * @param options   `via` (caller uri), `now` (ms, for tests), `max` (hop cap)
@@ -144,6 +188,7 @@ export const buildRelay = (
     const hop = (Number.isInteger(trace?.hop) && trace.hop >= 0 ? trace.hop : 0) + 1;
     assertHop(hop, options?.max);
     const text = (v: unknown): string => (typeof v === 'string' && v ? v : undefined);
+    const ua = text(context?.userAgent);
     const relay: ProtocolRelay = {
         idt: relayIdentityOf(context?.identity),
         tid: text(trace?.tid) ?? traceIdOf(context?.requestId),
@@ -152,6 +197,10 @@ export const buildRelay = (
         via: text(options?.via),
         pid: text(context?.requestId),
         iat: Math.floor((options?.now ?? Date.now()) / 1000),
+        ua: ua !== undefined ? ua.substring(0, RELAY_MAX_UA) : undefined,
+        ip: text(context?.clientIp),
+        dom: text(context?.domain),
+        path: nextPathOf(trace, hop, options?.via),
     };
     //* drop empty keys (smaller value, stable shape).
     return RELAY_KEYS.reduce<ProtocolRelay>((R, k) => {
@@ -193,13 +242,24 @@ export const decodeRelay = (text: string): ProtocolRelay => {
     const relay: ProtocolRelay = { tid: str('tid', true), hop: data.hop };
     if (!Number.isInteger(data.hop) || data.hop < 0) throw invalid('hop');
     if (data.idt !== undefined) relay.idt = decodeIdentity(data.idt);
-    ['src', 'via', 'pid'].forEach(k => {
+    ['src', 'via', 'pid', 'ua', 'ip', 'dom'].forEach(k => {
         const v = str(k);
         if (v !== undefined) (relay as any)[k] = v;
     });
     if (data.iat !== undefined) {
         if (typeof data.iat !== 'number' || !Number.isFinite(data.iat)) throw invalid('iat');
         relay.iat = data.iat;
+    }
+    //* v5 B49 (#1194): the call path — strings (max 128), at most the hop cap, one per hop.
+    if (data.path !== undefined) {
+        const path = data.path;
+        const ok =
+            Array.isArray(path) &&
+            path.length <= readMaxHop() &&
+            path.length === relay.hop &&
+            path.every((h: unknown) => typeof h === 'string' && h.length > 0 && h.length <= RELAY_MAX_PATH_ENTRY);
+        if (!ok) throw invalid('path');
+        relay.path = [...path];
     }
     //* the key order of the encoder (so a decoded relay equals the built one).
     return RELAY_KEYS.reduce<ProtocolRelay>((R, k) => {
@@ -229,13 +289,16 @@ const decodeIdentity = (idt: any): RelayIdentity => {
 /**
  * the receiver context of a relay (B14 D2 table).
  * - `identity` = `idt`, `channel` = `internal`, `depth` = `hop`, `source` = `src`, `trace` = `{ tid, hop, via, pid, src }`.
- * - `requestId`, `accountId` = the receiver's own values (`own`). nothing else of the caller crosses the hop.
+ * - `requestId`, `accountId` = the receiver's own values (`own`).
+ * - v5 B49 (#1194): `userAgent`/`clientIp`/`domain` = `ua`/`ip`/`dom` (the first entry's origin), `trace.path` = `path`.
+ *   nothing else of the caller crosses the hop (no cookie, authorization, referer, origin, meta or token).
  */
 export const asRelayContext = (relay: ProtocolRelay, own?: NextContext): NextContext => {
-    const trace: NextTrace = { tid: relay.tid, hop: relay.hop };
+    const trace: RelayTrace = { tid: relay.tid, hop: relay.hop };
     if (relay.via !== undefined) trace.via = relay.via;
     if (relay.pid !== undefined) trace.pid = relay.pid;
     if (relay.src !== undefined) trace.src = relay.src;
+    if (relay.path !== undefined) trace.path = [...relay.path]; //* v5 B49 (#1194)
     const context: NextContext = {
         identity: { ...(relay.idt || {}) },
         channel: 'internal',
@@ -244,6 +307,9 @@ export const asRelayContext = (relay: ProtocolRelay, own?: NextContext): NextCon
         trace,
         requestId: own?.requestId,
         accountId: own?.accountId,
+        userAgent: relay.ua, //* v5 B49 (#1194): the origin of the first entry.
+        clientIp: relay.ip,
+        domain: relay.dom,
     };
     //* drop the undefined keys.
     return Object.entries(context).reduce<NextContext>((M, [k, v]) => {
@@ -266,6 +332,7 @@ export const entryTrace = (context?: NextContext): NextTrace => ({
  * the context of an in-process next hop (a same-service callback): the same rules as a relay hop.
  * - `trace.hop` + 1 (cap → `508 LOOP DETECTED`), the same `tid`/`src`, `via` = this service, `pid` = this requestId.
  * - `depth` = the new hop (kept in sync for v4-style code). the other fields of the context are kept.
+ * - v5 B49 (#1194): `trace.path` + this service's host (as a relay hop).
  *
  * @param context   the current receiver context (copied, not changed)
  * @param via       this service's uri
@@ -274,11 +341,13 @@ export const nextHopContext = (context: NextContext, via?: string): NextContext 
     const trace = context?.trace;
     const hop = (Number.isInteger(trace?.hop) && trace.hop >= 0 ? trace.hop : 0) + 1;
     assertHop(hop);
-    const next: NextTrace = { tid: trace?.tid || traceIdOf(context?.requestId), hop };
+    const next: RelayTrace = { tid: trace?.tid || traceIdOf(context?.requestId), hop };
     if (via) next.via = via;
     if (context?.requestId) next.pid = context.requestId;
     const src = trace?.src ?? context?.source;
     if (src) next.src = src;
+    const path = nextPathOf(trace, hop, via); //* v5 B49 (#1194)
+    if (path) next.path = path;
     return { ...context, depth: hop, trace: next };
 };
 
@@ -323,6 +392,16 @@ const pathOf = (uri?: string): string => {
     }
 };
 
+//* v5 B49 (#1194): the call path token `a>b>c` ('-' if none; each host a token, the whole line bounded).
+const callPathOf = (trace?: NextTrace): string => {
+    const path = (trace as RelayTrace)?.path;
+    if (!Array.isArray(path) || !path.length) return '-';
+    return path
+        .map(h => token(h))
+        .join('>')
+        .substring(0, 1024);
+};
+
 /**
  * v5 B15: true if the identity of the context comes from another cloud (SPEC § 15.1).
  * - `identity.cid` (the caller's cloud-id) and `context.accountId` (the receiver's own account, B14) are both
@@ -336,8 +415,9 @@ export const isCrossCloud = (context?: NextContext): boolean => {
 };
 
 /**
- * the `TRACE` line of an entry: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|->[ cross=1]`.
+ * the `TRACE` line of an entry: `TRACE tid=<tid> hop=<hop> ch=<channel> via=<service|-> src=<path|-> path=<a>b|->[ cross=1]`.
  * - no identity value, no account (the via host and the src path only).
+ * - v5 B49 (#1194): ` path=<a>b>c|->` after `src` — the call path hosts joined by `>` (`-` if none).
  * - v5 B15: ` cross=1` when the identity is cross-cloud (the flag only, never the account numbers).
  */
 export const traceLine = (context: NextContext): string => {
@@ -349,6 +429,7 @@ export const traceLine = (context: NextContext): string => {
         `ch=${token(context?.channel)}`,
         `via=${hostOf(trace?.via)}`,
         `src=${pathOf(src)}`,
+        `path=${callPathOf(trace)}`, //* v5 B49 (#1194)
     ];
     if (isCrossCloud(context)) line.push('cross=1'); //* v5 B15
     return line.join(' ');

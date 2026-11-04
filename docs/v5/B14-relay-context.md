@@ -82,6 +82,7 @@ relay JSON:
 
 - 화이트리스트 밖의 identity 값(`meta`·토큰·`accessKey`·`apiKey` 등)은 싣지 않는다.
 - `cookie`·`authorization`·`referer`·`origin`·`clientIp`·`userAgent`·`domain`은 싣지 않는다.
+  - 2026-11-04 (#1194, D115): `clientIp`·`userAgent`·`domain`은 이제 싣는다. 키 `ua`(512자 상한)·`ip`·`dom`, 값은 최초 진입의 것. 호출 경로 `path`(hop마다 서비스 호스트 하나, `path.length === hop`)도 싣는다. 수신 context는 `userAgent`·`clientIp`·`domain`·`trace.path`를 받는다. 나머지(`cookie`·`authorization`·`referer`·`origin`)는 그대로 싣지 않는다.
 - 수신 함수의 context:
   - `identity` = `idt`
   - `channel` = `internal`
@@ -105,6 +106,7 @@ relay JSON:
 | 송신 | `PROTOCOL_LEGACY_CONTEXT` | `off`: relay만 보낸다. `send`: relay와 legacy를 함께 보낸다 (v4 수신 함수용) | `off` |
 | 수신 | `PROTOCOL_LEGACY_ACCEPT` | `accept`: 받는다. `warn`: 받고 `PROTOCOL deprecated x-protocol-context` 한 줄을 남긴다. `reject`: 거부한다 | `warn` |
 
+- 2026-11-04 (#1194, D116): 수신 기본을 `reject`로 바꿨다(이전 `warn`). v4 호출자가 남은 수신 함수는 `PROTOCOL_LEGACY_ACCEPT=warn`(또는 `accept`)을 명시해야 한다. 송신 기본 `off`는 그대로다.
 - relay와 legacy가 함께 오면 relay를 쓴다.
 - legacy로 받은 context는 지금 동작을 유지한다. 단 `channel = internal`을 넣는다. v4 호출자의 하류 동작을 바꾸지 않으려는 것이다.
 - `HEADER_PROTOCOL_CONTEXT`에 `@deprecated`를 단다. v6에서 지운다.

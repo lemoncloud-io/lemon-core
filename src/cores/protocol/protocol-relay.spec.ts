@@ -8,13 +8,14 @@
  * @date        2026-10-30 initial version (v5 B14)
  * @date        2026-10-30 v5 B14: a safe trace id (local express requestId), the same-service callback hop.
  * @date        2026-10-30 v5 B15: `cid`/`aid` cross a hop, `TRACE … cross=1` (B15 T-08..T-10).
+ * @date        2026-11-04 v5 B49 (#1194, D115): `ua`/`ip`/`dom` (request origin) and `path` (call path) cross a hop.
  *
  * @copyright (C) lemoncloud.io 2026 - All Rights Reserved.
  */
 import { describe, it, afterEach, beforeEach } from 'vitest';
 import { $engine, $U } from '../../engine/';
 import { NextContext, NextDecoder, NextHandler } from 'lemon-model';
-import { expect2, GETERR } from '../../common/test-helper';
+import { expect2, GETERR, keysOf, expectKeys } from '../../common/test-helper'; //* v5 #1194: key-presence helpers.
 import { loadJsonSync } from '../../tools/';
 import { LambdaHandler } from '../lambda/lambda-handler';
 import { LambdaWEBHandler } from '../lambda/lambda-web-handler';
@@ -40,6 +41,8 @@ import {
     traceLine,
     entryTrace,
     isCrossCloud,
+    nextHopContext,
+    RELAY_MAX_UA,
 } from './protocol-relay';
 
 //* a test-only key (not a secret).
@@ -91,18 +94,20 @@ const caller: NextContext = {
     channel: 'external',
     trace: { tid: 'req-caller-1', hop: 0 },
 };
-//* values that must never cross a hop.
+//* values that must never cross a hop (v5 B49 #1194: `clientIp`/`domain` do now — the request origin).
 const SECRETS = [
     'meta-dummy',
     'ACCESS-KEY-DUMMY',
     'API-KEY-DUMMY',
     'COOKIE-DUMMY',
     'AUTHORIZATION-DUMMY',
-    '203.0.113.10',
-    'api.example.com',
     'www.example.com',
     'pool-dummy',
 ];
+//* v5 B49 (#1194): the request origin of the caller that crosses a hop (as the receiver context has it).
+const ORIGIN = { userAgent: caller.userAgent, clientIp: '203.0.113.10', domain: 'api.example.com' };
+//* v5 B49 (#1194): the call path of the first hop (the host of `viaOf(caller)`).
+const PATH1 = ['lemon-core-dev'];
 
 //* the receiver's own Lambda context (placeholder account).
 const lambdaCtx = (): any => ({
@@ -205,7 +210,11 @@ const withLog = async <T>(fn: () => Promise<T>): Promise<{ res: T; lines: string
 const linesOf = (lines: string[], text: string) => lines.filter(s => s.includes(text));
 
 //* the receiver context the plan (D2) expects for the caller's relay.
-const expected = (relay: { hop: number; tid: string; via?: string; pid?: string; src?: string }, own: NextContext) => ({
+//* v5 B49 (#1194): + the origin (`userAgent`/`clientIp`/`domain`) and `trace.path` (default: the first hop's).
+const expected = (
+    relay: { hop: number; tid: string; via?: string; pid?: string; src?: string; path?: string[] },
+    own: NextContext,
+) => ({
     identity: {
         sid: 'S1',
         uid: 'U1',
@@ -217,9 +226,17 @@ const expected = (relay: { hop: number; tid: string; via?: string; pid?: string;
     channel: 'internal',
     depth: relay.hop,
     source: relay.src,
-    trace: { tid: relay.tid, hop: relay.hop, via: relay.via, pid: relay.pid, src: relay.src },
+    trace: {
+        tid: relay.tid,
+        hop: relay.hop,
+        via: relay.via,
+        pid: relay.pid,
+        src: relay.src,
+        path: relay.path ?? PATH1,
+    },
     requestId: own.requestId,
     accountId: own.accountId,
+    ...ORIGIN,
 });
 
 //* the report flags (off in this spec: a report with a 12-digit account would call SNS).
@@ -240,8 +257,14 @@ describe('protocol-relay', () => {
     });
 
     //* env defaults and values.
-    it('should read the modes (defaults: off, warn, 8)', () => {
-        expect2(() => [readLegacySend(), readLegacyAccept(), readMaxHop()]).toEqual(['off', 'warn', 8]);
+    //* v5 B49 (#1194, D116): the receive default is `reject` (was `warn`).
+    it('should read the modes (defaults: off, reject, 8)', () => {
+        expect2(() => [readLegacySend(), readLegacyAccept(), readMaxHop()]).toEqual(['off', 'reject', 8]);
+        setEnv('PROTOCOL_LEGACY_ACCEPT', 'WARN');
+        expect2(() => readLegacyAccept()).toEqual('warn');
+        setEnv('PROTOCOL_LEGACY_ACCEPT', 'maybe');
+        expect2(() => readLegacyAccept()).toEqual('reject');
+        setEnv('PROTOCOL_LEGACY_ACCEPT');
         setEnv('PROTOCOL_LEGACY_CONTEXT', 'SEND');
         setEnv('PROTOCOL_LEGACY_ACCEPT', 'reject');
         setEnv('PROTOCOL_MAX_HOP', '3');
@@ -271,13 +294,20 @@ describe('protocol-relay', () => {
             via,
             pid: 'req-caller-1',
             iat: 1800000000,
+            ua: caller.userAgent,
+            ip: '203.0.113.10',
+            dom: 'api.example.com',
+            path: PATH1,
         });
         const text = encodeRelay(relay);
         expect2(() => text.startsWith('r1.')).toEqual(true);
-        //* no value outside the whitelist (cookie, authorization, meta, keys, clientIp, domain …).
+        //* no value outside the whitelist (cookie, authorization, meta, keys, referer, origin …).
         const json = Buffer.from(text.substring(3), 'base64url').toString('utf8');
         expect2(() => SECRETS.filter(s => json.includes(s))).toEqual([]);
-        expect2(() => Object.keys(JSON.parse(json))).toEqual(['idt', 'tid', 'hop', 'src', 'via', 'pid', 'iat']);
+        expect2(() => Object.keys(JSON.parse(json))).toEqual([
+            ...['idt', 'tid', 'hop', 'src', 'via', 'pid', 'iat'],
+            ...['ua', 'ip', 'dom', 'path'], //* v5 B49 (#1194)
+        ]);
 
         //* the next hop: trace wins over requestId/source.
         const hop3: NextContext = {
@@ -291,6 +321,8 @@ describe('protocol-relay', () => {
             src: 'api://x@first-api-dev/a#1',
             pid: 'req-3',
         });
+        //* v5 B49 (#1194): a caller hop without a path (a sender before #1194) → no `path` (unknown chain, no 400).
+        expectKeys(buildRelay(hop3), { absent: ['path'] });
         //* no trace → `requestId` and `source`, hop 1; no identity → no `idt`.
         expect2(() => buildRelay({ requestId: 'r', source: 's' }), 'idt,tid,hop,src').toEqual({
             idt: undefined,
@@ -345,6 +377,17 @@ describe('protocol-relay', () => {
         expect2(() => asRelayContext(relay, own)).toEqual(
             expected({ hop: 1, tid: 'req-caller-1', via, pid: 'req-caller-1', src: caller.source }, own),
         );
+        //* v5 #1194: the exact key set (`toEqual()` above ignores a key set to `undefined`).
+        expect2(() => keysOf(asRelayContext(relay, own))).toEqual(
+            keysOf(expected({ hop: 1, tid: 'req-caller-1', via, pid: 'req-caller-1', src: caller.source }, own)),
+        );
+        expect2(() => keysOf(asRelayContext(relay, own).identity)).toEqual(
+            ['sid', 'uid', 'gid', 'roles', 'identityId', 'lang'].sort(),
+        );
+        expectKeys(asRelayContext(relay, own), {
+            present: ['userAgent', 'clientIp', 'domain'], //* v5 B49 (#1194): the request origin crosses.
+            absent: ['cookie', 'authorization', 'referer', 'origin'],
+        });
         //* no idt → an empty identity (an object, as entry contexts have).
         expect2(() => asRelayContext({ tid: 't', hop: 2 }, {}), 'identity,channel,depth').toEqual({
             identity: {},
@@ -353,18 +396,93 @@ describe('protocol-relay', () => {
         });
     });
 
+    //* #1194 (D115): the relay carries the request origin and the call path (build → encode → decode → receiver).
+    it('should carry userAgent/clientIp/domain and the call path to the receiver (#1194)', () => {
+        const ctx: any = asRelayContext(decodeRelay(encodeRelay(buildRelay(caller, { via: viaOf(caller) }))), {
+            requestId: 'r2',
+        });
+        expect2(() => ctx, 'userAgent,clientIp,domain').toEqual(ORIGIN);
+        expect2(() => ctx.trace, 'hop,path').toEqual({ hop: 1, path: PATH1 });
+        expectKeys(ctx, { present: ['identity', 'channel', 'trace', 'userAgent', 'clientIp', 'domain'] });
+        expectKeys(ctx, { absent: ['cookie', 'authorization', 'referer', 'origin'] });
+        expectKeys(ctx.identity, { present: ['sid', 'uid', 'roles'], absent: ['userAgent', 'accessKey', 'meta'] });
+    });
+
+    //* #1194 (D115): a second hop keeps the first entry's origin and appends its host to the path (`hop === path.length`).
+    it('should keep the origin and append the path on a second hop (#1194)', () => {
+        const hop1 = asRelayContext(decodeRelay(encodeRelay(buildRelay(caller, { via: viaOf(caller) }))), {});
+        const relay2 = buildRelay({ ...hop1, requestId: 'r2' }, { via: 'api://123456789012@lemon-b-api-dev#5.0.0' });
+        expect2(() => relay2, 'hop,ua,ip,dom,path').toEqual({
+            hop: 2,
+            ua: caller.userAgent,
+            ip: '203.0.113.10',
+            dom: 'api.example.com',
+            path: ['lemon-core-dev', 'lemon-b-api-dev'],
+        });
+        const hop2 = asRelayContext(decodeRelay(encodeRelay(relay2)), {});
+        expect2(() => hop2, 'userAgent,clientIp,domain').toEqual(ORIGIN);
+        expect2(() => [hop2.trace.hop, (hop2.trace as any).path.length]).toEqual([2, 2]);
+        //* the same-service callback appends the same way.
+        expect2(() => (nextHopContext(hop2, 'api://lemon-c-api-dev#1').trace as any).path).toEqual([
+            'lemon-core-dev',
+            'lemon-b-api-dev',
+            'lemon-c-api-dev',
+        ]);
+    });
+
+    //* #1194 (D115): the path must have one host per hop and at most the hop cap → else `400 … relay path`.
+    it('should reject a bad relay path (#1194)', () => {
+        const enc = (o: any) => `r1.${Buffer.from(JSON.stringify(o), 'utf8').toString('base64url')}`;
+        const E = '400 INVALID CONTEXT - relay path';
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, path: ['a', 'b'] }))).toEqual(E);
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 2, path: ['a'] }))).toEqual(E);
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, path: 'a' }))).toEqual(E);
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, path: [1] }))).toEqual(E);
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, path: ['x'.repeat(129)] }))).toEqual(E);
+        //* over the hop cap (default 8): 9 hosts at hop 9.
+        const nine = Array.from({ length: 9 }, (_, i) => `h${i}`);
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 9, path: nine }))).toEqual(E);
+        setEnv('PROTOCOL_MAX_HOP', '10');
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 9, path: nine })).path).toEqual(nine);
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, path: ['a'] })).path).toEqual(['a']);
+    });
+
+    //* #1194 compatibility: unknown keys (a future sender) are dropped; an old relay (no ua/ip/dom/path) gives none.
+    it('should tolerate unknown keys and an old relay without the origin (#1194)', () => {
+        const enc = (o: any) => `r1.${Buffer.from(JSON.stringify(o), 'utf8').toString('base64url')}`;
+        expect2(() => decodeRelay(enc({ tid: 't', hop: 1, zz: 1, future: { a: 1 } }))).toEqual({ tid: 't', hop: 1 });
+        //* a relay of a sender before #1194: only the B14/B15 keys.
+        const old = { idt: { sid: 'S1', roles: ['user'] }, tid: 't', hop: 1, via: 'api://lemon-a-api-dev#5.0.20' };
+        const ctx: any = asRelayContext(decodeRelay(enc(old)), {});
+        expectKeys(ctx, { present: ['identity', 'channel', 'trace'], absent: ['userAgent', 'clientIp', 'domain'] });
+        expectKeys(ctx.trace, { present: ['tid', 'hop', 'via'], absent: ['path'] });
+    });
+
+    //* #1194: a long `userAgent` is truncated to 512 chars on build (the relay stays far under 4096 bytes).
+    it('should truncate a long userAgent on build (#1194)', () => {
+        const relay = buildRelay({ ...caller, userAgent: 'U'.repeat(2000) }, { via: viaOf(caller) });
+        expect2(() => relay.ua.length).toEqual(RELAY_MAX_UA);
+        expect2(() => Buffer.byteLength(encodeRelay(relay), 'utf8') < RELAY_MAX_BYTES).toEqual(true);
+    });
+
     //* the TRACE line: tid/hop/channel, the via host and the src path only (no identity, no account).
     it('should format the TRACE line', () => {
         const ctx = asRelayContext(buildRelay(caller, { via: viaOf(caller) }), { requestId: 'r2' });
         const line = traceLine(ctx);
-        expect2(() => line).toEqual('TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run');
+        expect2(() => line).toEqual(
+            'TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run path=lemon-core-dev',
+        );
         expect2(() => [line.includes('S1'), line.includes('123456789012')]).toEqual([false, false]);
         expect2(() => traceLine({ requestId: 'x', channel: 'external', trace: { tid: 'x', hop: 0 } })).toEqual(
-            'TRACE tid=x hop=0 ch=external via=- src=-',
+            'TRACE tid=x hop=0 ch=external via=- src=- path=-',
+        );
+        //* v5 B49 (#1194): the call path hosts joined by `>`.
+        expect2(() => traceLine({ trace: { tid: 'x', hop: 2, path: ['a-api-dev', 'b-api-dev'] } as any })).toEqual(
+            'TRACE tid=x hop=2 ch=- via=- src=- path=a-api-dev>b-api-dev',
         );
         //* whitespace in values cannot break the line.
         expect2(() => traceLine({ trace: { tid: 'a b\nc', hop: 1 } })).toEqual(
-            'TRACE tid=a_b_c hop=1 ch=- via=- src=-',
+            'TRACE tid=a_b_c hop=1 ch=- via=- src=- path=-',
         );
     });
 
@@ -381,6 +499,10 @@ describe('protocol-relay', () => {
             expected({ hop: 1, tid: 'req-caller-1', via, pid: 'req-caller-1', src: caller.source }, own),
         );
         expect2(() => SECRETS.filter(s => JSON.stringify(got[0]).includes(s))).toEqual([]);
+        //* v5 #1194: the exact key set of the receiver context (no key set to `undefined`).
+        expect2(() => keysOf(got[0])).toEqual(
+            keysOf(expected({ hop: 1, tid: 'req-caller-1', via, pid: 'req-caller-1', src: caller.source }, own)),
+        );
         //* one TRACE line, no deprecated line.
         expect2(() => linesOf(lines, 'TRACE ').length).toEqual(1);
         expect2(() => linesOf(lines, 'TRACE ')[0].includes('tid=req-caller-1 hop=1 ch=internal')).toEqual(true);
@@ -529,7 +651,7 @@ describe('protocol-relay', () => {
         expect2(() => got[0].trace, 'tid,hop').toEqual({ tid: 'T', hop: 9 });
     });
 
-    //* D4: a legacy-only call (v4 sender) by `PROTOCOL_LEGACY_ACCEPT` — accept, warn (default), reject.
+    //* D4: a legacy-only call (v4 sender) by `PROTOCOL_LEGACY_ACCEPT` — accept, warn, reject (default since B49 D116).
     it('should accept, warn or reject a legacy context (web, SNS, SQS)', async () => {
         const { lambda, sns, got } = instance();
         //* v4-style events: `x-protocol-context` / `context` only, unsigned.
@@ -551,7 +673,8 @@ describe('protocol-relay', () => {
         //* the legacy context as is + channel internal + an entry trace.
         const asLegacy = { ...caller, channel: 'internal', trace: { tid: 'req-caller-1', hop: 0 } };
 
-        //* warn (default): accepted, one line per call.
+        //* warn (explicit; the default is `reject` since B49 D116): accepted, one line per call.
+        setEnv('PROTOCOL_LEGACY_ACCEPT', 'warn');
         const w = await runAll();
         expect2(() => w.res[0], 'statusCode').toEqual({ statusCode: 200 });
         expect2(() => w.res[2]).toEqual({ batchItemFailures: [] });
@@ -593,6 +716,7 @@ describe('protocol-relay', () => {
     //* a v4 caller (legacy, unsigned) is accepted in `warn` (sign verify `warn` too): 2 lines, the same context.
     it('should accept a v4-style event in warn', async () => {
         const { lambda, got } = instance();
+        setEnv('PROTOCOL_LEGACY_ACCEPT', 'warn'); //* v5 B49 (#1194, D116): explicit (default `reject`).
         setEnv('PROTOCOL_SIGN_KEY', KEY);
         resetProtocolSign();
         //* v4: the header only, no signature.
@@ -682,7 +806,10 @@ describe('protocol-relay', () => {
         const nextOf = (first: NextContext) => ({
             ...first,
             depth: 2,
-            trace: { tid: 'req-caller-1', hop: 2, via: viaOf(first), pid: 'req-recv-1', src: caller.source },
+            trace: {
+                ...{ tid: 'req-caller-1', hop: 2, via: viaOf(first), pid: 'req-recv-1', src: caller.source },
+                path: [...PATH1, 'lemon-core-dev'], //* v5 B49 (#1194): + this service's host.
+            },
         });
 
         //* SNS: the receive (hop 1), then the callback (hop 2) in-process.
@@ -695,8 +822,8 @@ describe('protocol-relay', () => {
         );
         expect2(() => got[1]).toEqual(nextOf(got[0]));
         expect2(() => linesOf(r1.lines, 'TRACE ').map(s => s.substring(s.indexOf('TRACE')))).toEqual([
-            'TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run',
-            'TRACE tid=req-caller-1 hop=2 ch=internal via=lemon-core-dev src=/hello/a_1/run',
+            'TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run path=lemon-core-dev',
+            'TRACE tid=req-caller-1 hop=2 ch=internal via=lemon-core-dev src=/hello/a_1/run path=lemon-core-dev>lemon-core-dev',
         ]);
 
         //* SQS: the same.
@@ -773,17 +900,17 @@ describe('protocol-relay', () => {
         const line = traceLine(ctx);
         expect2(() => isCrossCloud(ctx)).toEqual(true);
         expect2(() => line).toEqual(
-            'TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run cross=1',
+            'TRACE tid=req-caller-1 hop=1 ch=internal via=lemon-core-dev src=/hello/a_1/run path=lemon-core-dev cross=1',
         );
         expect2(() => [line.includes(OTHER_ACC), line.includes('123456789012')]).toEqual([false, false]);
         //* same cloud, `#` or no `cid`, or no own account → no flag.
         const _line = (cid: string, accountId = '123456789012') =>
             traceLine({ identity: { cid } as any, accountId, channel: 'external', trace: { tid: 'x', hop: 0 } });
-        expect2(() => _line('123456789012')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
-        expect2(() => _line('#')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
-        expect2(() => _line('')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
-        expect2(() => _line(OTHER_ACC, '')).toEqual('TRACE tid=x hop=0 ch=external via=- src=-');
-        expect2(() => _line(OTHER_ACC)).toEqual('TRACE tid=x hop=0 ch=external via=- src=- cross=1');
+        expect2(() => _line('123456789012')).toEqual('TRACE tid=x hop=0 ch=external via=- src=- path=-');
+        expect2(() => _line('#')).toEqual('TRACE tid=x hop=0 ch=external via=- src=- path=-');
+        expect2(() => _line('')).toEqual('TRACE tid=x hop=0 ch=external via=- src=- path=-');
+        expect2(() => _line(OTHER_ACC, '')).toEqual('TRACE tid=x hop=0 ch=external via=- src=- path=-');
+        expect2(() => _line(OTHER_ACC)).toEqual('TRACE tid=x hop=0 ch=external via=- src=- path=- cross=1');
     });
 
     it('B15 T-10 web and SNS/SQS round trips keep `cid`/`aid` and log `cross=1`', async () => {
@@ -808,5 +935,109 @@ describe('protocol-relay', () => {
         expect2(() => r3.res).toEqual(undefined);
         expect2(() => got[2].identity, 'cid').toEqual({ cid: '123456789012' });
         expect2(() => linesOf(r3.lines, 'TRACE ')[0].includes('cross=')).toEqual(false);
+    });
+    //* #1194 path 2 (D115/D116): the relay carries the request origin and the call path; a legacy-only call is rejected.
+    describe('#1194 relay fields (web handler)', () => {
+        //* the caller of the issue: an identity plus the request fields a WSS entry has (no `host` header on the hop).
+        const caller1194: NextContext = {
+            identity: { sid: 'S1', uid: 'U1', roles: ['user'] } as any,
+            userAgent: 'UA/1',
+            clientIp: '1.2.3.4',
+            domain: 'wss.example.com',
+            requestId: 'req-1194',
+            accountId: '123456789012',
+        };
+        //* the origin the receiver context must have.
+        const ORIGIN1194 = { userAgent: 'UA/1', clientIp: '1.2.3.4', domain: 'wss.example.com' };
+        //* handle the event on a new receiver, returns the result, the received context and the log lines.
+        const receive = async (event: any) => {
+            const { lambda, got } = instance();
+            const { res, lines } = await withLog(() => lambda.handle(event, lambdaCtx()));
+            return { res, ctx: got[0], lines };
+        };
+
+        //* #1194 send side (D116): with the env unset, no legacy context is sent (web header, SNS/SQS `context` field).
+        it('should not send x-protocol-context by default (web, SNS, SQS)', () => {
+            expect2(() => keysOf(webEvent(caller1194).headers)).toEqual([HEADER_LEMON_RELAY]);
+            const sns = JSON.parse(snsRecord(caller1194).Sns.Message);
+            const sqs = JSON.parse(sqsRecord(caller1194).body);
+            expectKeys(sns, { present: ['relay'], absent: ['context'] });
+            expectKeys(sqs, { present: ['relay'], absent: ['context'] });
+        });
+
+        //* #1194 path 2 (default): relay only → channel internal, identity, the origin and `trace.path`.
+        it('should carry userAgent/clientIp/domain and the path over a relay (default)', async () => {
+            const { res, ctx, lines } = await receive(webEvent(caller1194));
+            expect2(() => res, 'statusCode').toEqual({ statusCode: 200 });
+            expect2(() => ctx, 'channel,userAgent,clientIp,domain').toEqual({ channel: 'internal', ...ORIGIN1194 });
+            expect2(() => ctx.identity, 'sid,uid,roles').toEqual({ sid: 'S1', uid: 'U1', roles: ['user'] });
+            expect2(() => ctx.trace, 'hop,path').toEqual({ hop: 1, path: PATH1 });
+            expectKeys(ctx, { present: ['identity', 'channel', 'trace', 'requestId', 'accountId'] });
+            expectKeys(ctx.identity, { absent: ['userAgent', 'clientIp', 'domain'] });
+            //* one TRACE line with the path.
+            const trace = linesOf(lines, 'TRACE ');
+            expect2(() => trace.length).toEqual(1);
+            expect2(() => trace[0].includes(' path=lemon-core-dev')).toEqual(true);
+        });
+
+        //* #1194 path 2 (`PROTOCOL_LEGACY_CONTEXT=send`): both headers, the relay wins (no rejection).
+        it('should use the relay when x-protocol-context is also present (relay wins)', async () => {
+            setEnv('PROTOCOL_LEGACY_CONTEXT', 'send');
+            const event = webEvent(caller1194);
+            expect2(() => keysOf(event.headers)).toEqual([HEADER_LEMON_RELAY, HEADER_PROTOCOL_CONTEXT].sort());
+            const { res, ctx, lines } = await receive(event);
+            expect2(() => res, 'statusCode').toEqual({ statusCode: 200 });
+            expect2(() => ctx, 'channel,userAgent,clientIp,domain').toEqual({ channel: 'internal', ...ORIGIN1194 });
+            //* from the relay: hop 1 with the path (a legacy context would be hop 0 without a path).
+            expect2(() => ctx.trace, 'hop,path').toEqual({ hop: 1, path: PATH1 });
+            expect2(() => linesOf(lines, 'PROTOCOL deprecated').length).toEqual(0);
+            //* the same receiver context as the relay-only event.
+            setEnv('PROTOCOL_LEGACY_CONTEXT');
+            const { ctx: ctx0 } = await receive(webEvent(caller1194));
+            expect2(() => keysOf(ctx)).toEqual(keysOf(ctx0));
+            expect2(() => ({ ...ctx, requestId: '' })).toEqual({ ...ctx0, requestId: '' });
+        });
+
+        //* the legacy-only events of `caller1194` (web, SNS, SQS) as a v4 sender builds them (no relay).
+        const legacyEvents = () => {
+            setEnv('PROTOCOL_LEGACY_CONTEXT', 'send');
+            const web = webEvent(caller1194);
+            delete web.headers[HEADER_LEMON_RELAY];
+            const sns = snsRecord(caller1194);
+            sns.Sns.Message = JSON.stringify({ ...JSON.parse(sns.Sns.Message), relay: undefined });
+            const sqs = sqsRecord(caller1194);
+            sqs.body = JSON.stringify({ ...JSON.parse(sqs.body), relay: undefined });
+            setEnv('PROTOCOL_LEGACY_CONTEXT');
+            return { web, sns, sqs };
+        };
+
+        //* #1194 (D116): a legacy-only call is rejected by default — web 400, SNS reported, SQS record failure.
+        it('should reject a legacy-only call by default (web, SNS, SQS)', async () => {
+            const { web, sns, sqs } = legacyEvents();
+            expect2(() => keysOf(web.headers)).toEqual([HEADER_PROTOCOL_CONTEXT]);
+            const { lambda, sns: $sns, got } = instance();
+            expect2(await lambda.handle(web, lambdaCtx()), 'statusCode,body').toEqual({
+                statusCode: 400,
+                body: '400 INVALID CONTEXT - legacy context rejected',
+            });
+            expect2(await lambda.handle({ Records: [sns] }, lambdaCtx())).toEqual(undefined);
+            expect2(() => $sns.last()).toEqual(['400 INVALID CONTEXT - legacy context rejected']);
+            expect2(await lambda.handle({ Records: [sqs] }, lambdaCtx())).toEqual({
+                batchItemFailures: [{ itemIdentifier: 'sqs-msg-1' }],
+            });
+            expect2(() => got.length).toEqual(0);
+        });
+
+        //* #1194 path 2 (v4 caller, `PROTOCOL_LEGACY_ACCEPT=warn` explicit): the v4 context is kept (`userAgent`) + internal.
+        it('should keep the v4 context of a legacy-only call with PROTOCOL_LEGACY_ACCEPT=warn', async () => {
+            setEnv('PROTOCOL_LEGACY_ACCEPT', 'warn');
+            const { web } = legacyEvents();
+            const { res, ctx, lines } = await receive(web);
+            expect2(() => res, 'statusCode').toEqual({ statusCode: 200 });
+            expect2(() => ctx, 'channel,userAgent,clientIp,domain').toEqual({ channel: 'internal', ...ORIGIN1194 });
+            expect2(() => ctx.trace, 'hop').toEqual({ hop: 0 });
+            expectKeys(ctx.trace, { absent: ['path'] });
+            expect2(() => linesOf(lines, 'PROTOCOL deprecated x-protocol-context').length).toEqual(1);
+        });
     });
 });
