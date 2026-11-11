@@ -14,7 +14,7 @@ import { ProtocolParam } from '../core-services';
 import { AwsConfigParams } from '../../tools/tools';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 import type { InvocationRequest, InvokeCommandOutput } from '@aws-sdk/client-lambda';
-import { measureAsync } from '../../lib/perf';
+import { measure, measureAsync } from '../../lib/perf';
 import { asLemonError } from '../../common/lemon-error';
 const NS = $U.NS('PRTL', 'yellow'); // NAMESPACE TO BE PRINTED.
 
@@ -31,6 +31,26 @@ const loadLambda = () =>
         'lazy-load @aws-sdk/client-lambda',
         () => import('@aws-sdk/client-lambda'),
     ));
+
+/**
+ * the Lambda client as `invokeLambda()` uses it (local structural type, no SDK type in `.d.ts`; v5 B2-c).
+ */
+type LambdaClientLike = { send: (command: any) => Promise<any> };
+
+/** clients cached per region (was a new client on every call). */
+const _lambda: Record<string, LambdaClientLike> = {};
+
+/**
+ * get aws client for Lambda (async; one client per region, `PERF > client LAMBDA` once per region)
+ */
+const instance = async (config: AwsConfigParams): Promise<LambdaClientLike> => {
+    const { LambdaClient } = await loadLambda();
+    const $region = config.region ?? '';
+    if (!_lambda[$region]) {
+        _lambda[$region] = measure(_inf, $U.NS('PERF', 'cyan'), 'client LAMBDA', () => new LambdaClient(config));
+    }
+    return _lambda[$region];
+};
 
 const asPayloadText = (payload?: Uint8Array): string | undefined =>
     payload ? Buffer.from(payload).toString() : undefined;
@@ -70,9 +90,9 @@ export async function invokeLambda<T>(
     });
     // _log(NS, `> params =`, $U.json(params));
 
-    //* call lambda (a new client per call, so no `PERF > client` line).
-    const { LambdaClient, InvokeCommand } = await loadLambda();
-    const lambda = new LambdaClient(config);
+    //* call lambda (one client per region).
+    const { InvokeCommand } = await loadLambda();
+    const lambda = await instance(config);
     const response = await lambda
         .send(new InvokeCommand(params))
         .catch((e: Error) => {

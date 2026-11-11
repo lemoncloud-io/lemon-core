@@ -377,9 +377,10 @@ npm i @aws-sdk/client-kms @aws-sdk/credential-providers @aws-sdk/client-sns @aws
 | `dynamodoc()` | one document client per region | unchanged |
 | S3 module client (`AWSS3Service.instance()`) | a new `S3Client` on every call | one per region |
 | KMS client | one per service (`_instance`) | unchanged |
-| SNS, SQS, STS, IAM, Lambda, protocol | a new client per call | unchanged |
+| Lambda client (`invokeLambda()`, protocol `execute`) | a new `LambdaClient` on every call | one per region |
+| SNS, SQS, STS, IAM, protocol `notify`/`enqueue` (SNS, SQS) | a new client per call | unchanged |
 
-If you used `dynamostr`, build your own `DynamoDBStreamsClient` from `@aws-sdk/client-dynamodb-streams`. The region cache reads the profile once per region: a later change of `env.NAME` does not rebuild a cached Dynamo or S3 client.
+If you used `dynamostr`, build your own `DynamoDBStreamsClient` from `@aws-sdk/client-dynamodb-streams`. The region cache reads the profile once per region: a later change of `env.NAME` does not rebuild a cached Dynamo, S3 or Lambda client. `invokeLambda()` keeps the client built from the first `config` of a region, so a later call with other credentials for the same region uses that client.
 
 `prepareCreateTable()` writes `StreamViewType: 'NEW_AND_OLD_IMAGES'` as a string (the same value the SDK enum had).
 
@@ -416,7 +417,7 @@ lemon-core prints one `PERF` line per checkpoint, once per process, through the 
 | `loaded lemon-core` | the `lemon-core` index finished loading | process uptime at that moment (includes everything loaded before, e.g. `ts-node` compile) |
 | `initialize` | `$engine.initialize()` finished | the whole initialize (config init, KMS decrypt, …) |
 | `lazy-load <package>` | the first use of an SDK package or of `@opensearch-project/opensearch` | the `require`/`import()` |
-| `client KMS` / `client S3` / `client DYNAMO` / `client DYNAMO-DOC` | a cached client is built | the constructor (once per service or per region) |
+| `client KMS` / `client S3` / `client DYNAMO` / `client DYNAMO-DOC` / `client LAMBDA` | a cached client is built | the constructor (once per service or per region) |
 | `instance $OS2` | the first access of `$OS2` | `_OS2()` |
 | `client OS2` | an OpenSearch client is built | the constructor |
 
