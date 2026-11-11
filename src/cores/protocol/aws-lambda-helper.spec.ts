@@ -198,4 +198,23 @@ describe('invokeLambda', () => {
         expect(lambdaMock.clients).toEqual([]);
         expect(lambdaMock.send).not.toHaveBeenCalled();
     });
+
+    it('should reuse one LambdaClient per region (v5)', async () => {
+        lambdaMock.send.mockResolvedValue({
+            StatusCode: 200,
+            Payload: encodeLambdaPayload({ statusCode: 200, body: JSON.stringify({ ok: 1 }) }),
+        });
+        /** a region no other test uses: the client cache lives through this file. */
+        const config = { region: 'us-west-2' };
+
+        await Promise.all([
+            invokeLambda('target-lambda', asEvent(), { config }),
+            invokeLambda('target-lambda', asEvent(), { config }),
+        ]);
+        await invokeLambda('target-lambda', asEvent(), { config });
+        await invokeLambda('target-lambda', asEvent(), { config });
+
+        expect(lambdaMock.clients).toEqual([{ region: 'us-west-2' }]);
+        expect(lambdaMock.send).toHaveBeenCalledTimes(4);
+    });
 });
